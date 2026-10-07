@@ -119,7 +119,7 @@ def save_svg(path, width, height):
 
 
 def scenario(binary, width, height):
-    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), "open", str(ROOT / "fixtures/example.gpx"), "--demo"])
+    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
         wait_for(lambda s: "Route details" in s and "Elevation profile" in s and "Loading basemap" not in s)
@@ -127,6 +127,7 @@ def scenario(binary, width, height):
         folder.mkdir(exist_ok=True, parents=True)
         save_svg(folder / f"{binary.name}-{width}x{height}.svg", width, height)
         initial = capture()
+        assert "No basemap" in initial and "token missing" not in initial, "token-free GPX viewing did not use a quiet empty canvas"
         zoom = re.search(r"Zoom ([\d.]+)", initial).group(1)
         send("]")
         wait_for(lambda s: "Point 2 / 12" in s)
@@ -150,6 +151,11 @@ def scenario(binary, width, height):
         burst = wait_for(lambda s: float(re.search(r"Zoom ([\d.]+)", s).group(1)) > keyboard_zoom)
         burst_zoom = float(re.search(r"Zoom ([\d.]+)", burst).group(1))
         assert burst_zoom - keyboard_zoom < .4, "rapid wheel burst jumped multiple levels"
+        before_modified_zoom = float(re.search(r"Zoom ([\d.]+)", settled()).group(1))
+        sgr(80, 30, 15)
+        modified = wait_for(lambda s: float(re.search(r"Zoom ([\d.]+)", s).group(1)) > before_modified_zoom)
+        modified_zoom = float(re.search(r"Zoom ([\d.]+)", modified).group(1))
+        assert abs(modified_zoom - before_modified_zoom - .2) < .011, "Ctrl+wheel did not double the zoom step"
         before_horizontal = capture()
         send("\x1b[<66;30;15M\x1b[<67;30;15M")
         send("v")
@@ -191,7 +197,7 @@ def scenario(binary, width, height):
 
 
 def live_capture(binary, width, height):
-    command = shlex.join(["env", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), "open", str(ROOT / "fixtures/example.gpx"), "--provider", "mapbox", "--center-lon", "-0.1065", "--center-lat", "51.505", "--zoom", "13", "--point-index", "3"])
+    command = shlex.join(["env", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), "--provider", "mapbox", "--center-lon", "-0.1065", "--center-lat", "51.505", "--zoom", "13", "--point-index", "3"])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
         screen = wait_for(lambda s: "Route details" in s and "© Mapbox" in s and "Loading basemap" not in s and re.search(r"\b[1-9]\d* / 0 / 0", s), timeout=25)
@@ -210,7 +216,7 @@ def live_capture(binary, width, height):
 
 
 def tiny_start(binary):
-    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(ROOT / "fixtures/example.gpx"),"--demo"])
+    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(ROOT / "fixtures/example.gpx")])
     tmux("new-session","-d","-s","poc","-x","25","-y","10",command)
     try:
         wait_for(lambda s:"Enlarge terminal" in s)
@@ -225,7 +231,7 @@ def tiny_start(binary):
 
 
 def profile_playback(binary, width, height):
-    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","COLORTERM=truecolor","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(ROOT / "fixtures/example.gpx"),"--demo"])
+    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","COLORTERM=truecolor","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),str(ROOT / "fixtures/example.gpx")])
     tmux("new-session","-d","-s","poc","-x",str(width),"-y",str(height),command)
     try:
         wait_for(lambda s:"Route details" in s and "Elevation profile" in s and "Loading basemap" not in s)
@@ -237,7 +243,9 @@ def profile_playback(binary, width, height):
         send("ssss")
         wait_for(lambda s:"Paused 120x" in s)
         send(" ")
-        wait_for(lambda s:"Playing 120x" in s and any(float(value)>.1 for value in re.findall(r"@ ([\d.]+) km",s)))
+        wait_for(lambda s:"Playing 120x" in s and "Free camera" in s and any(float(value)>.1 for value in re.findall(r"@ ([\d.]+) km",s)))
+        send("c")
+        wait_for(lambda s:"Playing 120x" in s and "Following position" in s)
         send(" ")
         wait_for(lambda s:"Paused 120x" in s)
         paused=settled()
@@ -280,6 +288,8 @@ def live_playback(binary):
         before=wait_for(lambda s:"Elevation profile" in s)
         base_hits=int(re.search(r"(\d+) / (\d+) / (\d+)",before).group(2))
         send("ssss ")
+        wait_for(lambda s:"Playing 120x" in s and "Free camera" in s)
+        send("c")
         def moving(s):
             stats=re.search(r"(\d+) / (\d+) / (\d+)",s)
             return "Playing 120x" in s and stats and int(stats.group(2))>base_hits and int(stats.group(3))==0
@@ -301,7 +311,7 @@ def dense_profile(binary):
     path=ROOT / "fixtures/dense-100000.gpx"
     if not path.exists():
         return
-    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(path),"--demo"])
+    command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(path)])
     tmux("new-session","-d","-s","poc","-x","120","-y","40",command)
     try:
         wait_for(lambda s:"100000 points" in s)
@@ -321,6 +331,8 @@ def dialogs(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
     try:
+        wait_for(lambda s: "Map details" in s and "Free roam" in s)
+        send("\x0f")
         wait_for(lambda s: "Open GPX" in s and "› bin" in s)
         send("jj")
         wait_for(lambda s: "› fixtures" in s)
@@ -350,7 +362,9 @@ def dialogs(binary):
         sgr(64, 30, 15)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Keyboard shortcuts" not in s)
-        assert settled() == before, "help input changed the map underneath"
+        after = [line.rstrip() for line in settled().splitlines()]
+        expected = [line.rstrip() for line in before.splitlines()]
+        assert after == expected, "help input changed the map underneath:\n" + "\n".join(difflib.unified_diff(expected, after))
         send("\x10")
         wait_for(lambda s: "Commands" in s and "Type a command" in s)
         send("speed")
@@ -372,9 +386,63 @@ def dialogs(binary):
         wait_for(lambda s: "Open GPX" in s and "waypoints.gpx" in s)
         select_file("waypoints.gpx")
         wait_for(lambda s: "No track points" in s and "Open GPX" not in s)
+        send("\x10")
+        wait_for(lambda s: "Commands" in s and "Type a command" in s)
+        send("free roam")
+        wait_for(lambda s: "Free roam (clear route)" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Map details" in s and "Commands" not in s and "Elevation profile" not in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name}: startup/file picker, failed-load recovery, modal input isolation, command filtering, speed picker and file switching passed")
+        print(f"{binary.name}: startup/file picker, failed-load recovery, modal input isolation, command filtering, speed picker, file switching and clearing the route passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
+def free_roam(binary, live=False):
+    env = ["env", "TERM=xterm-256color", "COLORTERM=truecolor"]
+    args = ["--center-lon", "-0.1065", "--center-lat", "51.505", "--zoom", "13"] if live else []
+    if not live:
+        env.append("MAPBOX_ACCESS_TOKEN=")
+    command = shlex.join([*env, "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *args])
+    tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
+    try:
+        initial = wait_for(lambda s: "Map details" in s and "Free roam" in s and "Loading basemap" not in s, timeout=25)
+        assert "Route details" not in initial and "Elevation profile" not in initial and "Paused" not in initial
+        if live:
+            assert "© Mapbox" in initial and re.search(r"\b[1-9]\d* / 0 / 0", initial), initial
+        else:
+            assert "No basemap" in initial and "MAPBOX_ACCESS_TOKEN" in initial, "empty-canvas startup did not show Mapbox setup guidance"
+        before = settled()
+        send("h")
+        wait_for(lambda s: re.search(r"Lon (-?[\d.]+)", s).group(1) != re.search(r"Lon (-?[\d.]+)", before).group(1))
+        sgr(0, 30, 15); sgr(32, 35, 16); sgr(0, 35, 16, release=True)
+        sgr(64, 30, 15)
+        wait_for(lambda s: re.search(r"Zoom ([\d.]+)", s).group(1) != re.search(r"Zoom ([\d.]+)", before).group(1))
+        current = settled()
+        zoom = float(re.search(r"Zoom ([\d.]+)", current).group(1))
+        sgr(80, 30, 15)
+        modified = wait_for(lambda s: float(re.search(r"Zoom ([\d.]+)", s).group(1)) > zoom)
+        assert abs(float(re.search(r"Zoom ([\d.]+)", modified).group(1)) - zoom - .2) < .011, "Ctrl+wheel did not double free-roam zoom"
+        sgr(0, 30, 15); sgr(0, 30, 15, release=True)
+        wait_for(lambda s: "Selected position" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Selected position" in s and "↑/↓ scroll" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "↑/↓ scroll" not in s)
+        send("?")
+        wait_for(lambda s: "reset world view" in s and "Keyboard shortcuts" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Keyboard shortcuts" not in s)
+        folder = ROOT / "reports/generated"
+        folder.mkdir(exist_ok=True, parents=True)
+        settled()
+        save_svg(folder / f"{binary.name}-free-roam{'-mapbox' if live else ''}-120x40.svg", 120, 40)
+        tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
+        wait_for(lambda s: "Free roam | zoom" in s and "ctrl+o open GPX" in s)
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        print(f"{binary.name}: {'live Mapbox' if live else 'offline'} free roam, keyboard/mouse navigation, coordinate inspection, help, compact resize and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
@@ -382,6 +450,7 @@ def dialogs(binary):
 if __name__ == "__main__":
     try:
         for name in ("shoe",):
+            free_roam(ROOT / "bin" / name, live="--mapbox" in sys.argv)
             if "--mapbox" not in sys.argv:
                 tiny_start(ROOT / "bin" / name)
             for width, height in ((120,40), (160,50)):

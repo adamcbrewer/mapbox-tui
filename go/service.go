@@ -74,7 +74,7 @@ func renderResult(ctx context.Context, t *Track, a Args, p *Provider) (map[strin
 	sel := -1
 	if a.PointIndex != nil {
 		sel = *a.PointIndex
-		if sel < 0 || sel >= len(t.Points) {
+		if t == nil || sel < 0 || sel >= len(t.Points) {
 			return nil, fmt.Errorf("point_index outside track")
 		}
 	}
@@ -107,7 +107,7 @@ func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 	s.mu.Lock()
 	t := s.tracks[a.TrackID]
 	s.mu.Unlock()
-	if t == nil {
+	if t == nil && (name != "render_map" || a.TrackID != "") {
 		return nil, fmt.Errorf("unknown track_id")
 	}
 	switch name {
@@ -118,9 +118,9 @@ func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 	case "render_map":
 		kind := a.Provider
 		if kind == "" {
-			kind = "demo"
+			kind = defaultProvider(s.providers["mapbox"].token)
 		}
-		if kind != "demo" && kind != "mapbox" && kind != "none" {
+		if kind != "mapbox" && kind != "none" {
 			return nil, fmt.Errorf("unknown provider")
 		}
 		return renderResult(ctx, t, a, s.providers[kind])
@@ -128,7 +128,7 @@ func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 	return nil, fmt.Errorf("unknown tool")
 }
 func serveMCP() error {
-	s := &Service{tracks: map[string]*Track{}, providers: map[string]*Provider{"demo": newProvider("demo"), "mapbox": newProvider("mapbox"), "none": newProvider("none")}}
+	s := &Service{tracks: map[string]*Track{}, providers: map[string]*Provider{"mapbox": newProvider("mapbox"), "none": newProvider("none")}}
 	server := mcp.NewServer(&mcp.Implementation{Name: "shoe", Version: "0.1.0"}, nil)
 	var tools []*mcp.Tool
 	if e := json.Unmarshal(shared.Tools, &tools); e != nil {

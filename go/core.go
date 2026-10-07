@@ -277,14 +277,23 @@ func (c *Camera) zoomAt(p XY, delta float64) {
 	after := c.world(p)
 	c.Center.X += before.X - after.X
 	c.Center.Y += before.Y - after.Y
+	c.clampCenter()
 }
 func (c *Camera) pan(dx, dy float64) {
 	a := c.world(XY{0, 0})
 	b := c.world(XY{dx, dy})
 	c.Center.X += a.X - b.X
 	c.Center.Y += a.Y - b.Y
+	c.clampCenter()
+}
+func (c *Camera) clampCenter() {
+	c.Center.X = math.Max(0, math.Min(1, c.Center.X))
+	c.Center.Y = math.Max(0, math.Min(1, c.Center.Y))
 }
 func fit(t *Track, w, h int, aspect float64) Camera {
+	if t == nil {
+		return Camera{Center: project(0, 0), Aspect: aspect, Width: w, Height: h}
+	}
 	a, b := project(t.Bounds[0], t.Bounds[3]), project(t.Bounds[2], t.Bounds[1])
 	scale := math.Min(float64(w)*1.6/math.Max(b.X-a.X, 1e-7), float64(h)*1.6*aspect/math.Max(b.Y-a.Y, 1e-7))
 	return Camera{XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2}, math.Max(0, math.Min(20, math.Log2(scale/256))), 0, aspect, w, h}
@@ -298,6 +307,9 @@ func pointSegment(p, a, b XY) (float64, float64) {
 	return math.Hypot(p.X-a.X-u*dx, p.Y-a.Y-u*dy), u
 }
 func pick(t *Track, c Camera, p XY) int {
+	if t == nil {
+		return -1
+	}
 	best := 6.0
 	idx := -1
 	p.Y *= c.Aspect / 2

@@ -39,6 +39,15 @@ type Provider struct {
 	mu     sync.Mutex
 }
 
+const mapboxTokenMissing = "Mapbox token missing; set MAPBOX_ACCESS_TOKEN or access_token in mapbox.local.json"
+
+func defaultProvider(token string) string {
+	if token != "" {
+		return "mapbox"
+	}
+	return "none"
+}
+
 func newProvider(kind string) *Provider {
 	return &Provider{Kind: kind, client: &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, token: accessToken(), cache: map[Tile]cacheEntry{}}
 }
@@ -61,9 +70,6 @@ func accessToken() string {
 func attribution(kind string) string {
 	if kind == "mapbox" {
 		return "© Mapbox  © OpenStreetMap  Improve this map (v credits)"
-	}
-	if kind == "demo" {
-		return "Demo basemap: synthetic geometry, not real roads"
 	}
 	return "No basemap"
 }
@@ -177,14 +183,14 @@ func decodeTile(data []byte, t Tile) ([]Feature, error) {
 func (p *Provider) scene(ctx context.Context, t *Track, c Camera) ([]Feature, Stats, string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.Kind == "demo" {
-		return demo(t), p.stats, ""
-	}
 	if p.Kind != "mapbox" {
+		if t == nil && p.token == "" {
+			return nil, p.stats, mapboxTokenMissing
+		}
 		return nil, p.stats, ""
 	}
 	if p.token == "" {
-		return nil, p.stats, "MAPBOX_ACCESS_TOKEN missing; route remains usable"
+		return nil, p.stats, mapboxTokenMissing
 	}
 	out := []Feature{}
 	status := ""
@@ -224,7 +230,7 @@ func (p *Provider) scene(ctx context.Context, t *Track, c Camera) ([]Feature, St
 		if res.StatusCode != 200 {
 			res.Body.Close()
 			p.stats.Errors++
-			status = fmt.Sprintf("Mapbox HTTP %d; route remains usable", res.StatusCode)
+			status = fmt.Sprintf("Mapbox HTTP %d; basemap unavailable", res.StatusCode)
 			delay := 10
 			if res.StatusCode == 429 {
 				delay = 60

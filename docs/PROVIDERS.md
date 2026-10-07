@@ -1,10 +1,22 @@
 # Map providers
 
-The viewer supports three providers:
+The viewer supports two providers:
 
-- `demo`: synthetic geometry around the GPX bounds, labelled as demo data.
 - `mapbox`: Mapbox Streets v8 vector tiles, using your own access token.
-- `none`: imported GPX geometry only.
+- `none`: imported GPX geometry on an empty canvas; no authentication or network
+  requests are needed.
+
+The viewer, CLI `render` and MCP `render_map` use Mapbox when a token is configured,
+otherwise `none`. The file/track is optional. No file and no token produces an
+empty canvas with setup guidance. Explicit Mapbox requests without credentials
+warn without hiding the imported geometry. Use `--provider none` or MCP's
+`provider: "none"` to skip basemap requests even with a configured token.
+
+Credentials are read at runtime from `MAPBOX_ACCESS_TOKEN`, or an ignored
+`mapbox.local.json` in the working directory. An explicitly empty environment
+variable disables the local token. See the [authentication table](../README.md#which-commands-need-mapbox-authentication)
+for command and service requirements. Synthetic basemap geometry is internal to
+the rendering benchmark.
 
 ## Mapbox requests
 

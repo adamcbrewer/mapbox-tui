@@ -68,9 +68,28 @@ func tick() tea.Cmd {
 }
 func (m *viewer) Init() tea.Cmd {
 	if m.path == "" {
-		return tea.Batch(tick(), m.openDialog(dialogFiles))
+		return tea.Batch(tick(), m.freeRoam())
 	}
 	return tea.Batch(tick(), m.load(m.path))
+}
+func (m *viewer) freeRoam() tea.Cmd {
+	m.loadID++
+	m.path, m.track, m.playback = "", nil, nil
+	m.args.PointIndex, m.args.Lon, m.args.Lat, m.args.Zoom, m.args.Bearing = nil, nil, nil, nil, nil
+	m.camera = m.destination()
+	m.motion.Active = false
+	m.loading, m.following = false, false
+	m.selected = -1
+	m.profile, m.inspected = nil, nil
+	m.features = nil
+	m.ui.details.GotoTop()
+	m.lastMotionTick = time.Now()
+	m.layout()
+	m.dirty = true
+	if m.busy {
+		return nil
+	}
+	return m.fetch()
 }
 func (m *viewer) load(path string) tea.Cmd {
 	m.loadID++
@@ -128,7 +147,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playback = v.playback
 		m.features = nil
 		m.motion.Active = false
-		m.following = true
+		m.following = false
 		m.profile = nil
 		m.inspected = nil
 		m.ui.details.GotoTop()
@@ -189,7 +208,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirty = false
 		}
 		ready := time.Since(m.changed) > 100*time.Millisecond || (m.playback != nil && m.playback.Playing && time.Since(m.lastFetch) > 250*time.Millisecond)
-		if m.track != nil && !m.busy && m.provider.Kind == "mapbox" && m.destination() != m.fetched && ready {
+		if !m.busy && !m.loading && m.provider.Kind == "mapbox" && m.destination() != m.fetched && ready {
 			return m, tea.Batch(tick(), m.fetch())
 		}
 		return m, tick()
@@ -220,7 +239,10 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "v":
 			return m, m.openDialog(dialogCredits)
 		case "p":
-			return m, m.openDialog(dialogSpeed)
+			if m.playback != nil {
+				return m, m.openDialog(dialogSpeed)
+			}
+			return m, nil
 		case "enter":
 			return m, m.openDialog(dialogInspect)
 		case "tab":
@@ -230,9 +252,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, m.openDialog(dialogInspect)
-		}
-		if m.track == nil {
-			return m, nil
 		}
 		if m.ui.detailsFocused {
 			switch key {
@@ -244,6 +263,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.ui.detailsFocused = false
 				m.dirty = true
+				return m, nil
+			}
+		}
+		if m.track == nil {
+			switch key {
+			case "[", "]", "pgup", "pgdown", "home", "end", "c", "e", "space", "s", "S":
 				return m, nil
 			}
 		}
@@ -316,14 +341,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.playback.toggle()
 				m.selected = m.playback.nearest()
 				m.inspected = nil
-				if m.playback.Playing {
-					m.following = true
-					if pos := m.position(); pos != nil {
-						target := m.destination()
-						target.Center = pos.World
-						m.moveCamera(target)
-					}
-				}
 			}
 		case "s", "S":
 			if m.playback != nil {
@@ -344,7 +361,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			return m, nil
 		}
-		if len(m.track.Points) > 0 {
+		if m.track != nil && len(m.track.Points) > 0 {
 			m.selected = max(0, min(len(m.track.Points)-1, m.selected))
 		} else {
 			m.selected = -1
@@ -357,9 +374,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		if m.ui.dialog != dialogNone {
 			return m, m.updateDialog(msg)
-		}
-		if m.track == nil {
-			return m, nil
 		}
 		mouse := v.Mouse()
 		m.advancePlayback(time.Now())
@@ -420,7 +434,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if mouse.Button == tea.MouseWheelUp {
 					direction = 1
 				}
-				m.zoomWheel(XY{float64((x-1)*2 + 1), float64((y-2)*4 + 2)}, direction, time.Now())
+				m.zoomWheel(XY{float64((x-1)*2 + 1), float64((y-2)*4 + 2)}, direction, mouse.Mod, time.Now())
 			}
 		}
 	default:
@@ -433,7 +447,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *viewer) layout() {
 	w, h := mapSize(m.width, m.height)
-	m.profileHeight = profileRows(h, m.showProfile)
+	m.profileHeight = profileRows(h, m.showProfile && m.track != nil)
 	m.camera.Width, m.camera.Height = w, h-m.profileHeight
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
 	if m.width < 90 {
@@ -494,10 +508,13 @@ func gridRow(g Grid, y int, ascii bool) string {
 	return line.String()
 }
 
-func (m *viewer) zoomWheel(p XY, direction int, now time.Time) {
+func (m *viewer) zoomWheel(p XY, direction int, mod tea.KeyMod, now time.Time) {
 	delta := m.wheel.step(direction, now)
 	if delta == 0 {
 		return
+	}
+	if mod&(tea.ModCtrl|tea.ModSuper|tea.ModMeta) != 0 {
+		delta *= 2
 	}
 	m.motion.Active = false
 	m.camera.zoomAt(p, delta)
@@ -516,6 +533,14 @@ func pad(s string, w int) string {
 }
 func (m *viewer) details() []string {
 	t := m.track
+	if t == nil {
+		center := unproject(m.camera.Center)
+		lines := []string{"Map details", "", "Free roam", "No route loaded", "ctrl+o to open a GPX", "", "Map center", fmt.Sprintf("Lat %.6f", center.Y), fmt.Sprintf("Lon %.6f", center.X)}
+		if m.inspected != nil {
+			lines = append(lines, "", "Selected position", fmt.Sprintf("Lat %.6f", m.inspected.Y), fmt.Sprintf("Lon %.6f", m.inspected.X))
+		}
+		return append(lines, "", fmt.Sprintf("Zoom %.2f", m.camera.Zoom), fmt.Sprintf("Bearing %.0f°", math.Mod(m.camera.Bearing+360, 360)), "", "Tiles · req / hit / err", fmt.Sprintf("%d / %d / %d", m.stats.Requests, m.stats.Hits, m.stats.Errors))
+	}
 	lines := []string{"Route details", "", fmt.Sprintf("%.2f km", t.Distance/1000), fmt.Sprintf("%d points / %d parts", len(t.Points), len(t.Segments)), fmt.Sprintf("%d waypoints", len(t.Waypoints)), "", "Selected position"}
 	if m.inspected != nil {
 		lines = append(lines, fmt.Sprintf("Lat %.6f", m.inspected.Y), fmt.Sprintf("Lon %.6f", m.inspected.X), "Off-track location")
@@ -558,15 +583,6 @@ func (m *viewer) rebuild() {
 		m.content = "Enlarge terminal to 30×12; q quits"
 		return
 	}
-	if m.track == nil {
-		message := "Open a GPX to explore your route"
-		if m.loading {
-			message = m.ui.spinner.View() + " Loading GPX…"
-		}
-		m.content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, gradient("shoe", uiInk)+"\n\n"+uiText.Render(message)+"\n\n"+uiMuted.Render("ctrl+o open · ? help · q quit"))
-		m.overlay()
-		return
-	}
 	c := m.camera
 	g := render(m.track, c, m.features, -1, m.args.ASCII)
 	pos := m.position()
@@ -575,7 +591,11 @@ func (m *viewer) rebuild() {
 	}
 	details := m.details()
 	provider := uiAccent.Background(uiSelected).Padding(0, 1).Render(m.provider.Kind)
-	title := gradient("shoe", uiInk) + "  " + uiHeading.Render(m.track.Name)
+	name := "Free roam"
+	if m.track != nil {
+		name = m.track.Name
+	}
+	title := gradient("shoe", uiInk) + "  " + uiHeading.Render(name)
 	rows := []string{pad(title, m.width-lipgloss.Width(provider)-1) + " " + provider}
 	border := lipgloss.NormalBorder()
 	if m.args.ASCII {
@@ -609,9 +629,18 @@ func (m *viewer) rebuild() {
 	}
 	rows = append(rows, frame)
 	if m.width < 90 {
-		rows = append(rows, paint(pad(fmt.Sprintf("%.2f km | %d points | zoom %.2f | bearing %.0f", m.track.Distance/1000, len(m.track.Points), c.Zoom, c.Bearing), m.width), 5))
-		s := strings.Join(details[7:min(len(details), 14)], " | ")
-		rows = append(rows, uiText.Render(pad(s, m.width)), uiMuted.Render(pad("[ ] select; PgUp/PgDn ±100; c follow · enter inspect", m.width)))
+		if m.track != nil {
+			rows = append(rows, paint(pad(fmt.Sprintf("%.2f km | %d points | zoom %.2f | bearing %.0f", m.track.Distance/1000, len(m.track.Points), c.Zoom, c.Bearing), m.width), 5))
+			s := strings.Join(details[7:min(len(details), 14)], " | ")
+			rows = append(rows, uiText.Render(pad(s, m.width)), uiMuted.Render(pad("[ ] select; PgUp/PgDn ±100; c follow · enter inspect", m.width)))
+		} else {
+			center := unproject(c.Center)
+			location := fmt.Sprintf("Lat %.6f | Lon %.6f", center.Y, center.X)
+			if m.inspected != nil {
+				location = fmt.Sprintf("Selected: %.6f, %.6f", m.inspected.Y, m.inspected.X)
+			}
+			rows = append(rows, paint(pad(fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing), m.width), 5), uiText.Render(pad(location, m.width)), uiMuted.Render(pad("ctrl+o open GPX · enter inspect · f reset world view", m.width)))
+		}
 	}
 	if m.profileHeight > 0 && m.profile != nil {
 		header, chart, axis := m.profile.frame(pos)
@@ -626,7 +655,7 @@ func (m *viewer) rebuild() {
 		status = m.playback.status()
 	}
 	if m.status != "" {
-		status += " | " + m.status
+		status = m.status + " | " + status
 	}
 	if m.busy || m.loading {
 		label := "Loading basemap…"
@@ -653,7 +682,7 @@ func (m *viewer) rebuild() {
 		status = m.progress.ViewAs(m.playback.ratio()) + "  " + paint(status, layer)
 	}
 	m.ui.help.SetWidth(m.width)
-	keys := shortcutMap{compact: m.width < 90, playing: m.playback != nil && m.playback.Playing, detailsFocused: m.ui.detailsFocused}
+	keys := shortcutMap{compact: m.width < 90, playing: m.playback != nil && m.playback.Playing, detailsFocused: m.ui.detailsFocused, freeRoam: m.track == nil}
 	rows = append(rows, pad(status, m.width), pad(m.ui.help.View(keys), m.width), uiMuted.Render(pad(attribution(m.provider.Kind), m.width)))
 	m.content = strings.Join(rows, "\n")
 	m.overlay()
@@ -667,11 +696,20 @@ func (m *viewer) View() tea.View {
 	return v
 }
 func openViewer(path string, a Args) error {
+	c, e := viewport(nil, a)
+	if e != nil {
+		return e
+	}
+	if path == "" && a.PointIndex != nil {
+		return fmt.Errorf("point_index requires a GPX")
+	}
+	p := newProvider(a.Provider)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m := &viewer{path: path, args: a, provider: newProvider(a.Provider), ctx: ctx, width: 120, height: 40, selected: -1, dirty: true, showProfile: true}
+	m := &viewer{path: path, args: a, provider: p, ctx: ctx, camera: c, width: 120, height: 40, selected: -1, dirty: true, showProfile: true}
 	m.initUI()
-	_, e := tea.NewProgram(m).Run()
+	m.layout()
+	_, e = tea.NewProgram(m).Run()
 	if e != nil {
 		return e
 	}

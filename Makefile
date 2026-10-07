@@ -1,5 +1,5 @@
 .PHONY: build dev test fixtures bench
-ARGS ?= fixtures/example.gpx --demo
+ARGS ?= fixtures/example.gpx
 build:
 	mkdir -p bin
 	cd go && go build -trimpath -o ../bin/shoe .

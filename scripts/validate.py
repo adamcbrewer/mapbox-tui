@@ -12,7 +12,7 @@ BINS = [ROOT / "bin/shoe"]
 
 
 def cli(binary, mode, path, *options, success=True):
-    p = subprocess.run([str(binary), mode, str(path), *options], cwd=ROOT, env=ENV, capture_output=True, text=True, timeout=20)
+    p = subprocess.run([str(binary), mode, *([] if path is None else [str(path)]), *options], cwd=ROOT, env=ENV, capture_output=True, text=True, timeout=20)
     assert (p.returncode == 0) == success, (binary.name, p.stderr)
     return json.loads(p.stdout) if success else None
 
@@ -105,20 +105,67 @@ def validate_mcp(binary):
             ("summarize_track", {"track_id": "unknown"}),
             ("render_map", {"track_id": track_id, "width": 999999}),
             ("render_map", {"track_id": track_id, "center_lon": 0}),
+            ("render_map", {"track_id": "unknown"}),
+            ("render_map", {"point_index": 0}),
+            ("render_map", {"provider": "demo"}),
             ("load_track", {"path": str(ROOT / "fixtures/invalid.gpx")}),
         ]:
             result = m.call(name, args)
             assert result.get("error") or result.get("result", {}).get("isError"), (name, result)
+        for args in ({}, {"center_lon": -0.1, "center_lat": 51.5, "zoom": 13, "ascii": True}, {"provider": "none"}, {"provider": "mapbox"}):
+            result = m.call("render_map", args)["result"]["structuredContent"]
+            options = ["--json"]
+            for key, value in args.items():
+                flag = "--" + key.replace("_", "-")
+                options.extend([flag] if value is True else [flag, str(value)])
+            equivalent(result, cli(binary, "render", None, *options))
+            assert result["scene"]["selected_point_index"] == -1
+            assert "\x1b" not in result["text"]
+            assert not result["text"].strip() and "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
+        for mode in ("summary", "inspect", "bench"):
+            cli(binary, mode, None, success=False)
+        cli(binary, "render", None, "--point-index", "0", success=False)
+        cli(binary, "render", None, "--center-lon", "0", success=False)
         return summary
     finally:
         m.close()
 
 
+def validate_cli(binary):
+    def run(*argv, success=True):
+        result = subprocess.run([str(binary), *argv], cwd=ROOT, env=ENV, capture_output=True, text=True, timeout=20)
+        assert (result.returncode == 0) == success, (argv, result.stderr)
+        return result
+
+    for argv in (("--help",), ("-h",), *((name, "--help") for name in ("open", "render", "summary", "inspect", "bench", "mcp"))):
+        result = run(*argv)
+        assert "Usage: shoe" in result.stdout and result.stderr == "", (argv, result)
+
+    path = str(ROOT / "fixtures/example.gpx")
+    expected = cli(binary, "render", path, "--json", "--center-lon", "-0.1", "--center-lat", "51.5", "--point-index", "3")
+    actual = run("render", "--json", "--center-lon", "-0.1", path, "--point-index", "3", "--center-lat=51.5")
+    equivalent(expected, json.loads(actual.stdout))
+    actual = run("inspect", "--point-index", "3", path)
+    equivalent(cli(binary, "inspect", path, "--point-index", "3"), json.loads(actual.stdout))
+    bench = json.loads(run("bench", "--frames", "2", path, "--width", "80", "--height", "20").stdout)
+    assert bench["frames"] == len(bench["frame_ms"]) == 2 and bench["point_count"] == 12
+    for argv in (("--json",), ("--demo",), ("mcp", path), ("render", "--no-animation")):
+        result = run(*argv, success=False)
+        assert result.stdout == "" and result.stderr.strip()
+    plain = run("render", path)
+    assert "No basemap" in plain.stdout and plain.stderr == ""
+    requested = run("render", path, "--provider", "mapbox")
+    assert "S" in requested.stdout and "warning:" in requested.stderr and "MAPBOX_ACCESS_TOKEN" in requested.stderr
+    result = json.loads(run("render", "--json").stdout)
+    assert result["scene"]["provider"] == "none" and "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
+
+
 def main():
     for binary in BINS:
+        validate_cli(binary)
         validate_mcp(binary)
-        result=cli(binary,"render",ROOT / "fixtures/example.gpx","--demo","--provider","mapbox","--json")
-        assert result["scene"]["provider"]=="demo"
+        result=cli(binary,"render",ROOT / "fixtures/example.gpx","--json")
+        assert result["scene"]["provider"]=="none" and result["scene"]["status"]==""
         for flag in ("--zoom","--bearing","--cell-aspect"):
             cli(binary,"render",ROOT / "fixtures/example.gpx",flag,"NaN",success=False)
     for name in ("example.gpx", "waypoints.gpx", "dense-10000.gpx", "dense-100000.gpx"):
@@ -129,7 +176,7 @@ def main():
             summary = cli(binary, "summary", path)
             assert summary["bounds"] is not None
             for width, height in ((120, 40), (160, 50)):
-                result = cli(binary, "render", path, "--demo", "--json", "--width", str(width), "--height", str(height))
+                result = cli(binary, "render", path, "--json", "--width", str(width), "--height", str(height))
                 assert result["scene"]["width"] == width
                 assert result["scene"]["height"] == height
                 lines = result["text"].splitlines()
@@ -143,7 +190,7 @@ def main():
             path.write_text(body)
             for binary in BINS:
                 cli(binary, "summary", path, success=False)
-    print("Validated Go CLI and MCP consistency, tool schemas and all four tools, GPX errors, summaries and map scenes.")
+    print("Validated CLI dispatch, flag ordering, scoped help, benchmarks, MCP consistency and tool schemas, GPX errors, summaries, map scenes and track-free rendering.")
 
 
 if __name__ == "__main__":

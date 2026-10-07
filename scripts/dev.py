@@ -36,7 +36,7 @@ def main():
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print("Run make dev in an interactive terminal.", file=sys.stderr)
         return 1
-    args = sys.argv[1:] or ["fixtures/example.gpx", "--demo"]
+    args = sys.argv[1:] or ["fixtures/example.gpx"]
     before = termios.tcgetattr(sys.stdin)
     signal.signal(signal.SIGTERM, interrupt)
     process = None
@@ -62,7 +62,7 @@ def main():
                 changed = None
                 if result.returncode == 0:
                     print("[dev] Starting shoe…", flush=True)
-                    process = subprocess.Popen([str(ROOT / "bin/shoe"), "open", *args], cwd=ROOT)
+                    process = subprocess.Popen([str(ROOT / "bin/shoe"), *args], cwd=ROOT)
                 else:
                     print("[dev] Build failed. Waiting for the next change…", flush=True)
             time.sleep(0.2)

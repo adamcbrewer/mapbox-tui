@@ -126,30 +126,32 @@ func render(t *Track, c Camera, features []Feature, selected int, ascii bool) Gr
 			}
 		}
 	}
-	for _, s := range t.Segments {
-		if s.Start == s.End {
-			continue
-		}
-		last := c.screen(t.Points[s.Start].World)
-		for i := s.Start + 1; i < s.End; i++ {
-			p := c.screen(t.Points[i].World)
-			if math.Hypot(p.X-last.X, p.Y-last.Y) >= 0.75 || i == s.End-1 {
-				g.line(last, p, 5)
-				last = p
+	if t != nil {
+		for _, s := range t.Segments {
+			if s.Start == s.End {
+				continue
 			}
+			last := c.screen(t.Points[s.Start].World)
+			for i := s.Start + 1; i < s.End; i++ {
+				p := c.screen(t.Points[i].World)
+				if math.Hypot(p.X-last.X, p.Y-last.Y) >= 0.75 || i == s.End-1 {
+					g.line(last, p, 5)
+					last = p
+				}
+			}
+			g.label(c.screen(t.Points[s.Start].World), "S", 6, false)
+			g.label(c.screen(t.Points[s.End-1].World), "E", 6, false)
 		}
-		g.label(c.screen(t.Points[s.Start].World), "S", 6, false)
-		g.label(c.screen(t.Points[s.End-1].World), "E", 6, false)
-	}
-	for _, p := range t.Waypoints {
-		g.label(c.screen(p.World), "W", 6, false)
+		for _, p := range t.Waypoints {
+			g.label(c.screen(p.World), "W", 6, false)
+		}
 	}
 	for _, f := range features {
 		if f.Label != "" && len(f.Parts) > 0 && len(f.Parts[0]) > 0 {
 			g.label(c.screen(f.Parts[0][0]), f.Label, 4, true)
 		}
 	}
-	if selected >= 0 && selected < len(t.Points) {
+	if t != nil && selected >= 0 && selected < len(t.Points) {
 		g.label(c.screen(t.Points[selected].World), "@", 7, false)
 	}
 	_ = ascii
@@ -179,7 +181,7 @@ func (g Grid) plain(ascii bool) string {
 	}
 	return b.String()
 }
-func demo(t *Track) []Feature {
+func benchmarkFeatures(t *Track) []Feature {
 	c := fit(t, 100, 40, 2)
 	cx, cy := c.Center.X, c.Center.Y
 	d := math.Max(project(t.Bounds[2], t.Bounds[1]).X-project(t.Bounds[0], t.Bounds[3]).X, 0.00008)
@@ -204,6 +206,6 @@ func demo(t *Track) []Feature {
 		}
 		fs = append(fs, Feature{Parts: [][]XY{{{cx - d*2, cy + o}, {cx + d*2, cy + o + d*0.12}}}, Layer: layer}, Feature{Parts: [][]XY{{{cx + o, cy - d*2}, {cx + o + d*0.08, cy + d*2}}}, Layer: layer})
 	}
-	fs = append(fs, Feature{Parts: [][]XY{{{cx - d*0.4, cy - d*0.22}, {cx, cy - d*0.4}, {cx + d*0.4, cy - d*0.25}}}, Layer: 2}, Feature{Parts: [][]XY{{{cx - d*0.4, cy - d*0.38}}}, Label: "Demo village"}, Feature{Parts: [][]XY{{{cx + d*0.25, cy + d*0.28}}}, Label: "Synthetic river"})
+	fs = append(fs, Feature{Parts: [][]XY{{{cx - d*0.4, cy - d*0.22}, {cx, cy - d*0.4}, {cx + d*0.4, cy - d*0.25}}}, Layer: 2}, Feature{Parts: [][]XY{{{cx - d*0.4, cy - d*0.38}}}, Label: "Synthetic village"}, Feature{Parts: [][]XY{{{cx + d*0.25, cy + d*0.28}}}, Label: "Synthetic river"})
 	return fs
 }

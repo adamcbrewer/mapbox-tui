@@ -70,7 +70,7 @@ func TestDialogsCaptureNavigationAndStayInsideTerminal(t *testing.T) {
 	}
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		for _, kind := range []dialogKind{dialogHelp, dialogCredits, dialogFiles, dialogCommands, dialogSpeed, dialogInspect} {
-			m := &viewer{track: track, playback: newPlayback(track), selected: 0, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "demo"}}
+			m := &viewer{track: track, playback: newPlayback(track), selected: 0, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "none"}}
 			m.initUI()
 			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m.openDialog(kind)

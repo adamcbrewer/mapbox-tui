@@ -23,7 +23,7 @@ def main():
                     p = subprocess.run([str(binary), "summary", str(ROOT / "fixtures" / fixture)], capture_output=True, env=ENV, check=True)
                     startup.append((time.perf_counter() - start) * 1000)
                     with tempfile.TemporaryFile(mode="w+") as output, tempfile.TemporaryFile(mode="w+") as diagnostics:
-                        p = subprocess.Popen([str(binary), "bench", str(ROOT / "fixtures" / fixture), "--width", str(w), "--height", str(h), "--frames", "200", "--demo"], stdout=output, stderr=diagnostics, env=ENV)
+                        p = subprocess.Popen([str(binary), "bench", str(ROOT / "fixtures" / fixture), "--width", str(w), "--height", str(h), "--frames", "200"], stdout=output, stderr=diagnostics, env=ENV)
                         _, status, usage = os.wait4(p.pid, 0)
                         p.returncode = os.waitstatus_to_exitcode(status)
                         diagnostics.seek(0)

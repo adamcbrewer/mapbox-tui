@@ -59,12 +59,22 @@ type uiState struct {
 	notice         string
 }
 
-type shortcutMap struct{ compact, playing, detailsFocused bool }
+type shortcutMap struct{ compact, playing, detailsFocused, freeRoam bool }
 
 func binding(keys, description string) key.Binding {
 	return key.NewBinding(key.WithKeys(strings.Split(keys, "/")...), key.WithHelp(keys, description))
 }
 func (k shortcutMap) ShortHelp() []key.Binding {
+	focus := "details"
+	if k.detailsFocused {
+		focus = "map"
+	}
+	if k.freeRoam {
+		if k.compact {
+			return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open")}
+		}
+		return []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+p", "commands"), binding("tab", focus), binding("q", "quit")}
+	}
 	play := "play"
 	if k.playing {
 		play = "pause"
@@ -73,16 +83,20 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 		return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("space", play)}
 	}
 	keys := []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("space", play)}
-	focus := "details"
-	if k.detailsFocused {
-		focus = "map"
-	}
 	keys = append(keys, binding("ctrl+p", "commands"), binding("p", "speed"), binding("tab", focus))
 	return append(keys, binding("q", "quit"))
 }
 func (k shortcutMap) FullHelp() [][]key.Binding {
+	if k.freeRoam {
+		return [][]key.Binding{
+			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "reset world view"), binding(",/.", "rotate"), binding("n", "north-up")},
+			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
+			{},
+			{binding("ctrl+o", "open GPX"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+		}
+	}
 	return [][]key.Binding{
-		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("f/r", "fit route"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
+		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit route"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
 		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
 		{binding("space", "play/pause"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "elevation profile")},
 		{binding("ctrl+o", "open GPX"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
@@ -182,8 +196,11 @@ type viewerCommand struct{ title, shortcut, action string }
 func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{{"Open GPX", "ctrl+o", "open"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
 	if m.track != nil {
-		commands = append(commands, viewerCommand{"Fit route", "f", "fit"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"}, viewerCommand{"Inspect position", "enter", "inspect"}, viewerCommand{"Toggle camera animation", "m", "motion"}, viewerCommand{"Toggle ASCII map", "a", "ascii"})
+		commands = append(commands, viewerCommand{"Free roam (clear route)", "", "roam"}, viewerCommand{"Fit route", "f", "fit"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"})
+	} else {
+		commands = append(commands, viewerCommand{"Reset world view", "f", "fit"})
 	}
+	commands = append(commands, viewerCommand{"Inspect position", "enter", "inspect"}, viewerCommand{"Toggle camera animation", "m", "motion"}, viewerCommand{"Toggle ASCII map", "a", "ascii"})
 	query := strings.ToLower(m.ui.search.Value())
 	filtered := []viewerCommand{}
 	for _, command := range commands {
@@ -196,6 +213,8 @@ func (m *viewer) commands() []viewerCommand {
 func (m *viewer) runCommand(action string) tea.Cmd {
 	m.closeDialog()
 	switch action {
+	case "roam":
+		return m.freeRoam()
 	case "open":
 		return m.openDialog(dialogFiles)
 	case "help":
@@ -320,9 +339,12 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
 	case dialogHelp:
-		groups := shortcutMap{}.FullHelp()
+		groups := shortcutMap{freeRoam: m.track == nil}.FullHelp()
 		m.ui.help.SetWidth(max(width, 50))
 		for i, heading := range []string{"Navigate", "Inspect", "Playback", "Workspace"} {
+			if len(groups[i]) == 0 {
+				continue
+			}
 			content += gradient(heading, uiSurface) + "\n" + m.ui.help.FullHelpView([][]key.Binding{groups[i]}) + "\n\n"
 		}
 	case dialogCredits:
@@ -330,9 +352,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		content = dialogHeading.Render(attribution(m.provider.Kind)) + "\n\n" + dialogText.Render("https://www.mapbox.com/about/maps/\nhttps://www.openstreetmap.org/copyright\nhttps://apps.mapbox.com/feedback/") + "\n\n" + dialogMuted.Render("Tile requests / hits / errors") + fmt.Sprintf("\n%d / %d / %d", m.stats.Requests, m.stats.Hits, m.stats.Errors)
 	case dialogInspect:
 		title = "Selected position"
-		if m.track != nil {
-			content = dialogText.Render(strings.Join(m.details(), "\n"))
-		}
+		content = dialogText.Render(strings.Join(m.details(), "\n"))
 	}
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(height)

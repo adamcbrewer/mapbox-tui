@@ -1,0 +1,6 @@
+- [x] free roaming/browsing without a GPX
+- [] fit / tcx support
+- [] plot a route / create directions
+- [] toggle traffic
+- [] theme switching
+- [] other data sources and display ideas (ala mapbox playground)

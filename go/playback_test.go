@@ -85,7 +85,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 		t.Fatal(e)
 	}
 	now := time.Now()
-	m := &viewer{track: track, playback: newPlayback(track), selected: 0, width: 120, height: 40, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "demo"}, lastTick: now, following: true}
+	m := &viewer{track: track, playback: newPlayback(track), selected: 0, width: 120, height: 40, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "none"}, lastTick: now, following: true}
 	m.initUI()
 	m.Update(tea.KeyPressMsg{Code: 'e'})
 	if m.profileHeight != 7 || m.camera.Height != 27 {
@@ -111,6 +111,46 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 	m.rebuild()
 	if len(strings.Split(m.content, "\n")) != 40 || !strings.Contains(m.content, "Elevation profile") || !strings.Contains(m.content, "Playing") {
 		t.Fatal("profile overflowed layout or omitted playback controls")
+	}
+}
+
+func TestStartingAndResumingPlaybackPreservesCameraUntilManualCenter(t *testing.T) {
+	track, err := loadTrack("../fixtures/example.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, noAnimation := range []bool{false, true} {
+		for _, start := range []string{"keyboard", "palette"} {
+			m := &viewer{track: track, playback: newPlayback(track), selected: 0, width: 120, height: 40, camera: Camera{project(10, 20), 18, 45, 2, 88, 34}, args: Args{NoAnimation: noAnimation}, lastTick: time.Now()}
+			m.initUI()
+			before := m.camera
+			if start == "palette" {
+				m.runCommand("play")
+			} else {
+				m.Update(tea.KeyPressMsg{Code: ' '})
+			}
+			if !m.playback.Playing || m.camera != before || m.destination() != before || m.motion.Active || m.following {
+				t.Fatal("starting playback moved the camera or enabled follow", start, noAnimation)
+			}
+			m.advancePlayback(m.lastTick.Add(time.Minute))
+			if m.position().Blend == 0 || m.camera != before || m.motion.Active || m.following {
+				t.Fatal("playback progression moved an unfollowed camera")
+			}
+			m.Update(tea.KeyPressMsg{Code: ' '})
+			m.Update(tea.KeyPressMsg{Code: ' '})
+			if !m.playback.Playing || m.camera != before || m.motion.Active || m.following {
+				t.Fatal("resuming playback moved the camera or enabled follow")
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+			m.Update(tea.KeyPressMsg{Code: ' '})
+			if !m.playback.Playing || m.selected != 0 || m.camera != before || m.motion.Active || m.following {
+				t.Fatal("restarting finished playback moved the camera or enabled follow")
+			}
+			m.Update(tea.KeyPressMsg{Code: 'c'})
+			if !m.following || m.destination().Center != m.position().World || !m.playback.Playing {
+				t.Fatal("manual center did not explicitly center and follow the current point")
+			}
+		}
 	}
 }
 
