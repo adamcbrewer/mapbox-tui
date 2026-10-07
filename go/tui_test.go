@@ -6,13 +6,19 @@ import (
 	"testing"
 )
 
+func testWorkspace(track *Track) Workspace {
+	var w Workspace
+	w.addDocument(&Document{Path: "test.gpx", Name: track.Name, Bounds: track.Bounds, Items: []*DocumentItem{{ID: 1, Kind: "track", Track: track}}})
+	return w
+}
+
 func TestDragMovesOneCellWithoutFirstMotionJumpAndStopsOnRelease(t *testing.T) {
 	track, e := loadTrack("../fixtures/example.gpx")
 	if e != nil {
 		t.Fatal(e)
 	}
 	c := fit(track, 88, 34, 2)
-	m := &viewer{track: track, camera: c, selected: 0}
+	m := &viewer{workspace: testWorkspace(track), camera: c}
 	m.Update(tea.MouseClickMsg{X: 20, Y: 10, Button: tea.MouseLeft})
 	if m.camera.Center != c.Center {
 		t.Fatal("press moved map")

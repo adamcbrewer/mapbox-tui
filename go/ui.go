@@ -44,6 +44,7 @@ const (
 	dialogCredits
 	dialogSpeed
 	dialogInspect
+	dialogWorkspace
 )
 
 type uiState struct {
@@ -71,39 +72,40 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 	}
 	if k.freeRoam {
 		if k.compact {
-			return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open")}
+			return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("ctrl+l", "files")}
 		}
-		return []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+p", "commands"), binding("tab", focus), binding("q", "quit")}
+		return []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("ctrl+p", "commands"), binding("tab", focus), binding("q", "quit")}
 	}
 	play := "play"
 	if k.playing {
 		play = "pause"
 	}
 	if k.compact {
-		return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("space", play)}
+		return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("space", play)}
 	}
-	keys := []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("space", play)}
+	keys := []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("space", play)}
 	keys = append(keys, binding("ctrl+p", "commands"), binding("p", "speed"), binding("tab", focus))
 	return append(keys, binding("q", "quit"))
 }
 func (k shortcutMap) FullHelp() [][]key.Binding {
 	if k.freeRoam {
 		return [][]key.Binding{
-			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "reset world view"), binding(",/.", "rotate"), binding("n", "north-up")},
+			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding(",/.", "rotate"), binding("n", "north-up")},
 			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
 			{},
-			{binding("ctrl+o", "open file"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+			{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 		}
 	}
 	return [][]key.Binding{
-		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit route"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
+		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
 		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
 		{binding("space", "play/pause"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "elevation profile")},
-		{binding("ctrl+o", "open file"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+		{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 	}
 }
 
 func (m *viewer) initUI() {
+	m.settings = viewerSettings{m.args.ASCII, m.args.NoAnimation}
 	m.ui.help = help.New()
 	m.ui.help.Styles.ShortKey = uiAccent.Bold(true)
 	m.ui.help.Styles.ShortDesc = uiMuted
@@ -184,8 +186,15 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		m.ui.picker = picker
 		return picker.Init()
 	case dialogSpeed:
-		if m.playback != nil {
-			m.ui.selected = m.playback.speed
+		if p := m.activePlayback(); p != nil {
+			m.ui.selected = p.speed
+		}
+	case dialogWorkspace:
+		for i, row := range m.workspaceRows() {
+			if m.workspace.selection != nil && row.ref == m.workspace.selection.ref {
+				m.ui.selected = i
+				break
+			}
 		}
 	}
 	return nil
@@ -194,11 +203,14 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 type viewerCommand struct{ title, shortcut, action string }
 
 func (m *viewer) commands() []viewerCommand {
-	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
-	if m.track != nil {
-		commands = append(commands, viewerCommand{"Free roam (clear route)", "", "roam"}, viewerCommand{"Fit route", "f", "fit"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"})
+	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Loaded files and routes", "ctrl+l", "workspace"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
+	if len(m.workspace.documents) > 0 {
+		commands = append(commands, viewerCommand{"Fit all visible routes", "f", "fit"}, viewerCommand{"Clear workspace (remove all files)", "", "clear"})
 	} else {
 		commands = append(commands, viewerCommand{"Reset world view", "f", "fit"})
+	}
+	if m.activeTrack() != nil {
+		commands = append(commands, viewerCommand{"Free roam (clear selection)", "", "roam"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"})
 	}
 	commands = append(commands, viewerCommand{"Inspect position", "enter", "inspect"}, viewerCommand{"Toggle camera animation", "m", "motion"}, viewerCommand{"Toggle ASCII map", "a", "ascii"})
 	query := strings.ToLower(m.ui.search.Value())
@@ -215,6 +227,10 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 	switch action {
 	case "roam":
 		return m.freeRoam()
+	case "clear":
+		return m.clearWorkspace()
+	case "workspace":
+		return m.openDialog(dialogWorkspace)
 	case "open":
 		return m.openDialog(dialogFiles)
 	case "help":
@@ -239,11 +255,13 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
-		if pressed == "esc" || (m.ui.dialog == dialogCredits && pressed == "v") || (m.ui.dialog == dialogHelp && pressed == "?") {
+		if pressed == "esc" || (m.ui.dialog == dialogCredits && pressed == "v") || (m.ui.dialog == dialogHelp && pressed == "?") || (m.ui.dialog == dialogWorkspace && pressed == "ctrl+l") {
 			m.closeDialog()
 			return nil
 		}
 		switch m.ui.dialog {
+		case dialogWorkspace:
+			return m.updateWorkspaceDialog(pressed)
 		case dialogCommands:
 			commands := m.commands()
 			switch pressed {
@@ -266,9 +284,9 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			case "up", "k":
 				m.ui.selected = max(0, m.ui.selected-1)
 			case "enter":
-				if m.playback != nil {
+				if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
-					m.playback.speed = m.ui.selected
+					p.speed = m.ui.selected
 				}
 				m.closeDialog()
 			}
@@ -277,6 +295,15 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	switch m.ui.dialog {
+	case dialogWorkspace:
+		if mouse, ok := msg.(tea.MouseWheelMsg); ok {
+			if mouse.Button == tea.MouseWheelDown {
+				return m.updateWorkspaceDialog("down")
+			}
+			if mouse.Button == tea.MouseWheelUp {
+				return m.updateWorkspaceDialog("up")
+			}
+		}
 	case dialogFiles:
 		m.ui.picker, cmd = m.ui.picker.Update(msg)
 		if selected, path := m.ui.picker.DidSelectFile(msg); selected {
@@ -297,6 +324,8 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	switch m.ui.dialog {
+	case dialogWorkspace:
+		return m.workspaceDialogContent(width, height)
 	case dialogCommands:
 		m.ui.search.SetWidth(width - 2)
 		rows := []string{m.ui.search.View(), ""}
@@ -339,7 +368,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
 	case dialogHelp:
-		groups := shortcutMap{freeRoam: m.track == nil}.FullHelp()
+		groups := shortcutMap{freeRoam: m.activeTrack() == nil}.FullHelp()
 		m.ui.help.SetWidth(max(width, 50))
 		for i, heading := range []string{"Navigate", "Inspect", "Playback", "Workspace"} {
 			if len(groups[i]) == 0 {
@@ -378,7 +407,7 @@ func (m *viewer) overlay() {
 	}
 	content := gradient(title, uiSurface) + "\n\n" + lipgloss.NewStyle().Background(uiSurface).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(body) + "\n\n" + dialogMuted.Render(ansi.Truncate(hints, width, "…"))
 	border := lipgloss.RoundedBorder()
-	if m.args.ASCII {
+	if m.settings.ASCII {
 		border = lipgloss.ASCIIBorder()
 	}
 	box := lipgloss.NewStyle().Width(width+6).Padding(1, 2).Background(uiSurface).Foreground(lipgloss.Color("#D5DFEA")).Border(border).BorderForegroundBlend(uiViolet, uiRose).Render(content)

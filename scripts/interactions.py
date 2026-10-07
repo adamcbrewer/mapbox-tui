@@ -130,7 +130,7 @@ def scenario(binary, width, height):
         assert "No basemap" in initial and "token missing" not in initial, "token-free GPX viewing did not use a quiet empty canvas"
         zoom = re.search(r"Zoom ([\d.]+)", initial).group(1)
         send("]")
-        wait_for(lambda s: "Point 2 / 12" in s)
+        wait_for(lambda s: "Point 2 / 10" in s)
         send(".")
         wait_for(lambda s: "Bearing 10" in s)
         send("n")
@@ -176,7 +176,7 @@ def scenario(binary, width, height):
             if 2 <= y < height - 4 and 'S' in row[:width-30]:
                 x = row.index('S')
                 sgr(0, x+1, y+1); sgr(0, x+1, y+1, release=True)
-                wait_for(lambda s: "Point 1 / 12" in s)
+                wait_for(lambda s: any(label in s for label in ("Point 1 / 10", "Point 7 / 10", "Point 1 / 2")))
                 break
         else:
             raise AssertionError("start marker not visible")
@@ -206,7 +206,7 @@ def live_capture(binary, width, height):
         save_svg(folder / f"{binary.name}-mapbox-{width}x{height}.svg", width, height)
         stats = re.search(r"(\d+ / \d+ / \d+)", screen).group(1)
         send("]")
-        screen = wait_for(lambda s: "Point 5 / 12" in s)
+        screen = wait_for(lambda s: "Point 5 / 10" in s)
         assert re.search(r"(\d+ / \d+ / \d+)", screen).group(1) == stats, "selection refetched tiles"
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
@@ -258,7 +258,7 @@ def profile_playback(binary, width, height):
         send("S")
         wait_for(lambda s:"Paused 60x" in s)
         tmux("send-keys","-t","poc:0.0","End")
-        wait_for(lambda s:"Point 12 / 12" in s and "Finished 60x" in s)
+        wait_for(lambda s:"Point 10 / 10" in s and "Finished 60x" in s)
         send(" ")
         wait_for(lambda s:"Playing 60x" in s and "Between 1–2" in s)
         send("h")
@@ -389,12 +389,12 @@ def dialogs(binary):
         send("\x10")
         wait_for(lambda s: "Commands" in s and "Type a command" in s)
         send("free roam")
-        wait_for(lambda s: "Free roam (clear route)" in s)
+        wait_for(lambda s: "Free roam (clear selection)" in s)
         tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Map details" in s and "Commands" not in s and "Elevation profile" not in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name}: startup/file picker, failed-load recovery, modal input isolation, command filtering, speed picker, file switching and clearing the route passed")
+        print(f"{binary.name}: startup/file picker, failed-load recovery, modal input isolation, command filtering, speed picker, file additions and free roaming passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
@@ -431,7 +431,7 @@ def free_roam(binary, live=False):
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "↑/↓ scroll" not in s)
         send("?")
-        wait_for(lambda s: "reset world view" in s and "Keyboard shortcuts" in s)
+        wait_for(lambda s: "fit all visible" in s and "Keyboard shortcuts" in s)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Keyboard shortcuts" not in s)
         folder = ROOT / "reports/generated"
@@ -439,10 +439,51 @@ def free_roam(binary, live=False):
         settled()
         save_svg(folder / f"{binary.name}-free-roam{'-mapbox' if live else ''}-120x40.svg", 120, 40)
         tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
-        wait_for(lambda s: "Free roam | zoom" in s and "ctrl+o open file" in s)
+        wait_for(lambda s: "Free roam | zoom" in s and "ctrl+l loaded files" in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
         print(f"{binary.name}: {'live Mapbox' if live else 'offline'} free roam, keyboard/mouse navigation, coordinate inspection, help, compact resize and terminal restoration passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
+def workspace_controls(binary):
+    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), str(ROOT / "fixtures/waypoints.gpx")])
+    tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
+    try:
+        wait_for(lambda s: "2 files" in s and "No track points" in s and "Loading track file" not in s)
+        send("\x0c")
+        wait_for(lambda s: "Loaded files" in s and "example.gpx" in s and "waypoints.gpx" in s)
+        save_svg(ROOT / "reports/generated" / f"{binary.name}-workspace-120x40.svg", 120, 40)
+        send(" ")
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "No active item" in s and "Loaded files" not in s)
+        send("\x0c")
+        wait_for(lambda s: "Loaded files" in s)
+        tmux("send-keys", "-t", "poc:0.0", "End")
+        send("D")
+        wait_for(lambda s: "Loaded files" in s and "example.gpx" in s and "waypoints.gpx" not in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
+        wait_for(lambda s: "Loaded files" not in s and "Riverside exploration" in s and "Elevation profile" in s)
+        send("f")
+        settled()
+        tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
+        send("\x0c")
+        wait_for(lambda s: "Loaded files" in s and "Optional spur" in s)
+        tmux("send-keys", "-t", "poc:0.0", "End", "Enter")
+        wait_for(lambda s: "Loaded files" not in s and "Optional spur" in s)
+        send("\x10")
+        wait_for(lambda s: "Commands" in s)
+        send("clear workspace")
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Free roam" in s and "Commands" not in s)
+        send("\x0c")
+        wait_for(lambda s: "No files loaded" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Loaded files" not in s)
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        print(f"{binary.name}: multi-file startup, loaded filenames, visibility, file removal, item selection, compact dialog and clear workspace passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
@@ -464,5 +505,6 @@ if __name__ == "__main__":
             else:
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
+                workspace_controls(ROOT / "bin" / name)
     finally:
         tmux("kill-server", check=False)

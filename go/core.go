@@ -252,6 +252,8 @@ type Camera struct {
 	Width, Height         int
 }
 
+const minZoom = -8.0
+
 func (c Camera) scale() float64 { return 256 * math.Exp2(c.Zoom) }
 func (c Camera) screen(p XY) XY {
 	dx, dy := (p.X-c.Center.X)*c.scale(), (p.Y-c.Center.Y)*c.scale()
@@ -265,7 +267,7 @@ func (c Camera) world(p XY) XY {
 }
 func (c *Camera) zoomAt(p XY, delta float64) {
 	before := c.world(p)
-	c.Zoom = math.Max(0, math.Min(20, c.Zoom+delta))
+	c.Zoom = math.Max(minZoom, math.Min(20, c.Zoom+delta))
 	after := c.world(p)
 	c.Center.X += before.X - after.X
 	c.Center.Y += before.Y - after.Y
@@ -291,7 +293,7 @@ func fit(t *Track, w, h int, aspect float64) Camera {
 func fitBounds(bounds [4]float64, w, h int, aspect float64) Camera {
 	a, b := project(bounds[0], bounds[3]), project(bounds[2], bounds[1])
 	scale := math.Min(float64(w)*1.6/math.Max(b.X-a.X, 1e-7), float64(h)*1.6*aspect/math.Max(b.Y-a.Y, 1e-7))
-	return Camera{XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2}, math.Max(0, math.Min(20, math.Log2(scale/256))), 0, aspect, w, h}
+	return Camera{XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2}, math.Max(minZoom, math.Min(20, math.Log2(scale/256))), 0, aspect, w, h}
 }
 func pointSegment(p, a, b XY) (float64, float64) {
 	dx, dy := b.X-a.X, b.Y-a.Y
@@ -302,8 +304,12 @@ func pointSegment(p, a, b XY) (float64, float64) {
 	return math.Hypot(p.X-a.X-u*dx, p.Y-a.Y-u*dy), u
 }
 func pick(t *Track, c Camera, p XY) int {
+	i, _ := pickDistance(t, c, p)
+	return i
+}
+func pickDistance(t *Track, c Camera, p XY) (int, float64) {
 	if t == nil {
-		return -1
+		return -1, 6
 	}
 	best := 6.0
 	idx := -1
@@ -327,5 +333,5 @@ func pick(t *Track, c Camera, p XY) int {
 			}
 		}
 	}
-	return idx
+	return idx, best
 }

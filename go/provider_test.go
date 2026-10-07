@@ -30,7 +30,7 @@ func TestSyntheticVectorTileDecodeAndWarmCache(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(fs) != 2 || fs[0].Layer != 3 || fs[0].Parts[0][1] != (XY{0.5, 0.5}) || fs[1].Label != "Synthetic place" {
+	if len(fs) != 2 || fs[0].Role != roleMajorRoad || fs[0].Parts[0][1] != (XY{0.5, 0.5}) || fs[1].Label != "Synthetic place" {
 		t.Fatal("MVT layer/coordinate/property decoding failed")
 	}
 	p := newProvider("mapbox")
@@ -136,7 +136,7 @@ func TestMCPBasemapDefaultsToConfiguredTokenAndCanBeDisabled(t *testing.T) {
 	p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(data)))}, nil
 	})
-	s := &Service{tracks: map[string]*Track{}, providers: map[string]*Provider{"mapbox": p, "none": newProvider("none")}}
+	s := &Service{providers: map[string]*Provider{"mapbox": p, "none": newProvider("none")}}
 	result, err := s.call(context.Background(), "render_map", Args{})
 	if err != nil {
 		t.Fatal(err)

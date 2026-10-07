@@ -46,9 +46,9 @@ func newProfile(t *Track, width, height int) *elevationProfile {
 				continue
 			}
 			xy := p.screen(point.Distance, *point.Elevation)
-			p.Grid.dot(int(math.Round(xy.X)), int(math.Round(xy.Y)), 5)
+			p.Grid.dot(int(math.Round(xy.X)), int(math.Round(xy.Y)), roleActiveRoute)
 			if last != nil {
-				p.Grid.line(*last, xy, 5)
+				p.Grid.line(*last, xy, roleActiveRoute)
 			}
 			last = &xy
 		}
@@ -80,15 +80,15 @@ func (p *elevationProfile) frame(pos *ridePosition) (string, Grid, string) {
 	g := p.Grid
 	g.Cells = append([]Cell(nil), p.Grid.Cells...)
 	if !p.Available {
-		g.label(XY{2, 0}, "No recorded elevation", 4, false)
+		g.label(XY{2, 0}, "No recorded elevation", rolePlace, false)
 	}
 	if pos != nil {
 		x := pos.Distance / math.Max(p.Distance, 1) * float64(g.Width*2-1)
 		for y := 0; y < g.Height; y++ {
-			g.label(XY{x, float64(y * 4)}, "|", 7, false)
+			g.label(XY{x, float64(y * 4)}, "|", roleCursor, false)
 		}
 		if p.Available && pos.Elevation != nil {
-			g.label(p.screen(pos.Distance, *pos.Elevation), "@", 7, false)
+			g.label(p.screen(pos.Distance, *pos.Elevation), "@", roleCursor, false)
 		}
 	}
 	end := fmt.Sprintf("%.2f km", p.Distance/1000)

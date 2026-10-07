@@ -4,7 +4,7 @@ A personal proof of concept for browsing maps and viewing GPX, FIT, TCX and KML
 files in a terminal. Built with Go, Bubble Tea, Bubbles and Lip Gloss.
 The executable is `shoe`.
 
-- Pan, zoom and inspect tracks, routes and waypoints.
+- Pan, zoom and inspect multiple tracks, routes and waypoint collections.
 - Free roam around the map without loading a file.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
@@ -25,7 +25,7 @@ make build
 File viewing needs no account or token. A configured Mapbox token adds a real
 basemap automatically. Run `./bin/shoe` without a file to free roam; without a
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
-file picker and `q` to quit.
+file picker, Ctrl-L to manage loaded files and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
 
 Braille rendering works best in a Unicode terminal. Use `--ascii` for a text
@@ -90,9 +90,37 @@ MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/shoe
 
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
 `--zoom` to start somewhere specific. Pan, zoom, rotate and click to inspect
-coordinates. Route playback and elevation controls become available after opening
-a track file. Use **Free roam (clear route)** in the Ctrl-P command palette to
-remove the route and keep browsing the current location.
+coordinates. Route playback and elevation controls apply to the active item.
+Use **Free roam (clear selection)** in the Ctrl-P command palette to stop playback
+and keep browsing with loaded geometry still visible. **Clear workspace (remove
+all files)** removes the imports while preserving the current camera view.
+
+### Multiple files and routes
+
+Opening another file adds it to the workspace, selects its first item containing
+track points (or a waypoint-only item) and fits the camera to that item. Reopening
+the same absolute path selects the existing import and restores its visibility;
+it does not reread changed file contents. Remove it first to import it again.
+
+Press **Ctrl-L** for loaded files and their individual routes, activities or
+placemarks. File IDs distinguish equally named files; the selected row also shows
+its source path. `*` marks the active item and `[x]` means visible.
+
+- Enter selects an item or activates a file. A hidden selection is revealed.
+- Space shows/hides the selected item or whole file.
+- Delete/Backspace removes the selected row. `D` removes its entire file.
+- Arrow keys, `j`/`k`, Home/End or the mouse wheel navigate; Esc closes the dialog.
+
+Only the active item plays back or supplies the elevation profile. Hiding or
+removing it stops playback and clears selection without selecting another item.
+Selecting a different item starts a fresh paused position. Showing an item alone
+does not select it. Removing a file's last item also removes its file entry.
+
+**`f` fits all visible geometry**, including standalone waypoints. Click near a
+visible route or waypoint to select its owning item. Active geometry is amber;
+other routes are cyan (`#` and `*` in ASCII mode). The active item wins overlaps;
+otherwise later-loaded items win equal-distance picking ties. Selection markers
+take priority over route geometry and map labels.
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
@@ -133,12 +161,13 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 
 | Action | Keyboard | Mouse |
 |---|---|---|
-| Open another track file | Ctrl-O or `o` | |
+| Add another track file | Ctrl-O or `o` | |
+| Manage loaded files/items | Ctrl-L | Wheel scrolls the dialog |
 | Command palette / help | Ctrl-P / `?` | |
 | Pan | Arrows or `h j k l` | Left-drag |
 | Zoom | `+` / `-` | Wheel, anchored to pointer |
 | Zoom at 2× speed | | Ctrl / Cmd + wheel |
-| Fit geometry / reset world view | `f` / `r` | |
+| Fit all visible geometry / world view when none is visible | `f` / `r` | |
 | Select recorded points | `[` / `]` | Click near a track |
 | Seek along the track | PgUp/PgDn, Home/End | |
 | Inspect selected position | Enter | |
@@ -171,13 +200,14 @@ are prefixed with `~`; missing elevations and timestamps remain unavailable.
 
 ## CLI
 
-The interactive viewer is the default action. Supply an optional GPX, FIT, TCX or
-KML file to add tracks, routes and waypoints; no file starts free roam. `open` is
+The interactive viewer is the default action. Supply GPX, FIT, TCX or KML files
+to add tracks, routes and waypoints; no file starts free roam. `open` is
 an optional alias.
 
 ```sh
 ./bin/shoe
 ./bin/shoe fixtures/example.gpx
+./bin/shoe ride.gpx course.tcx
 ./bin/shoe --zoom 13 fixtures/example.gpx
 ./bin/shoe --help
 ```
@@ -189,8 +219,8 @@ Subcommands select a different operation:
 
 | Command | File | Result |
 |---|---|---|
-| `render` | Optional | Static map text, or JSON with `--json` |
-| `summary` | Required | Geometry and measurement statistics as JSON |
+| `render` | Zero or more | Static map text, or JSON with `--json` |
+| `summary` | One required | Geometry statistics, or item listing with `--items`, as JSON |
 | `inspect` | Required | Recorded point as JSON |
 | `mcp` | None | Local stdio MCP server |
 | `bench` | Required | Synthetic rendering benchmark timings as JSON |
@@ -202,6 +232,9 @@ Subcommands select a different operation:
 ./bin/shoe inspect fixtures/example.gpx --distance-m 1000
 ./bin/shoe render fixtures/example.gpx --width 120 --height 40
 ./bin/shoe render fixtures/example.gpx --json
+./bin/shoe render ride.gpx course.tcx --json
+./bin/shoe summary fixtures/example.gpx --items
+./bin/shoe inspect fixtures/example.gpx --item-id 4 --point-index 0
 ./bin/shoe render --help
 ```
 
@@ -214,16 +247,26 @@ point, not an interpolated measurement.
 `route_count` counts distinct route-bearing items: GPX routes, TCX/FIT courses,
 and KML placemarks containing route geometry. A GPS gap or multiple disconnected
 parts within one item do not add routes. `segment_count` counts non-route parts;
-point indices and distances still refer to the combined file. GPX metadata names
+point indices and distances refer to the combined file unless `--item-id` is
+supplied, in which case they are local to that item. GPX metadata names
 take precedence over individual track names for the file title.
 
+Use `summary --items` to discover item IDs. `open`, `summary`, `inspect` and
+`render` accept `--item-id` with one file. Point/item selectors require a single
+file; multi-file `render` fits the workspace and marks the last file's active item.
+In the viewer, keyboard seeking and displayed point indices are always local to
+the active item. A startup `--point-index` without `--item-id` still uses the
+combined file index and selects the item containing that point.
+
 Camera options for the viewer, rendering and benchmarks: `--center-lon` and
-`--center-lat` together, `--zoom` (0-20), `--bearing` (-360 to 360),
+`--center-lat` together, `--zoom` (-8 to 20), `--bearing` (-360 to 360),
 `--cell-aspect` (1-3, default 2), and `--ascii`.
 
 The viewer and `render` accept `--provider mapbox|none` for the basemap, plus
 `--point-index` to select or highlight a recorded point. `--no-animation` is
-viewer-only. `--width` (10-300) and `--height` (5-100) size static maps and
+viewer-only. Negative zoom allows widely separated items to fit in a small
+terminal; file-free browsing still starts at zoom 0. `--width` (10-300) and
+`--height` (5-100) size static maps and
 benchmarks; the viewer uses the terminal size. `--json` belongs to `render`,
 `--distance-m` to `inspect`, and `--frames` to `bench`. Benchmarks use internal
 synthetic geometry, independent of credentials. Run `shoe COMMAND --help` for
@@ -235,14 +278,19 @@ that command's options.
 ./bin/shoe mcp
 ```
 
-The local stdio server exposes four tools:
+The local stdio server exposes nine tools:
 
 | Tool | Inputs | Result | Mapbox authentication |
 |---|---|---|---|
-| `load_track` | Local `path` | Ephemeral track ID, bounds and summary | No |
-| `summarize_track` | `track_id` | Geometry and measurement summary | No |
-| `inspect_track` | `track_id` and either `point_index` or `distance_m` | Recorded point | No |
-| `render_map` | Optional `track_id` and viewport/provider options | Plain map text and scene metadata | Optional; required for real basemap tiles |
+| `load_track` | Local `path` | File ID, document ID, bounds, summary and item IDs; reuses loaded paths | No |
+| `list_tracks` | None | Loaded filenames/paths, items, visibility and active item | No |
+| `unload_track` | `track_id` | Removes a file and its items | No |
+| `summarize_track` | `track_id`, optional `item_id` | File or item summary | No |
+| `inspect_track` | `track_id`, optional `item_id`, and either `point_index` or `distance_m` | Recorded point; indices/distances are item-local when `item_id` is supplied | No |
+| `select_item` | `track_id`, `item_id` | Selects and reveals an item | No |
+| `set_item_visibility` | `track_id`, `visible`, optional `item_id` | Shows/hides an item or whole file | No |
+| `remove_item` | `track_id`, `item_id` | Removes one item; unloads the file if it was its last item | No |
+| `render_map` | Optional `track_id`/`item_id`, or `workspace: true`, plus viewport/provider options | Plain map text and scene metadata | Optional; required for real basemap tiles |
 
 Use [mcp.example.json](mcp.example.json) with the absolute path to your binary.
 Full schemas are in [shared/tools.json](shared/tools.json). Track IDs and tile
@@ -252,9 +300,17 @@ otherwise. Set `provider: "none"` to disable tile requests. For a server launche
 outside the repository, supply the token through its environment; the client's
 credentials aren't automatically passed to the server.
 
-Omit `track_id` to render just the basemap. Without a token this returns an empty
-map with setup guidance in `scene.status`. `point_index` requires a track. Camera
-defaults match the viewer's free-roam world view.
+Omit `track_id` to render just the basemap, as before. Set `workspace: true` to
+render all visible items and highlight the active one; omit `track_id`, `item_id`
+and `point_index` in that mode. Workspace scenes include `active_item` and
+`visible_items` references, each containing `document_id` and `item_id`. Match
+`document_id` to the file entry returned by `load_track` or `list_tracks`.
+Visibility controls apply to workspace renders; an explicit `track_id` renders
+that file directly, preserving the existing single-file behaviour.
+
+Without a file/workspace and token, rendering returns an empty map with setup
+guidance in `scene.status`. `point_index` requires a track. Camera defaults match
+the viewer's free-roam world view.
 
 ## Development and checks
 
@@ -282,7 +338,9 @@ dependency-minimisation and deterministic-install principles in this
 
 ## Limitations
 
-- Antimeridian-crossing geometry and bounds wider than 180 degrees are rejected.
+- Individual imports reject antimeridian-crossing geometry and file bounds wider
+  than 180 degrees. Separate files may span a wider workspace; no connecting path
+  or wrapped antimeridian route is invented.
 - Display uses Mercator projection; distances use spherical Haversine calculations.
 - Map labels are ASCII-only. Sensor metrics and GPX activity extensions aren't imported.
 - Basemap detail is capped at tile zoom 14, even when the viewer zooms further.

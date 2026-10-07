@@ -31,8 +31,11 @@ checks also verify that one TCX course with a GPS gap counts as one route.
 Workspace model tests cover adding and reopening files, duplicate filenames,
 visibility and removal, failed-import recovery, stale item references, and active
 playback/profile transitions. Bounds checks include distant independent files,
-hidden items and waypoint-only imports. These exercise the model directly; the
-existing terminal checks still cover the single-file viewer during integration.
+hidden items and waypoint-only imports. Scene tests cover active-item overlap
+priority, waypoint picking, gaps between files and negative-zoom fitting. CLI/MCP
+checks exercise item selectors, duplicate loads, listing, visibility, item/file
+removal and multi-file rendering parity. A fake-provider test checks that network
+rendering does not hold the workspace lifecycle lock.
 
 Optional checks, after building:
 
@@ -40,11 +43,15 @@ Optional checks, after building:
 make fixtures
 make bench
 python3 scripts/interactions.py
+mise exec go@1.27.1 -- go test -race ./go
+mise exec go@1.27.1 -- go test ./go -run '^$' -bench BenchmarkWorkspaceScene -benchmem
 ```
 
 Interaction checks require tmux and `rsvg-convert` and run in headless Linux
 pseudo-terminals. They exercise keyboard/mouse input, dialogs, playback, resizing
-and terminal restoration. They don't verify physical mouse forwarding or other
+and terminal restoration. Multi-file checks cover startup with two files, the
+Ctrl-L list, visibility, selection, removal and clearing at wide/compact sizes.
+They don't verify physical mouse forwarding or other
 operating systems. Benchmark and capture output is ignored under `reports/`.
 
 With a locally configured token, these checks make billable Mapbox requests:
@@ -66,7 +73,8 @@ python3 scripts/interactions.py --mapbox
 6. Quit with `q` or Ctrl-C and check the terminal is restored.
 7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe` without a GPX; check the empty canvas
    includes token setup guidance. Pan, zoom, rotate and click to inspect
-   coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear route)**.
+   coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear selection)**
+   and check its geometry stays visible without playback/profile selection.
 8. With a token configured, run `./bin/shoe` for the world view or
    `./bin/shoe --center-lon -0.1065 --center-lat 51.505 --zoom 13` for a local
    basemap. Check tiles load while panning and no route/playback/profile is shown.
@@ -75,4 +83,10 @@ python3 scripts/interactions.py --mapbox
 10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe render fixtures/example.gpx --provider mapbox`;
     check the file is rendered and stderr explains how to configure a token.
 11. Open FIT, TCX and KML files with Ctrl-O. Check their tracks/waypoints, elevation
-    and playback match the measurements present; a failed import keeps the previous file.
+     and playback match the measurements present; a failed import keeps the previous file.
+12. Open two files and press Ctrl-L. Check filenames and individual item names,
+    toggle visibility with Space, select with Enter, remove an item with Delete
+    and remove a file with `D`. Use `f` to fit only the remaining visible geometry.
+13. Use **Clear workspace (remove all files)** and check the camera stays in place.
+    In a narrow terminal, load widely separated files and verify `f` can fit them
+    at a negative zoom, with subsequent wheel zoom staying smooth.

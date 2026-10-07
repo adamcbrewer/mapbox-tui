@@ -11,16 +11,24 @@ item IDs are stable within their owning document. FIT sessions remain parts of a
 activity, chained FIT sequences are separate items, and KML container ancestry is
 retained even when folder names occur after their placemarks.
 
-Workspace lifecycle is also complete at the model level: add/reopen, selection,
+Workspace lifecycle is complete: add/reopen, selection,
 visibility, item/file removal, clearing, active playback/profile ownership and
 visible bounds. Document IDs are not reused after removal or clearing, so old
 item references cannot address later imports.
 
-Existing single-file consumers use a combined snapshot during the migration.
-Route counts now describe route-bearing items rather than disconnected parts.
-Build, Go tests, vet and CLI/MCP validation pass for both slices; offline terminal
-interaction checks passed for the import slice. Next: **step 3, viewer and tool
-integration**, including the loaded-files controls.
+Viewer and tool integration is complete. Ctrl-L shows loaded files and items,
+with selection, visibility and removal controls. The viewer uses workspace-owned
+playback/profile state, draws all visible items and fits them with `f`. CLI
+multi-file rendering and item selectors share the scene renderer with MCP, which
+now provides listing, selection, visibility and removal tools. Existing single-file
+CLI/MCP calls retain their combined-file defaults.
+
+Build, Go tests, vet, race checks, CLI/MCP validation and offline terminal
+interaction checks pass. The synthetic scene benchmark measured roughly 5.5 ms
+for one 100k-point route and 21.8 ms for four at 120×40 cells on this machine.
+No spatial index or rendering cache was introduced. Next: **step 4, independent
+data-source loading and refresh**. Theme scope and new routing/traffic sources
+still need decisions in their respective slices.
 
 ## Direction
 
@@ -89,50 +97,49 @@ removes its file entry.
 
 Visible bounds include waypoint-only items and may span more than 180 degrees
 across separate files. They are combined as bounds, never as one continuous path.
-Individual imports retain their existing antimeridian restrictions. Fit uses the
-existing camera zoom limits; very wide extents can reach zoom 0 before fitting
-fully in a narrow terminal.
+Individual imports retain their existing antimeridian restrictions. Camera zoom
+now permits -8 through 20 so wide extents can fit in narrow terminals without a
+jump to zero on the next wheel event. File-free browsing still starts at zoom 0.
 
 ## 3. Integrate multiple items with the viewer and tools
 
 - [x] Confirm file-open and camera-fit behaviour before changing interactions.
-- [ ] Resolve the zoom-0 limit for fit-all when widely separated routes cannot fit
+- [x] Resolve the zoom-0 limit for fit-all when widely separated routes cannot fit
   inside a narrow terminal.
-- [ ] Separate meaningful map roles from drawing priority, colour and ASCII glyphs.
-- [ ] Compose visible items and basemap features through shared scene rules,
+- [x] Separate meaningful map roles from drawing priority, colour and ASCII glyphs.
+- [x] Compose visible items and basemap features through shared scene rules,
   retaining the existing terminal grid implementation.
-- [ ] Make picking identify both the item and its point; distinguish the active
+- [x] Make picking identify both the item and its point; distinguish the active
   item in rendering and details.
-- [ ] Connect playback/profile to the active item; keep camera follow independent.
-- [ ] Define predictable overlap and label precedence within the terminal's
+- [x] Connect playback/profile to the active item; keep camera follow independent.
+- [x] Define predictable overlap and label precedence within the terminal's
   one-foreground-colour-per-cell constraint.
-- [ ] Extend CLI/MCP selection and rendering capabilities deliberately; add an MCP
+- [x] Extend CLI/MCP selection and rendering capabilities deliberately; add an MCP
   release operation so loaded documents need not remain until process exit.
-- [ ] Separate transport inputs from live viewer settings as these workflows move
+- [x] Separate transport inputs from live viewer settings as these workflows move
   behind shared operations; use explicit result structures where contracts change.
-- [ ] Run interaction checks and benchmark representative multiple-track scenes
+- [x] Run interaction checks and benchmark representative multiple-track scenes
   before introducing rendering caches or spatial indexes.
 
 **Acceptance:** Multiple items can appear together, inspection identifies the right
 item, and only the active item's profile/playback is used. Existing single-file
 CLI/MCP calls still work. Plain output stays ANSI-free.
 
-### Loaded-files UI follow-up
+### Loaded-files UI
 
-This is deliberately tracked separately from the initial model work. Preserve the
-metadata and lifecycle operations now so the UI can be added without another
-data-model redesign. Before shipping interactive multi-file loading, provide at
-least a minimal way to identify and remove loaded data.
+Implemented as a Ctrl-L dialog, also available in the command palette. File
+headings and item rows share keyboard navigation; IDs and source paths distinguish
+duplicate filenames. Delete removes the selected row and `D` removes its file.
 
-- [ ] Choose a compact surface: command-palette entries, a dialog or a sidebar.
-- [ ] Show loaded filenames separately from contained route/activity names.
-- [ ] Distinguish duplicate filenames and indicate active, visible and hidden items.
-- [ ] Allow selection and visibility changes without re-importing data.
-- [ ] Surface removal of loaded files; decide whether individual contained items
+- [x] Choose a compact surface: command-palette entries, a dialog or a sidebar.
+- [x] Show loaded filenames separately from contained route/activity names.
+- [x] Distinguish duplicate filenames and indicate active, visible and hidden items.
+- [x] Allow selection and visibility changes without re-importing data.
+- [x] Surface removal of loaded files; decide whether individual contained items
   also need their own removal action.
-- [ ] Provide an explicit clear-workspace action; map browsing itself need not
+- [x] Provide an explicit clear-workspace action; map browsing itself need not
   discard loaded data.
-- [ ] Keep controls usable in narrow terminals and reachable by keyboard.
+- [x] Keep controls usable in narrow terminals and reachable by keyboard.
 
 **Acceptance:** A user can tell what is loaded and remove a file without losing
 unrelated files. Merely browsing the map does not obscure ownership of loaded data.
@@ -218,5 +225,5 @@ all visible presentation consistently.
 - Hiding or removing the active item stops playback and clears active selection
   and profile. It does not automatically select another item or move the camera.
 
-Later decisions belong to their implementation slice: loaded-files UI layout,
-plotting versus routing, traffic refresh policy and theme scope.
+Later decisions belong to their implementation slice: plotting versus routing,
+traffic refresh policy and theme scope.

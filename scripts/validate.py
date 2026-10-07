@@ -211,6 +211,7 @@ def validate_imports(binary):
                 equivalent(rendered, m.call("render_map", {"track_id": track_id, "provider": "none"})["result"]["structuredContent"])
                 assert rendered["scene"]["status"] == "" and rendered["text"].strip()
                 invalid = body[:-1] + bytes([body[-1] ^ 1]) if path.suffix.lower() == ".fit" else body[:-1]
+                assert m.call("unload_track", {"track_id": track_id})["result"]["structuredContent"]["ok"]
                 path.write_bytes(invalid)
                 cli(binary, "summary", path, success=False)
                 assert m.call("load_track", {"path": str(path)})["result"]["isError"]
@@ -228,11 +229,55 @@ def validate_imports(binary):
         m.close()
 
 
+def validate_workspace(binary):
+    m = MCP(binary)
+    try:
+        m.send("initialize", {"protocolVersion": "2025-11-25", "clientInfo": {"name": "workspace-validation", "version": "1"}, "capabilities": {}})
+        m.send("notifications/initialized", {}, notify=True)
+        paths = [ROOT / "fixtures/example.gpx", ROOT / "fixtures/waypoints.gpx"]
+        loaded = [m.call("load_track", {"path": str(path)})["result"]["structuredContent"] for path in paths]
+        assert loaded[0]["filename"] == "example.gpx" and len(loaded[0]["items"]) == 4
+        item = next(item for item in loaded[0]["items"] if item["name"] == "Optional spur")
+        listed = cli(binary, "summary", paths[0], "--items")
+        equivalent(listed["items"], loaded[0]["items"])
+        args = {"track_id": loaded[0]["track_id"], "item_id": item["item_id"]}
+        equivalent(cli(binary, "summary", paths[0], "--item-id", str(item["item_id"])), m.call("summarize_track", args)["result"]["structuredContent"])
+        equivalent(cli(binary, "inspect", paths[0], "--item-id", str(item["item_id"]), "--point-index", "0"), m.call("inspect_track", {**args, "point_index": 0})["result"]["structuredContent"])
+        rendered = cli(binary, "render", paths[0], str(paths[1]), "--json", "--provider", "none")
+        workspace = m.call("render_map", {"workspace": True, "provider": "none"})["result"]["structuredContent"]
+        equivalent(rendered, workspace)
+        assert len(workspace["scene"]["visible_items"]) > 4 and workspace["scene"]["active_item"]["document_id"] == loaded[1]["document_id"]
+        before = m.call("list_tracks", {})["result"]["structuredContent"]
+        assert {track["filename"] for track in before["tracks"]} == {path.name for path in paths}
+        reopened = m.call("load_track", {"path": str(paths[1])})["result"]["structuredContent"]
+        assert reopened["track_id"] == loaded[1]["track_id"]
+        assert len(m.call("list_tracks", {})["result"]["structuredContent"]["tracks"]) == 2
+        m.call("set_item_visibility", {"track_id": loaded[1]["track_id"], "visible": False})
+        hidden = m.call("render_map", {"workspace": True, "provider": "none"})["result"]["structuredContent"]
+        assert hidden["scene"]["active_item"] is None and len(hidden["scene"]["visible_items"]) == 4
+        m.call("select_item", args)
+        active = m.call("render_map", {"workspace": True, "provider": "none"})["result"]["structuredContent"]
+        assert active["scene"]["active_item"] == {"document_id": loaded[0]["document_id"], "item_id": item["item_id"]}
+        m.call("remove_item", args)
+        assert m.call("inspect_track", {**args, "point_index": 0})["result"]["isError"]
+        assert len(m.call("list_tracks", {})["result"]["structuredContent"]["tracks"][0]["items"]) == 3
+        m.call("unload_track", {"track_id": loaded[0]["track_id"]})
+        assert m.call("summarize_track", {"track_id": loaded[0]["track_id"]})["result"]["isError"]
+        assert len(m.call("list_tracks", {})["result"]["structuredContent"]["tracks"]) == 1
+        assert m.call("render_map", {"workspace": True, "track_id": loaded[1]["track_id"]})["result"]["isError"]
+        invalid = m.call("set_item_visibility", {"track_id": loaded[1]["track_id"]})
+        assert invalid.get("error") or invalid.get("result", {}).get("isError")
+        assert m.call("select_item", {"track_id": loaded[1]["track_id"], "item_id": 999})["result"]["isError"]
+    finally:
+        m.close()
+
+
 def main():
     for binary in BINS:
         validate_cli(binary)
         validate_mcp(binary)
         validate_imports(binary)
+        validate_workspace(binary)
         result=cli(binary,"render",ROOT / "fixtures/example.gpx","--json")
         assert result["scene"]["provider"]=="none" and result["scene"]["status"]==""
         for flag in ("--zoom","--bearing","--cell-aspect"):
@@ -259,7 +304,7 @@ def main():
             path.write_text(body)
             for binary in BINS:
                 cli(binary, "summary", path, success=False)
-    print("Validated CLI dispatch, flag ordering, scoped help, benchmarks, MCP consistency and tool schemas, GPX/FIT/TCX/KML imports and errors, summaries, map scenes and track-free rendering.")
+    print("Validated CLI dispatch, imports, item selectors, multi-file scenes, workspace lifecycle, MCP schemas/consistency and track-free rendering.")
 
 
 if __name__ == "__main__":

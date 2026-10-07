@@ -251,8 +251,17 @@ func TestWorkspaceFitsAllVisibleGeometryWithoutMergingDistantFiles(t *testing.T)
 			}
 		}
 	}
-	if w.fitVisible(80, 24, 2).Zoom != 0 {
-		t.Fatal("wide bounds changed the existing minimum camera zoom")
+	narrow := w.fitVisible(80, 24, 2)
+	if narrow.Zoom >= 0 {
+		t.Fatal("wide bounds did not zoom out far enough for a narrow viewport")
+	}
+	for _, item := range w.items() {
+		for _, p := range item.Item.Track.Points {
+			s := narrow.screen(p.World)
+			if s.X < 0 || s.X >= 160 || s.Y < 0 || s.Y >= 96 {
+				t.Fatal("narrow fit omitted visible geometry")
+			}
+		}
 	}
 	first := w.items()[0].Ref
 	if err := w.setVisible(first, false); err != nil {

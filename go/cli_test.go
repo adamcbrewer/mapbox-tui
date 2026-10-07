@@ -105,7 +105,11 @@ func TestCLIRejectsIrrelevantFlagsAndInvalidInputCounts(t *testing.T) {
 		{"render", "--no-animation"}, {"render", "--frames", "2"},
 		{"bench", "fixtures/example.gpx", "--provider", "mapbox"},
 		{"mcp", "--demo"}, {"mcp", "fixtures/example.gpx"},
-		{"fixtures/example.gpx", "fixtures/waypoints.gpx"},
+		{"summary", "fixtures/example.gpx", "fixtures/waypoints.gpx"},
+		{"fixtures/example.gpx", "fixtures/waypoints.gpx", "--point-index", "0"},
+		{"render", "a.gpx", "b.gpx", "--item-id", "1"},
+		{"summary", "a.gpx", "--items", "--item-id", "1"},
+		{"inspect", "a.gpx", "--item-id", "0"},
 		{"--zoom"}, {"--zoom", "oops"},
 		{"--unknown"}, {"summary"}, {"inspect"}, {"bench"},
 	} {
@@ -126,7 +130,7 @@ func TestCLIHelpIsAvailableWithoutInputOrCredentials(t *testing.T) {
 			t.Fatal("help tried to execute the command", argv, err)
 		}
 		help := output.String()
-		if command.Name == "open" && (!strings.Contains(help, "shoe [FILE]") || !strings.Contains(help, "Commands:") || strings.Contains(help, "-frames") || strings.Contains(help, "-json") || strings.Contains(help, "-demo")) {
+		if command.Name == "open" && (!strings.Contains(help, "shoe [FILE...]") || !strings.Contains(help, "Commands:") || strings.Contains(help, "-frames") || strings.Contains(help, "-json") || strings.Contains(help, "-demo")) {
 			t.Fatal("viewer help did not describe the default action and its options")
 		}
 		if command.Name == "inspect" && (!strings.Contains(help, "-distance-m") || strings.Contains(help, "-zoom")) {
@@ -134,6 +138,22 @@ func TestCLIHelpIsAvailableWithoutInputOrCredentials(t *testing.T) {
 		}
 		if command.Name == "render" && (!strings.Contains(help, "-json") || !strings.Contains(help, "-width") || strings.Contains(help, "-no-animation")) {
 			t.Fatal("render help did not list static rendering options")
+		}
+	}
+}
+
+func TestCLIMultipleFilesAndItemSelectors(t *testing.T) {
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
+	for _, mode := range []string{"open", "render"} {
+		cmd, err := parseCLI([]string{mode, "a.gpx", "--ascii", "b.tcx"}, io.Discard)
+		if err != nil || len(cmd.Paths) != 2 || cmd.Paths[1] != "b.tcx" || !cmd.Args.ASCII {
+			t.Fatal("multiple files were not retained", cmd, err)
+		}
+	}
+	for _, mode := range []string{"open", "render", "summary", "inspect"} {
+		cmd, err := parseCLI([]string{mode, "--item-id", "3", "a.gpx"}, io.Discard)
+		if err != nil || cmd.Args.ItemID == nil || *cmd.Args.ItemID != 3 {
+			t.Fatal("item selection was not retained", cmd, err)
 		}
 	}
 }

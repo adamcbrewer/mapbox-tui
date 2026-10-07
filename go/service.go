@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,6 +16,9 @@ import (
 type Args struct {
 	Path        string   `json:"path"`
 	TrackID     string   `json:"track_id"`
+	ItemID      *int     `json:"item_id"`
+	Workspace   bool     `json:"workspace"`
+	Visible     *bool    `json:"visible"`
 	PointIndex  *int     `json:"point_index"`
 	Distance    *float64 `json:"distance_m"`
 	Width       *int     `json:"width"`
@@ -28,107 +33,174 @@ type Args struct {
 	NoAnimation bool     `json:"-"`
 }
 
-func viewport(t *Track, a Args) (Camera, error) {
-	w, h, aspect := 120, 40, 2.0
-	if a.Width != nil {
-		w = *a.Width
-	}
-	if a.Height != nil {
-		h = *a.Height
-	}
-	if a.Aspect != nil {
-		aspect = *a.Aspect
-	}
-	if w < 10 || w > 300 || h < 5 || h > 100 || aspect < 1 || aspect > 3 || math.IsNaN(aspect) {
-		return Camera{}, fmt.Errorf("viewport: width 10..300, height 5..100, cell_aspect 1..3")
-	}
-	c := fit(t, w, h, aspect)
-	if (a.Lon == nil) != (a.Lat == nil) {
-		return c, fmt.Errorf("supply center_lon and center_lat together")
-	}
-	if a.Lon != nil {
-		if math.IsNaN(*a.Lon) || math.IsNaN(*a.Lat) || math.Abs(*a.Lon) > 180 || math.Abs(*a.Lat) > 85.05112878 {
-			return c, fmt.Errorf("center outside Mercator range")
-		}
-		c.Center = project(*a.Lon, *a.Lat)
-	}
-	if a.Zoom != nil {
-		if math.IsNaN(*a.Zoom) || *a.Zoom < 0 || *a.Zoom > 20 {
-			return c, fmt.Errorf("zoom outside 0..20")
-		}
-		c.Zoom = *a.Zoom
-	}
-	if a.Bearing != nil {
-		if math.IsNaN(*a.Bearing) || math.Abs(*a.Bearing) > 360 {
-			return c, fmt.Errorf("bearing outside -360..360")
-		}
-		c.Bearing = *a.Bearing
-	}
-	return c, nil
+type Service struct {
+	mu        sync.Mutex
+	workspace Workspace
+	providers map[string]*Provider
 }
-func renderResult(ctx context.Context, t *Track, a Args, p *Provider) (map[string]any, error) {
-	c, err := viewport(t, a)
+
+type trackInfo struct {
+	TrackID    string     `json:"track_id"`
+	DocumentID int        `json:"document_id"`
+	Filename   string     `json:"filename"`
+	Path       string     `json:"path"`
+	Name       string     `json:"name"`
+	Bounds     [4]float64 `json:"bounds"`
+	Items      []itemInfo `json:"items"`
+}
+
+func describeTrack(entry *workspaceDocument) trackInfo {
+	items := entry.document.itemInfos()
+	for i := range items {
+		items[i].Visible = !entry.hidden[items[i].ID]
+	}
+	d := entry.document
+	return trackInfo{fmt.Sprintf("track-%d", entry.id), entry.id, d.Filename, d.Path, d.Name, d.Bounds, items}
+}
+
+func (s *Service) loadedResult(ref ItemRef) map[string]any {
+	entry, _, _ := s.workspace.lookup(ref)
+	info := describeTrack(entry)
+	return map[string]any{"track_id": info.TrackID, "bounds": info.Bounds, "summary": entry.document.track().summary(), "document_id": info.DocumentID, "filename": info.Filename, "items": info.Items}
+}
+
+func (s *Service) load(path string) (any, error) {
+	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
-	sel := -1
-	if a.PointIndex != nil {
-		sel = *a.PointIndex
-		if t == nil || sel < 0 || sel >= len(t.Points) {
-			return nil, fmt.Errorf("point_index outside track")
-		}
+	s.mu.Lock()
+	if entry := s.workspace.documentAtPath(path); entry != nil {
+		result := s.loadedResult(s.workspace.activateDocument(entry))
+		s.mu.Unlock()
+		return result, nil
 	}
-	fs, stats, status := p.scene(ctx, t, c)
-	grid := render(t, c, fs, sel, a.ASCII)
-	center := unproject(c.Center)
-	return map[string]any{"text": grid.plain(a.ASCII), "scene": map[string]any{"width": c.Width, "height": c.Height, "center_lon": center.X, "center_lat": center.Y, "zoom": c.Zoom, "bearing": c.Bearing, "cell_aspect": c.Aspect, "provider": p.Kind, "attribution": attribution(p.Kind), "attribution_links": []string{"https://www.mapbox.com/about/maps/", "https://www.openstreetmap.org/copyright", "https://apps.mapbox.com/feedback/"}, "tile_stats": stats, "status": status, "selected_point_index": sel}}, nil
+	s.mu.Unlock()
+	d, err := loadDocument(path)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadedResult(s.workspace.addDocument(d)), nil
 }
 
-type Service struct {
-	mu        sync.Mutex
-	tracks    map[string]*Track
-	providers map[string]*Provider
-	next      int
+func (s *Service) document(id string) (*workspaceDocument, error) {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "track-"))
+	if err == nil && id == fmt.Sprintf("track-%d", n) {
+		for _, entry := range s.workspace.documents {
+			if entry.id == n {
+				return entry, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("unknown track_id")
+}
+
+func (s *Service) render(ctx context.Context, a Args) (any, error) {
+	s.mu.Lock()
+	r, err := s.mapRequest(a)
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	kind := a.Provider
+	if kind == "" {
+		kind = defaultProvider(s.providers["mapbox"].token)
+	}
+	if kind != "mapbox" && kind != "none" {
+		return nil, fmt.Errorf("unknown provider")
+	}
+	return r.render(ctx, a.ASCII, s.providers[kind])
+}
+
+func (s *Service) mapRequest(a Args) (mapRequest, error) {
+	if a.Workspace {
+		return workspaceMapRequest(&s.workspace, a)
+	}
+	var t *Track
+	if a.TrackID != "" {
+		entry, err := s.document(a.TrackID)
+		if err != nil {
+			return mapRequest{}, err
+		}
+		t, err = entry.document.selectedTrack(a.ItemID)
+		if err != nil {
+			return mapRequest{}, err
+		}
+	} else if a.ItemID != nil {
+		return mapRequest{}, fmt.Errorf("item_id requires track_id")
+	}
+	return trackMapRequest(t, a)
 }
 
 func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 	if name == "load_track" {
-		t, e := loadTrack(a.Path)
-		if e != nil {
-			return nil, e
-		}
-		s.mu.Lock()
-		s.next++
-		id := fmt.Sprintf("track-%d", s.next)
-		s.tracks[id] = t
-		s.mu.Unlock()
-		return map[string]any{"track_id": id, "bounds": t.Bounds, "summary": t.summary()}, nil
+		return s.load(a.Path)
+	}
+	if name == "render_map" {
+		return s.render(ctx, a)
 	}
 	s.mu.Lock()
-	t := s.tracks[a.TrackID]
-	s.mu.Unlock()
-	if t == nil && (name != "render_map" || a.TrackID != "") {
-		return nil, fmt.Errorf("unknown track_id")
+	defer s.mu.Unlock()
+	if name == "list_tracks" {
+		tracks := make([]trackInfo, 0, len(s.workspace.documents))
+		for _, entry := range s.workspace.documents {
+			tracks = append(tracks, describeTrack(entry))
+		}
+		var active *ItemRef
+		if s.workspace.selection != nil {
+			ref := s.workspace.selection.ref
+			active = &ref
+		}
+		return map[string]any{"tracks": tracks, "active_item": active}, nil
+	}
+	entry, err := s.document(a.TrackID)
+	if err != nil {
+		return nil, err
 	}
 	switch name {
-	case "summarize_track":
-		return t.summary(), nil
-	case "inspect_track":
+	case "summarize_track", "inspect_track":
+		t, err := entry.document.selectedTrack(a.ItemID)
+		if err != nil {
+			return nil, err
+		}
+		if name == "summarize_track" {
+			return t.summary(), nil
+		}
 		return t.inspect(a.PointIndex, a.Distance)
-	case "render_map":
-		kind := a.Provider
-		if kind == "" {
-			kind = defaultProvider(s.providers["mapbox"].token)
+	case "unload_track":
+		err = s.workspace.removeDocument(entry.id)
+	case "set_item_visibility":
+		if a.Visible == nil {
+			return nil, fmt.Errorf("visible is required")
 		}
-		if kind != "mapbox" && kind != "none" {
-			return nil, fmt.Errorf("unknown provider")
+		if a.ItemID == nil {
+			err = s.workspace.setDocumentVisible(entry.id, *a.Visible)
+		} else {
+			err = s.workspace.setVisible(ItemRef{entry.id, *a.ItemID}, *a.Visible)
 		}
-		return renderResult(ctx, t, a, s.providers[kind])
+	case "select_item", "remove_item":
+		if a.ItemID == nil {
+			return nil, fmt.Errorf("item_id is required")
+		}
+		ref := ItemRef{entry.id, *a.ItemID}
+		if name == "select_item" {
+			err = s.workspace.selectItem(ref)
+		} else {
+			err = s.workspace.removeItem(ref)
+		}
+	default:
+		return nil, fmt.Errorf("unknown tool")
 	}
-	return nil, fmt.Errorf("unknown tool")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"track_id": a.TrackID, "ok": true}, nil
 }
+
 func serveMCP() error {
-	s := &Service{tracks: map[string]*Track{}, providers: map[string]*Provider{"mapbox": newProvider("mapbox"), "none": newProvider("none")}}
+	s := &Service{providers: map[string]*Provider{"mapbox": newProvider("mapbox"), "none": newProvider("none")}}
 	server := mcp.NewServer(&mcp.Implementation{Name: "shoe", Version: "0.1.0"}, nil)
 	var tools []*mcp.Tool
 	if e := json.Unmarshal(shared.Tools, &tools); e != nil {

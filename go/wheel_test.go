@@ -115,7 +115,7 @@ func TestHorizontalWheelDoesNotZoomGoViewer(t *testing.T) {
 		t.Fatal(e)
 	}
 	c := fit(track, 88, 34, 2)
-	m := &viewer{track: track, camera: c}
+	m := &viewer{workspace: testWorkspace(track), camera: c}
 	for _, button := range []tea.MouseButton{tea.MouseWheelLeft, tea.MouseWheelRight} {
 		m.Update(tea.MouseWheelMsg{X: 20, Y: 10, Button: button})
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -23,6 +24,45 @@ type DocumentItem struct {
 type ImportGroup struct {
 	Name   string
 	Parent *ImportGroup
+}
+
+type itemInfo struct {
+	ID            int        `json:"item_id"`
+	Name          string     `json:"name"`
+	Kind          string     `json:"kind"`
+	Groups        []string   `json:"groups"`
+	Bounds        [4]float64 `json:"bounds"`
+	PointCount    int        `json:"point_count"`
+	WaypointCount int        `json:"waypoint_count"`
+	Visible       bool       `json:"visible"`
+}
+
+func (d *Document) itemInfos() []itemInfo {
+	items := make([]itemInfo, 0, len(d.Items))
+	for _, item := range d.Items {
+		groups := []string{}
+		for group := item.Group; group != nil; group = group.Parent {
+			if group.Name != "" {
+				groups = append(groups, group.Name)
+			}
+		}
+		slices.Reverse(groups)
+		t := item.Track
+		items = append(items, itemInfo{item.ID, t.Name, item.Kind, groups, t.Bounds, len(t.Points), len(t.Waypoints), true})
+	}
+	return items
+}
+
+func (d *Document) selectedTrack(id *int) (*Track, error) {
+	if id == nil {
+		return d.track(), nil
+	}
+	for _, item := range d.Items {
+		if item.ID == *id {
+			return item.Track, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown item_id")
 }
 
 func (d *Document) addItem(kind string) *DocumentItem {

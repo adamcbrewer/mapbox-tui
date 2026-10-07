@@ -22,12 +22,19 @@ func run() error {
 	}
 	a := command.Args
 	if command.Name == "open" {
-		return openViewer(command.Path, a)
+		return openViewerFiles(command.Paths, a)
 	}
 	start := time.Now()
 	var t *Track
-	if command.Path != "" {
-		t, e = loadTrack(command.Path)
+	if command.Path != "" && command.Name != "render" {
+		d, err := loadDocument(command.Path)
+		if err != nil {
+			return err
+		}
+		if command.Items {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"filename": d.Filename, "items": d.itemInfos()})
+		}
+		t, e = d.selectedTrack(a.ItemID)
 		if e != nil {
 			return e
 		}
@@ -40,7 +47,7 @@ func run() error {
 	case "inspect":
 		result, e = t.inspect(a.PointIndex, a.Distance)
 	case "render":
-		result, e = renderResult(context.Background(), t, a, newProvider(a.Provider))
+		result, e = renderFiles(context.Background(), command.Paths, a, newProvider(a.Provider))
 		if e == nil && !command.JSON {
 			r := result.(map[string]any)
 			fmt.Println(r["text"])

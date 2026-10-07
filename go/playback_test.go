@@ -85,7 +85,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 		t.Fatal(e)
 	}
 	now := time.Now()
-	m := &viewer{track: track, playback: newPlayback(track), selected: 0, width: 120, height: 40, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "none"}, lastTick: now, following: true}
+	m := &viewer{workspace: testWorkspace(track), width: 120, height: 40, camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "none"}, lastTick: now, following: true}
 	m.initUI()
 	m.Update(tea.KeyPressMsg{Code: 'e'})
 	if m.profileHeight != 7 || m.camera.Height != 27 {
@@ -94,7 +94,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 	m.camera.Zoom = 20
 	m.camera.Center = track.Points[0].World
 	m.lastTick = now
-	m.playback.toggle()
+	m.activePlayback().toggle()
 	m.advancePlayback(now.Add(time.Minute))
 	pos := m.position()
 	if pos.Blend != .5 || m.destination().Center != pos.World {
@@ -104,7 +104,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 	if m.camera.Center != pos.World {
 		t.Fatal("camera did not settle at the playback position")
 	}
-	header, _, _ := m.profile.frame(pos)
+	header, _, _ := m.activeProfile().frame(pos)
 	if !strings.Contains(header, "9.0 m") || !strings.Contains(header, "@ ") {
 		t.Fatal("profile cursor missed playback position")
 	}
@@ -121,7 +121,7 @@ func TestStartingAndResumingPlaybackPreservesCameraUntilManualCenter(t *testing.
 	}
 	for _, noAnimation := range []bool{false, true} {
 		for _, start := range []string{"keyboard", "palette"} {
-			m := &viewer{track: track, playback: newPlayback(track), selected: 0, width: 120, height: 40, camera: Camera{project(10, 20), 18, 45, 2, 88, 34}, args: Args{NoAnimation: noAnimation}, lastTick: time.Now()}
+			m := &viewer{workspace: testWorkspace(track), width: 120, height: 40, camera: Camera{project(10, 20), 18, 45, 2, 88, 34}, args: Args{NoAnimation: noAnimation}, lastTick: time.Now()}
 			m.initUI()
 			before := m.camera
 			if start == "palette" {
@@ -129,7 +129,7 @@ func TestStartingAndResumingPlaybackPreservesCameraUntilManualCenter(t *testing.
 			} else {
 				m.Update(tea.KeyPressMsg{Code: ' '})
 			}
-			if !m.playback.Playing || m.camera != before || m.destination() != before || m.motion.Active || m.following {
+			if !m.activePlayback().Playing || m.camera != before || m.destination() != before || m.motion.Active || m.following {
 				t.Fatal("starting playback moved the camera or enabled follow", start, noAnimation)
 			}
 			m.advancePlayback(m.lastTick.Add(time.Minute))
@@ -138,16 +138,16 @@ func TestStartingAndResumingPlaybackPreservesCameraUntilManualCenter(t *testing.
 			}
 			m.Update(tea.KeyPressMsg{Code: ' '})
 			m.Update(tea.KeyPressMsg{Code: ' '})
-			if !m.playback.Playing || m.camera != before || m.motion.Active || m.following {
+			if !m.activePlayback().Playing || m.camera != before || m.motion.Active || m.following {
 				t.Fatal("resuming playback moved the camera or enabled follow")
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
 			m.Update(tea.KeyPressMsg{Code: ' '})
-			if !m.playback.Playing || m.selected != 0 || m.camera != before || m.motion.Active || m.following {
+			if !m.activePlayback().Playing || m.selectedPoint() != 0 || m.camera != before || m.motion.Active || m.following {
 				t.Fatal("restarting finished playback moved the camera or enabled follow")
 			}
 			m.Update(tea.KeyPressMsg{Code: 'c'})
-			if !m.following || m.destination().Center != m.position().World || !m.playback.Playing {
+			if !m.following || m.destination().Center != m.position().World || !m.activePlayback().Playing {
 				t.Fatal("manual center did not explicitly center and follow the current point")
 			}
 		}

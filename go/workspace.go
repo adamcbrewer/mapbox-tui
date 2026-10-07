@@ -8,8 +8,8 @@ import (
 )
 
 type ItemRef struct {
-	DocumentID int
-	ItemID     int
+	DocumentID int `json:"document_id"`
+	ItemID     int `json:"item_id"`
 }
 
 type WorkspaceItem struct {
@@ -43,10 +43,8 @@ func (w *Workspace) open(path string) (ItemRef, error) {
 	if err != nil {
 		return ItemRef{}, err
 	}
-	for _, entry := range w.documents {
-		if entry.document.Path == path {
-			return w.activateDocument(entry), nil
-		}
+	if entry := w.documentAtPath(path); entry != nil {
+		return w.activateDocument(entry), nil
 	}
 	d, err := loadDocument(path)
 	if err != nil {
@@ -57,15 +55,22 @@ func (w *Workspace) open(path string) (ItemRef, error) {
 
 // addDocument takes ownership of a successfully prepared import.
 func (w *Workspace) addDocument(d *Document) ItemRef {
-	for _, entry := range w.documents {
-		if entry.document.Path == d.Path {
-			return w.activateDocument(entry)
-		}
+	if entry := w.documentAtPath(d.Path); entry != nil {
+		return w.activateDocument(entry)
 	}
 	w.nextID++
 	entry := &workspaceDocument{id: w.nextID, document: d}
 	w.documents = append(w.documents, entry)
 	return w.activateDocument(entry)
+}
+
+func (w *Workspace) documentAtPath(path string) *workspaceDocument {
+	for _, entry := range w.documents {
+		if entry.document.Path == path {
+			return entry
+		}
+	}
+	return nil
 }
 
 func (w *Workspace) activateDocument(entry *workspaceDocument) ItemRef {
@@ -153,6 +158,18 @@ func (w *Workspace) setVisible(ref ItemRef, visible bool) error {
 	return nil
 }
 
+func (w *Workspace) setDocumentVisible(id int, visible bool) error {
+	for _, entry := range w.documents {
+		if entry.id == id {
+			for _, item := range entry.document.Items {
+				_ = w.setVisible(ItemRef{id, item.ID}, visible)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown workspace document %d", id)
+}
+
 func (w *Workspace) removeItem(ref ItemRef) error {
 	entry, i, err := w.lookup(ref)
 	if err != nil {
@@ -206,6 +223,24 @@ func (w *Workspace) seek(index int) error {
 	return nil
 }
 
+func (w *Workspace) selectDocumentPoint(documentID, index int) error {
+	if index >= 0 {
+		for _, item := range w.items() {
+			if item.Ref.DocumentID != documentID {
+				continue
+			}
+			if index < len(item.Item.Track.Points) {
+				if err := w.selectItem(item.Ref); err != nil {
+					return err
+				}
+				return w.seek(index)
+			}
+			index -= len(item.Item.Track.Points)
+		}
+	}
+	return fmt.Errorf("point_index outside track")
+}
+
 func (w *Workspace) profile(width, height int) *elevationProfile {
 	if w.selection == nil || len(w.selection.track.Points) == 0 || width <= 0 || height <= 0 {
 		return nil
@@ -243,6 +278,35 @@ func (w *Workspace) fitVisible(width, height int, aspect float64) Camera {
 		return fit(nil, width, height, aspect)
 	}
 	return fitBounds(bounds, width, height, aspect)
+}
+
+func (w *Workspace) sceneItems() []sceneItem {
+	var items []sceneItem
+	for _, item := range w.items() {
+		if item.Visible {
+			items = append(items, sceneItem{item.Ref, item.Item.Track, w.selection != nil && w.selection.ref == item.Ref})
+		}
+	}
+	return items
+}
+
+func (w *Workspace) pick(c Camera, point XY) (ItemRef, int) {
+	var ref ItemRef
+	index, best, active := -1, 6.0, false
+	for _, item := range w.sceneItems() {
+		i, distance := pickDistance(item.Track, c, point)
+		for _, waypoint := range item.Track.Waypoints {
+			p := c.screen(waypoint.World)
+			d := math.Hypot(p.X-point.X, (p.Y-point.Y)*c.Aspect/2)
+			if d < distance {
+				i, distance = -1, d
+			}
+		}
+		if distance < best || (ref != (ItemRef{}) && distance == best && (item.Active || !active)) {
+			ref, index, best, active = item.Ref, i, distance, item.Active
+		}
+	}
+	return ref, index
 }
 
 func extendBounds(bounds *[4]float64, other [4]float64) {

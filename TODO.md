@@ -4,8 +4,8 @@
 - [x] FIT activity and course import
 - [x] TCX activity and course import
 - [x] KML (Google Maps/Earth XML) geometry and track import
-- [ ] multiple routes and activities
-- [ ] loaded-files / routes UI: show filenames, select items, hide/show and remove (follow-up to workspace support)
+- [x] multiple routes and activities
+- [x] loaded-files / routes UI: show filenames, select items, hide/show and remove
 - [] plot a route / create directions
 - [] toggle traffic
 - [] theme switching

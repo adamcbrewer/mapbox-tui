@@ -125,18 +125,18 @@ func decodeTile(data []byte, t Tile) ([]Feature, error) {
 			continue
 		}
 		for _, f := range l.Features {
-			layer := 0
+			role := roleNone
 			label := ""
 			switch l.Name {
 			case "water":
-				layer = 1
+				role = roleWater
 			case "road":
-				layer = 2
+				role = roleRoad
 				if cl, _ := f.Properties["class"].(string); cl == "motorway" || cl == "trunk" || cl == "primary" || cl == "secondary" {
-					layer = 3
+					role = roleMajorRoad
 				}
 			case "place_label":
-				layer = 4
+				role = rolePlace
 				label, _ = f.Properties["name_en"].(string)
 				if label == "" {
 					label, _ = f.Properties["name"].(string)
@@ -151,7 +151,7 @@ func decodeTile(data []byte, t Tile) ([]Feature, error) {
 				}
 				return p
 			}
-			add := func(parts [][]XY, polygon bool) { out = append(out, Feature{parts, layer, polygon, clean(label)}) }
+			add := func(parts [][]XY, polygon bool) { out = append(out, Feature{parts, role, polygon, clean(label)}) }
 			switch g := f.Geometry.(type) {
 			case orb.Point:
 				add([][]XY{convert(orb.LineString{g})}, false)
