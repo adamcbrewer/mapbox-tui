@@ -1,27 +1,52 @@
 package main
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"strconv"
+	"strings"
+)
+
+type tcxFloat struct{ value *float64 }
+
+func (f *tcxFloat) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var text string
+	if err := d.DecodeElement(&text, &start); err != nil {
+		return err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		f.value = nil
+		return nil
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return err
+	}
+	f.value = &value
+	return nil
+}
 
 type tcxPoint struct {
 	Name      string   `xml:"Name"`
 	Time      string   `xml:"Time"`
-	Elevation *float64 `xml:"AltitudeMeters"`
+	Elevation tcxFloat `xml:"AltitudeMeters"`
 	Position  *struct {
-		Lat *float64 `xml:"LatitudeDegrees"`
-		Lon *float64 `xml:"LongitudeDegrees"`
+		Lat tcxFloat `xml:"LatitudeDegrees"`
+		Lon tcxFloat `xml:"LongitudeDegrees"`
 	} `xml:"Position"`
 }
 
 func (p tcxPoint) point() (Point, bool) {
-	if p.Position == nil || p.Position.Lat == nil || p.Position.Lon == nil {
+	if p.Position == nil || p.Position.Lat.value == nil || p.Position.Lon.value == nil {
 		return Point{}, false
 	}
-	return Point{Lon: *p.Position.Lon, Lat: *p.Position.Lat, Elevation: p.Elevation, Time: optionalTime(p.Time), Name: p.Name}, true
+	return Point{Lon: *p.Position.Lon.value, Lat: *p.Position.Lat.value, Elevation: p.Elevation.value, Time: optionalTime(p.Time), Name: p.Name}, true
 }
 
 func parseTCX(d *xml.Decoder) (*Track, error) {
 	t := &Track{Name: "Imported TCX"}
-	err := xmlTokens(d, "TrainingCenterDatabase", func(v xml.StartElement, parent string) (bool, error) {
+	err := xmlTokens(d, "TrainingCenterDatabase", func(v xml.StartElement, parents []string) (bool, error) {
+		parent := parents[len(parents)-1]
 		switch {
 		case (v.Name.Local == "Name" && parent == "Course") || (v.Name.Local == "Id" && parent == "Activity"):
 			var name string

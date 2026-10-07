@@ -24,6 +24,11 @@ func loadTrack(path string) (*Track, error) {
 	if (n == len(header) && string(header[8:]) == ".FIT") || strings.EqualFold(filepath.Ext(path), ".fit") {
 		t, err = parseFIT(f)
 	} else {
+		if n >= 3 && string(header[:3]) == "\xef\xbb\xbf" {
+			if _, err := f.Seek(3, io.SeekStart); err != nil {
+				return nil, err
+			}
+		}
 		d := xml.NewDecoder(f)
 		for {
 			var tok xml.Token
@@ -131,7 +136,7 @@ func optionalTime(s string) *string {
 	return &s
 }
 
-func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, string) (bool, error)) error {
+func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, []string) (bool, error)) error {
 	stack := []string{root}
 	for {
 		tok, err := d.Token()
@@ -146,7 +151,7 @@ func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, string)
 			if len(stack) == 0 {
 				return fmt.Errorf("expected one %s root", root)
 			}
-			consumed, err := visit(v, stack[len(stack)-1])
+			consumed, err := visit(v, stack)
 			if err != nil {
 				return err
 			}

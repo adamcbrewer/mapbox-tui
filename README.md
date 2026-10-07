@@ -52,7 +52,7 @@ exports. FIT validates every file's full checksum, including chained files and
 Zwift exports with an omitted optional header checksum. Truncated files and
 checksum mismatches are rejected.
 
-Separate tracks, laps, timer pauses and missing GPS positions remain separate
+Separate tracks, TCX laps, timer pauses and missing GPS positions remain separate
 parts. Distances exclude those gaps. Missing elevation/timestamps stay unavailable;
 geometry without complete timestamps uses the existing estimated-speed playback.
 FIT/TCX imports use GPS geometry, not device-reported distance or sensor metrics.

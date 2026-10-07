@@ -72,21 +72,33 @@ func parseFIT(r io.ReadSeeker) (*Track, error) {
 	t := &Track{Name: "Imported FIT"}
 	// The SDK drops the header's CRC contribution when its optional checksum is zero.
 	// Validate full-file checksums above before using its message decoder.
-	d := decoder.New(r, decoder.WithIgnoreChecksum())
-	for d.Next() {
+	for {
+		var header [12]byte
+		if _, err := io.ReadFull(r, header[:]); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		size := int64(header[0]) + int64(binary.LittleEndian.Uint32(header[4:8])) + 2
+		if _, err := r.Seek(-int64(len(header)), io.SeekCurrent); err != nil {
+			return nil, err
+		}
+		// The SDK can read fields past DataSize; keep it inside this sequence.
+		d := decoder.New(io.LimitReader(r, size), decoder.WithIgnoreChecksum(), decoder.WithNoComponentExpansion())
 		file, err := d.Decode()
 		if err != nil {
 			return nil, err
 		}
 		kind := "track"
 		for _, message := range file.Messages {
-			if message.Num == typedef.MesgNumFileId {
-				typeID := mesgdef.NewFileId(&message).Type
-				if typeID == typedef.FileCourse {
-					kind = "route"
-				} else if typeID != typedef.FileActivity {
-					return nil, fmt.Errorf("unsupported FIT file type %s; expected activity or course", typeID)
-				}
+			if message.Num != typedef.MesgNumFileId {
+				continue
+			}
+			typeID := mesgdef.NewFileId(&message).Type
+			if typeID == typedef.FileCourse {
+				kind = "route"
+			} else if typeID != typedef.FileActivity {
+				return nil, fmt.Errorf("unsupported FIT file type %s; expected activity or course", typeID)
 			}
 		}
 		segment := -1
@@ -118,11 +130,12 @@ func parseFIT(r io.ReadSeeker) (*Track, error) {
 				}
 			case typedef.MesgNumEvent:
 				e := mesgdef.NewEvent(&message)
-				if e.Event == typedef.EventTimer {
-					switch e.EventType {
-					case typedef.EventTypeStart, typedef.EventTypeStop, typedef.EventTypeStopAll, typedef.EventTypeStopDisable, typedef.EventTypeStopDisableAll:
-						segment = -1
-					}
+				if e.Event != typedef.EventTimer {
+					continue
+				}
+				switch e.EventType {
+				case typedef.EventTypeStart, typedef.EventTypeStop, typedef.EventTypeStopAll, typedef.EventTypeStopDisable, typedef.EventTypeStopDisableAll:
+					segment = -1
 				}
 			case typedef.MesgNumSession:
 				segment = -1

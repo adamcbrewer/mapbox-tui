@@ -39,14 +39,23 @@ type kmlGeometry struct {
 
 func parseKML(d *xml.Decoder) (*Track, error) {
 	t := &Track{Name: "Imported KML"}
-	err := xmlTokens(d, "kml", func(v xml.StartElement, parent string) (bool, error) {
-		if v.Name.Local == "name" && (parent == "Document" || parent == "kml") {
+	documentNamed, placemarkNamed := false, false
+	folderNameDepth := 0
+	err := xmlTokens(d, "kml", func(v xml.StartElement, parents []string) (bool, error) {
+		parent := parents[len(parents)-1]
+		if v.Name.Local == "name" && (parent == "Document" || parent == "kml" || parent == "Folder") {
 			var name string
 			if err := d.DecodeElement(&name, &v); err != nil {
 				return true, err
 			}
 			if name != "" {
-				t.Name = name
+				if parent != "Folder" {
+					t.Name = name
+					documentNamed = true
+				} else if !documentNamed && (folderNameDepth == 0 || len(parents) < folderNameDepth) {
+					t.Name = name
+					folderNameDepth = len(parents)
+				}
 			}
 			return true, nil
 		}
@@ -60,8 +69,9 @@ func parseKML(d *xml.Decoder) (*Track, error) {
 		if err := d.DecodeElement(&placemark, &v); err != nil {
 			return true, err
 		}
-		if t.Name == "Imported KML" && placemark.Name != "" {
+		if !documentNamed && folderNameDepth == 0 && !placemarkNamed && placemark.Name != "" {
 			t.Name = placemark.Name
+			placemarkNamed = true
 		}
 		return true, placemark.kmlGeometry.appendTo(t, placemark.Name)
 	})
