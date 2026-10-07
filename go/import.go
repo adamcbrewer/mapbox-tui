@@ -12,6 +12,14 @@ import (
 )
 
 func loadTrack(path string) (*Track, error) {
+	d, err := loadDocument(path)
+	if err != nil {
+		return nil, err
+	}
+	return d.track(), nil
+}
+
+func loadDocument(path string) (*Document, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open track file: %w", err)
@@ -20,9 +28,9 @@ func loadTrack(path string) (*Track, error) {
 	var header [12]byte
 	n, _ := f.ReadAt(header[:], 0)
 	format := "FIT"
-	var t *Track
+	var document *Document
 	if (n == len(header) && string(header[8:]) == ".FIT") || strings.EqualFold(filepath.Ext(path), ".fit") {
-		t, err = parseFIT(f)
+		document, err = parseFIT(f)
 	} else {
 		if n >= 3 && string(header[:3]) == "\xef\xbb\xbf" {
 			if _, err := f.Seek(3, io.SeekStart); err != nil {
@@ -46,13 +54,13 @@ func loadTrack(path string) (*Track, error) {
 			switch root.Name.Local {
 			case "gpx":
 				format = "GPX"
-				t, err = parseGPX(d)
+				document, err = parseGPX(d)
 			case "TrainingCenterDatabase":
 				format = "TCX"
-				t, err = parseTCX(d)
+				document, err = parseTCX(d)
 			case "kml":
 				format = "KML"
-				t, err = parseKML(d)
+				document, err = parseKML(d)
 			default:
 				return nil, fmt.Errorf("unsupported track XML root %q; expected GPX, TCX or KML", root.Name.Local)
 			}
@@ -60,12 +68,18 @@ func loadTrack(path string) (*Track, error) {
 		}
 	}
 	if err == nil {
-		err = prepareTrack(t)
+		err = document.prepare()
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", format, err)
 	}
-	return t, nil
+	document.Path, err = filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	document.Filename = filepath.Base(path)
+	document.Format = format
+	return document, nil
 }
 
 func prepareTrack(t *Track) error {
@@ -73,6 +87,7 @@ func prepareTrack(t *Track) error {
 		return fmt.Errorf("contains no supported geometry")
 	}
 	t.Name = clean(t.Name)
+	t.Distance = 0
 	t.Bounds = [4]float64{180, 90, -180, -90}
 	for _, points := range [][]Point{t.Points, t.Waypoints} {
 		for i := range points {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -43,21 +44,37 @@ func (p tcxPoint) point() (Point, bool) {
 	return Point{Lon: *p.Position.Lon.value, Lat: *p.Position.Lat.value, Elevation: p.Elevation.value, Time: optionalTime(p.Time), Name: p.Name}, true
 }
 
-func parseTCX(d *xml.Decoder) (*Track, error) {
-	t := &Track{Name: "Imported TCX"}
+func parseTCX(d *xml.Decoder) (*Document, error) {
+	document := &Document{Name: "Imported TCX"}
+	var t *Track
+	depth := 0
 	err := xmlTokens(d, "TrainingCenterDatabase", func(v xml.StartElement, parents []string) (bool, error) {
+		if len(parents) < depth {
+			t = nil
+		}
 		parent := parents[len(parents)-1]
 		switch {
+		case v.Name.Local == "Activity" && parent == "Activities", v.Name.Local == "Course" && parent == "Courses":
+			kind := "activity"
+			if v.Name.Local == "Course" {
+				kind = "route"
+			}
+			t = document.addItem(kind).Track
+			depth = len(parents) + 1
 		case (v.Name.Local == "Name" && parent == "Course") || (v.Name.Local == "Id" && parent == "Activity"):
 			var name string
 			if err := d.DecodeElement(&name, &v); err != nil {
 				return true, err
 			}
-			if name != "" {
+			if name != "" && t != nil {
 				t.Name = name
+				document.Name = name
 			}
 			return true, nil
 		case v.Name.Local == "Track" && (parent == "Lap" || parent == "Course"):
+			if t == nil {
+				return false, fmt.Errorf("track outside TCX activity or course")
+			}
 			var track struct {
 				Points []tcxPoint `xml:"Trackpoint"`
 			}
@@ -79,6 +96,9 @@ func parseTCX(d *xml.Decoder) (*Track, error) {
 			}
 			return true, nil
 		case v.Name.Local == "CoursePoint" && parent == "Course":
+			if t == nil {
+				return false, fmt.Errorf("point outside TCX course")
+			}
 			var raw tcxPoint
 			if err := d.DecodeElement(&raw, &v); err != nil {
 				return true, err
@@ -90,5 +110,5 @@ func parseTCX(d *xml.Decoder) (*Track, error) {
 		}
 		return false, nil
 	})
-	return t, err
+	return document, err
 }

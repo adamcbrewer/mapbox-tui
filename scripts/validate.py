@@ -214,6 +214,16 @@ def validate_imports(binary):
                 path.write_bytes(invalid)
                 cli(binary, "summary", path, success=False)
                 assert m.call("load_track", {"path": str(path)})["result"]["isError"]
+            points = tcx.split(b"<Track>", 1)[1].split(b"</Track>", 1)[0]
+            course = b"<TrainingCenterDatabase><Courses><Course><Track>" + points + b"<Trackpoint/>" + points + b"</Track></Course></Courses></TrainingCenterDatabase>"
+            path = Path(folder) / "course-with-gap.tcx"
+            path.write_bytes(course)
+            summary = cli(binary, "summary", path)
+            assert summary["route_count"] == 1 and summary["point_count"] == 4
+            assert summary["distance_m"] > 0
+            loaded = m.call("load_track", {"path": str(path)})["result"]["structuredContent"]
+            equivalent(summary, loaded["summary"])
+            equivalent(summary, m.call("summarize_track", {"track_id": loaded["track_id"]})["result"]["structuredContent"])
     finally:
         m.close()
 

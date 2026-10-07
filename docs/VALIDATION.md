@@ -22,6 +22,12 @@ Import regressions cover Garmin KML coordinate spacing and FIT header checksum
 variants, including Zwift-style omitted header checksums. Edge cases include
 malformed coordinates, corrupt checksums, truncation, and mixed-header chained files.
 
+Document tests cover separate source filenames and item names, GPX track/route
+ownership, TCX activities/courses, FIT chained files and session boundaries, and
+KML placemarks with nested or late-named folders. They check document-local item
+identity, independent distances and repeatable geometry recalculation. CLI/MCP
+checks also verify that one TCX course with a GPS gap counts as one route.
+
 Optional checks, after building:
 
 ```sh

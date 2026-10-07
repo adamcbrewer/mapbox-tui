@@ -29,12 +29,13 @@ type Segment struct {
 	Start, End int
 }
 type Track struct {
-	Name      string
-	Points    []Point
-	Segments  []Segment
-	Waypoints []Point
-	Bounds    [4]float64
-	Distance  float64
+	Name       string
+	Points     []Point
+	Segments   []Segment
+	Waypoints  []Point
+	Bounds     [4]float64
+	Distance   float64
+	RouteCount int
 }
 
 func clean(s string) string {
@@ -58,8 +59,10 @@ func haversine(a, b Point) float64 {
 	return 12742000 * math.Asin(math.Sqrt(math.Min(1, h)))
 }
 
-func parseGPX(d *xml.Decoder) (*Track, error) {
-	t := &Track{Name: "Imported GPX"}
+func parseGPX(d *xml.Decoder) (*Document, error) {
+	document := &Document{Name: "Imported GPX"}
+	documentNamed := false
+	var t *Track
 	stack := []string{"gpx"}
 	seg := -1
 	var p *Point
@@ -81,7 +84,20 @@ func parseGPX(d *xml.Decoder) (*Track, error) {
 			}
 			stack = append(stack, tag)
 			text = ""
+			if tag == "trk" || tag == "rte" {
+				if t != nil {
+					return nil, fmt.Errorf("nested GPX tracks or routes are not supported")
+				}
+				kind := "track"
+				if tag == "rte" {
+					kind = "route"
+				}
+				t = document.addItem(kind).Track
+			}
 			if tag == "trkseg" || tag == "rte" {
+				if t == nil {
+					return nil, fmt.Errorf("segment outside track or route")
+				}
 				seg = len(t.Segments)
 				kind := "track"
 				if tag == "rte" {
@@ -136,9 +152,11 @@ func parseGPX(d *xml.Decoder) (*Track, error) {
 			if tag == pointTag && p != nil {
 				if tag == "wpt" {
 					p.Segment = -1
-					t.Waypoints = append(t.Waypoints, *p)
+					waypoint := document.addItem("waypoint").Track
+					waypoint.Name = p.Name
+					waypoint.Waypoints = []Point{*p}
 				} else {
-					if seg < 0 {
+					if t == nil || seg < 0 {
 						return nil, fmt.Errorf("point outside segment")
 					}
 					s := &t.Segments[seg]
@@ -148,26 +166,35 @@ func parseGPX(d *xml.Decoder) (*Track, error) {
 				p = nil
 				pointTag = ""
 			}
-			if tag == "name" && (parent == "metadata" || parent == "trk") && val != "" {
+			if tag == "name" && val != "" {
+				if parent == "metadata" {
+					document.Name = clean(val)
+					documentNamed = true
+				} else if parent == "trk" && !documentNamed {
+					document.Name = clean(val)
+				}
+			}
+			if tag == "name" && (parent == "trk" || parent == "rte") && t != nil {
 				t.Name = clean(val)
 			}
 			if tag == "trkseg" || tag == "rte" {
 				seg = -1
 			}
+			if tag == "trk" || tag == "rte" {
+				t = nil
+			}
 			stack = stack[:len(stack)-1]
 			text = ""
 		}
 	}
-	return t, nil
+	return document, nil
 }
 func (t *Track) summary() map[string]any {
-	elev, times, routes, segments := 0, 0, 0, 0
+	elev, times, segments := 0, 0, 0
 	var lo, hi *float64
 	var first, last *string
 	for _, s := range t.Segments {
-		if s.Kind == "route" {
-			routes++
-		} else {
+		if s.Kind != "route" {
 			segments++
 		}
 	}
@@ -195,7 +222,7 @@ func (t *Track) summary() map[string]any {
 	if waypoints == nil {
 		waypoints = []Point{}
 	}
-	return map[string]any{"name": t.Name, "bounds": t.Bounds, "distance_m": t.Distance, "point_count": len(t.Points), "segment_count": segments, "route_count": routes, "waypoint_count": len(t.Waypoints), "waypoints": waypoints, "elevation_point_count": elev, "time_point_count": times, "elevation_min_m": lo, "elevation_max_m": hi, "start_time": first, "end_time": last}
+	return map[string]any{"name": t.Name, "bounds": t.Bounds, "distance_m": t.Distance, "point_count": len(t.Points), "segment_count": segments, "route_count": t.RouteCount, "waypoint_count": len(t.Waypoints), "waypoints": waypoints, "elevation_point_count": elev, "time_point_count": times, "elevation_min_m": lo, "elevation_max_m": hi, "start_time": first, "end_time": last}
 }
 func (t *Track) inspect(index *int, distance *float64) (map[string]any, error) {
 	if (index == nil) == (distance == nil) {

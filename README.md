@@ -211,6 +211,12 @@ Indices are zero-based, distances are metres, and bounds are
 `[west, south, east, north]`. Distance inspection returns the nearest recorded
 point, not an interpolated measurement.
 
+`route_count` counts distinct route-bearing items: GPX routes, TCX/FIT courses,
+and KML placemarks containing route geometry. A GPS gap or multiple disconnected
+parts within one item do not add routes. `segment_count` counts non-route parts;
+point indices and distances still refer to the combined file. GPX metadata names
+take precedence over individual track names for the file title.
+
 Camera options for the viewer, rendering and benchmarks: `--center-lon` and
 `--center-lat` together, `--zoom` (0-20), `--bearing` (-360 to 360),
 `--cell-aspect` (1-3, default 2), and `--ascii`.

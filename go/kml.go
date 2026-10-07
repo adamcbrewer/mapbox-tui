@@ -37,29 +37,40 @@ type kmlGeometry struct {
 	MultiTrack []kmlGeometry `xml:"http://www.google.com/kml/ext/2.2 MultiTrack"`
 }
 
-func parseKML(d *xml.Decoder) (*Track, error) {
-	t := &Track{Name: "Imported KML"}
+func parseKML(d *xml.Decoder) (*Document, error) {
+	document := &Document{Name: "Imported KML"}
 	documentNamed, placemarkNamed := false, false
 	folderNameDepth := 0
+	groups := []*ImportGroup{nil}
 	err := xmlTokens(d, "kml", func(v xml.StartElement, parents []string) (bool, error) {
+		groups = groups[:len(parents)]
+		group := groups[len(groups)-1]
 		parent := parents[len(parents)-1]
+		if v.Name.Local == "Document" || v.Name.Local == "Folder" {
+			groups = append(groups, &ImportGroup{Parent: group})
+			return false, nil
+		}
 		if v.Name.Local == "name" && (parent == "Document" || parent == "kml" || parent == "Folder") {
 			var name string
 			if err := d.DecodeElement(&name, &v); err != nil {
 				return true, err
 			}
 			if name != "" {
+				if group != nil {
+					group.Name = clean(name)
+				}
 				if parent != "Folder" {
-					t.Name = name
+					document.Name = name
 					documentNamed = true
 				} else if !documentNamed && (folderNameDepth == 0 || len(parents) < folderNameDepth) {
-					t.Name = name
+					document.Name = name
 					folderNameDepth = len(parents)
 				}
 			}
 			return true, nil
 		}
 		if v.Name.Local != "Placemark" {
+			groups = append(groups, group)
 			return false, nil
 		}
 		var placemark struct {
@@ -70,12 +81,15 @@ func parseKML(d *xml.Decoder) (*Track, error) {
 			return true, err
 		}
 		if !documentNamed && folderNameDepth == 0 && !placemarkNamed && placemark.Name != "" {
-			t.Name = placemark.Name
+			document.Name = placemark.Name
 			placemarkNamed = true
 		}
-		return true, placemark.kmlGeometry.appendTo(t, placemark.Name)
+		item := document.addItem("placemark")
+		item.Group = group
+		item.Track.Name = placemark.Name
+		return true, placemark.kmlGeometry.appendTo(item.Track, placemark.Name)
 	})
-	return t, err
+	return document, err
 }
 
 func kmlPoint(text string, gx bool, name string) (Point, error) {

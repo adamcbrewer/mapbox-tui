@@ -62,14 +62,14 @@ func validateFITCRC(r io.Reader) error {
 	}
 }
 
-func parseFIT(r io.ReadSeeker) (*Track, error) {
+func parseFIT(r io.ReadSeeker) (*Document, error) {
 	if err := validateFITCRC(r); err != nil {
 		return nil, err
 	}
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	t := &Track{Name: "Imported FIT"}
+	document := &Document{Name: "Imported FIT"}
 	// The SDK drops the header's CRC contribution when its optional checksum is zero.
 	// Validate full-file checksums above before using its message decoder.
 	for {
@@ -101,12 +101,18 @@ func parseFIT(r io.ReadSeeker) (*Track, error) {
 				return nil, fmt.Errorf("unsupported FIT file type %s; expected activity or course", typeID)
 			}
 		}
+		itemKind := "activity"
+		if kind == "route" {
+			itemKind = "route"
+		}
+		t := document.addItem(itemKind).Track
 		segment := -1
 		for _, message := range file.Messages {
 			switch message.Num {
 			case typedef.MesgNumCourse:
 				if name := mesgdef.NewCourse(&message).Name; name != "" {
 					t.Name = name
+					document.Name = name
 				}
 			case typedef.MesgNumRecord:
 				r := mesgdef.NewRecord(&message)
@@ -142,5 +148,5 @@ func parseFIT(r io.ReadSeeker) (*Track, error) {
 			}
 		}
 	}
-	return t, nil
+	return document, nil
 }
