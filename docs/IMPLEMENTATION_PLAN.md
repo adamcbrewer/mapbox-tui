@@ -5,17 +5,22 @@ workspace ownership, then build the remaining TODO features on those foundations
 
 ## Progress
 
-The first slice is complete: importers now produce documents containing named,
+Import identity is complete: importers now produce documents containing named,
 independently prepared items. Source paths and filenames are retained separately;
 item IDs are stable within their owning document. FIT sessions remain parts of an
 activity, chained FIT sequences are separate items, and KML container ancestry is
 retained even when folder names occur after their placemarks.
 
+Workspace lifecycle is also complete at the model level: add/reopen, selection,
+visibility, item/file removal, clearing, active playback/profile ownership and
+visible bounds. Document IDs are not reused after removal or clearing, so old
+item references cannot address later imports.
+
 Existing single-file consumers use a combined snapshot during the migration.
 Route counts now describe route-bearing items rather than disconnected parts.
-Build, Go tests, vet, CLI/MCP validation and offline terminal interaction checks
-passed. Next: **step 2, workspace lifecycle**; then connect it to the viewer and
-surface loaded files.
+Build, Go tests, vet and CLI/MCP validation pass for both slices; offline terminal
+interaction checks passed for the import slice. Next: **step 3, viewer and tool
+integration**, including the loaded-files controls.
 
 ## Direction
 
@@ -58,26 +63,41 @@ geometry does not change its distance. Existing import validation and gap tests 
 
 ## 2. Introduce workspace lifecycle
 
-- [ ] Add documents without replacing already loaded data; failed imports leave
+- [x] Add documents without replacing already loaded data; failed imports leave
   the workspace unchanged.
-- [ ] Support active-item selection, visibility and removal at the model level.
-- [ ] Support removing an imported document together with its owned items.
-- [ ] Define what happens when the active item is hidden or removed; ensure
+- [x] Support active-item selection, visibility and removal at the model level.
+- [x] Support removing an imported document together with its owned items.
+- [x] Define what happens when the active item is hidden or removed; ensure
   selection, playback and profile cannot refer to removed data.
-- [ ] Keep item data and derived playback/profile state consistent when switching
+- [x] Keep item data and derived playback/profile state consistent when switching
   the active item.
-- [ ] Expose workspace operations for front ends to share rather than reproducing
+- [x] Expose workspace operations for front ends to share rather than reproducing
   lifecycle rules in each front end.
-- [ ] Define duplicate-import behaviour and active/visible bounds handling without
+- [x] Define duplicate-import behaviour and active/visible bounds handling without
   concatenating independent items or silently changing antimeridian limitations.
 
 **Acceptance:** Load two files, select either, change visibility and remove one
 without changing the other. Clearing the workspace leaves a usable map. Cover
 failed imports, duplicate names and removal of the active item through model tests.
 
+The workspace compares normalised absolute paths for duplicate imports, not
+filenames. A new file selects its first item with track points, falling back to a
+waypoint-only item. Selecting a hidden item reveals it; showing an item alone does
+not select it. Switching items starts a fresh paused position and profile, while
+reselecting the active item preserves its position. Removing the last item also
+removes its file entry.
+
+Visible bounds include waypoint-only items and may span more than 180 degrees
+across separate files. They are combined as bounds, never as one continuous path.
+Individual imports retain their existing antimeridian restrictions. Fit uses the
+existing camera zoom limits; very wide extents can reach zoom 0 before fitting
+fully in a narrow terminal.
+
 ## 3. Integrate multiple items with the viewer and tools
 
 - [x] Confirm file-open and camera-fit behaviour before changing interactions.
+- [ ] Resolve the zoom-0 limit for fit-all when widely separated routes cannot fit
+  inside a narrow terminal.
 - [ ] Separate meaningful map roles from drawing priority, colour and ASCII glyphs.
 - [ ] Compose visible items and basemap features through shared scene rules,
   retaining the existing terminal grid implementation.
@@ -192,7 +212,11 @@ all visible presentation consistently.
 - Opening another file adds it to the workspace, makes the newly loaded item
   active and fits the camera to it. Replacing all loaded data is explicit.
 - `f` fits all visible routes, rather than only the active item.
+- Reopening an already loaded path selects the existing import and restores its
+  visibility. It does not read changed file contents again; explicit reload can
+  be added separately.
+- Hiding or removing the active item stops playback and clears active selection
+  and profile. It does not automatically select another item or move the camera.
 
-Later decisions belong to their implementation slice: duplicate imports,
-selection after hide/remove, loaded-files UI layout, plotting versus routing,
-traffic refresh policy and theme scope.
+Later decisions belong to their implementation slice: loaded-files UI layout,
+plotting versus routing, traffic refresh policy and theme scope.

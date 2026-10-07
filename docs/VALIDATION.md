@@ -28,6 +28,12 @@ KML placemarks with nested or late-named folders. They check document-local item
 identity, independent distances and repeatable geometry recalculation. CLI/MCP
 checks also verify that one TCX course with a GPS gap counts as one route.
 
+Workspace model tests cover adding and reopening files, duplicate filenames,
+visibility and removal, failed-import recovery, stale item references, and active
+playback/profile transitions. Bounds checks include distant independent files,
+hidden items and waypoint-only imports. These exercise the model directly; the
+existing terminal checks still cover the single-file viewer during integration.
+
 Optional checks, after building:
 
 ```sh

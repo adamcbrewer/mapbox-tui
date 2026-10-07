@@ -286,7 +286,10 @@ func fit(t *Track, w, h int, aspect float64) Camera {
 	if t == nil {
 		return Camera{Center: project(0, 0), Aspect: aspect, Width: w, Height: h}
 	}
-	a, b := project(t.Bounds[0], t.Bounds[3]), project(t.Bounds[2], t.Bounds[1])
+	return fitBounds(t.Bounds, w, h, aspect)
+}
+func fitBounds(bounds [4]float64, w, h int, aspect float64) Camera {
+	a, b := project(bounds[0], bounds[3]), project(bounds[2], bounds[1])
 	scale := math.Min(float64(w)*1.6/math.Max(b.X-a.X, 1e-7), float64(h)*1.6*aspect/math.Max(b.Y-a.Y, 1e-7))
 	return Camera{XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2}, math.Max(0, math.Min(20, math.Log2(scale/256))), 0, aspect, w, h}
 }
