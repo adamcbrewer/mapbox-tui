@@ -378,7 +378,23 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		}
 	case dialogCredits:
 		title = "Provider credits"
-		content = dialogHeading.Render(attribution(m.provider.Kind)) + "\n\n" + dialogText.Render("https://www.mapbox.com/about/maps/\nhttps://www.openstreetmap.org/copyright\nhttps://apps.mapbox.com/feedback/") + "\n\n" + dialogMuted.Render("Tile requests / hits / errors") + fmt.Sprintf("\n%d / %d / %d", m.stats.Requests, m.stats.Hits, m.stats.Errors)
+		sources := m.sources.view()
+		credits, links := sources.attribution()
+		content = dialogHeading.Render(credits) + "\n\n" + dialogText.Render(strings.Join(links, "\n"))
+		for _, source := range sources.Sources {
+			status := source.Status
+			if status == "" {
+				status = "Ready"
+			}
+			if source.Loading {
+				status = "Loading · " + status
+			}
+			content += "\n\n" + dialogHeading.Render(source.Name) + "\n" + dialogText.Render(status)
+			content += fmt.Sprintf("\n%d / %d / %d requests / hits / errors", source.Stats.Requests, source.Stats.Hits, source.Stats.Errors)
+			if source.RefreshAt != nil {
+				content += "\nRefresh after " + source.RefreshAt.Local().Format("15:04:05")
+			}
+		}
 	case dialogInspect:
 		title = "Selected position"
 		content = dialogText.Render(strings.Join(m.details(), "\n"))

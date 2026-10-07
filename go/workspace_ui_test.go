@@ -22,7 +22,7 @@ func runLoadCommand(m *viewer, cmd tea.Cmd) {
 	case loaded:
 		_, next := m.Update(msg)
 		runLoadCommand(m, next)
-	case sceneMsg:
+	case sourceResult:
 		_, next := m.Update(msg)
 		runLoadCommand(m, next)
 	}

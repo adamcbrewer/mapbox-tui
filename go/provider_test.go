@@ -43,12 +43,12 @@ func TestSyntheticVectorTileDecodeAndWarmCache(t *testing.T) {
 		t.Fatal(e)
 	}
 	c := fit(track, 120, 40, 2)
-	_, cold, status := p.scene(context.Background(), track, c)
-	if status != "" || cold.Requests == 0 {
+	cold, err := p.load(context.Background(), c)
+	if err != nil || cold.Status != "" || cold.Stats.Requests == 0 {
 		t.Fatal("cold tile request failed")
 	}
-	_, warm, status := p.scene(context.Background(), track, c)
-	if status != "" || warm.Requests != cold.Requests || warm.Hits == 0 {
+	warm, err := p.load(context.Background(), c)
+	if err != nil || warm.Status != "" || warm.Stats.Requests != cold.Stats.Requests || warm.Stats.Hits == 0 {
 		t.Fatal("warm scene refetched tiles")
 	}
 }
@@ -63,12 +63,12 @@ func TestRateLimitBackoffDoesNotLeakToken(t *testing.T) {
 		t.Fatal(e)
 	}
 	c := fit(track, 120, 40, 2)
-	_, s, status := p.scene(context.Background(), track, c)
-	if s.Requests != 1 || s.Errors != 1 || strings.Contains(status, p.token) {
+	s, err := p.load(context.Background(), c)
+	if err != nil || s.Stats.Requests != 1 || s.Stats.Errors != 1 || strings.Contains(s.Status, p.token) {
 		t.Fatal("rate limit behavior incorrect")
 	}
-	_, s, _ = p.scene(context.Background(), track, c)
-	if s.Requests != 1 {
+	s, _ = p.load(context.Background(), c)
+	if s.Stats.Requests != 1 {
 		t.Fatal("backoff refetched tiles")
 	}
 }
@@ -84,8 +84,8 @@ func TestTokenFreeGPXRendersOnlyImportedGeometryWithoutWarnings(t *testing.T) {
 		t.Fatal("token-free GPX viewing made a network request")
 		return nil, nil
 	})
-	features, stats, status := p.scene(context.Background(), track, fit(track, 120, 40, 2))
-	if p.Kind != "none" || len(features) != 0 || stats.Requests != 0 || status != "" {
+	snapshot, err := p.load(context.Background(), fit(track, 120, 40, 2))
+	if err != nil || p.Kind != "none" || len(snapshot.Features) != 0 || snapshot.Stats.Requests != 0 || snapshot.Status != "" {
 		t.Fatal("token-free GPX acquired a basemap or unnecessary warning")
 	}
 	result, err := renderResult(context.Background(), track, Args{}, p)

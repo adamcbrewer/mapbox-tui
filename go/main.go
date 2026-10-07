@@ -51,7 +51,7 @@ func run() error {
 		if e == nil && !command.JSON {
 			r := result.(map[string]any)
 			fmt.Println(r["text"])
-			fmt.Println(attribution(a.Provider))
+			fmt.Println(r["scene"].(map[string]any)["attribution"])
 			if status := r["scene"].(map[string]any)["status"].(string); status != "" {
 				fmt.Fprintln(os.Stderr, "warning:", status)
 			}

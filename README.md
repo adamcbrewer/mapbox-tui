@@ -136,6 +136,12 @@ Mapbox requests use your account and may incur charges. Provider errors leave th
 file inspectable. See [provider notes](docs/PROVIDERS.md) for caching and attribution
 requirements, including the unresolved graphical-logo requirement.
 
+The viewer cancels obsolete viewport requests and refreshes stationary views as
+tiles expire. Uncacheable responses use a 60-second refresh interval; provider
+backoff still applies. Press `v` to see source status, refresh deadlines and credit
+links. CLI/MCP renders remain one-shot requests and expose this information in
+`scene.sources`; they do not run background refresh loops.
+
 Credentials, personal GPX/FIT/TCX/KML files, binaries and generated reports are
 ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are tracked.
 

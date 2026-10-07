@@ -3,7 +3,7 @@
 The viewer supports two providers:
 
 - `mapbox`: Mapbox Streets v8 vector tiles, using your own access token.
-- `none`: imported GPX geometry on an empty canvas; no authentication or network
+- `none`: imported file geometry on an empty canvas; no authentication or network
   requests are needed.
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox when a token is configured,
@@ -35,10 +35,31 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 - Response cache headers determine freshness, capped at 12 hours; `Age` is subtracted.
 - `no-store` and `no-cache` responses aren't retained for reuse.
 - There are no persistent tile files, offline-region downloads or bundled Mapbox tiles.
-- Camera changes are debounced; one tile batch runs at a time with sequential requests.
+- Each source owns its request state, usable snapshot and refresh deadline. A slow
+  or failed source does not block other sources or imported geometry. Mapbox
+  Streets is currently the only external source; traffic is not implemented.
+- Camera changes cancel obsolete work and are debounced for 100 ms. Continuously
+  moving playback can request an update every 250 ms without waiting for the
+  camera to settle. Late results are rejected by source generation and viewport,
+  including after source replacement or disabling.
+- One tile batch per provider runs at a time, with sequential requests. Waiting
+  for a batch is cancellable; network I/O does not hold the cache/statistics mutex.
+  Cancellation itself does not increment provider errors or start backoff.
 - Failures pause requests for ten seconds; HTTP 429 pauses for at least 60 seconds
-  and honours integer `Retry-After` values.
-- A stationary view doesn't periodically refresh. Pan/zoom can trigger another batch.
+  and honours integer `Retry-After` values. Invalid or oversized tile bodies also
+  use the ten-second pause. Provider diagnostics exclude response bodies and URLs.
+- The viewer refreshes a stationary view when the earliest displayed tile expires,
+  subject to provider backoff. Responses without reusable freshness, including
+  `no-store` and `no-cache`, schedule another fetch after 60 seconds. They are still
+  never reused from the tile cache for a new request.
+- Refresh scheduling has a one-second minimum delay to avoid a tight loop when
+  data expires during a batch. Automatic refresh can make Mapbox requests while
+  the camera is still and may incur the same account charges as navigation.
+- Missing credentials do not cause periodic retries. Credentials are read at
+  startup; restart with the configured token to enable requests.
+- CLI/MCP renders fetch one snapshot per call; they do not start background
+  refresh loops. Their `scene.sources` metadata includes each source's status,
+  tile statistics and optional `refresh_at` deadline.
 - Imported geometry remains usable when the provider fails.
 
 ## Attribution
@@ -46,7 +67,10 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 [Mapbox's attribution requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
 include a graphical logo and text credits for maps using its data. The current
 terminal renderer displays text-only `© Mapbox`, `© OpenStreetMap` and an Improve
-this map entry. Press `v` for links; CLI/MCP render results include attribution.
+this map entry. Credits and links are combined from enabled source snapshots,
+with duplicate entries removed. `none` displays no Mapbox attribution or links.
+Press `v` for source status, refresh deadlines and credit links; CLI/MCP render
+results include the same attribution information.
 
 The official graphical logo isn't implemented, and a terminal-specific exception
 hasn't been verified. The text credits alone don't fulfil that published requirement.

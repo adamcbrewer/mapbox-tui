@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"time"
 
 	"github.com/charmbracelet/harmonica"
 )
@@ -52,7 +51,6 @@ func (m *viewer) moveCamera(target Camera) {
 		m.motion.Active = true
 	}
 	m.dirty = true
-	m.changed = time.Now()
 }
 
 func (m *viewer) panCamera(dx, dy float64) {

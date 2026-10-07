@@ -3,6 +3,24 @@
 Implement in small, independently verified steps. Start with route identity and
 workspace ownership, then build the remaining TODO features on those foundations.
 
+## New-thread handover
+
+- Continue on `feat/map-workspace`, tracking `origin/feat/map-workspace`.
+- Steps 1-4 are complete. Resume at **step 5** after confirming whether themes
+  mean terminal recolouring, basemap styles/tilesets, or both. Terminal recolouring
+  is the recommended first scope, but this choice has not been confirmed.
+- Theme entry points: `go/ui.go` owns global styles and initialises widgets;
+  `go/tui.go` has inline border/progress/background colours; `go/render.go` has
+  `mapStyles`, where drawing priority, colour and ASCII symbols are separate.
+- The [confirmed interaction decisions](#confirmed-interaction-decisions) remain
+  the baseline. The remaining feature decisions are listed under steps 5 and 6.
+- [Validation](VALIDATION.md) records check commands. Go runs through
+  `mise exec go@1.27.1 -- ...` in this environment. Current source-lifecycle checks
+  use fake providers; live Mapbox refresh has not been exercised for this slice.
+- [Provider notes](PROVIDERS.md) contain refresh/cache policy and the existing
+  unresolved graphical-attribution limitation. Terminal captures under `reports/`
+  are local ignored artefacts; the implementation and handover are tracked here.
+
 ## Progress
 
 Import identity is complete: importers now produce documents containing named,
@@ -26,9 +44,19 @@ CLI/MCP calls retain their combined-file defaults.
 Build, Go tests, vet, race checks, CLI/MCP validation and offline terminal
 interaction checks pass. The synthetic scene benchmark measured roughly 5.5 ms
 for one 100k-point route and 21.8 ms for four at 120×40 cells on this machine.
-No spatial index or rendering cache was introduced. Next: **step 4, independent
-data-source loading and refresh**. Theme scope and new routing/traffic sources
-still need decisions in their respective slices.
+No spatial index or rendering cache was introduced.
+
+Independent source loading and refresh is complete. Each enabled source has its
+own cancellable requests, generation checks, snapshot and refresh deadline.
+Stationary refresh honours cache freshness and backoff; uncacheable responses
+use a 60-second fallback. The viewer, CLI and MCP consume source snapshots and
+combine their credits. Controlled-clock/provider tests, race checks, the full
+repository checks and offline terminal interactions pass. Mapbox remains the only
+external source; this does not add traffic data.
+
+Next: **step 5, centralised theme ownership**. Confirm terminal recolouring versus
+basemap-style switching before implementing it. New routing/traffic sources still
+need decisions in their respective slices.
 
 ## Direction
 
@@ -146,14 +174,14 @@ unrelated files. Merely browsing the map does not obscure ownership of loaded da
 
 ## 4. Give data sources independent loading and refresh
 
-- [ ] Move scheduling, relevance checks and cancellation alongside source loading;
+- [x] Move scheduling, relevance checks and cancellation alongside source loading;
   reject results for superseded requests/configuration.
-- [ ] Track status and freshness per source rather than one global busy/error state.
-- [ ] Add refresh deadlines for sources that need updates while the camera is still.
-- [ ] Preserve cache directives, bounded caches, backoff and request/body limits.
-- [ ] Compose attribution from contributing sources; keep imported items visible
+- [x] Track status and freshness per source rather than one global busy/error state.
+- [x] Add refresh deadlines for sources that need updates while the camera is still.
+- [x] Preserve cache directives, bounded caches, backoff and request/body limits.
+- [x] Compose attribution from contributing sources; keep imported items visible
   through source failures.
-- [ ] Test delayed responses, cancellation, expiry and rate limiting with fake
+- [x] Test delayed responses, cancellation, expiry and rate limiting with fake
   transport/controlled time; update provider documentation for changed policies.
 
 **Acceptance:** One failed or stale source does not block another. Old responses

@@ -57,13 +57,13 @@ func viewportBounds(bounds *[4]float64, a Args) (Camera, error) {
 }
 
 type mapRequest struct {
-	camera    Camera
-	items     []sceneItem
-	cursor    *XY
-	selected  int
-	active    *ItemRef
-	workspace bool
-	track     *Track
+	camera     Camera
+	items      []sceneItem
+	cursor     *XY
+	selected   int
+	active     *ItemRef
+	workspace  bool
+	hasImports bool
 }
 
 func trackMapRequest(t *Track, a Args) (mapRequest, error) {
@@ -71,7 +71,7 @@ func trackMapRequest(t *Track, a Args) (mapRequest, error) {
 	if err != nil {
 		return mapRequest{}, err
 	}
-	r := mapRequest{camera: c, selected: -1, track: t}
+	r := mapRequest{camera: c, selected: -1, hasImports: t != nil}
 	if t != nil {
 		r.items = []sceneItem{{Track: t, Active: true}}
 	}
@@ -98,10 +98,7 @@ func workspaceMapRequest(w *Workspace, a Args) (mapRequest, error) {
 	if err != nil {
 		return mapRequest{}, err
 	}
-	r := mapRequest{camera: c, items: w.sceneItems(), selected: -1, workspace: true}
-	if len(w.documents) > 0 {
-		r.track = w.documents[0].document.Items[0].Track
-	}
+	r := mapRequest{camera: c, items: w.sceneItems(), selected: -1, workspace: true, hasImports: len(w.documents) > 0}
 	if w.selection != nil {
 		ref := w.selection.ref
 		r.active = &ref
@@ -114,11 +111,23 @@ func workspaceMapRequest(w *Workspace, a Args) (mapRequest, error) {
 }
 
 func (r mapRequest) render(ctx context.Context, ascii bool, p *Provider) (map[string]any, error) {
-	fs, stats, status := p.scene(ctx, r.track, r.camera)
-	grid := renderScene(r.camera, fs, r.items, r.cursor)
+	snapshot, err := p.load(ctx, r.camera)
+	if err != nil {
+		return nil, err
+	}
+	sources := sourceView{Sources: []sourceInfo{}}
+	if p.Kind == "mapbox" {
+		sources.add("basemap", snapshot, false)
+	}
+	status := sources.status()
+	if status == "" {
+		status = providerGuidance(p, r.hasImports)
+	}
+	credits, links := sources.attribution()
+	grid := renderScene(r.camera, sources.Features, r.items, r.cursor)
 	c := r.camera
 	center := unproject(c.Center)
-	scene := map[string]any{"width": c.Width, "height": c.Height, "center_lon": center.X, "center_lat": center.Y, "zoom": c.Zoom, "bearing": c.Bearing, "cell_aspect": c.Aspect, "provider": p.Kind, "attribution": attribution(p.Kind), "attribution_links": []string{"https://www.mapbox.com/about/maps/", "https://www.openstreetmap.org/copyright", "https://apps.mapbox.com/feedback/"}, "tile_stats": stats, "status": status, "selected_point_index": r.selected}
+	scene := map[string]any{"width": c.Width, "height": c.Height, "center_lon": center.X, "center_lat": center.Y, "zoom": c.Zoom, "bearing": c.Bearing, "cell_aspect": c.Aspect, "provider": p.Kind, "attribution": credits, "attribution_links": links, "tile_stats": sources.Stats, "status": status, "sources": sources.Sources, "selected_point_index": r.selected}
 	if r.workspace {
 		refs := make([]ItemRef, 0, len(r.items))
 		for _, item := range r.items {

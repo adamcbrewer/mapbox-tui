@@ -37,6 +37,14 @@ checks exercise item selectors, duplicate loads, listing, visibility, item/file
 removal and multi-file rendering parity. A fake-provider test checks that network
 rendering does not hold the workspace lifecycle lock.
 
+Source lifecycle tests use controlled clocks and fake sources/transports to check
+viewport cancellation, delayed/out-of-order results, source replacement and
+visibility, stationary refresh, independent source completion and shutdown.
+They cover returning to a cancelled viewport, cache expiry and `Age`, no-store/
+no-cache behaviour, HTTP 429 recovery, malformed/oversized bodies, cache replacement
+and cancellation while waiting for another batch. Viewer tests verify that file
+loading does not block refresh and source failures leave imported items intact.
+
 Optional checks, after building:
 
 ```sh
@@ -90,3 +98,7 @@ python3 scripts/interactions.py --mapbox
 13. Use **Clear workspace (remove all files)** and check the camera stays in place.
     In a narrow terminal, load widely separated files and verify `f` can fit them
     at a negative zoom, with subsequent wheel zoom staying smooth.
+14. With Mapbox configured, open provider credits with `v` to inspect the source's
+    status and refresh deadline. Pan during a request and check the newer viewport
+    wins; keep the camera still through expiry and check the source refreshes.
+    These live checks make billable requests; automated lifecycle tests use fakes.

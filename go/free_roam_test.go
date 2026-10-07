@@ -108,13 +108,10 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		if m.camera.Center != project(0, 0) || m.camera.Zoom != 0 {
 			t.Fatal("reset world view did not restore the default camera")
 		}
-		m.busy = false
 		m.provider.Kind = "mapbox"
-		m.fetched = m.camera
 		m.Update(tea.KeyPressMsg{Code: 'h'})
-		m.changed = time.Now().Add(-time.Second)
 		m.Update(pulse(time.Now()))
-		if !m.busy {
+		if !m.sources.busy() {
 			t.Fatal("free roam pan did not request new basemap tiles")
 		}
 	}

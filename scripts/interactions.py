@@ -183,7 +183,7 @@ def scenario(binary, width, height):
         send("a")
         wait_for(lambda s: not any(0x2800 <= ord(c) <= 0x28ff for c in s))
         send("v")
-        wait_for(lambda s: "https://www.mapbox.com/about/maps/" in s)
+        wait_for(lambda s: "Provider credits" in s and "No basemap" in s)
         send("v")
         tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
         wait_for(lambda s: "[ ] select; PgUp/PgDn" in s)
