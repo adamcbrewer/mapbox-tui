@@ -10,3 +10,4 @@
 - [ ] plot a route / create directions
 - [ ] toggle traffic
 - [ ] other data sources and display ideas (ala mapbox playground)
+- [ ] [activity reordering and sequential playback](https://github.com/adamcbrewer/shell-on-earth/issues/3) (deferred)

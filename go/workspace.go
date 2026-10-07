@@ -17,25 +17,28 @@ type WorkspaceItem struct {
 	Document *Document
 	Item     *DocumentItem
 	Visible  bool
+	Color    string
 }
 
 type workspaceDocument struct {
 	id       int
 	document *Document
 	hidden   map[int]bool
+	colors   map[int]string
 }
 
 type workspaceSelection struct {
 	ref      ItemRef
 	track    *Track
 	playback *playback
-	profile  *elevationProfile
 }
 
 type Workspace struct {
 	documents []*workspaceDocument
 	selection *workspaceSelection
 	nextID    int
+	nextColor int
+	elevation *elevationProfile
 }
 
 func (w *Workspace) open(path string) (ItemRef, error) {
@@ -59,7 +62,11 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 		return w.activateDocument(entry)
 	}
 	w.nextID++
-	entry := &workspaceDocument{id: w.nextID, document: d}
+	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]string)}
+	for _, item := range d.Items {
+		entry.colors[item.ID] = activityColors[w.nextColor%len(activityColors)]
+		w.nextColor++
+	}
 	w.documents = append(w.documents, entry)
 	return w.activateDocument(entry)
 }
@@ -94,7 +101,7 @@ func (w *Workspace) items() []WorkspaceItem {
 	var items []WorkspaceItem
 	for _, entry := range w.documents {
 		for _, item := range entry.document.Items {
-			items = append(items, WorkspaceItem{ItemRef{entry.id, item.ID}, entry.document, item, !entry.hidden[item.ID]})
+			items = append(items, WorkspaceItem{ItemRef{entry.id, item.ID}, entry.document, item, !entry.hidden[item.ID], entry.colors[item.ID]})
 		}
 	}
 	return items
@@ -134,7 +141,6 @@ func (w *Workspace) activate(ref ItemRef, track *Track) {
 func (w *Workspace) clearSelection() {
 	if w.selection != nil {
 		w.selection.playback.Playing = false
-		w.selection.profile = nil
 		w.selection = nil
 	}
 }
@@ -183,6 +189,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	}
 	entry.document.Items = slices.Delete(entry.document.Items, i, i+1)
 	delete(entry.hidden, ref.ItemID)
+	delete(entry.colors, ref.ItemID)
 	entry.document.Bounds = entry.document.Items[0].Track.Bounds
 	for _, item := range entry.document.Items[1:] {
 		extendBounds(&entry.document.Bounds, item.Track.Bounds)
@@ -206,6 +213,7 @@ func (w *Workspace) removeDocument(id int) error {
 func (w *Workspace) clear() {
 	w.clearSelection()
 	w.documents = nil
+	w.elevation = nil
 }
 
 func (w *Workspace) position() *ridePosition {
@@ -242,15 +250,22 @@ func (w *Workspace) selectDocumentPoint(documentID, index int) error {
 }
 
 func (w *Workspace) profile(width, height int) *elevationProfile {
-	if w.selection == nil || len(w.selection.track.Points) == 0 || width <= 0 || height <= 0 {
+	items := w.profileItems()
+	if len(items) == 0 || width <= 0 || height <= 0 {
+		w.elevation = nil
 		return nil
 	}
-	p := w.selection.profile
-	if p == nil || p.Grid.Width != width || p.Grid.Height != height {
-		p = newProfile(w.selection.track, width, height)
-		w.selection.profile = p
+	p := w.elevation
+	if p == nil || p.Grid.Width != width || p.Grid.Height != height || !slices.Equal(p.Items, items) {
+		p = newProfile(items, width, height)
+		w.elevation = p
 	}
 	return p
+}
+
+func (w *Workspace) profileItems() []sceneItem {
+	items := w.sceneItems()
+	return slices.DeleteFunc(items, func(item sceneItem) bool { return len(item.Track.Points) == 0 })
 }
 
 func (w *Workspace) visibleBounds() ([4]float64, bool) {
@@ -284,7 +299,7 @@ func (w *Workspace) sceneItems() []sceneItem {
 	var items []sceneItem
 	for _, item := range w.items() {
 		if item.Visible {
-			items = append(items, sceneItem{item.Ref, item.Item.Track, w.selection != nil && w.selection.ref == item.Ref})
+			items = append(items, sceneItem{item.Ref, item.Item.Track, w.selection != nil && w.selection.ref == item.Ref, item.Color})
 		}
 	}
 	return items

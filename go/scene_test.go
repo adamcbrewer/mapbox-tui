@@ -18,7 +18,7 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	mid := c.screen(project(.005, 51))
 	g := renderScene(c, nil, w.sceneItems(), nil)
 	cell := g.Cells[int(mid.Y/4)*g.Width+int(mid.X/2)]
-	if cell.Role != roleActiveRoute || g.glyph(cell, true) != '#' {
+	if cell.Role != roleActiveRoute || cell.Color != w.items()[0].Color || g.glyph(cell, true) != '#' {
 		t.Fatal("later inactive geometry hid the active route")
 	}
 	if ref, index := w.pick(c, mid); ref != first || index < 0 {
@@ -29,7 +29,7 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	}
 	g = renderScene(c, nil, w.sceneItems(), nil)
 	cell = g.Cells[int(mid.Y/4)*g.Width+int(mid.X/2)]
-	if cell.Role != roleRoute || g.glyph(cell, true) != '*' {
+	if cell.Role != roleRoute || cell.Color != w.items()[1].Color || g.glyph(cell, true) != '*' {
 		t.Fatal("inactive route lost its distinct presentation")
 	}
 	if ref, _ := w.pick(c, mid); ref != second {

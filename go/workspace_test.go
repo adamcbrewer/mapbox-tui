@@ -17,7 +17,7 @@ func openWorkspaceFile(t *testing.T, w *Workspace, path string) ItemRef {
 	return ref
 }
 
-func TestWorkspaceAddsFilesAndKeepsPlaybackAndProfilesWithActiveItem(t *testing.T) {
+func TestWorkspaceAddsFilesWithActivePlaybackAndSharedProfiles(t *testing.T) {
 	var w Workspace
 	first := openWorkspaceFile(t, &w, "../fixtures/example.gpx")
 	if len(w.items()) != 4 || w.selection.ref != first || w.selection.track.Name != "Riverside exploration" || len(w.selection.track.Points) == 0 {
@@ -34,12 +34,12 @@ func TestWorkspaceAddsFilesAndKeepsPlaybackAndProfilesWithActiveItem(t *testing.
 	if first.DocumentID == second.DocumentID || len(w.items()) != 6 || w.selection.ref != second || w.selection.track.Name != "Outward" {
 		t.Fatal("adding a file replaced existing data or failed to select the new item")
 	}
-	if oldSelection.playback.Playing || oldSelection.profile != nil || w.selection.playback.Playing || w.position().Index != 0 {
-		t.Fatal("switching items retained playback or profile state from the old item")
+	if oldSelection.playback.Playing || w.selection.playback.Playing || w.position().Index != 0 {
+		t.Fatal("switching items retained playback state from the old item")
 	}
 	newProfile := w.profile(80, 5)
-	if newProfile == oldProfile || newProfile.Distance != w.selection.track.Distance || newProfile.Available {
-		t.Fatal("profile still describes the old item")
+	if newProfile == oldProfile || len(newProfile.Items) != 4 || !newProfile.Available {
+		t.Fatal("shared profile omitted visible items or their elevation")
 	}
 	if w.profile(80, 5) != newProfile || w.profile(40, 3) == newProfile {
 		t.Fatal("profile cache did not track its dimensions")
@@ -149,8 +149,16 @@ func TestWorkspaceClearsActiveStateWhenHiddenRemovedOrCleared(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w.selection != nil || w.position() != nil || w.profile(80, 5) != nil || old.playback.Playing || old.profile != nil {
+			if w.selection != nil || w.position() != nil || old.playback.Playing {
 				t.Fatal("active state survived or another item was selected automatically")
+			}
+			profile := w.profile(80, 5)
+			if action == "hide" || action == "remove item" {
+				if profile == nil || len(profile.Items) != 1 || profile.Items[0].Ref == ref || profile.Items[0].Active {
+					t.Fatal("remaining visible elevation was cleared or retained the old selection")
+				}
+			} else if profile != nil {
+				t.Fatal("removed geometry retained its profile")
 			}
 			if action == "clear" {
 				if len(w.items()) != 0 {
@@ -178,10 +186,11 @@ func TestWorkspaceItemRemovalUpdatesBoundsAndNeverReusesReferences(t *testing.T)
 	path := importFile(t, "courses.tcx", []byte(coursesWithGapTCX))
 	active := openWorkspaceFile(t, &w, path)
 	other := w.items()[1].Ref
-	selection, profile := w.selection, w.profile(80, 5)
+	selection := w.selection
 	if err := w.setVisible(other, false); err != nil {
 		t.Fatal(err)
 	}
+	profile := w.profile(80, 5)
 	if err := w.removeItem(other); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +225,19 @@ func TestWorkspaceSameFilenameAndLocalIDRemainIndependentAcrossDocuments(t *test
 	if first.ItemID != second.ItemID || first.DocumentID == second.DocumentID || len(w.items()) != 2 {
 		t.Fatal("document-local IDs or duplicate filenames collapsed separate files")
 	}
+	firstColor, secondColor := w.items()[0].Color, w.items()[1].Color
+	if firstColor == secondColor || firstColor == "" || secondColor == "" {
+		t.Fatal("independent activities share a colour")
+	}
+	if err := w.selectItem(first); err != nil {
+		t.Fatal(err)
+	}
+	if w.items()[0].Color != firstColor || w.items()[1].Color != secondColor {
+		t.Fatal("selecting an activity changed its colour")
+	}
+	if err := w.selectItem(second); err != nil {
+		t.Fatal(err)
+	}
 	if err := w.setVisible(first, false); err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +247,9 @@ func TestWorkspaceSameFilenameAndLocalIDRemainIndependentAcrossDocuments(t *test
 	}
 	if err := w.removeDocument(first.DocumentID); err != nil || len(w.items()) != 1 || w.selection != selection {
 		t.Fatal("removing an unrelated file changed the active import", err)
+	}
+	if w.items()[0].Color != secondColor {
+		t.Fatal("removing another activity reassigned the remaining colour")
 	}
 }
 

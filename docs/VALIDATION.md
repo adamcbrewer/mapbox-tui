@@ -31,7 +31,10 @@ checks also verify that one TCX course with a GPS gap counts as one route.
 Workspace model tests cover adding and reopening files, duplicate filenames,
 visibility and removal, failed-import recovery, stale item references, and active
 playback/profile transitions. Bounds checks include distant independent files,
-hidden items and waypoint-only imports. Scene tests cover active-item overlap
+hidden items and waypoint-only imports. Profile checks cover consecutive distance
+sections, summed distance, common elevation scale, ordering, missing measurements,
+cursor offsets, visibility and cache invalidation.
+Scene tests cover stable per-item colours, active-item overlap
 priority, waypoint picking, gaps between files and negative-zoom fitting. CLI/MCP
 checks exercise item selectors, duplicate loads, listing, visibility, item/file
 removal and multi-file rendering parity. A fake-provider test checks that network
@@ -59,6 +62,9 @@ Interaction checks require tmux and `rsvg-convert` and run in headless Linux
 pseudo-terminals. They exercise keyboard/mouse input, dialogs, playback, resizing
 and terminal restoration. Multi-file checks cover startup with two files, the
 Ctrl-L list, visibility, selection, removal and clearing at wide/compact sizes.
+Two-activity checks also exercise ordered profiles, selected-only playback markers,
+pause, switching while playing and hiding the playing activity without losing the
+remaining profile. Colour captures are saved alongside the interaction results.
 They don't verify physical mouse forwarding or other
 operating systems. Benchmark and capture output is ignored under `reports/`.
 
@@ -82,7 +88,7 @@ python3 scripts/interactions.py --mapbox
 7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe` without a GPX; check the empty canvas
    includes token setup guidance. Pan, zoom, rotate and click to inspect
    coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear selection)**
-   and check its geometry stays visible without playback/profile selection.
+    and check its geometry and elevation stay visible without playback or a profile cursor.
 8. With a token configured, run `./bin/shoe` for the world view or
    `./bin/shoe --center-lon -0.1065 --center-lat 51.505 --zoom 13` for a local
    basemap. Check tiles load while panning and no route/playback/profile is shown.
@@ -95,6 +101,13 @@ python3 scripts/interactions.py --mapbox
 12. Open two files and press Ctrl-L. Check filenames and individual item names,
     toggle visibility with Space, select with Enter, remove an item with Delete
     and remove a file with `D`. Use `f` to fit only the remaining visible geometry.
+    Check that each route, its elevation and its list entry use the same stable colour.
+    With two activities containing elevation, check the chart places them end to end
+    in load order with a summed distance axis and a gap between them. Play one activity,
+    verify only its `@` markers move, then select the other and check playback resets
+    paused without changing the chart/legend order. The chart cursor includes earlier
+    activities' distances. Hide the playing activity and check its marker disappears
+    while the other elevation remains visible.
 13. Use **Clear workspace (remove all files)** and check the camera stays in place.
     In a narrow terminal, load widely separated files and verify `f` can fit them
     at a negative zoom, with subsequent wheel zoom staying smooth.

@@ -7,6 +7,7 @@ import shlex
 import subprocess
 import time
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOCKET = f"shoe-prototype-{os.getpid()}"
@@ -391,7 +392,7 @@ def dialogs(binary):
         send("free roam")
         wait_for(lambda s: "Free roam (clear selection)" in s)
         tmux("send-keys", "-t", "poc:0.0", "Enter")
-        wait_for(lambda s: "Map details" in s and "Commands" not in s and "Elevation profile" not in s)
+        wait_for(lambda s: "Map details" in s and "Commands" not in s and "Elevation profile" in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
         print(f"{binary.name}: startup/file picker, failed-load recovery, modal input isolation, command filtering, speed picker, file additions and free roaming passed")
@@ -488,6 +489,60 @@ def workspace_controls(binary):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+def workspace_profiles(binary, width, height):
+    folder = ROOT / "reports/generated"
+    folder.mkdir(exist_ok=True, parents=True)
+    with tempfile.TemporaryDirectory(dir=folder) as temporary:
+        paths = []
+        for name, latitude, step, elevations in (("Short loop", 51.501, .004, (40, 100, 60)), ("Long ride", 51.508, .008, (25, 70, 40))):
+            points = "".join(f'<trkpt lat="{latitude}" lon="{-0.124 + i*step}"><ele>{elevation}</ele><time>2026-01-01T09:{i*10:02d}:00Z</time></trkpt>' for i, elevation in enumerate(elevations))
+            path = Path(temporary) / f"{name}.gpx"
+            path.write_text(f"<gpx><trk><name>{name}</name><trkseg>{points}</trkseg></trk></gpx>")
+            paths.append(str(path))
+        command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *paths])
+        tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+        try:
+            initial = wait_for(lambda s: "Elevation profiles" in s and "Short loop" in s and "Long ride" in s and "Loading track file" not in s)
+            start_distance = float(re.search(r"@ ([\d.]+) km", initial).group(1))
+            total_distance = float(re.search(r"([\d.]+) km total", initial).group(1))
+            assert 0 < start_distance < total_distance and abs(start_distance / total_distance - 1/3) < .01, "second activity did not start after the first on the summed distance axis"
+            legend = next(line for line in initial.splitlines() if "1:1 Short loop" in line and "2:1 Long ride" in line)
+            assert legend.index("Short loop") < legend.index("Long ride"), "legend changed load order to put the selected activity first"
+            send("f")
+            settled()
+            save_svg(folder / f"{binary.name}-two-profiles-{width}x{height}.svg", width, height)
+            send("ssss ")
+            wait_for(lambda s: "2:1 Long ride | Playing 120x" in s and any(float(value) > start_distance + .01 for value in re.findall(r"@ ([\d.]+) km", s)))
+            send(" ")
+            wait_for(lambda s: "Paused 120x" in s)
+            paused = settled()
+            time.sleep(.12)
+            assert capture() == paused, "paused multi-activity playback kept moving"
+            save_svg(folder / f"{binary.name}-two-profiles-paused-{width}x{height}.svg", width, height)
+            send(" ")
+            wait_for(lambda s: "Playing 120x" in s)
+            send("\x0c")
+            wait_for(lambda s: "Loaded files" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
+            wait_for(lambda s: "Loaded files" not in s and "1:1 Short loop | Paused 1x" in s and "Elevation profiles" in s and "@ 0.00 km" in s)
+            send(" ")
+            wait_for(lambda s: "Playing 1x" in s)
+            send("\x0c")
+            wait_for(lambda s: "Loaded files" in s)
+            send(" ")
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "Loaded files" not in s and "Free roam" in s and "Playing" not in s and "Elevation profile | 25.0–70.0 m" in s)
+            send("e")
+            wait_for(lambda s: "Elevation profile" not in s)
+            send("e")
+            wait_for(lambda s: "Elevation profile | 25.0–70.0 m" in s)
+            send("q")
+            wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+            print(f"{binary.name} {width}×{height}: ordered elevation, summed distance/cursor offsets, labelled selected playback, pause, activity switching, hiding a playing activity and remaining profile passed")
+        finally:
+            tmux("kill-session", "-t", "poc", check=False)
+
+
 if __name__ == "__main__":
     try:
         for name in ("shoe",):
@@ -506,5 +561,7 @@ if __name__ == "__main__":
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
                 workspace_controls(ROOT / "bin" / name)
+                for width, height in ((120, 40), (70, 24), (70, 18)):
+                    workspace_profiles(ROOT / "bin" / name, width, height)
     finally:
         tmux("kill-server", check=False)

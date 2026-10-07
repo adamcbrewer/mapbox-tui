@@ -30,9 +30,9 @@ activity, chained FIT sequences are separate items, and KML container ancestry i
 retained even when folder names occur after their placemarks.
 
 Workspace lifecycle is complete: add/reopen, selection,
-visibility, item/file removal, clearing, active playback/profile ownership and
-visible bounds. Document IDs are not reused after removal or clearing, so old
-item references cannot address later imports.
+visibility, item/file removal, clearing, active playback ownership, workspace
+elevation profiles and visible bounds. Document IDs are not reused after removal
+or clearing, so old item references cannot address later imports.
 
 Viewer and tool integration is complete. Ctrl-L shows loaded files and items,
 with selection, visibility and removal controls. The viewer uses workspace-owned
@@ -58,6 +58,13 @@ Next: **step 5, centralised theme ownership**. Confirm terminal recolouring vers
 basemap-style switching before implementing it. New routing/traffic sources still
 need decisions in their respective slices.
 
+Multi-activity presentation uses stable per-item colours and consecutive elevation
+sections in file-load/item order, with a summed distance axis and activity-local
+playback. Selection highlights an activity without changing that order. Explicit
+reordering and journey-wide playback are deferred to
+[issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3); they do not change
+the next implementation step.
+
 ## Direction
 
 - A workspace contains imported documents and their routes, activities and other
@@ -66,7 +73,8 @@ need decisions in their respective slices.
 - Preserve source filenames and item names separately. Retain enough source
   identity to distinguish equally named files and remove an imported document.
 - Visibility, active selection and camera follow are separate choices. Initially,
-  only one item is the target for playback and the elevation profile.
+  only one item is the target for playback. Elevation profiles show visible
+  activities consecutively in load order.
 - Keep imported geometry usable without a basemap or credentials.
 - Keep CLI and MCP single-file behaviour compatible while extending capabilities.
   MCP and the viewer remain independent processes.
@@ -119,7 +127,7 @@ failed imports, duplicate names and removal of the active item through model tes
 The workspace compares normalised absolute paths for duplicate imports, not
 filenames. A new file selects its first item with track points, falling back to a
 waypoint-only item. Selecting a hidden item reveals it; showing an item alone does
-not select it. Switching items starts a fresh paused position and profile, while
+not select it. Switching items starts a fresh paused position, while
 reselecting the active item preserves its position. Removing the last item also
 removes its file entry.
 
@@ -139,7 +147,8 @@ jump to zero on the next wheel event. File-free browsing still starts at zoom 0.
   retaining the existing terminal grid implementation.
 - [x] Make picking identify both the item and its point; distinguish the active
   item in rendering and details.
-- [x] Connect playback/profile to the active item; keep camera follow independent.
+- [x] Connect playback and the profile cursor to the active item; show visible
+  profiles in load order and keep camera follow independent.
 - [x] Define predictable overlap and label precedence within the terminal's
   one-foreground-colour-per-cell constraint.
 - [x] Extend CLI/MCP selection and rendering capabilities deliberately; add an MCP
@@ -150,7 +159,8 @@ jump to zero on the next wheel event. File-free browsing still starts at zoom 0.
   before introducing rendering caches or spatial indexes.
 
 **Acceptance:** Multiple items can appear together, inspection identifies the right
-item, and only the active item's profile/playback is used. Existing single-file
+item, visible elevation profiles occupy consecutive distance sections, and only
+the active item plays back. Existing single-file
 CLI/MCP calls still work. Plain output stays ANSI-free.
 
 ### Loaded-files UI
@@ -206,6 +216,20 @@ all visible presentation consistently.
 
 ## 6. Build the remaining features on these boundaries
 
+### Activity reordering (deferred)
+
+Tracked in [issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3).
+Keep this separate from the current presentation fixes and theme slice.
+
+- [ ] Decide whether users reorder whole files, contained activities or activities
+  across files, and how source grouping remains visible.
+- [ ] Give the workspace an explicit order using stable item references; use it
+  consistently in the list, legend and elevation chart.
+- [ ] Define visibility and playback behaviour during reorder/removal, preserving
+  activity-local measurements and positions where possible.
+- [ ] Confirm selected-activity versus journey-wide playback before adding handoffs,
+  combined progress or cross-activity seeking.
+
 ### Route plotting / directions
 
 - [ ] Decide manual plotting versus road-following directions, and travel modes
@@ -251,7 +275,8 @@ all visible presentation consistently.
   visibility. It does not read changed file contents again; explicit reload can
   be added separately.
 - Hiding or removing the active item stops playback and clears active selection
-  and profile. It does not automatically select another item or move the camera.
+  and its profile cursor. Other visible profiles remain. It does not automatically
+  select another item or move the camera.
 
 Later decisions belong to their implementation slice: plotting versus routing,
 traffic refresh policy and theme scope.

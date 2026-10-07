@@ -90,7 +90,8 @@ MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/shoe
 
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
 `--zoom` to start somewhere specific. Pan, zoom, rotate and click to inspect
-coordinates. Route playback and elevation controls apply to the active item.
+coordinates. Route playback applies to the active item; elevation shows all visible
+activities consecutively on a shared chart.
 Use **Free roam (clear selection)** in the Ctrl-P command palette to stop playback
 and keep browsing with loaded geometry still visible. **Clear workspace (remove
 all files)** removes the imports while preserving the current camera view.
@@ -111,16 +112,32 @@ its source path. `*` marks the active item and `[x]` means visible.
 - Delete/Backspace removes the selected row. `D` removes its entire file.
 - Arrow keys, `j`/`k`, Home/End or the mouse wheel navigate; Esc closes the dialog.
 
-Only the active item plays back or supplies the elevation profile. Hiding or
-removing it stops playback and clears selection without selecting another item.
+Only the active item plays back. Its colour, name and item reference identify the
+playback controls, progress bar and moving `@` markers on the map and elevation chart.
+Hiding or removing it stops playback and clears selection without selecting another item.
 Selecting a different item starts a fresh paused position. Showing an item alone
 does not select it. Removing a file's last item also removes its file entry.
 
+The elevation chart places visible activities end to end in file-load order, then
+item order within each file. Each activity occupies its own distance section on an
+axis showing the summed distance, with a blank column separating activities and a
+shared elevation scale. Missing elevation leaves its distance section blank; gaps
+aren't connected. Items with no elevation are labelled in the colour key. The chart's
+`@` distance includes earlier activities; route details and playback remain item-local.
+Hiding/removing an activity updates the chart's axes; changing selection keeps the
+same scale. Free roam retains visible profiles, and `e` toggles the whole chart.
+
 **`f` fits all visible geometry**, including standalone waypoints. Click near a
-visible route or waypoint to select its owning item. Active geometry is amber;
-other routes are cyan (`#` and `*` in ASCII mode). The active item wins overlaps;
+visible route or waypoint to select its owning item. Each item keeps a colour across
+the map, elevation chart and Ctrl-L list, even when selection or visibility changes.
+The six-colour palette cycles for larger workspaces. A colour key below the map
+shows item references and names; `*` identifies the selected item. Active routes use
+`#` and other routes use `*` in ASCII mode. The active item wins overlaps;
 otherwise later-loaded items win equal-distance picking ties. Selection markers
 take priority over route geometry and map labels.
+
+Activity reordering and journey-wide playback are tracked separately in
+[issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3).
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
@@ -180,7 +197,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 | Play / pause | Space | |
 | Change playback speed | `p` picker, `s` / `S` cycle | |
 | Center and follow | `c` | |
-| Show / hide elevation | `e` | |
+| Show / hide visible elevation profiles | `e` | |
 | Focus route details | Tab | Wheel over sidebar |
 | Rotate / north-up | `,` / `.` / `n` | Right-drag |
 | Toggle ASCII / camera animation | `a` / `m` | |

@@ -60,7 +60,7 @@ type uiState struct {
 	notice         string
 }
 
-type shortcutMap struct{ compact, playing, detailsFocused, freeRoam bool }
+type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
 
 func binding(keys, description string) key.Binding {
 	return key.NewBinding(key.WithKeys(strings.Split(keys, "/")...), key.WithHelp(keys, description))
@@ -89,17 +89,21 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 }
 func (k shortcutMap) FullHelp() [][]key.Binding {
 	if k.freeRoam {
+		var elevation []key.Binding
+		if k.profiles {
+			elevation = []key.Binding{binding("e", "elevation profiles")}
+		}
 		return [][]key.Binding{
 			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding(",/.", "rotate"), binding("n", "north-up")},
 			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
-			{},
+			elevation,
 			{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 		}
 	}
 	return [][]key.Binding{
 		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
 		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
-		{binding("space", "play/pause"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "elevation profile")},
+		{binding("space", "play/pause selected activity"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "visible elevation profiles")},
 		{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 	}
 }
@@ -209,8 +213,11 @@ func (m *viewer) commands() []viewerCommand {
 	} else {
 		commands = append(commands, viewerCommand{"Reset world view", "f", "fit"})
 	}
+	if len(m.workspace.profileItems()) > 0 {
+		commands = append(commands, viewerCommand{"Toggle elevation profiles", "e", "profile"})
+	}
 	if m.activeTrack() != nil {
-		commands = append(commands, viewerCommand{"Free roam (clear selection)", "", "roam"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"})
+		commands = append(commands, viewerCommand{"Free roam (clear selection)", "", "roam"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"})
 	}
 	commands = append(commands, viewerCommand{"Inspect position", "enter", "inspect"}, viewerCommand{"Toggle camera animation", "m", "motion"}, viewerCommand{"Toggle ASCII map", "a", "ascii"})
 	query := strings.ToLower(m.ui.search.Value())
@@ -368,7 +375,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
 	case dialogHelp:
-		groups := shortcutMap{freeRoam: m.activeTrack() == nil}.FullHelp()
+		groups := shortcutMap{freeRoam: m.activeTrack() == nil, profiles: len(m.workspace.profileItems()) > 0}.FullHelp()
 		m.ui.help.SetWidth(max(width, 50))
 		for i, heading := range []string{"Navigate", "Inspect", "Playback", "Workspace"} {
 			if len(groups[i]) == 0 {

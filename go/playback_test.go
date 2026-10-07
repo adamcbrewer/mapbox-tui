@@ -104,7 +104,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 	if m.camera.Center != pos.World {
 		t.Fatal("camera did not settle at the playback position")
 	}
-	header, _, _ := m.activeProfile().frame(pos)
+	header, _, _ := m.visibleProfile().frame(pos)
 	if !strings.Contains(header, "9.0 m") || !strings.Contains(header, "@ ") {
 		t.Fatal("profile cursor missed playback position")
 	}

@@ -380,7 +380,7 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 					m.Update(msg)
 				}
 			}
-			if m.activeTrack() == nil || m.path != path || m.activePlayback() == nil || m.activeProfile() == nil || m.fatal != nil || m.loading {
+			if m.activeTrack() == nil || m.path != path || m.activePlayback() == nil || m.visibleProfile() == nil || m.fatal != nil || m.loading {
 				t.Fatal("viewer failed to initialise imported file")
 			}
 			m.openDialog(dialogFiles)

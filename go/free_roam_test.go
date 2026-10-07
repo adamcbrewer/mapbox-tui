@@ -91,7 +91,7 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		for _, code := range []rune{'[', ']', 'c', 'e', ' ', 's', 'S', 'p', tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown} {
 			m.Update(tea.KeyPressMsg{Code: code})
 		}
-		if m.ui.dialog != dialogNone || m.activePlayback() != nil || m.selectedPoint() != -1 {
+		if m.ui.dialog != dialogNone || m.activePlayback() != nil || m.selectedPoint() != -1 || !m.showProfile {
 			t.Fatal("route-only controls changed free roam state")
 		}
 		m.rebuild()
@@ -134,16 +134,16 @@ func TestFreeRoamRouteTransitionsAndFailedLoad(t *testing.T) {
 	m.Update(loaded{path: "../fixtures/example.gpx", id: m.loadID, document: document})
 	track := m.activeTrack()
 	want := fit(track, m.camera.Width, m.camera.Height, m.camera.Aspect)
-	if m.activeTrack() != track || m.activePlayback() == nil || m.activeProfile() == nil || m.following || m.camera.Center != want.Center || m.camera.Zoom != want.Zoom {
+	if m.activeTrack() != track || m.activePlayback() == nil || m.visibleProfile() == nil || m.following || m.camera.Center != want.Center || m.camera.Zoom != want.Zoom {
 		t.Fatal("opening a route from free roam did not fit and initialise it")
 	}
 	m.activePlayback().toggle()
 	m.runCommand("roam")
-	if m.activeTrack() != nil || m.activePlayback() != nil || m.activeProfile() != nil || m.profileHeight != 0 || m.camera.Center != want.Center || len(m.workspace.documents) != 1 {
+	if m.activeTrack() != nil || m.activePlayback() != nil || m.visibleProfile() == nil || m.profileHeight == 0 || m.camera.Center != want.Center || len(m.workspace.documents) != 1 {
 		t.Fatal("clearing the route did not preserve the map and stop playback")
 	}
 	for _, command := range m.commands() {
-		if command.action == "play" || command.action == "speed" || command.action == "profile" {
+		if command.action == "play" || command.action == "speed" {
 			t.Fatal("free roam offered a route-only command")
 		}
 	}
