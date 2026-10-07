@@ -154,8 +154,8 @@ func TestFreeRoamRouteTransitionsAndFailedLoad(t *testing.T) {
 		t.Fatal("an outdated load restored a cleared route")
 	}
 	m.Update(loaded{id: m.loadID, err: io.EOF})
-	if m.track != nil || m.ui.dialog != dialogFiles || !strings.Contains(m.ui.notice, "Could not open GPX") {
-		t.Fatal("failed import did not recover to the GPX picker")
+	if m.track != nil || m.ui.dialog != dialogFiles || !strings.Contains(m.ui.notice, "Could not open track file") {
+		t.Fatal("failed import did not recover to the file picker")
 	}
 	m.closeDialog()
 	m.rebuild()

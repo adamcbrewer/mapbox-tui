@@ -4,6 +4,7 @@ import math
 import os
 import selectors
 import subprocess
+import struct
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -160,10 +161,68 @@ def validate_cli(binary):
     assert result["scene"]["provider"] == "none" and "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
 
 
+def synthetic_fit(omit_header_crc=False):
+    def crc16(data):
+        crc = 0
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                crc = (crc >> 1) ^ (0xA001 if crc & 1 else 0)
+        return crc
+
+    # Build independently of the Go FIT library to check interoperability.
+    file_id_definition = bytes.fromhex("400000000001000100")
+    record_definition = bytes.fromhex("410000140004fd0486000485010485020284")
+    payload = file_id_definition + b"\x00\x04" + record_definition
+    for i in range(3):
+        payload += struct.pack("<BIiiH", 1, 1_159_776_000 + i * 10, round(51 / 180 * 2**31), round(i * .001 / 180 * 2**31), 2550 + i * 5)
+    header = struct.pack("<BBHI4s", 14, 0x20, 2100, len(payload), b".FIT")
+    header += struct.pack("<H", 0 if omit_header_crc else crc16(header))
+    body = header + payload
+    return body + struct.pack("<H", crc16(body))
+
+
+def validate_imports(binary):
+    tcx = b"""<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"><Activities><Activity Sport="Biking"><Lap><Track>
+<Trackpoint><Time>2026-10-01T10:00:00Z</Time><Position><LatitudeDegrees>51</LatitudeDegrees><LongitudeDegrees>0</LongitudeDegrees></Position><AltitudeMeters>10</AltitudeMeters></Trackpoint>
+<Trackpoint><Time>2026-10-01T10:00:10Z</Time><Position><LatitudeDegrees>51</LatitudeDegrees><LongitudeDegrees>0.001</LongitudeDegrees></Position><AltitudeMeters>11</AltitudeMeters></Trackpoint>
+</Track></Lap></Activity></Activities></TrainingCenterDatabase>"""
+    kml = b"""<kml xmlns="http://earth.google.com/kml/2.1"><Folder><Placemark><Point><coordinates>0, 51, 10</coordinates></Point><LineString><coordinates>0,51, 10 0.001 , 51 ,11</coordinates></LineString></Placemark></Folder></kml>"""
+    m = MCP(binary)
+    try:
+        m.send("initialize", {"protocolVersion": "2025-11-25", "clientInfo": {"name": "import-validation", "version": "1"}, "capabilities": {}})
+        m.send("notifications/initialized", {}, notify=True)
+        with tempfile.TemporaryDirectory() as folder:
+            for name, body, count, times in (("ride.FIT", synthetic_fit(), 3, 3), ("zwift.fit", synthetic_fit(omit_header_crc=True), 3, 3), ("ride.xml", tcx, 2, 2), ("map.data", kml, 2, 0)):
+                path = Path(folder) / name
+                path.write_bytes(body)
+                summary = cli(binary, "summary", path)
+                assert summary["point_count"] == summary["elevation_point_count"] == count
+                assert summary["time_point_count"] == times and summary["distance_m"] > 0
+                assert summary["elevation_min_m"] == 10 and summary["elevation_max_m"] == 10 + count - 1
+                loaded = m.call("load_track", {"path": str(path)})["result"]["structuredContent"]
+                equivalent(summary, loaded["summary"])
+                track_id = loaded["track_id"]
+                equivalent(summary, m.call("summarize_track", {"track_id": track_id})["result"]["structuredContent"])
+                point = cli(binary, "inspect", path, "--point-index", "0")
+                assert abs(point["point"]["lat"] - 51) < 1e-6 and point["point"]["lon"] == 0
+                equivalent(point, m.call("inspect_track", {"track_id": track_id, "point_index": 0})["result"]["structuredContent"])
+                rendered = cli(binary, "render", path, "--json", "--provider", "none")
+                equivalent(rendered, m.call("render_map", {"track_id": track_id, "provider": "none"})["result"]["structuredContent"])
+                assert rendered["scene"]["status"] == "" and rendered["text"].strip()
+                invalid = body[:-1] + bytes([body[-1] ^ 1]) if path.suffix.lower() == ".fit" else body[:-1]
+                path.write_bytes(invalid)
+                cli(binary, "summary", path, success=False)
+                assert m.call("load_track", {"path": str(path)})["result"]["isError"]
+    finally:
+        m.close()
+
+
 def main():
     for binary in BINS:
         validate_cli(binary)
         validate_mcp(binary)
+        validate_imports(binary)
         result=cli(binary,"render",ROOT / "fixtures/example.gpx","--json")
         assert result["scene"]["provider"]=="none" and result["scene"]["status"]==""
         for flag in ("--zoom","--bearing","--cell-aspect"):
@@ -190,7 +249,7 @@ def main():
             path.write_text(body)
             for binary in BINS:
                 cli(binary, "summary", path, success=False)
-    print("Validated CLI dispatch, flag ordering, scoped help, benchmarks, MCP consistency and tool schemas, GPX errors, summaries, map scenes and track-free rendering.")
+    print("Validated CLI dispatch, flag ordering, scoped help, benchmarks, MCP consistency and tool schemas, GPX/FIT/TCX/KML imports and errors, summaries, map scenes and track-free rendering.")
 
 
 if __name__ == "__main__":

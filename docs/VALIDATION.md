@@ -9,14 +9,18 @@ make test
 ```
 
 This builds `bin/shoe`, runs Go tests and `go vet`, then checks the CLI and local
-stdio MCP server. It covers GPX topology and missing measurements, camera/picking,
-playback/profile behaviour, tile decoding and cache policy, token-free provider
+stdio MCP server. It covers GPX/FIT/TCX/KML topology and missing measurements,
+camera/picking, playback/profile behaviour, tile decoding and cache policy, token-free provider
 errors, free-roam navigation and route transitions, tool schemas, and CLI/MCP
 track-free rendering consistency. CLI checks cover default file opening, options
 before/after files, scoped flags, help exit codes and benchmark dispatch. Provider
 checks cover token-free geometry, missing-token warnings, runtime config and
 environment precedence, and automatic Mapbox selection for MCP. No Mapbox account
 is required.
+
+Import regressions cover Garmin KML coordinate spacing and FIT header checksum
+variants, including Zwift-style omitted header checksums. Edge cases include
+malformed coordinates, corrupt checksums, truncation, and mixed-header chained files.
 
 Optional checks, after building:
 
@@ -45,7 +49,7 @@ python3 scripts/interactions.py --mapbox
 2. Pan, zoom, select points and use `f` to fit the geometry.
 3. Play with Space and check the map keeps its view. Use `c` to explicitly center
    and follow; change speeds, toggle elevation with `e`, and pause/seek.
-4. Open help, the command palette and GPX picker; check Esc closes each dialog.
+4. Open help, the command palette and file picker; check Esc closes each dialog.
 5. Resize the terminal and try ASCII mode with `a`.
 6. Quit with `q` or Ctrl-C and check the terminal is restored.
 7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe` without a GPX; check the empty canvas
@@ -58,3 +62,5 @@ python3 scripts/interactions.py --mapbox
    `./bin/shoe --help` and `./bin/shoe inspect --help` show the relevant options.
 10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe render fixtures/example.gpx --provider mapbox`;
     check the file is rendered and stderr explains how to configure a token.
+11. Open FIT, TCX and KML files with Ctrl-O. Check their tracks/waypoints, elevation
+    and playback match the measurements present; a failed import keeps the previous file.

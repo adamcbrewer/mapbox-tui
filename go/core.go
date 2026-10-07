@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,20 +58,13 @@ func haversine(a, b Point) float64 {
 	return 12742000 * math.Asin(math.Sqrt(math.Min(1, h)))
 }
 
-func loadTrack(path string) (*Track, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open GPX: %w", err)
-	}
-	defer f.Close()
-	d := xml.NewDecoder(f)
+func parseGPX(d *xml.Decoder) (*Track, error) {
 	t := &Track{Name: "Imported GPX"}
-	stack := []string{}
+	stack := []string{"gpx"}
 	seg := -1
 	var p *Point
 	pointTag := ""
 	text := ""
-	root := false
 	for {
 		tok, e := d.Token()
 		if e == io.EOF {
@@ -85,10 +77,7 @@ func loadTrack(path string) (*Track, error) {
 		case xml.StartElement:
 			tag := v.Name.Local
 			if len(stack) == 0 {
-				if root || tag != "gpx" {
-					return nil, fmt.Errorf("expected one gpx root")
-				}
-				root = true
+				return nil, fmt.Errorf("expected one gpx root")
 			}
 			stack = append(stack, tag)
 			text = ""
@@ -117,7 +106,6 @@ func loadTrack(path string) (*Track, error) {
 				if !lat || !lon || math.IsNaN(p.Lat) || math.IsNaN(p.Lon) || math.Abs(p.Lat) > 90 || math.Abs(p.Lon) > 180 {
 					return nil, fmt.Errorf("invalid GPX coordinates")
 				}
-				p.World = project(p.Lon, p.Lat)
 			}
 		case xml.CharData:
 			text += string(v)
@@ -154,14 +142,6 @@ func loadTrack(path string) (*Track, error) {
 						return nil, fmt.Errorf("point outside segment")
 					}
 					s := &t.Segments[seg]
-					if len(t.Points) > s.Start {
-						prev := t.Points[len(t.Points)-1]
-						if math.Abs(prev.Lon-p.Lon) > 180 {
-							return nil, fmt.Errorf("antimeridian segments are not supported")
-						}
-						t.Distance += haversine(prev, *p)
-					}
-					p.Distance = t.Distance
 					t.Points = append(t.Points, *p)
 					s.End = len(t.Points)
 				}
@@ -177,21 +157,6 @@ func loadTrack(path string) (*Track, error) {
 			stack = stack[:len(stack)-1]
 			text = ""
 		}
-	}
-	if !root || len(t.Points)+len(t.Waypoints) == 0 {
-		return nil, fmt.Errorf("GPX contains no geometry")
-	}
-	t.Bounds = [4]float64{180, 90, -180, -90}
-	for _, ps := range [][]Point{t.Points, t.Waypoints} {
-		for _, p := range ps {
-			t.Bounds[0] = math.Min(t.Bounds[0], p.Lon)
-			t.Bounds[1] = math.Min(t.Bounds[1], p.Lat)
-			t.Bounds[2] = math.Max(t.Bounds[2], p.Lon)
-			t.Bounds[3] = math.Max(t.Bounds[3], p.Lat)
-		}
-	}
-	if t.Bounds[2]-t.Bounds[0] > 180 {
-		return nil, fmt.Errorf("antimeridian bounds are not supported")
 	}
 	return t, nil
 }

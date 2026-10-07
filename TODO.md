@@ -1,5 +1,8 @@
 - [x] free roaming/browsing without a GPX
-- [] fit / tcx support
+- [x] FIT activity and course import
+- [x] TCX activity and course import
+- [x] KML (Google Maps/Earth XML) geometry and track import
+- [ ] multiple routes and activities
 - [] plot a route / create directions
 - [] toggle traffic
 - [] theme switching

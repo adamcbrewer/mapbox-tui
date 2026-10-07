@@ -92,14 +92,14 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "reset world view"), binding(",/.", "rotate"), binding("n", "north-up")},
 			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
 			{},
-			{binding("ctrl+o", "open GPX"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+			{binding("ctrl+o", "open file"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 		}
 	}
 	return [][]key.Binding{
 		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit route"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
 		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
 		{binding("space", "play/pause"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "elevation profile")},
-		{binding("ctrl+o", "open GPX"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+		{binding("ctrl+o", "open file"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 	}
 }
 
@@ -168,7 +168,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	case dialogFiles:
 		picker := filepicker.New()
 		picker.CurrentDirectory, _ = filepath.Abs(filepath.Dir(m.path))
-		picker.AllowedTypes = []string{".gpx"}
+		picker.AllowedTypes = []string{".gpx", ".fit", ".tcx", ".kml", ".GPX", ".FIT", ".TCX", ".KML"}
 		picker.AutoHeight = false
 		picker.SetHeight(max(1, min(17, m.height-10)-2))
 		picker.ShowPermissions, picker.ShowSize = false, false
@@ -194,7 +194,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 type viewerCommand struct{ title, shortcut, action string }
 
 func (m *viewer) commands() []viewerCommand {
-	commands := []viewerCommand{{"Open GPX", "ctrl+o", "open"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
+	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
 	if m.track != nil {
 		commands = append(commands, viewerCommand{"Free roam (clear route)", "", "roam"}, viewerCommand{"Fit route", "f", "fit"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"}, viewerCommand{"Toggle elevation profile", "e", "profile"})
 	} else {
@@ -322,7 +322,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		m.ui.picker.Styles.Directory = dialogAccent.Width(max(1, width-2)).MaxWidth(max(1, width-2))
 		m.ui.picker.Styles.DisabledFile = dialogMuted.Width(max(1, width-2)).MaxWidth(max(1, width-2))
 		path := dialogMuted.Render(pad(ansi.Truncate(m.ui.picker.CurrentDirectory, width, "…"), width))
-		return "Open GPX", path + "\n\n" + m.ui.picker.View(), "↑/↓ choose   ←/→ folders   enter open   esc close"
+		return "Open track file", path + "\n\n" + m.ui.picker.View(), "↑/↓ choose   ←/→ folders   enter open   esc close"
 	case dialogSpeed:
 		rows := []string{dialogMuted.Render(pad("Playback speed multiplier", width)), ""}
 		for i, speed := range []int{1, 5, 20, 60, 120} {

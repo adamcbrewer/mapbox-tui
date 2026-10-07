@@ -136,7 +136,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.err != nil {
 			m.dirty = true
 			cmd := m.openDialog(dialogFiles)
-			m.ui.notice = "Could not open GPX: " + v.err.Error()
+			m.ui.notice = "Could not open track file: " + v.err.Error()
 			return m, cmd
 		}
 		if m.track != nil {
@@ -535,7 +535,7 @@ func (m *viewer) details() []string {
 	t := m.track
 	if t == nil {
 		center := unproject(m.camera.Center)
-		lines := []string{"Map details", "", "Free roam", "No route loaded", "ctrl+o to open a GPX", "", "Map center", fmt.Sprintf("Lat %.6f", center.Y), fmt.Sprintf("Lon %.6f", center.X)}
+		lines := []string{"Map details", "", "Free roam", "No route loaded", "ctrl+o to open a track file", "", "Map center", fmt.Sprintf("Lat %.6f", center.Y), fmt.Sprintf("Lon %.6f", center.X)}
 		if m.inspected != nil {
 			lines = append(lines, "", "Selected position", fmt.Sprintf("Lat %.6f", m.inspected.Y), fmt.Sprintf("Lon %.6f", m.inspected.X))
 		}
@@ -639,7 +639,7 @@ func (m *viewer) rebuild() {
 			if m.inspected != nil {
 				location = fmt.Sprintf("Selected: %.6f, %.6f", m.inspected.Y, m.inspected.X)
 			}
-			rows = append(rows, paint(pad(fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing), m.width), 5), uiText.Render(pad(location, m.width)), uiMuted.Render(pad("ctrl+o open GPX · enter inspect · f reset world view", m.width)))
+			rows = append(rows, paint(pad(fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing), m.width), 5), uiText.Render(pad(location, m.width)), uiMuted.Render(pad("ctrl+o open file · enter inspect · f reset world view", m.width)))
 		}
 	}
 	if m.profileHeight > 0 && m.profile != nil {
@@ -660,7 +660,7 @@ func (m *viewer) rebuild() {
 	if m.busy || m.loading {
 		label := "Loading basemap…"
 		if m.loading {
-			label = "Loading GPX…"
+			label = "Loading track file…"
 		}
 		status = m.ui.spinner.View() + " " + label + " " + status
 	}
@@ -701,7 +701,7 @@ func openViewer(path string, a Args) error {
 		return e
 	}
 	if path == "" && a.PointIndex != nil {
-		return fmt.Errorf("point_index requires a GPX")
+		return fmt.Errorf("point_index requires a track file")
 	}
 	p := newProvider(a.Provider)
 	ctx, cancel := context.WithCancel(context.Background())

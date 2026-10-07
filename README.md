@@ -1,7 +1,8 @@
 # Shell on Earth
 
-A personal proof of concept for browsing maps and viewing GPX files in a terminal.
-Built with Go, Bubble Tea, Bubbles and Lip Gloss. The executable is `shoe`.
+A personal proof of concept for browsing maps and viewing GPX, FIT, TCX and KML
+files in a terminal. Built with Go, Bubble Tea, Bubbles and Lip Gloss.
+The executable is `shoe`.
 
 - Pan, zoom and inspect tracks, routes and waypoints.
 - Free roam around the map without loading a file.
@@ -21,18 +22,52 @@ make build
 ./bin/shoe fixtures/example.gpx
 ```
 
-GPX viewing needs no account or token. A configured Mapbox token adds a real
+File viewing needs no account or token. A configured Mapbox token adds a real
 basemap automatically. Run `./bin/shoe` without a file to free roam; without a
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
-GPX picker and `q` to quit.
+file picker and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
 
 Braille rendering works best in a Unicode terminal. Use `--ascii` for a text
 fallback. The minimum terminal size is 30 columns by 12 rows.
 
+## Supported file formats
+
+The viewer, CLI commands and MCP `load_track` share the same import support:
+
+| Format | Imported data |
+|---|---|
+| GPX | Tracks, routes and waypoints |
+| FIT | Activity/course GPS records, elevation, timestamps and course-point waypoints |
+| TCX | Activity tracks/laps, courses and course-point waypoints, with elevation and timestamps |
+| KML | Placemarks, line strings, polygon outlines, nested multi-geometries and Google `gx:Track` / `gx:MultiTrack` timestamps |
+
+Open these files in the usual way, for example `./bin/shoe ride.fit`,
+`./bin/shoe summary ride.tcx` or `./bin/shoe render map.kml --json`.
+XML formats are detected by their root element; FIT is detected by its binary
+header. The picker accepts lowercase and uppercase extensions.
+
+KML accepts whitespace around coordinate commas, including Garmin's KML 2.1
+exports. FIT validates every file's full checksum, including chained files and
+Zwift exports with an omitted optional header checksum. Truncated files and
+checksum mismatches are rejected.
+
+Separate tracks, laps, timer pauses and missing GPS positions remain separate
+parts. Distances exclude those gaps. Missing elevation/timestamps stay unavailable;
+geometry without complete timestamps uses the existing estimated-speed playback.
+FIT/TCX imports use GPS geometry, not device-reported distance or sensor metrics.
+KML altitude values are retained as stored, without terrain/altitude-mode conversion.
+KML styles, overlays and network links aren't loaded. Export plain `.kml` rather
+than compressed `.kmz`.
+
+FIT decoding uses the BSD-licensed [FIT SDK for Go](https://github.com/muktihari/fit),
+without a proprietary SDK dependency. Garmin's
+[FIT protocol licence](https://www.thisisant.com/developer/ant/licensing/flexible-and-interoperable-data-transfer-fit-protocol-license)
+applies to the format. TCX and KML use Go's built-in XML parser.
+
 ## Mapbox basemap
 
-Only real basemap tiles need a Mapbox account and public access token. GPX
+Only real basemap tiles need a Mapbox account and public access token. Imported
 geometry, measurements and playback work without Mapbox authentication.
 
 ### Runtime configuration
@@ -56,35 +91,35 @@ MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/shoe
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
 `--zoom` to start somewhere specific. Pan, zoom, rotate and click to inspect
 coordinates. Route playback and elevation controls become available after opening
-a GPX. Use **Free roam (clear route)** in the Ctrl-P command palette to remove the
-route and keep browsing the current location.
+a track file. Use **Free roam (clear route)** in the Ctrl-P command palette to
+remove the route and keep browsing the current location.
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
 canvas. `--provider none` (MCP: `provider: "none"`) disables the basemap even when
 a token is available.
 
-Opening a GPX without credentials is quiet. An explicit Mapbox request without
-a token, or a file-free launch without a basemap, shows token setup guidance and
-keeps the viewer/file usable. The viewer shows this in its status line; plain
+Opening a track file without credentials is quiet. An explicit Mapbox request
+without a token, or a file-free launch without a basemap, shows token setup guidance
+and keeps the viewer/file usable. The viewer shows this in its status line; plain
 CLI renders warn on stderr, while JSON/MCP renders include it in `scene.status`.
 
 Mapbox requests use your account and may incur charges. Provider errors leave the
-GPX inspectable. See [provider notes](docs/PROVIDERS.md) for caching and attribution
+file inspectable. See [provider notes](docs/PROVIDERS.md) for caching and attribution
 requirements, including the unresolved graphical-logo requirement.
 
-Credentials, personal GPX/FIT/TCX files, binaries and generated reports are ignored
-by Git. Only the four explicitly allowed synthetic GPX fixtures are tracked.
+Credentials, personal GPX/FIT/TCX/KML files, binaries and generated reports are
+ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are tracked.
 
 ### Which commands need Mapbox authentication?
 
 | Command / feature | Mapbox authentication | Without credentials |
 |---|---|---|
-| `shoe FILE` or `shoe open FILE` | Optional, for the basemap | View GPX tracks, routes and waypoints on an empty canvas |
-| GPX inspection, elevation profile and playback | No | Fully available for the loaded geometry/measurements |
-| `shoe` / file-free browsing | Required for real maps | Empty canvas with a setup hint; Ctrl-O loads a GPX |
+| `shoe FILE` or `shoe open FILE` | Optional, for the basemap | View imported tracks, routes and waypoints on an empty canvas |
+| File inspection, elevation profile and playback | No | Fully available for the loaded geometry/measurements |
+| `shoe` / file-free browsing | Required for real maps | Empty canvas with a setup hint; Ctrl-O loads a track file |
 | `shoe render [FILE]` | Optional, for the basemap | Render only the file geometry; no file produces an empty map with a setup hint |
-| `shoe summary FILE` | No | Local GPX statistics as JSON |
+| `shoe summary FILE` | No | Local geometry and measurement statistics as JSON |
 | `shoe inspect FILE` | No | Local recorded-point inspection as JSON |
 | `shoe bench FILE` | No | Local synthetic rendering benchmark |
 | `shoe mcp` | No to start the server | Local tools work; real basemap rendering needs a token in the server's environment/config |
@@ -98,7 +133,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 
 | Action | Keyboard | Mouse |
 |---|---|---|
-| Open another GPX | Ctrl-O or `o` | |
+| Open another track file | Ctrl-O or `o` | |
 | Command palette / help | Ctrl-P / `?` | |
 | Pan | Arrows or `h j k l` | Left-drag |
 | Zoom | `+` / `-` | Wheel, anchored to pointer |
@@ -136,8 +171,9 @@ are prefixed with `~`; missing elevations and timestamps remain unavailable.
 
 ## CLI
 
-The interactive viewer is the default action. Supply an optional GPX file to add
-tracks, routes and waypoints; no file starts free roam. `open` is an optional alias.
+The interactive viewer is the default action. Supply an optional GPX, FIT, TCX or
+KML file to add tracks, routes and waypoints; no file starts free roam. `open` is
+an optional alias.
 
 ```sh
 ./bin/shoe
@@ -154,7 +190,7 @@ Subcommands select a different operation:
 | Command | File | Result |
 |---|---|---|
 | `render` | Optional | Static map text, or JSON with `--json` |
-| `summary` | Required | GPX statistics as JSON |
+| `summary` | Required | Geometry and measurement statistics as JSON |
 | `inspect` | Required | Recorded point as JSON |
 | `mcp` | None | Local stdio MCP server |
 | `bench` | Required | Synthetic rendering benchmark timings as JSON |
@@ -242,7 +278,7 @@ dependency-minimisation and deterministic-install principles in this
 
 - Antimeridian-crossing geometry and bounds wider than 180 degrees are rejected.
 - Display uses Mercator projection; distances use spherical Haversine calculations.
-- Map labels are ASCII-only. FIT files and GPX activity extensions aren't parsed.
+- Map labels are ASCII-only. Sensor metrics and GPX activity extensions aren't imported.
 - Basemap detail is capped at tile zoom 14, even when the viewer zooms further.
 - Distance includes each imported track and route, excluding gaps between parts.
 - Terminal integration checks cover headless Linux/tmux; other environments aren't verified.

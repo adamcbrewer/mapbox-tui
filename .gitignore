@@ -1,12 +1,13 @@
 /bin/
 /reports/
-*.gpx
+*.[gG][pP][xX]
 !/fixtures/example.gpx
 !/fixtures/waypoints.gpx
 !/fixtures/empty.gpx
 !/fixtures/invalid.gpx
-*.fit
-*.tcx
+*.[fF][iI][tT]
+*.[tT][cC][xX]
+*.[kK][mM][lL]
 .env
 .env.*
 *.local.json

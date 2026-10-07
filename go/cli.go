@@ -73,13 +73,13 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		return command, nil
 	}
 	if len(paths) > 1 {
-		return command, fmt.Errorf("supply at most one GPX file")
+		return command, fmt.Errorf("supply at most one track file (GPX, FIT, TCX or KML)")
 	}
 	if len(paths) == 1 {
 		command.Path = paths[0]
 	}
 	if command.Path == "" && command.Name != "open" && command.Name != "render" {
-		return command, fmt.Errorf("%s requires a GPX file; see 'shoe %s --help'", command.Name, command.Name)
+		return command, fmt.Errorf("%s requires a track file; see 'shoe %s --help'", command.Name, command.Name)
 	}
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -141,15 +141,15 @@ func parseOptions(fs *flag.FlagSet, argv []string) ([]string, error) {
 func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	switch name {
 	case "open":
-		fmt.Fprintln(output, "Usage: shoe [FILE] [OPTIONS]\n       shoe COMMAND [FILE] [OPTIONS]\n\nBrowse the map interactively. An optional GPX file adds tracks, routes and\nwaypoints. A configured Mapbox token adds a basemap; otherwise files are shown\non an empty canvas. 'open' is an optional alias for the viewer.\n\nCommands:\n  render   Print a static map; the GPX file is optional\n  summary  Print GPX statistics as JSON\n  inspect  Print a recorded point as JSON\n  mcp      Run the local stdio MCP server\n  bench    Benchmark synthetic map rendering")
+		fmt.Fprintln(output, "Usage: shoe [FILE] [OPTIONS]\n       shoe COMMAND [FILE] [OPTIONS]\n\nBrowse the map interactively. An optional GPX, FIT, TCX or KML file adds tracks,\nroutes and waypoints. A configured Mapbox token adds a basemap; otherwise files\nare shown on an empty canvas. 'open' is an optional alias for the viewer.\n\nCommands:\n  render   Print a static map; the track file is optional\n  summary  Print track statistics as JSON\n  inspect  Print a recorded point as JSON\n  mcp      Run the local stdio MCP server\n  bench    Benchmark synthetic map rendering")
 	case "render":
-		fmt.Fprintln(output, "Usage: shoe render [FILE] [OPTIONS]\n\nPrint a static map with an optional GPX overlay. Use --json to include scene\nmetadata. A configured Mapbox token adds a basemap; otherwise only the file\ngeometry is rendered.")
+		fmt.Fprintln(output, "Usage: shoe render [FILE] [OPTIONS]\n\nPrint a static map with an optional GPX, FIT, TCX or KML overlay. Use --json to\ninclude scene metadata. A configured Mapbox token adds a basemap; otherwise\nonly the file geometry is rendered.")
 	case "summary":
-		fmt.Fprintln(output, "Usage: shoe summary FILE\n\nPrint GPX geometry and measurement statistics as JSON.")
+		fmt.Fprintln(output, "Usage: shoe summary FILE\n\nPrint GPX, FIT, TCX or KML geometry and measurement statistics as JSON.")
 	case "inspect":
-		fmt.Fprintln(output, "Usage: shoe inspect FILE [OPTIONS]\n\nPrint a recorded point as JSON. Select by index or distance, not both.\nDefaults to point index 0.")
+		fmt.Fprintln(output, "Usage: shoe inspect FILE [OPTIONS]\n\nPrint a recorded point from a GPX, FIT, TCX or KML file as JSON.\nSelect by index or distance, not both. Defaults to point index 0.")
 	case "bench":
-		fmt.Fprintln(output, "Usage: shoe bench FILE [OPTIONS]\n\nBenchmark GPX parsing and synthetic map rendering. Output timings as JSON.")
+		fmt.Fprintln(output, "Usage: shoe bench FILE [OPTIONS]\n\nBenchmark GPX, FIT, TCX or KML parsing and synthetic map rendering.\nOutput timings as JSON.")
 	case "mcp":
 		fmt.Fprintln(output, "Usage: shoe mcp\n\nRun the local MCP server over stdin/stdout. Takes no file argument.")
 	}

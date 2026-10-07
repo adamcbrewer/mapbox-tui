@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/harmonica v0.2.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/muktihari/fit v0.28.4
 	github.com/paulmach/orb v0.13.0
 )
 
