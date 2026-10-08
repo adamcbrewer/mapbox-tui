@@ -7,7 +7,7 @@
 - [x] multiple routes and activities
 - [x] loaded-files / routes UI: show filenames, select items, hide/show and remove
 - [x] theme switching
-- [ ] plot a route / create directions
-- [ ] toggle traffic
-- [ ] other data sources and display ideas (ala mapbox playground)
+- [ ] [plot a route / create directions](https://github.com/adamcbrewer/shell-on-earth/issues/5)
+- [ ] [toggle traffic](https://github.com/adamcbrewer/shell-on-earth/issues/4)
+- [ ] [choose the next map data source](https://github.com/adamcbrewer/shell-on-earth/issues/6)
 - [ ] [activity reordering and sequential playback](https://github.com/adamcbrewer/shell-on-earth/issues/3) (deferred)

@@ -67,6 +67,12 @@ Next: **step 6, route plotting / directions**. Confirm manual plotting versus
 road-following directions before implementing it. Routing/traffic sources still
 need decisions in their respective slices.
 
+Pre-PR review fixes preserve startup camera overrides across queued imports,
+consume them on import failure, and keep the current camera when active items are
+hidden/removed during animation. Picking follows the displayed cell's item;
+Mapbox request relevance follows tile coverage so useful moving-view batches can
+complete. Regression tests, repository checks, race and terminal interactions pass.
+
 Multi-activity presentation uses stable per-item colours and consecutive elevation
 sections in file-load/item order, with a summed distance axis and activity-local
 playback. Selection highlights an activity without changing that order. Explicit
@@ -241,6 +247,8 @@ Keep this separate from the current presentation fixes and theme slice.
 
 ### Route plotting / directions
 
+Tracked in [issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5).
+
 - [ ] Decide manual plotting versus road-following directions, and travel modes
   if directions are required.
 - [ ] Model editable planned routes separately from recorded activities, while
@@ -255,12 +263,17 @@ Keep this separate from the current presentation fixes and theme slice.
 
 ### Traffic
 
+Tracked in [issue #4](https://github.com/adamcbrewer/shell-on-earth/issues/4).
+
 - [ ] Choose congestion, incidents or both, and the source providing that data.
 - [ ] Define refresh/staleness expectations and the terminal display vocabulary.
 - [ ] Add traffic as an independently toggleable overlay, with its own status and
   attribution, without replacing the basemap or imported items.
 
 ### Other sources
+
+Dataset/use-case discovery is tracked in
+[issue #6](https://github.com/adamcbrewer/shell-on-earth/issues/6).
 
 - [ ] Pick one concrete dataset/display use case before adding more abstractions.
 - [ ] Add only the geometry, properties, freshness and inspection behaviour that
