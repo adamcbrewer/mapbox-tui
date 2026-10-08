@@ -30,6 +30,9 @@ const (
 	dialogInspect
 	dialogWorkspace
 	dialogThemes
+	dialogJourney
+	dialogJourneyLocation
+	dialogJourneySearch
 )
 
 type uiState struct {
@@ -126,6 +129,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			{
 				binding("ctrl+o", "add file"),
 				binding("ctrl+l", "loaded files"),
+				binding("ctrl+g", "plan journey"),
 				binding("ctrl+p", "command palette"),
 				binding("ctrl+t", "cycle theme"),
 				binding("a", "ASCII map"),
@@ -162,6 +166,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 		{
 			binding("ctrl+o", "add file"),
 			binding("ctrl+l", "loaded files"),
+			binding("ctrl+g", "plan journey"),
 			binding("ctrl+p", "command palette"),
 			binding("ctrl+t", "cycle theme"),
 			binding("a", "ASCII map"),
@@ -174,6 +179,13 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 }
 
 func (m *viewer) initUI() error {
+	if m.places == nil {
+		token := ""
+		if m.provider != nil {
+			token = m.provider.token
+		}
+		m.places = newPlaceClient(token)
+	}
 	themes, selected, err := loadThemes(m.args.Theme)
 	if err != nil {
 		return err
@@ -214,6 +226,7 @@ func (m *viewer) gradient(s string, background color.Color) string {
 	return out.String()
 }
 func (m *viewer) closeDialog() {
+	m.cancelJourneySearch()
 	m.ui.dialog = dialogNone
 	m.ui.search.Blur()
 	m.ui.notice = ""
@@ -228,6 +241,8 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	m.ui.page.GotoTop()
 	switch kind {
 	case dialogCommands:
+		m.ui.search.CharLimit = 80
+		m.ui.search.Placeholder = "Type a command…"
 		m.ui.search.SetValue("")
 		return m.ui.search.Focus()
 	case dialogFiles:
@@ -262,6 +277,7 @@ func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
+		{title: "Plan journey", shortcut: "ctrl+g", action: "journey"},
 		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
 		{title: "Provider credits", shortcut: "v", action: "credits"},
 		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
@@ -310,6 +326,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return m.clearWorkspace()
 	case "workspace":
 		return m.openDialog(dialogWorkspace)
+	case "journey":
+		return m.openJourney()
 	case "open":
 		return m.openDialog(dialogFiles)
 	case "help":
@@ -341,6 +359,9 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 
 func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
+	if m.ui.dialog >= dialogJourney {
+		return m.updateJourneyDialog(msg)
+	}
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
 		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
@@ -422,6 +443,8 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	switch m.ui.dialog {
+	case dialogJourney, dialogJourneyLocation, dialogJourneySearch:
+		return m.journeyDialogContent(width, height)
 	case dialogWorkspace:
 		return m.workspaceDialogContent(width, height)
 	case dialogCommands:
@@ -489,7 +512,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	switch m.ui.dialog {
 	case dialogHelp:
 		groups := shortcutMap{
-			freeRoam: m.activeTrack() == nil,
+			freeRoam: m.activePlayback() == nil,
 			profiles: len(m.workspace.profileItems()) > 0,
 		}.FullHelp()
 		m.ui.help.SetWidth(max(width, 50))
@@ -505,6 +528,9 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	case dialogCredits:
 		title = "Provider credits"
 		content = m.sourceCreditsContent(m.sources.view())
+		if credits := m.journeyCredits(); credits != "" {
+			content += "\n\n" + s.dialogHeading.Render("Journey place search") + "\n" + s.dialogText.Render(credits)
+		}
 	case dialogInspect:
 		title = "Selected position"
 		content = s.dialogText.Render(strings.Join(m.details(), "\n"))
@@ -611,10 +637,13 @@ func (m *viewer) overlay() {
 		}
 	}
 	m.content = canvas.Render()
-	if m.ui.dialog == dialogCommands {
+	if m.ui.dialog == dialogCommands || m.ui.dialog == dialogJourneyLocation {
 		if cursor := m.ui.search.Cursor(); cursor != nil {
 			cursor.X += max(0, x) + 3
 			cursor.Y += max(0, y) + 4
+			if m.ui.notice != "" {
+				cursor.Y++
+			}
 			m.cursor = cursor
 		}
 	}

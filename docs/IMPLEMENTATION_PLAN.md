@@ -5,9 +5,12 @@ workspace ownership, then build the remaining TODO features on those foundations
 
 ## New-thread handover
 
-- Continue on `feat/map-workspace`, tracking `origin/feat/map-workspace`.
-- Steps 1-5 are complete. Resume at **step 6**, confirming manual route plotting
-  versus road-following directions and travel modes before implementing routing.
+- Continue on `feat/5-route-plotting`. The journey-planner slice is implemented
+  and verified locally.
+- Steps 1-5 are complete. Step 6 now includes manual A-to-B planning with typed
+  locations, ordered waypoints, reversal/undo and optional Mapbox Search Box for
+  start, destination and waypoints. Road-following remains future work requiring
+  its own travel-mode/provider scope.
 - Theme scope is terminal recolouring. Three Omarchy-derived TOML palettes are
   embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-T cycles
   themes and Ctrl-P opens the picker. [Theme API](THEMES.md) records the format,
@@ -63,9 +66,19 @@ Night (dark), with custom-file loading through the same API. Palette validation,
 state-preservation tests, repository checks, race checks and offline terminal
 interactions pass at wide/compact sizes, including open dialogs and ASCII playback.
 
-Next: **step 6, route plotting / directions**. Confirm manual plotting versus
-road-following directions before implementing it. Routing/traffic sources still
-need decisions in their respective slices.
+The first **step 6 journey-planning slice** is complete: shared editable planned
+geometry, stable workspace identity, ordered waypoints, full reversal/undo and
+keyboard editing. Ctrl-G opens the planner, Ctrl-S offers Mapbox Search Box using
+the existing token for any location field.
+Coordinates/map-centre input works offline. Planned geometry has no recorded
+playback/elevation; unresolved locations leave gaps. Search requests cancel
+obsolete work and reject late results, including pasted queries and edited starts.
+Formatting, repository tests/vet/CLI-MCP parity, race checks and terminal
+interactions pass. Provider tests use fake transports; live location APIs have
+not been called during verification. [Route-planning notes](ROUTE_PLANNING.md)
+record controls and API research. Favorites and persistent/offline geolocation
+caching are separate in issue #10. Road/path routing and estimated elevation are
+tracked separately in issues #12 and #13. Traffic remains in issue #4.
 
 Pre-PR review fixes preserve startup camera overrides across queued imports,
 consume them on import failure, and keep the current camera when active items are
@@ -245,21 +258,36 @@ Keep this separate from the current presentation fixes and theme slice.
 - [ ] Confirm selected-activity versus journey-wide playback before adding handoffs,
   combined progress or cross-activity seeking.
 
-### Route plotting / directions
+### Route plotting
 
 Tracked in [issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5).
 
-- [ ] Decide manual plotting versus road-following directions, and travel modes
-  if directions are required.
-- [ ] Model editable planned routes separately from recorded activities, while
+The account-free baseline is manual plotting. Use Google Maps as the interaction
+reference for desktop planning/research, including place search and POIs rather
+than live in-car/mobile navigation; account-dependent enhancements remain explicit
+user options. This branch delivers A-to-B journey planning with typed locations
+and editable ordered waypoints. Start, destination and waypoints share the same
+search/manual-entry flow; reversal reverses the whole waypoint order.
+Favorites and persistent/offline geolocation caching
+are separate future work in [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+Area research and research-to-trip actions are excluded. Prefer
+the existing Mapbox account over another paid service unless there is a substantial
+benefit. [Route-planning research and proposed scope](ROUTE_PLANNING.md) records
+Mapbox capabilities, free alternatives, user
+stories, costs, constraints and the implemented editing/lifecycle rules. Mapbox
+Search Box and the first slice's controls are confirmed and verified.
+
+- [x] Confirm manual straight-line journey planning for the first slice; online
+  road-following and travel-mode selection remain future scope.
+- [x] Model editable planned routes separately from recorded activities, while
   sharing geometry and workspace display.
-- [ ] Define edit/undo behaviour and recompute or invalidate derived geometry,
+- [x] Define edit/undo behaviour and recompute or invalidate derived geometry,
   profiles and playback data together.
-- [ ] For directions, choose an actual routing source and handle ordered stops,
-  manoeuvres, request cancellation and failures. Visual Streets tiles are not a
-  routing graph.
-- [ ] Add resulting routes to the workspace without inventing recorded timestamps
-  from estimated journey times.
+- Road/path-following is deferred to [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+  Visual Streets tiles are not a routing graph. Estimated route elevation is
+  separate in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+- [x] Add manually planned routes to the workspace without inventing recorded
+  timestamps, elevation or journey-time estimates.
 
 ### Traffic
 

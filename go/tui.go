@@ -60,6 +60,8 @@ type viewer struct {
 	following                 bool
 	motion                    cameraMotion
 	lastMotionTick            time.Time
+	planner                   journeyUI
+	places                    *placeClient
 }
 
 func tick() tea.Cmd {
@@ -105,7 +107,7 @@ func (m *viewer) activePlayback() *playback {
 	return m.workspace.selection.playback
 }
 func (m *viewer) selectedPoint() int {
-	if t := m.activeTrack(); t != nil && len(t.Points) > 0 {
+	if t := m.activeTrack(); t != nil && len(t.Points) > 0 && m.activePlayback() != nil {
 		return m.activePlayback().nearest()
 	}
 	return -1
@@ -209,6 +211,11 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
+	case placeSearchReady:
+		return m, m.requestPlaceSearch(v.id)
+	case placeSearchResult:
+		m.acceptPlaceSearch(v)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
 		m.layout()
@@ -300,8 +307,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
-		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles
+		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.ui.dialog == dialogJourneyLocation
 		if key == "ctrl+c" || (key == "q" && !enteringText) {
+			m.cancelJourneySearch()
 			return m, tea.Quit
 		}
 		if key == "ctrl+t" {
@@ -320,6 +328,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.openDialog(dialogCommands)
 		case "ctrl+l":
 			return m, m.openDialog(dialogWorkspace)
+		case "ctrl+g":
+			return m, m.openJourney()
 		case "?":
 			return m, m.openDialog(dialogHelp)
 		case "v":
@@ -358,7 +368,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirty = true
 			return m, nil
 		}
-		if m.activeTrack() == nil {
+		if m.activePlayback() == nil {
 			switch key {
 			case "[", "]", "pgup", "pgdown", "home", "end", "c", "space", "s", "S":
 				return m, nil
@@ -622,6 +632,11 @@ func pad(s string, w int) string {
 	return s + strings.Repeat(" ", max(0, w-ansi.StringWidth(s)))
 }
 func (m *viewer) details() []string {
+	if m.workspace.selection != nil {
+		if lines := m.journeyDetails(); lines != nil {
+			return lines
+		}
+	}
 	t := m.activeTrack()
 	stats := m.sources.view().Stats
 	if t == nil {
@@ -842,10 +857,14 @@ func (m *viewer) rebuild() {
 			)
 			rows = append(rows, m.paint(pad(summary, m.width), roleActiveRoute, m.activeSwatch()))
 			line := strings.Join(details[7:min(len(details), 14)], " | ")
+			hint := "[ ] select; PgUp/PgDn ±100; c follow · enter inspect"
+			if m.activePlayback() == nil {
+				hint = "Manual straight-line · ctrl+g edit journey"
+			}
 			rows = append(
 				rows,
 				s.text.Render(pad(line, m.width)),
-				s.muted.Render(pad("[ ] select; PgUp/PgDn ±100; c follow · enter inspect", m.width)),
+				s.muted.Render(pad(hint, m.width)),
 			)
 		} else {
 			center := unproject(c.Center)
@@ -924,9 +943,12 @@ func (m *viewer) rebuild() {
 		compact:        m.width < 90,
 		playing:        playback != nil && playback.Playing,
 		detailsFocused: m.ui.detailsFocused,
-		freeRoam:       m.activeTrack() == nil,
+		freeRoam:       m.activePlayback() == nil,
 	}
 	credits, _ := sources.attribution()
+	if journeyCredits := m.journeyCredits(); journeyCredits != "" {
+		credits += " " + journeyCredits
+	}
 	rows = append(
 		rows,
 		pad(status, m.width),
@@ -981,6 +1003,7 @@ func openViewerFiles(paths []string, a Args) error {
 	}
 	m.layout()
 	defer m.sources.close()
+	defer m.cancelJourneySearch()
 	_, e = tea.NewProgram(m).Run()
 	if e != nil {
 		return e

@@ -1,6 +1,6 @@
 # Map providers
 
-The viewer supports two providers:
+The viewer supports two basemap providers:
 
 - `mapbox`: Mapbox Streets v8 vector tiles, using your own access token.
 - `none`: imported file geometry on an empty canvas; no authentication or network
@@ -70,13 +70,56 @@ after eight seconds, and tile bodies are limited to 8 MiB.
   tile statistics and optional `refresh_at` deadline.
 - Imported geometry remains usable when the provider fails.
 
+## Journey location lookups
+
+The journey planner uses user-triggered location lookups:
+
+- **Mapbox Search Box** supplies address/place/named-POI autocomplete and selected
+  coordinates. Ctrl-S in the location editor offers an explicit opt-in using the
+  existing runtime Mapbox token. A basemap token alone does not start search calls.
+  `--provider none` disables the basemap; explicitly allowed place search remains
+  available. Search requests include the text and the current map centre as a bias.
+- Coordinates in latitude/longitude order and the current map centre are usable
+  without a token or network. This slice does not call Directions or Matrix.
+
+The client uses Go's standard HTTP/JSON libraries, HTTPS, an eight-second timeout,
+disabled redirects and a 1 MiB decoded response limit. The host is fixed; request
+URLs, tokens, queries and response bodies are excluded from error messages. This
+adds no SDK dependencies, following the dependency-minimisation principle in the
+[supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+
+Search waits for three characters and a 350 ms pause, cancelling superseded
+requests and rejecting late results. The suggest/retrieve pair shares a unique
+session token; new editors, ended sessions and long-running searches get fresh
+tokens. Each local session uses at most 49 suggest requests before rotating and
+rotates before the documented 180-second endpoint session deadline. Camera motion
+does not trigger location lookups. Closing the planner or editing the query cancels
+work and rejects stale suggestions/retrievals. Opening or reopening the planner
+does not automatically look up a starting point.
+
+Errors leave chosen locations and imported geometry intact, with manual entry
+available. There are no automatic network retry/refresh loops for location lookup.
+Credits returned for selected Mapbox places remain with the session's locations,
+appear in provider credits and contribute to the map footer for visible plans.
+
+Mapbox Search Box is billed by search session for suggest/retrieve; this is separate
+from Directions' free allowance. Its documentation lists coverage in the US, Canada
+and Europe.
+
+Search results and plans remain in memory for this session only. The
+[Search Box documentation](https://docs.mapbox.com/api/search/search-box/)
+restricts returned data to temporary use. No disk cache, favorites or export is
+added here. Provider-compatible persistence is tracked in
+[issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+
 ## Attribution
 
 [Mapbox's attribution requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
 include a graphical logo and text credits for maps using its data. The current
 terminal renderer displays text-only `© Mapbox`, `© OpenStreetMap` and an Improve
 this map entry. Credits and links are combined from enabled source snapshots,
-with duplicate entries removed. `none` displays no Mapbox attribution or links.
+with duplicate entries removed. `none` adds no basemap attribution or links;
+selected Mapbox places still carry their own search credits.
 Press `v` for source status, refresh deadlines and credit links; CLI/MCP render
 results include the same attribution information.
 

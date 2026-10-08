@@ -15,10 +15,11 @@ type Document struct {
 }
 
 type DocumentItem struct {
-	ID    int
-	Kind  string
-	Group *ImportGroup
-	Track *Track
+	ID      int
+	Kind    string
+	Group   *ImportGroup
+	Track   *Track
+	Journey *Journey
 }
 
 type ImportGroup struct {

@@ -120,6 +120,17 @@ identity, playback, camera, source freshness and cached elevation geometry while
 restyling existing widgets. They cover open-dialog input/focus/scroll state and
 theme-picker/map painting at 120×40, 70×24, 70×18 and 30×12, including ASCII mode.
 
+Journey checks cover session-only generated item identity, isolation from imports,
+full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps
+and geometry recalculation. Tests verify opening/reopening makes no location
+requests. Fake transports verify Mapbox search opt-in, suggest/retrieve session
+ownership and rotation, cancellation,
+paste-driven query invalidation, edited-place provenance/attribution,
+stale responses after edits/removal, missing/invalid coordinates, HTTP/body limits
+and token/query redaction. Planned geometry does not acquire recorded playback or
+elevation profiles. Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
+in Braille/ASCII modes.
+
 Optional checks, after building:
 
 ```sh
@@ -138,6 +149,10 @@ remaining profile. Colour captures are saved alongside the interaction results.
 Theme interactions cycle all three palettes at wide/compact sizes, recolour open
 help, credits, speed, workspace, file-picker and command dialogs, preserve filtered
 input and map text, and continue playback in ASCII mode.
+Journey interactions use offline coordinates to exercise
+start/destination entry, intermediate waypoints, full reversal/undo, reorder/removal,
+map fit, ASCII mode and reopening at 120×40, 70×24 and 70×18. They make no location
+lookup requests; provider behaviour uses fake transports in Go tests.
 They don't verify physical mouse forwarding or other
 operating systems. Benchmark and capture output is ignored under `reports/`.
 

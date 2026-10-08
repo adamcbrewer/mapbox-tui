@@ -592,6 +592,56 @@ def workspace_profiles(binary, width, height):
             tmux("kill-session", "-t", "poc", check=False)
 
 
+def journey_controls(binary, width, height):
+    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
+    tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+    try:
+        wait_for(lambda s: "Free roam" in s)
+        send("\x07")
+        wait_for(lambda s: "Plan journey" in s and "A Start" in s)
+
+        def location(title, coordinates):
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            wait_for(lambda s: title in s and "Place or latitude" in s)
+            if title == "B Destination":
+                send(f"\x1b[200~{coordinates}\x1b[201~")
+            else:
+                send(coordinates)
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            wait_for(lambda s: "Plan journey" in s and coordinates.split(",")[0] in s)
+
+        location("A Start", "51.5, -0.1")
+        tmux("send-keys", "-t", "poc:0.0", "Down")
+        location("B Destination", "51.6, -0.2")
+        send("\x0e")
+        location("1 Waypoint", "51.55, -0.15")
+        send("\x0e")
+        location("2 Waypoint", "51.56, -0.16")
+        send("\x12")
+        wait_for(lambda s: "A Start: 51.600000" in s and "1 Waypoint: 51.560000" in s and "2 Waypoint: 51.550000" in s and "B Destination: 51.500000" in s)
+        send("\x1a")
+        wait_for(lambda s: "A Start: 51.500000" in s and "1 Waypoint: 51.550000" in s and "B Destination: 51.600000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "M-Up")
+        wait_for(lambda s: "1 Waypoint: 51.560000" in s and "2 Waypoint: 51.550000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Delete")
+        wait_for(lambda s: "1 Waypoint: 51.550000" in s and "2 Waypoint:" not in s)
+        send("\x06")
+        wait_for(lambda s: "Plan journey" not in s and "Planned journey" in s)
+        screen = settled()
+        assert "Playing" not in screen and "estimated 6 m/s" not in screen and "Elevation profile" not in screen, "planned journey became recorded playback"
+        folder = ROOT / "reports/generated"
+        folder.mkdir(exist_ok=True, parents=True)
+        save_svg(folder / f"{binary.name}-journey-{width}x{height}.svg", width, height)
+        send("a\x07")
+        wait_for(lambda s: "Plan journey" in s and "A Start" in s)
+        assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "ASCII journey rendered Braille"
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        print(f"{binary.name} {width}×{height}: manual start/destination entry, waypoints, full reversal/undo, reordering/removal, map fit, ASCII, reopen and terminal restoration passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
 if __name__ == "__main__":
     try:
         for name in ("shoe",):
@@ -614,5 +664,6 @@ if __name__ == "__main__":
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)
+                    journey_controls(ROOT / "bin" / name, width, height)
     finally:
         tmux("kill-server", check=False)

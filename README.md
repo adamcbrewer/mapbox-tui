@@ -6,6 +6,7 @@ The executable is `shoe`.
 
 - Pan, zoom and inspect multiple tracks, routes and waypoint collections.
 - Free roam around the map without loading a file.
+- Plan a manual A-to-B journey with editable waypoints and optional Mapbox place search.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
 - Switch terminal colour themes or load a custom TOML palette.
@@ -68,8 +69,9 @@ applies to the format. TCX and KML use Go's built-in XML parser.
 
 ## Mapbox basemap
 
-Only real basemap tiles need a Mapbox account and public access token. Imported
-geometry, measurements and playback work without Mapbox authentication.
+Real basemap tiles and optional journey place search use a Mapbox account and
+public access token. Imported geometry, measurements, playback and manual journey
+coordinates work without Mapbox authentication.
 
 ### Runtime configuration
 
@@ -143,6 +145,51 @@ take priority over route geometry and map labels.
 Activity reordering and journey-wide playback are tracked separately in
 [issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3).
 
+### Journey planner
+
+Press **Ctrl-G** or choose **Plan journey** in the command palette. A new journey
+starts with editable start and destination fields. Use the same place search or
+manual coordinate entry for either endpoint and for intermediate waypoints.
+
+Use Up/Down and Enter to choose/edit the start, destination or an intermediate
+waypoint. Enter **latitude, longitude** (for example `51.5, -0.1`) to set a location
+offline, or use **Ctrl-M** in the editor to use the current map centre.
+With a configured Mapbox token, **Ctrl-S** offers optional address/named-POI search.
+After allowing it, autocomplete starts after three characters and a short pause;
+Up/Down selects a suggestion and Enter resolves it. Mapbox receives the search text
+and map-centre bias. Search uses the existing token independently of the basemap
+setting, and may incur account charges. No new provider account or SDK is required.
+
+| Planner action | Control |
+|---|---|
+| Add a waypoint before the destination | Ctrl-N or the Add waypoint row |
+| Reverse the entire journey | Ctrl-R or Reverse journey |
+| Undo the last location/order edit | Ctrl-Z or Undo edit |
+| Clear an endpoint / remove a waypoint | Delete or Backspace |
+| Reorder intermediate waypoints | Alt-Up / Alt-Down |
+| Show and fit the journey on the map | Ctrl-F or Show journey on map |
+| Return from a location editor / close the planner | Esc |
+
+Reversal changes `A → W1 → W2 → B` to `B → W2 → W1 → A`; one undo restores the
+whole order. Locations remain editable, and stale lookup results cannot overwrite
+a newer edit. Cancelled/failed lookups leave the plan and imported items usable.
+
+The map connects resolved consecutive locations with **manual straight-line
+geometry** and reports its plotted distance. An unresolved waypoint leaves a gap.
+This does not calculate road routes or travel-time estimates. Planned geometry
+has no invented timestamps/elevation and is separate from recorded playback and
+elevation profiles. It appears in Ctrl-L alongside imports with stable identity
+and colour, and shares the scene renderer. Ctrl-G reopens the selected or most
+recent plan; removing it or clearing the workspace discards it.
+
+Plans and search results are **session-only**. Favorites and persistent/offline
+geolocation caching are tracked in [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+Road/path-following routes and estimated route elevation are tracked separately
+in [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12) and
+[issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+See [provider notes](docs/PROVIDERS.md#journey-location-lookups) for request and
+storage policies and [route-planning notes](docs/ROUTE_PLANNING.md) for API research.
+
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
 canvas. `--provider none` (MCP: `provider: "none"`) disables the basemap even when
@@ -172,6 +219,8 @@ ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are trac
 |---|---|---|
 | `shoe FILE` or `shoe open FILE` | Optional, for the basemap | View imported tracks, routes and waypoints on an empty canvas |
 | File inspection, elevation profile and playback | No | Fully available for the loaded geometry/measurements |
+| Journey coordinates, waypoint editing and reversal | No | Manual planning on an empty canvas |
+| Journey address/named-POI autocomplete | Yes, explicit opt-in | Enter coordinates or use the map centre |
 | `shoe` / file-free browsing | Required for real maps | Empty canvas with a setup hint; Ctrl-O loads a track file |
 | `shoe render [FILE]` | Optional, for the basemap | Render only the file geometry; no file produces an empty map with a setup hint |
 | `shoe summary FILE` | No | Local geometry and measurement statistics as JSON |
@@ -190,6 +239,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 |---|---|---|
 | Add another track file | Ctrl-O or `o` | |
 | Manage loaded files/items | Ctrl-L | Wheel scrolls the dialog |
+| Journey planner | Ctrl-G | |
 | Command palette / help | Ctrl-P / `?` | |
 | Cycle colour theme | Ctrl-T (also works in dialogs) | |
 | Pan | Arrows or `h j k l` | Left-drag |

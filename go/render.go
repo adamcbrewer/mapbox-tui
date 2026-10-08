@@ -62,10 +62,11 @@ type Grid struct {
 }
 
 type sceneItem struct {
-	Ref    ItemRef
-	Track  *Track
-	Active bool
-	Color  activityColor
+	Ref     ItemRef
+	Track   *Track
+	Active  bool
+	Color   activityColor
+	Planned bool
 }
 
 func activitySwatch(colors ...activityColor) activityColor {
