@@ -92,7 +92,7 @@ func (w *Workspace) activateDocument(entry *workspaceDocument) ItemRef {
 			break
 		}
 	}
-	ref := ItemRef{entry.id, item.ID}
+	ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
 	w.activate(ref, item.Track)
 	return ref
 }
@@ -101,7 +101,13 @@ func (w *Workspace) items() []WorkspaceItem {
 	var items []WorkspaceItem
 	for _, entry := range w.documents {
 		for _, item := range entry.document.Items {
-			items = append(items, WorkspaceItem{ItemRef{entry.id, item.ID}, entry.document, item, !entry.hidden[item.ID], entry.colors[item.ID]})
+			items = append(items, WorkspaceItem{
+				Ref:      ItemRef{DocumentID: entry.id, ItemID: item.ID},
+				Document: entry.document,
+				Item:     item,
+				Visible:  !entry.hidden[item.ID],
+				Color:    entry.colors[item.ID],
+			})
 		}
 	}
 	return items
@@ -168,7 +174,7 @@ func (w *Workspace) setDocumentVisible(id int, visible bool) error {
 	for _, entry := range w.documents {
 		if entry.id == id {
 			for _, item := range entry.document.Items {
-				_ = w.setVisible(ItemRef{id, item.ID}, visible)
+				_ = w.setVisible(ItemRef{DocumentID: id, ItemID: item.ID}, visible)
 			}
 			return nil
 		}
@@ -224,7 +230,8 @@ func (w *Workspace) position() *ridePosition {
 }
 
 func (w *Workspace) seek(index int) error {
-	if w.selection == nil || index < 0 || index >= len(w.selection.track.Points) {
+	outsideActiveItem := w.selection == nil || index < 0 || index >= len(w.selection.track.Points)
+	if outsideActiveItem {
 		return fmt.Errorf("point_index outside active item")
 	}
 	w.selection.playback.seek(index)
@@ -251,12 +258,14 @@ func (w *Workspace) selectDocumentPoint(documentID, index int) error {
 
 func (w *Workspace) profile(width, height int) *elevationProfile {
 	items := w.profileItems()
-	if len(items) == 0 || width <= 0 || height <= 0 {
+	invalidSize := width <= 0 || height <= 0
+	if len(items) == 0 || invalidSize {
 		w.elevation = nil
 		return nil
 	}
 	p := w.elevation
-	if p == nil || p.Grid.Width != width || p.Grid.Height != height || !slices.Equal(p.Items, items) {
+	needsGrid := p == nil || p.Grid.Width != width || p.Grid.Height != height
+	if needsGrid || !slices.Equal(p.Items, items) {
 		p = newProfile(items, width, height)
 		w.elevation = p
 	}
@@ -270,7 +279,7 @@ func (w *Workspace) profileItems() []sceneItem {
 
 func (w *Workspace) visibleBounds() ([4]float64, bool) {
 	var bounds [4]float64
-	found := false
+	var found bool
 	for _, entry := range w.documents {
 		for _, item := range entry.document.Items {
 			if entry.hidden[item.ID] {
@@ -290,16 +299,31 @@ func (w *Workspace) visibleBounds() ([4]float64, bool) {
 func (w *Workspace) fitVisible(width, height int, aspect float64) Camera {
 	bounds, ok := w.visibleBounds()
 	if !ok {
-		return fit(nil, width, height, aspect)
+		return fit(
+			nil,
+			width,
+			height,
+			aspect,
+		)
 	}
-	return fitBounds(bounds, width, height, aspect)
+	return fitBounds(
+		bounds,
+		width,
+		height,
+		aspect,
+	)
 }
 
 func (w *Workspace) sceneItems() []sceneItem {
 	var items []sceneItem
 	for _, item := range w.items() {
 		if item.Visible {
-			items = append(items, sceneItem{item.Ref, item.Item.Track, w.selection != nil && w.selection.ref == item.Ref, item.Color})
+			items = append(items, sceneItem{
+				Ref:    item.Ref,
+				Track:  item.Item.Track,
+				Active: w.selection != nil && w.selection.ref == item.Ref,
+				Color:  item.Color,
+			})
 		}
 	}
 	return items
@@ -311,7 +335,12 @@ func (w *Workspace) pick(c Camera, point XY) (ItemRef, int) {
 	if position := w.position(); position != nil {
 		cursor = &position.World
 	}
-	cell := renderSceneCell(c, items, cursor, point)
+	cell := renderSceneCell(
+		c,
+		items,
+		cursor,
+		point,
+	)
 	if cell.owner != (ItemRef{}) {
 		if cell.Text == 'W' {
 			return cell.owner, -1
@@ -334,7 +363,10 @@ func (w *Workspace) pick(c Camera, point XY) (ItemRef, int) {
 				i, distance = -1, d
 			}
 		}
-		if distance < best || (ref != (ItemRef{}) && distance == best && (item.Active || !active)) {
+		closer := distance < best
+		tied := ref != (ItemRef{}) && distance == best
+		preferredOnTie := item.Active || !active
+		if closer || (tied && preferredOnTie) {
 			ref, index, best, active = item.Ref, i, distance, item.Active
 		}
 	}

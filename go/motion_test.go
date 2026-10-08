@@ -33,14 +33,31 @@ func TestNavigationRetargetsMotionWithoutPausingPlayback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &viewer{workspace: testWorkspace(track), camera: fit(track, 88, 34, 2), width: 120, height: 40, following: true, lastTick: time.Now()}
+	m := &viewer{
+		workspace: testWorkspace(track),
+		camera: fit(
+			track,
+			88,
+			34,
+			2,
+		),
+		width:     120,
+		height:    40,
+		following: true,
+		lastTick:  time.Now(),
+	}
 	m.initUI()
 	m.activePlayback().toggle()
 	initial := m.camera
 	m.Update(tea.KeyPressMsg{Code: 'h'})
 	first := m.destination()
 	m.Update(tea.KeyPressMsg{Code: 'h'})
-	if !m.activePlayback().Playing || m.following || !m.motion.Active || m.camera != initial || m.destination().Center.X >= first.Center.X {
+	panInterruptedPlayback := !m.activePlayback().Playing ||
+		m.following ||
+		!m.motion.Active ||
+		m.camera != initial ||
+		m.destination().Center.X >= first.Center.X
+	if panInterruptedPlayback {
 		t.Fatal("keyboard pan paused playback, snapped, or lost repeated input")
 	}
 	m.Update(tea.MouseWheelMsg{X: 20, Y: 10, Button: tea.MouseWheelUp})
@@ -54,7 +71,8 @@ func TestNavigationRetargetsMotionWithoutPausingPlayback(t *testing.T) {
 		t.Fatal("drag paused playback or remained active after release outside the map")
 	}
 	m.Update(tea.KeyPressMsg{Code: 'c'})
-	if !m.activePlayback().Playing || !m.following || m.destination().Center != m.position().World {
+	followNotResumed := !m.activePlayback().Playing || !m.following || m.destination().Center != m.position().World
+	if followNotResumed {
 		t.Fatal("center did not resume follow while keeping playback running")
 	}
 	m.Update(tea.KeyPressMsg{Code: ']'})
@@ -69,8 +87,19 @@ func TestDialogsCaptureNavigationAndStayInsideTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
-		for _, kind := range []dialogKind{dialogHelp, dialogCredits, dialogFiles, dialogCommands, dialogSpeed, dialogInspect, dialogWorkspace} {
-			m := &viewer{workspace: testWorkspace(track), camera: fit(track, 88, 34, 2), provider: &Provider{Kind: "none"}}
+		for _, kind := range []dialogKind{
+			dialogHelp, dialogCredits, dialogFiles, dialogCommands, dialogSpeed, dialogInspect, dialogWorkspace,
+		} {
+			m := &viewer{
+				workspace: testWorkspace(track),
+				camera: fit(
+					track,
+					88,
+					34,
+					2,
+				),
+				provider: &Provider{Kind: "none"},
+			}
 			m.initUI()
 			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m.openDialog(kind)
@@ -95,13 +124,27 @@ func TestCommandActionsAndSidebarFocusKeepPlaybackControlsWorking(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &viewer{workspace: testWorkspace(track), camera: fit(track, 88, 34, 2), width: 120, height: 40, following: true, showProfile: true, lastTick: time.Now()}
+	m := &viewer{
+		workspace: testWorkspace(track),
+		camera: fit(
+			track,
+			88,
+			34,
+			2,
+		),
+		width:       120,
+		height:      40,
+		following:   true,
+		showProfile: true,
+		lastTick:    time.Now(),
+	}
 	m.initUI()
 	m.activePlayback().toggle()
 	m.openDialog(dialogCommands)
 	m.ui.search.SetValue("fit all")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if m.ui.dialog != dialogNone || !m.activePlayback().Playing || m.following {
+	fitInterruptedPlayback := m.ui.dialog != dialogNone || !m.activePlayback().Playing || m.following
+	if fitInterruptedPlayback {
 		t.Fatal("command palette did not run fit without pausing playback")
 	}
 	m.openDialog(dialogCommands)

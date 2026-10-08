@@ -17,7 +17,18 @@ import (
 //go:embed themes/*.toml
 var themeFiles embed.FS
 
-var mapRoleNames = [...]string{"none", "water", "road", "major_road", "place", "route", "marker", "cursor", "active_route", "active_marker"}
+var mapRoleNames = [...]string{
+	"none",
+	"water",
+	"road",
+	"major_road",
+	"place",
+	"route",
+	"marker",
+	"cursor",
+	"active_route",
+	"active_marker",
+}
 var themeIDPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var themeColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
@@ -36,9 +47,16 @@ func decodeTheme(r io.Reader) (presentationTheme, error) {
 		return theme, fmt.Errorf("theme activities must contain exactly %d colours", activityColorCount)
 	}
 	colors := map[string]string{
-		"background": theme.Background, "surface": theme.Surface, "selected": theme.Selected,
-		"text": theme.Text, "muted": theme.Muted, "accent": theme.Accent, "highlight": theme.Highlight,
-		"border": theme.Border, "dimmed": theme.Dimmed, "progress_empty": theme.ProgressEmpty,
+		"background":     theme.Background,
+		"surface":        theme.Surface,
+		"selected":       theme.Selected,
+		"text":           theme.Text,
+		"muted":          theme.Muted,
+		"accent":         theme.Accent,
+		"highlight":      theme.Highlight,
+		"border":         theme.Border,
+		"dimmed":         theme.Dimmed,
+		"progress_empty": theme.ProgressEmpty,
 	}
 	for _, role := range mapRoleNames {
 		colors["map."+role] = theme.Map[role]
@@ -64,7 +82,7 @@ func loadThemes(choice string) ([]presentationTheme, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	var themes []presentationTheme
+	themes := make([]presentationTheme, 0, len(entries))
 	for _, entry := range entries {
 		data, err := themeFiles.ReadFile("themes/" + entry.Name())
 		if err != nil {

@@ -49,7 +49,13 @@ func (r sourceRequest) run() sourceResult {
 	if r.ctx.Err() != nil {
 		err = r.ctx.Err()
 	}
-	return sourceResult{r.name, r.generation, r.camera, snapshot, err}
+	return sourceResult{
+		name:       r.name,
+		generation: r.generation,
+		camera:     r.camera,
+		snapshot:   snapshot,
+		err:        err,
+	}
 }
 
 type sourceState struct {
@@ -124,9 +130,14 @@ func (l *sourceLoader) poll(ctx context.Context, camera Camera, now time.Time, m
 			continue
 		}
 		if state.hasRequest {
-			if !state.sameRequest(state.requested, camera) || !state.completed {
-				if now.Sub(state.changed) < 100*time.Millisecond && !(moving && now.Sub(state.started) >= 250*time.Millisecond) {
-					continue
+			viewLoadNeeded := !state.sameRequest(state.requested, camera) || !state.completed
+			if viewLoadNeeded {
+				settling := now.Sub(state.changed) < 100*time.Millisecond
+				if settling {
+					movingUpdateDue := moving && now.Sub(state.started) >= 250*time.Millisecond
+					if !movingUpdateDue {
+						continue
+					}
 				}
 			} else if state.snapshot.RefreshAt.IsZero() || now.Before(state.snapshot.RefreshAt) {
 				continue
@@ -136,7 +147,13 @@ func (l *sourceLoader) poll(ctx context.Context, camera Camera, now time.Time, m
 		state.generation++
 		state.cancel, state.requested, state.hasRequest, state.started = cancel, camera, true, now
 		state.completed = false
-		requests = append(requests, sourceRequest{state.name, state.generation, camera, requestCtx, state.source})
+		requests = append(requests, sourceRequest{
+			name:       state.name,
+			generation: state.generation,
+			camera:     camera,
+			ctx:        requestCtx,
+			source:     state.source,
+		})
 	}
 	return requests
 }
@@ -147,7 +164,9 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 			continue
 		}
 		state.observe(camera, now)
-		if state.generation != result.generation || state.cancel == nil || !state.sameRequest(result.camera, camera) {
+		superseded := state.generation != result.generation
+		notInFlight := state.cancel == nil
+		if superseded || notInFlight || !state.sameRequest(result.camera, camera) {
 			return false
 		}
 		state.cancel()

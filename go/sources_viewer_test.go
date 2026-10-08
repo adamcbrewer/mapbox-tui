@@ -47,9 +47,25 @@ func TestViewerRefreshesStationaryDataWhileLoadingFilesAndKeepsImportsOnFailure(
 		if fail {
 			return &http.Response{StatusCode: 503, Body: io.NopCloser(strings.NewReader("private diagnostic"))}, nil
 		}
-		return &http.Response{StatusCode: 200, Header: http.Header{"Cache-Control": {"max-age=2"}}, Body: io.NopCloser(bytes.NewReader(data))}, nil
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Cache-Control": {"max-age=2"}},
+			Body:       io.NopCloser(bytes.NewReader(data)),
+		}, nil
 	})
-	m := &viewer{provider: p, ctx: context.Background(), width: 120, height: 40, camera: fit(nil, 88, 34, 2), showProfile: true}
+	m := &viewer{
+		provider: p,
+		ctx:      context.Background(),
+		width:    120,
+		height:   40,
+		camera: fit(
+			nil,
+			88,
+			34,
+			2,
+		),
+		showProfile: true,
+	}
 	m.initUI()
 	t.Cleanup(m.sources.close)
 	if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
@@ -75,7 +91,11 @@ func TestViewerRefreshesStationaryDataWhileLoadingFilesAndKeepsImportsOnFailure(
 	_, cmd = m.Update(pulse(now))
 	runLoadCommand(m, cmd)
 	m.rebuild()
-	if m.workspace.selection != selection || len(m.workspace.items()) != 4 || !strings.Contains(m.sources.view().status(), "503") || !strings.Contains(ansi.Strip(m.content), "Riverside exploration") {
+	failureLostImports := m.workspace.selection != selection ||
+		len(m.workspace.items()) != 4 ||
+		!strings.Contains(m.sources.view().status(), "503") ||
+		!strings.Contains(ansi.Strip(m.content), "Riverside exploration")
+	if failureLostImports {
 		t.Fatal("provider failure lost imported geometry or source status")
 	}
 }
@@ -86,11 +106,26 @@ func TestViewerRejectsResultsForReplacedProviderBeforePolling(t *testing.T) {
 		p := newProvider("mapbox")
 		p.token = "synthetic-token"
 		p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 200, Header: http.Header{"Cache-Control": {"max-age=60"}}, Body: io.NopCloser(bytes.NewReader(data))}, nil
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Cache-Control": {"max-age=60"}},
+				Body:       io.NopCloser(bytes.NewReader(data)),
+			}, nil
 		})
 		return p
 	}
-	m := &viewer{provider: provider(), ctx: context.Background(), width: 120, height: 40, camera: fit(nil, 88, 34, 2)}
+	m := &viewer{
+		provider: provider(),
+		ctx:      context.Background(),
+		width:    120,
+		height:   40,
+		camera: fit(
+			nil,
+			88,
+			34,
+			2,
+		),
+	}
 	m.initUI()
 	t.Cleanup(m.sources.close)
 	old := captureSourceResult(t, m.fetch())
@@ -111,7 +146,18 @@ func TestViewerRejectsResultsForReplacedProviderBeforePolling(t *testing.T) {
 
 func TestViewerImportLoadingDoesNotShowUnnecessaryTokenGuidance(t *testing.T) {
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
-	m := &viewer{provider: newProvider("none"), loading: true, width: 120, height: 40, camera: fit(nil, 88, 34, 2)}
+	m := &viewer{
+		provider: newProvider("none"),
+		loading:  true,
+		width:    120,
+		height:   40,
+		camera: fit(
+			nil,
+			88,
+			34,
+			2,
+		),
+	}
 	m.initUI()
 	m.rebuild()
 	if strings.Contains(m.content, "MAPBOX_ACCESS_TOKEN") {

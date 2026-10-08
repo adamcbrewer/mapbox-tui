@@ -18,9 +18,17 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	}
 	c := w.fitVisible(120, 40, 2)
 	mid := c.screen(project(.005, 51))
-	g := renderScene(c, nil, w.sceneItems(), nil)
+	g := renderScene(
+		c,
+		nil,
+		w.sceneItems(),
+		nil,
+	)
 	cell := g.Cells[int(mid.Y/4)*g.Width+int(mid.X/2)]
-	if cell.Role != roleActiveRoute || cell.Color != w.items()[0].Color || g.glyph(cell, true) != '#' {
+	activeRouteHidden := cell.Role != roleActiveRoute ||
+		cell.Color != w.items()[0].Color ||
+		g.glyph(cell, true) != '#'
+	if activeRouteHidden {
 		t.Fatal("later inactive geometry hid the active route")
 	}
 	if ref, index := w.pick(c, mid); ref != first || index < 0 {
@@ -29,9 +37,17 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	if err := w.setVisible(first, false); err != nil {
 		t.Fatal(err)
 	}
-	g = renderScene(c, nil, w.sceneItems(), nil)
+	g = renderScene(
+		c,
+		nil,
+		w.sceneItems(),
+		nil,
+	)
 	cell = g.Cells[int(mid.Y/4)*g.Width+int(mid.X/2)]
-	if cell.Role != roleRoute || cell.Color != w.items()[1].Color || g.glyph(cell, true) != '*' {
+	inactiveRouteChanged := cell.Role != roleRoute ||
+		cell.Color != w.items()[1].Color ||
+		g.glyph(cell, true) != '*'
+	if inactiveRouteChanged {
 		t.Fatal("inactive route lost its distinct presentation")
 	}
 	if ref, _ := w.pick(c, mid); ref != second {
@@ -39,7 +55,13 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	}
 }
 
-func addScreenItem(t *testing.T, w *Workspace, c Camera, points, waypoints []XY) ItemRef {
+func addScreenItem(
+	t *testing.T,
+	w *Workspace,
+	c Camera,
+	points []XY,
+	waypoints []XY,
+) ItemRef {
 	t.Helper()
 	d := &Document{Path: fmt.Sprintf("scene-%d.gpx", len(w.documents))}
 	track := d.addItem("track").Track
@@ -72,24 +94,105 @@ func TestScenePickingMatchesOccupiedCell(t *testing.T) {
 		text           rune
 		waypoint       bool
 	}{
-		{"active route", []geometry{{points: far}, {points: near}}, 0, 0, roleActiveRoute, 0, false},
-		{"later inactive route", []geometry{{points: near}, {points: far}}, -1, 1, roleRoute, 0, false},
-		{"inactive waypoint above route", []geometry{{waypoints: []XY{{61, 60.25}}}, {points: near}}, -1, 0, roleMarker, 'W', true},
-		{"active route above inactive waypoint", []geometry{{points: far}, {waypoints: []XY{{61, 62}}}}, 0, 0, roleActiveRoute, 0, false},
-		{"waypoint above its own route", []geometry{{points: near, waypoints: []XY{{61, 60.25}}}}, 0, 0, roleActiveMarker, 'W', true},
-		{"endpoint above later route", []geometry{{points: []XY{{20, 60.25}, {61, 60.25}}}, {points: near}}, -1, 0, roleMarker, 'E', false},
-		{"later inactive waypoint", []geometry{{waypoints: []XY{{61, 62}}}, {waypoints: []XY{{61, 60.25}}}}, -1, 1, roleMarker, 'W', true},
-		{"cursor above waypoint", []geometry{{points: []XY{{61, 60.25}, {100, 60.25}}, waypoints: []XY{{61, 62}}}}, 0, 0, roleCursor, '@', false},
-		{"reused colour", []geometry{{points: near}, {points: []XY{{20, 8}, {100, 8}}}, {points: []XY{{20, 12}, {100, 12}}}, {points: []XY{{20, 16}, {100, 16}}}, {points: []XY{{20, 20}, {100, 20}}}, {points: []XY{{20, 24}, {100, 24}}}, {points: far}}, -1, 6, roleRoute, 0, false},
+		{
+			name:   "active route",
+			items:  []geometry{{points: far}, {points: near}},
+			active: 0,
+			winner: 0,
+			role:   roleActiveRoute,
+		},
+		{
+			name:   "later inactive route",
+			items:  []geometry{{points: near}, {points: far}},
+			active: -1,
+			winner: 1,
+			role:   roleRoute,
+		},
+		{
+			name:     "inactive waypoint above route",
+			items:    []geometry{{waypoints: []XY{{61, 60.25}}}, {points: near}},
+			active:   -1,
+			winner:   0,
+			role:     roleMarker,
+			text:     'W',
+			waypoint: true,
+		},
+		{
+			name:   "active route above inactive waypoint",
+			items:  []geometry{{points: far}, {waypoints: []XY{{61, 62}}}},
+			active: 0,
+			winner: 0,
+			role:   roleActiveRoute,
+		},
+		{
+			name:     "waypoint above its own route",
+			items:    []geometry{{points: near, waypoints: []XY{{61, 60.25}}}},
+			active:   0,
+			winner:   0,
+			role:     roleActiveMarker,
+			text:     'W',
+			waypoint: true,
+		},
+		{
+			name:   "endpoint above later route",
+			items:  []geometry{{points: []XY{{20, 60.25}, {61, 60.25}}}, {points: near}},
+			active: -1,
+			winner: 0,
+			role:   roleMarker,
+			text:   'E',
+		},
+		{
+			name:     "later inactive waypoint",
+			items:    []geometry{{waypoints: []XY{{61, 62}}}, {waypoints: []XY{{61, 60.25}}}},
+			active:   -1,
+			winner:   1,
+			role:     roleMarker,
+			text:     'W',
+			waypoint: true,
+		},
+		{
+			name:   "cursor above waypoint",
+			items:  []geometry{{points: []XY{{61, 60.25}, {100, 60.25}}, waypoints: []XY{{61, 62}}}},
+			active: 0,
+			winner: 0,
+			role:   roleCursor,
+			text:   '@',
+		},
+		{
+			name: "reused colour",
+			items: []geometry{
+				{points: near},
+				{points: []XY{{20, 8}, {100, 8}}},
+				{points: []XY{{20, 12}, {100, 12}}},
+				{points: []XY{{20, 16}, {100, 16}}},
+				{points: []XY{{20, 20}, {100, 20}}},
+				{points: []XY{{20, 24}, {100, 24}}},
+				{points: far},
+			},
+			active: -1,
+			winner: 6,
+			role:   roleRoute,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := fit(nil, 60, 30, 2)
+			c := fit(
+				nil,
+				60,
+				30,
+				2,
+			)
 			c.Zoom = 12
 			var w Workspace
 			var refs []ItemRef
 			for _, item := range tt.items {
-				refs = append(refs, addScreenItem(t, &w, c, item.points, item.waypoints))
+				refs = append(refs, addScreenItem(
+					t,
+					&w,
+					c,
+					item.points,
+					item.waypoints,
+				))
 			}
 			w.clearSelection()
 			if tt.active >= 0 {
@@ -101,15 +204,30 @@ func TestScenePickingMatchesOccupiedCell(t *testing.T) {
 			if pos := w.position(); pos != nil {
 				cursor = &pos.World
 			}
-			g := renderScene(c, nil, w.sceneItems(), cursor)
+			g := renderScene(
+				c,
+				nil,
+				w.sceneItems(),
+				cursor,
+			)
 			cell := g.Cells[15*g.Width+30]
 			winner := refs[tt.winner]
-			if cell.owner != winner || cell.Role != tt.role || cell.Text != tt.text || cell.Color != w.items()[tt.winner].Color {
+			wrongWinner := cell.owner != winner ||
+				cell.Role != tt.role ||
+				cell.Text != tt.text ||
+				cell.Color != w.items()[tt.winner].Color
+			if wrongWinner {
 				t.Fatalf("unexpected cell winner: %+v", cell)
 			}
 			ref, index := w.pick(c, XY{61, 62})
 			if ref != winner || (index == -1) != tt.waypoint {
-				t.Fatalf("picked %v point %d instead of cell owner %v (waypoint=%t)", ref, index, winner, tt.waypoint)
+				t.Fatalf(
+					"picked %v point %d instead of cell owner %v (waypoint=%t)",
+					ref,
+					index,
+					winner,
+					tt.waypoint,
+				)
 			}
 			for _, ascii := range []bool{false, true} {
 				t.Run(fmt.Sprintf("ascii=%t", ascii), func(t *testing.T) {
@@ -131,11 +249,28 @@ func TestScenePickingMatchesOccupiedCell(t *testing.T) {
 }
 
 func TestSceneCellProbeMatchesClippedAndRotatedRendering(t *testing.T) {
-	c := fit(nil, 30, 12, 2)
+	c := fit(
+		nil,
+		30,
+		12,
+		2,
+	)
 	c.Zoom = 12
 	var w Workspace
-	first := addScreenItem(t, &w, c, []XY{{-40, 5.5}, {18.25, 24.5}, {18.5, 24.75}, {18.75, 24.5}, {100, 39.5}}, []XY{{18.5, 24.25}})
-	addScreenItem(t, &w, c, []XY{{20, -40}, {30, 20}, {40, 90}}, []XY{{30, 20.5}})
+	first := addScreenItem(
+		t,
+		&w,
+		c,
+		[]XY{{-40, 5.5}, {18.25, 24.5}, {18.5, 24.75}, {18.75, 24.5}, {100, 39.5}},
+		[]XY{{18.5, 24.25}},
+	)
+	addScreenItem(
+		t,
+		&w,
+		c,
+		[]XY{{20, -40}, {30, 20}, {40, 90}},
+		[]XY{{30, 20.5}},
+	)
 	for _, active := range []bool{false, true} {
 		w.clearSelection()
 		if active {
@@ -153,12 +288,31 @@ func TestSceneCellProbeMatchesClippedAndRotatedRendering(t *testing.T) {
 		for _, bearing := range []float64{0, 37} {
 			c.Bearing = bearing
 			items := w.sceneItems()
-			g := renderScene(c, nil, items, cursor)
+			g := renderScene(
+				c,
+				nil,
+				items,
+				cursor,
+			)
 			for y := 0; y < c.Height; y++ {
 				for x := 0; x < c.Width; x++ {
 					point := XY{float64(x*2 + 1), float64(y*4 + 2)}
-					if got, want := renderSceneCell(c, items, cursor, point), g.Cells[y*g.Width+x]; got != want {
-						t.Fatalf("active=%t bearing=%g cell=(%d,%d): probe %+v; rendered %+v", active, bearing, x, y, got, want)
+					got := renderSceneCell(
+						c,
+						items,
+						cursor,
+						point,
+					)
+					if want := g.Cells[y*g.Width+x]; got != want {
+						t.Fatalf(
+							"active=%t bearing=%g cell=(%d,%d): probe %+v; rendered %+v",
+							active,
+							bearing,
+							x,
+							y,
+							got,
+							want,
+						)
 					}
 				}
 			}
@@ -167,22 +321,51 @@ func TestSceneCellProbeMatchesClippedAndRotatedRendering(t *testing.T) {
 }
 
 func TestWorkspacePickingKeepsNearestGeometryInEmptyCells(t *testing.T) {
-	c := fit(nil, 60, 30, 2)
+	c := fit(
+		nil,
+		60,
+		30,
+		2,
+	)
 	c.Zoom = 12
 	var w Workspace
-	active := addScreenItem(t, &w, c, []XY{{20, 58}, {100, 58}}, nil)
-	nearer := addScreenItem(t, &w, c, []XY{{20, 66}, {100, 66}}, nil)
+	active := addScreenItem(
+		t,
+		&w,
+		c,
+		[]XY{{20, 58}, {100, 58}},
+		nil,
+	)
+	nearer := addScreenItem(
+		t,
+		&w,
+		c,
+		[]XY{{20, 66}, {100, 66}},
+		nil,
+	)
 	if err := w.selectItem(active); err != nil {
 		t.Fatal(err)
 	}
 	point := XY{61, 62.5}
-	if cell := renderSceneCell(c, w.sceneItems(), nil, point); cell.owner != (ItemRef{}) {
+	cell := renderSceneCell(
+		c,
+		w.sceneItems(),
+		nil,
+		point,
+	)
+	if cell.owner != (ItemRef{}) {
 		t.Fatal("nearest-geometry regression does not click an empty cell", cell)
 	}
 	if ref, index := w.pick(c, point); ref != nearer || index < 0 {
 		t.Fatal("active precedence replaced nearest-geometry picking in an empty cell", ref, index)
 	}
-	pin := addScreenItem(t, &w, c, nil, []XY{{81, 65.25}})
+	pin := addScreenItem(
+		t,
+		&w,
+		c,
+		nil,
+		[]XY{{81, 65.25}},
+	)
 	if ref, index := w.pick(c, XY{81, 62.5}); ref != pin || index != -1 {
 		t.Fatal("nearby waypoint lost nearest-geometry picking outside its marker cell", ref, index)
 	}
@@ -193,9 +376,19 @@ func TestWorkspacePickingKeepsNearestGeometryInEmptyCells(t *testing.T) {
 
 func TestSceneCursorPriorityIsIndependentOfRoleOrdinal(t *testing.T) {
 	g := newGrid(1, 1)
-	g.label(XY{}, "@", roleCursor, false)
+	g.label(
+		XY{},
+		"@",
+		roleCursor,
+		false,
+	)
 	g.dot(0, 0, roleActiveRoute)
-	g.label(XY{}, "S", roleActiveMarker, false)
+	g.label(
+		XY{},
+		"S",
+		roleActiveMarker,
+		false,
+	)
 	if g.Cells[0].Text != '@' || g.Cells[0].Role != roleCursor {
 		t.Fatal("a higher enum value overwrote the cursor despite lower display priority")
 	}
@@ -203,8 +396,16 @@ func TestSceneCursorPriorityIsIndependentOfRoleOrdinal(t *testing.T) {
 
 func TestWorkspacePickingSelectsWaypointAndNeverConnectsFiles(t *testing.T) {
 	var w Workspace
-	left := openWorkspaceFile(t, &w, importFile(t, "left.gpx", []byte(`<gpx><rte><rtept lat="0" lon="-1"/><rtept lat="0" lon="-.9"/></rte></gpx>`)))
-	openWorkspaceFile(t, &w, importFile(t, "right.gpx", []byte(`<gpx><rte><rtept lat="0" lon=".9"/><rtept lat="0" lon="1"/></rte></gpx>`)))
+	left := openWorkspaceFile(t, &w, importFile(
+		t,
+		"left.gpx",
+		[]byte(`<gpx><rte><rtept lat="0" lon="-1"/><rtept lat="0" lon="-.9"/></rte></gpx>`),
+	))
+	openWorkspaceFile(t, &w, importFile(
+		t,
+		"right.gpx",
+		[]byte(`<gpx><rte><rtept lat="0" lon=".9"/><rtept lat="0" lon="1"/></rte></gpx>`),
+	))
 	c := w.fitVisible(120, 40, 2)
 	if ref, _ := w.pick(c, c.screen(project(0, 0))); ref != (ItemRef{}) {
 		t.Fatal("picked an invented connection between files", ref, left)
@@ -220,11 +421,21 @@ func TestWideExtentRenderAndZoomStayBelowZeroWithoutJumping(t *testing.T) {
 	left := importFile(t, "left.gpx", []byte(`<gpx><wpt lat="0" lon="-170"/></gpx>`))
 	right := importFile(t, "right.gpx", []byte(`<gpx><wpt lat="0" lon="170"/></gpx>`))
 	width, height := 30, 12
-	result, err := renderFiles(context.Background(), []string{left, right}, Args{Width: &width, Height: &height}, newProvider("none"))
+	result, err := renderFiles(
+		context.Background(),
+		[]string{left, right},
+		Args{Width: &width, Height: &height},
+		newProvider("none"),
+	)
 	if err != nil || result["scene"].(map[string]any)["zoom"].(float64) >= 0 {
 		t.Fatal("wide multi-file render could not fit a narrow viewport", err)
 	}
-	c := fitBounds([4]float64{-170, 0, 170, 0}, width, height, 2)
+	c := fitBounds(
+		[4]float64{-170, 0, 170, 0},
+		width,
+		height,
+		2,
+	)
 	before := c.Zoom
 	anchor := XY{float64(width), float64(height * 2)}
 	world := c.world(anchor)

@@ -29,11 +29,23 @@ func TestElevationProfileKeepsMissingMeasurementsAndPartGaps(t *testing.T) {
 
 func TestElevationProfilesUseOrderedSectionsAndSummedDistance(t *testing.T) {
 	e10, e20, e100, e110 := 10.0, 20.0, 100.0, 110.0
-	short := &Track{Distance: 100, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e100}, {Distance: 100, Elevation: &e110}}}
-	long := &Track{Distance: 200, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e10}, {Distance: 200, Elevation: &e20}}}
-	items := []sceneItem{{Ref: ItemRef{1, 1}, Track: short, Color: 1}, {Ref: ItemRef{2, 1}, Track: long, Active: true, Color: 2}}
+	short := &Track{
+		Distance: 100,
+		Segments: []Segment{{Start: 0, End: 2}},
+		Points:   []Point{{Elevation: &e100}, {Distance: 100, Elevation: &e110}},
+	}
+	long := &Track{
+		Distance: 200,
+		Segments: []Segment{{Start: 0, End: 2}},
+		Points:   []Point{{Elevation: &e10}, {Distance: 200, Elevation: &e20}},
+	}
+	items := []sceneItem{
+		{Ref: ItemRef{DocumentID: 1, ItemID: 1}, Track: short, Color: 1},
+		{Ref: ItemRef{DocumentID: 2, ItemID: 1}, Track: long, Active: true, Color: 2},
+	}
 	p := newProfile(items, 61, 5)
-	if p.Min != 10 || p.Max != 110 || p.Distance != 300 || len(p.AvailableItems) != 2 {
+	sharedScaleIncomplete := p.Min != 10 || p.Max != 110 || p.Distance != 300 || len(p.AvailableItems) != 2
+	if sharedScaleIncomplete {
 		t.Fatal("summed distance or shared elevation scale omitted an activity")
 	}
 	colourBounds := func(g Grid, colour activityColor) (int, int) {
@@ -48,8 +60,15 @@ func TestElevationProfilesUseOrderedSectionsAndSummedDistance(t *testing.T) {
 	}
 	shortStart, shortEnd := colourBounds(p.Grid, items[0].Color)
 	longStart, longEnd := colourBounds(p.Grid, items[1].Color)
-	if shortStart != 0 || shortEnd != 19 || longStart != 21 || longEnd != 60 {
-		t.Fatal("profiles overlapped or did not occupy distance-proportional sections", shortStart, shortEnd, longStart, longEnd)
+	sectionsMisplaced := shortStart != 0 || shortEnd != 19 || longStart != 21 || longEnd != 60
+	if sectionsMisplaced {
+		t.Fatal(
+			"profiles overlapped or did not occupy distance-proportional sections",
+			shortStart,
+			shortEnd,
+			longStart,
+			longEnd,
+		)
 	}
 	for y := 0; y < p.Grid.Height; y++ {
 		if p.Grid.Cells[y*p.Grid.Width+20].Bits != 0 {
@@ -59,28 +78,64 @@ func TestElevationProfilesUseOrderedSectionsAndSummedDistance(t *testing.T) {
 	e15 := 15.0
 	header, chart, axis := p.frame(&ridePosition{Distance: 100, Elevation: &e15})
 	marker := chart.Cells[4*chart.Width+40]
-	if marker.Text != '@' || marker.Color != items[1].Color || !strings.Contains(header, "@ 0.20 km") || !strings.Contains(axis, "0.30 km total") {
+	cursorOffsetLost := marker.Text != '@' ||
+		marker.Color != items[1].Color ||
+		!strings.Contains(header, "@ 0.20 km") ||
+		!strings.Contains(axis, "0.30 km total")
+	if cursorOffsetLost {
 		t.Fatal("cursor or axis omitted the earlier activity's distance", header, axis)
 	}
 	reversed := newProfile([]sceneItem{items[1], items[0]}, 61, 5)
 	longStart, longEnd = colourBounds(reversed.Grid, items[1].Color)
 	shortStart, shortEnd = colourBounds(reversed.Grid, items[0].Color)
-	if reversed.Distance != p.Distance || reversed.Min != p.Min || reversed.Max != p.Max || longStart != 0 || longEnd != 39 || shortStart != 41 || shortEnd != 60 {
+	reversedSectionsWrong := reversed.Distance != p.Distance ||
+		reversed.Min != p.Min ||
+		reversed.Max != p.Max ||
+		longStart != 0 ||
+		longEnd != 39 ||
+		shortStart != 41 ||
+		shortEnd != 60
+	if reversedSectionsWrong {
 		t.Fatal("profile ignored input order or changed measurements when order changed")
 	}
 }
 
 func TestMissingElevationKeepsItsSectionInTheSequence(t *testing.T) {
 	e10, e20 := 10.0, 20.0
-	first := sceneItem{Ref: ItemRef{1, 1}, Track: &Track{Distance: 100, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e10}, {Distance: 100, Elevation: &e20}}}, Color: 1}
-	missing := sceneItem{Ref: ItemRef{2, 1}, Track: &Track{Distance: 200, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{}, {Distance: 200}}}, Color: 2}
-	last := sceneItem{Ref: ItemRef{3, 1}, Track: &Track{Distance: 300, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e20}, {Distance: 300, Elevation: &e10}}}, Color: 3}
+	first := sceneItem{
+		Ref: ItemRef{DocumentID: 1, ItemID: 1},
+		Track: &Track{
+			Distance: 100,
+			Segments: []Segment{{Start: 0, End: 2}},
+			Points:   []Point{{Elevation: &e10}, {Distance: 100, Elevation: &e20}},
+		},
+		Color: 1,
+	}
+	missing := sceneItem{
+		Ref: ItemRef{DocumentID: 2, ItemID: 1},
+		Track: &Track{
+			Distance: 200,
+			Segments: []Segment{{Start: 0, End: 2}},
+			Points:   []Point{{}, {Distance: 200}},
+		},
+		Color: 2,
+	}
+	last := sceneItem{
+		Ref: ItemRef{DocumentID: 3, ItemID: 1},
+		Track: &Track{
+			Distance: 300,
+			Segments: []Segment{{Start: 0, End: 2}},
+			Points:   []Point{{Elevation: &e20}, {Distance: 300, Elevation: &e10}},
+		},
+		Color: 3,
+	}
 	for _, items := range [][]sceneItem{{missing, first, last}, {first, missing, last}, {first, last, missing}} {
 		p := newProfile(items, 61, 5)
-		if p.Distance != 600 || p.Min != 10 || p.Max != 20 || p.AvailableItems[missing.Ref] {
+		missingSectionChanged := p.Distance != 600 || p.Min != 10 || p.Max != 20 || p.AvailableItems[missing.Ref]
+		if missingSectionChanged {
 			t.Fatal("missing elevation lost its distance or gained measurements")
 		}
-		offset := 0.0
+		var offset float64
 		for _, item := range items {
 			if item.Ref == missing.Ref {
 				break

@@ -30,7 +30,11 @@ func TestSyntheticVectorTileDecodeAndWarmCache(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(fs) != 2 || fs[0].Role != roleMajorRoad || fs[0].Parts[0][1] != (XY{0.5, 0.5}) || fs[1].Label != "Synthetic place" {
+	decodedTileWrong := len(fs) != 2 ||
+		fs[0].Role != roleMajorRoad ||
+		fs[0].Parts[0][1] != (XY{0.5, 0.5}) ||
+		fs[1].Label != "Synthetic place"
+	if decodedTileWrong {
 		t.Fatal("MVT layer/coordinate/property decoding failed")
 	}
 	p := newProvider("mapbox")
@@ -44,11 +48,16 @@ func TestSyntheticVectorTileDecodeAndWarmCache(t *testing.T) {
 	}
 	c := fit(track, 120, 40, 2)
 	cold, err := p.load(context.Background(), c)
-	if err != nil || cold.Status != "" || cold.Stats.Requests == 0 {
+	coldRequestFailed := err != nil || cold.Status != "" || cold.Stats.Requests == 0
+	if coldRequestFailed {
 		t.Fatal("cold tile request failed")
 	}
 	warm, err := p.load(context.Background(), c)
-	if err != nil || warm.Status != "" || warm.Stats.Requests != cold.Stats.Requests || warm.Stats.Hits == 0 {
+	warmCacheMissed := err != nil ||
+		warm.Status != "" ||
+		warm.Stats.Requests != cold.Stats.Requests ||
+		warm.Stats.Hits == 0
+	if warmCacheMissed {
 		t.Fatal("warm scene refetched tiles")
 	}
 }
@@ -64,7 +73,11 @@ func TestRateLimitBackoffDoesNotLeakToken(t *testing.T) {
 	}
 	c := fit(track, 120, 40, 2)
 	s, err := p.load(context.Background(), c)
-	if err != nil || s.Stats.Requests != 1 || s.Stats.Errors != 1 || strings.Contains(s.Status, p.token) {
+	rateLimitWrong := err != nil ||
+		s.Stats.Requests != 1 ||
+		s.Stats.Errors != 1 ||
+		strings.Contains(s.Status, p.token)
+	if rateLimitWrong {
 		t.Fatal("rate limit behavior incorrect")
 	}
 	s, _ = p.load(context.Background(), c)
@@ -84,8 +97,18 @@ func TestTokenFreeGPXRendersOnlyImportedGeometryWithoutWarnings(t *testing.T) {
 		t.Fatal("token-free GPX viewing made a network request")
 		return nil, nil
 	})
-	snapshot, err := p.load(context.Background(), fit(track, 120, 40, 2))
-	if err != nil || p.Kind != "none" || len(snapshot.Features) != 0 || snapshot.Stats.Requests != 0 || snapshot.Status != "" {
+	snapshot, err := p.load(context.Background(), fit(
+		track,
+		120,
+		40,
+		2,
+	))
+	unnecessaryBasemap := err != nil ||
+		p.Kind != "none" ||
+		len(snapshot.Features) != 0 ||
+		snapshot.Stats.Requests != 0 ||
+		snapshot.Status != ""
+	if unnecessaryBasemap {
 		t.Fatal("token-free GPX acquired a basemap or unnecessary warning")
 	}
 	result, err := renderResult(context.Background(), track, Args{}, p)

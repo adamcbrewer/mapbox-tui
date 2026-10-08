@@ -6,6 +6,16 @@ import (
 	"math"
 )
 
+type mapRequest struct {
+	camera     Camera
+	items      []sceneItem
+	cursor     *XY
+	selected   int
+	active     *ItemRef
+	workspace  bool
+	hasImports bool
+}
+
 func viewport(t *Track, a Args) (Camera, error) {
 	var bounds *[4]float64
 	if t != nil {
@@ -25,24 +35,40 @@ func viewportBounds(bounds *[4]float64, a Args) (Camera, error) {
 	if a.Aspect != nil {
 		aspect = *a.Aspect
 	}
-	if w < 10 || w > 300 || h < 5 || h > 100 || aspect < 1 || aspect > 3 || math.IsNaN(aspect) {
+	invalidWidth := w < 10 || w > 300
+	invalidHeight := h < 5 || h > 100
+	invalidAspect := aspect < 1 || aspect > 3 || math.IsNaN(aspect)
+	if invalidWidth || invalidHeight || invalidAspect {
 		return Camera{}, fmt.Errorf("viewport: width 10..300, height 5..100, cell_aspect 1..3")
 	}
-	c := fit(nil, w, h, aspect)
+	c := fit(
+		nil,
+		w,
+		h,
+		aspect,
+	)
 	if bounds != nil {
-		c = fitBounds(*bounds, w, h, aspect)
+		c = fitBounds(
+			*bounds,
+			w,
+			h,
+			aspect,
+		)
 	}
 	if (a.Lon == nil) != (a.Lat == nil) {
 		return c, fmt.Errorf("supply center_lon and center_lat together")
 	}
 	if a.Lon != nil {
-		if math.IsNaN(*a.Lon) || math.IsNaN(*a.Lat) || math.Abs(*a.Lon) > 180 || math.Abs(*a.Lat) > 85.05112878 {
+		invalidLongitude := math.IsNaN(*a.Lon) || math.Abs(*a.Lon) > 180
+		invalidLatitude := math.IsNaN(*a.Lat) || math.Abs(*a.Lat) > 85.05112878
+		if invalidLongitude || invalidLatitude {
 			return c, fmt.Errorf("center outside Mercator range")
 		}
 		c.Center = project(*a.Lon, *a.Lat)
 	}
 	if a.Zoom != nil {
-		if math.IsNaN(*a.Zoom) || *a.Zoom < minZoom || *a.Zoom > 20 {
+		invalidZoom := math.IsNaN(*a.Zoom) || *a.Zoom < minZoom || *a.Zoom > 20
+		if invalidZoom {
 			return c, fmt.Errorf("zoom outside -8..20")
 		}
 		c.Zoom = *a.Zoom
@@ -56,16 +82,6 @@ func viewportBounds(bounds *[4]float64, a Args) (Camera, error) {
 	return c, nil
 }
 
-type mapRequest struct {
-	camera     Camera
-	items      []sceneItem
-	cursor     *XY
-	selected   int
-	active     *ItemRef
-	workspace  bool
-	hasImports bool
-}
-
 func trackMapRequest(t *Track, a Args) (mapRequest, error) {
 	c, err := viewport(t, a)
 	if err != nil {
@@ -77,7 +93,8 @@ func trackMapRequest(t *Track, a Args) (mapRequest, error) {
 	}
 	if a.PointIndex != nil {
 		r.selected = *a.PointIndex
-		if t == nil || r.selected < 0 || r.selected >= len(t.Points) {
+		outsideTrack := t == nil || r.selected < 0 || r.selected >= len(t.Points)
+		if outsideTrack {
 			return r, fmt.Errorf("point_index outside track")
 		}
 		p := t.Points[r.selected].World
@@ -87,7 +104,8 @@ func trackMapRequest(t *Track, a Args) (mapRequest, error) {
 }
 
 func workspaceMapRequest(w *Workspace, a Args) (mapRequest, error) {
-	if a.TrackID != "" || a.ItemID != nil || a.PointIndex != nil {
+	hasSelector := a.TrackID != "" || a.ItemID != nil || a.PointIndex != nil
+	if hasSelector {
 		return mapRequest{}, fmt.Errorf("workspace rendering uses the active item; omit track_id, item_id and point_index")
 	}
 	var bounds *[4]float64
@@ -98,7 +116,13 @@ func workspaceMapRequest(w *Workspace, a Args) (mapRequest, error) {
 	if err != nil {
 		return mapRequest{}, err
 	}
-	r := mapRequest{camera: c, items: w.sceneItems(), selected: -1, workspace: true, hasImports: len(w.documents) > 0}
+	r := mapRequest{
+		camera:     c,
+		items:      w.sceneItems(),
+		selected:   -1,
+		workspace:  true,
+		hasImports: len(w.documents) > 0,
+	}
 	if w.selection != nil {
 		ref := w.selection.ref
 		r.active = &ref
@@ -124,10 +148,30 @@ func (r mapRequest) render(ctx context.Context, ascii bool, p *Provider) (map[st
 		status = providerGuidance(p, r.hasImports)
 	}
 	credits, links := sources.attribution()
-	grid := renderScene(r.camera, sources.Features, r.items, r.cursor)
+	grid := renderScene(
+		r.camera,
+		sources.Features,
+		r.items,
+		r.cursor,
+	)
 	c := r.camera
 	center := unproject(c.Center)
-	scene := map[string]any{"width": c.Width, "height": c.Height, "center_lon": center.X, "center_lat": center.Y, "zoom": c.Zoom, "bearing": c.Bearing, "cell_aspect": c.Aspect, "provider": p.Kind, "attribution": credits, "attribution_links": links, "tile_stats": sources.Stats, "status": status, "sources": sources.Sources, "selected_point_index": r.selected}
+	scene := map[string]any{
+		"width":                c.Width,
+		"height":               c.Height,
+		"center_lon":           center.X,
+		"center_lat":           center.Y,
+		"zoom":                 c.Zoom,
+		"bearing":              c.Bearing,
+		"cell_aspect":          c.Aspect,
+		"provider":             p.Kind,
+		"attribution":          credits,
+		"attribution_links":    links,
+		"tile_stats":           sources.Stats,
+		"status":               status,
+		"sources":              sources.Sources,
+		"selected_point_index": r.selected,
+	}
 	if r.workspace {
 		refs := make([]ItemRef, 0, len(r.items))
 		for _, item := range r.items {
@@ -161,7 +205,12 @@ func renderFiles(ctx context.Context, paths []string, a Args, p *Provider) (map[
 		} else if a.ItemID != nil {
 			return nil, fmt.Errorf("item_id requires a track file")
 		}
-		return renderResult(ctx, track, a, p)
+		return renderResult(
+			ctx,
+			track,
+			a,
+			p,
+		)
 	}
 	var w Workspace
 	for _, path := range paths {

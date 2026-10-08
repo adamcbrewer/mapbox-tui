@@ -39,8 +39,8 @@ type kmlGeometry struct {
 
 func parseKML(d *xml.Decoder) (*Document, error) {
 	document := &Document{Name: "Imported KML"}
-	documentNamed, placemarkNamed := false, false
-	folderNameDepth := 0
+	var documentNamed, placemarkNamed bool
+	var folderNameDepth int
 	groups := []*ImportGroup{nil}
 	err := xmlTokens(d, "kml", func(v xml.StartElement, parents []string) (bool, error) {
 		groups = groups[:len(parents)]
@@ -50,7 +50,8 @@ func parseKML(d *xml.Decoder) (*Document, error) {
 			groups = append(groups, &ImportGroup{Parent: group})
 			return false, nil
 		}
-		if v.Name.Local == "name" && (parent == "Document" || parent == "kml" || parent == "Folder") {
+		namesContainer := parent == "Document" || parent == "kml" || parent == "Folder"
+		if v.Name.Local == "name" && namesContainer {
 			var name string
 			if err := d.DecodeElement(&name, &v); err != nil {
 				return true, err
@@ -80,7 +81,9 @@ func parseKML(d *xml.Decoder) (*Document, error) {
 		if err := d.DecodeElement(&placemark, &v); err != nil {
 			return true, err
 		}
-		if !documentNamed && folderNameDepth == 0 && !placemarkNamed && placemark.Name != "" {
+		unnamedDocument := !documentNamed && folderNameDepth == 0
+		firstNamedPlacemark := !placemarkNamed && placemark.Name != ""
+		if unnamedDocument && firstNamedPlacemark {
 			document.Name = placemark.Name
 			placemarkNamed = true
 		}

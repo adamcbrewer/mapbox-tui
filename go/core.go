@@ -61,7 +61,7 @@ func haversine(a, b Point) float64 {
 
 func parseGPX(d *xml.Decoder) (*Document, error) {
 	document := &Document{Name: "Imported GPX"}
-	documentNamed := false
+	var documentNamed bool
 	var t *Track
 	stack := []string{"gpx"}
 	seg := -1
@@ -103,7 +103,11 @@ func parseGPX(d *xml.Decoder) (*Document, error) {
 				if tag == "rte" {
 					kind = "route"
 				}
-				t.Segments = append(t.Segments, Segment{kind, len(t.Points), len(t.Points)})
+				t.Segments = append(t.Segments, Segment{
+					Kind:  kind,
+					Start: len(t.Points),
+					End:   len(t.Points),
+				})
 			}
 			if tag == "trkpt" || tag == "rtept" || tag == "wpt" {
 				p = &Point{Segment: seg}
@@ -190,7 +194,7 @@ func parseGPX(d *xml.Decoder) (*Document, error) {
 	return document, nil
 }
 func (t *Track) summary() map[string]any {
-	elev, times, segments := 0, 0, 0
+	var elev, times, segments int
 	var lo, hi *float64
 	var first, last *string
 	for _, s := range t.Segments {
@@ -222,7 +226,22 @@ func (t *Track) summary() map[string]any {
 	if waypoints == nil {
 		waypoints = []Point{}
 	}
-	return map[string]any{"name": t.Name, "bounds": t.Bounds, "distance_m": t.Distance, "point_count": len(t.Points), "segment_count": segments, "route_count": t.RouteCount, "waypoint_count": len(t.Waypoints), "waypoints": waypoints, "elevation_point_count": elev, "time_point_count": times, "elevation_min_m": lo, "elevation_max_m": hi, "start_time": first, "end_time": last}
+	return map[string]any{
+		"name":                  t.Name,
+		"bounds":                t.Bounds,
+		"distance_m":            t.Distance,
+		"point_count":           len(t.Points),
+		"segment_count":         segments,
+		"route_count":           t.RouteCount,
+		"waypoint_count":        len(t.Waypoints),
+		"waypoints":             waypoints,
+		"elevation_point_count": elev,
+		"time_point_count":      times,
+		"elevation_min_m":       lo,
+		"elevation_max_m":       hi,
+		"start_time":            first,
+		"end_time":              last,
+	}
 }
 func (t *Track) inspect(index *int, distance *float64) (map[string]any, error) {
 	if (index == nil) == (distance == nil) {
@@ -288,12 +307,23 @@ func fit(t *Track, w, h int, aspect float64) Camera {
 	if t == nil {
 		return Camera{Center: project(0, 0), Aspect: aspect, Width: w, Height: h}
 	}
-	return fitBounds(t.Bounds, w, h, aspect)
+	return fitBounds(
+		t.Bounds,
+		w,
+		h,
+		aspect,
+	)
 }
 func fitBounds(bounds [4]float64, w, h int, aspect float64) Camera {
 	a, b := project(bounds[0], bounds[3]), project(bounds[2], bounds[1])
 	scale := math.Min(float64(w)*1.6/math.Max(b.X-a.X, 1e-7), float64(h)*1.6*aspect/math.Max(b.Y-a.Y, 1e-7))
-	return Camera{XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2}, math.Max(minZoom, math.Min(20, math.Log2(scale/256))), 0, aspect, w, h}
+	return Camera{
+		Center: XY{(a.X + b.X) / 2, (a.Y + b.Y) / 2},
+		Zoom:   math.Max(minZoom, math.Min(20, math.Log2(scale/256))),
+		Aspect: aspect,
+		Width:  w,
+		Height: h,
+	}
 }
 func pointSegment(p, a, b XY) (float64, float64) {
 	dx, dy := b.X-a.X, b.Y-a.Y

@@ -20,7 +20,11 @@ func openWorkspaceFile(t *testing.T, w *Workspace, path string) ItemRef {
 func TestWorkspaceAddsFilesWithActivePlaybackAndSharedProfiles(t *testing.T) {
 	var w Workspace
 	first := openWorkspaceFile(t, &w, "../fixtures/example.gpx")
-	if len(w.items()) != 4 || w.selection.ref != first || w.selection.track.Name != "Riverside exploration" || len(w.selection.track.Points) == 0 {
+	firstSelectionWrong := len(w.items()) != 4 ||
+		w.selection.ref != first ||
+		w.selection.track.Name != "Riverside exploration" ||
+		len(w.selection.track.Points) == 0
+	if firstSelectionWrong {
 		t.Fatal("opening a file did not prefer its first track over standalone waypoints")
 	}
 	if err := w.seek(3); err != nil {
@@ -31,14 +35,22 @@ func TestWorkspaceAddsFilesWithActivePlaybackAndSharedProfiles(t *testing.T) {
 	oldProfile := w.profile(80, 5)
 	firstSummary := w.selection.track.summary()
 	second := openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
-	if first.DocumentID == second.DocumentID || len(w.items()) != 6 || w.selection.ref != second || w.selection.track.Name != "Outward" {
+	secondSelectionWrong := first.DocumentID == second.DocumentID ||
+		len(w.items()) != 6 ||
+		w.selection.ref != second ||
+		w.selection.track.Name != "Outward"
+	if secondSelectionWrong {
 		t.Fatal("adding a file replaced existing data or failed to select the new item")
 	}
-	if oldSelection.playback.Playing || w.selection.playback.Playing || w.position().Index != 0 {
+	playbackStateRetained := oldSelection.playback.Playing ||
+		w.selection.playback.Playing ||
+		w.position().Index != 0
+	if playbackStateRetained {
 		t.Fatal("switching items retained playback state from the old item")
 	}
 	newProfile := w.profile(80, 5)
-	if newProfile == oldProfile || len(newProfile.Items) != 4 || !newProfile.Available {
+	profileIncomplete := newProfile == oldProfile || len(newProfile.Items) != 4 || !newProfile.Available
+	if profileIncomplete {
 		t.Fatal("shared profile omitted visible items or their elevation")
 	}
 	if w.profile(80, 5) != newProfile || w.profile(40, 3) == newProfile {
@@ -47,7 +59,11 @@ func TestWorkspaceAddsFilesWithActivePlaybackAndSharedProfiles(t *testing.T) {
 	if err := w.selectItem(first); err != nil {
 		t.Fatal(err)
 	}
-	if w.position().Index != 0 || w.selection.playback.Playing || !reflect.DeepEqual(w.selection.track.summary(), firstSummary) || !w.profile(80, 5).Available {
+	firstItemChanged := w.position().Index != 0 ||
+		w.selection.playback.Playing ||
+		!reflect.DeepEqual(w.selection.track.summary(), firstSummary) ||
+		!w.profile(80, 5).Available
+	if firstItemChanged {
 		t.Fatal("returning to an item changed its data or reused another item's state")
 	}
 }
@@ -77,7 +93,9 @@ func TestWorkspaceReopeningReusesLoadedPathAndRestoresVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reopened := openWorkspaceFile(t, &w, relative); reopened != ref || w.selection.track != original || len(w.items()) != 2 {
+	reopened := openWorkspaceFile(t, &w, relative)
+	loadedFileChanged := reopened != ref || w.selection.track != original || len(w.items()) != 2
+	if loadedFileChanged {
 		t.Fatal("reopening reread or duplicated the loaded file")
 	}
 	for _, item := range w.items() {
@@ -89,7 +107,11 @@ func TestWorkspaceReopeningReusesLoadedPathAndRestoresVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	selection := w.selection
-	if w.addDocument(duplicate) != ref || w.selection != selection || w.position().Index != 1 || len(w.items()) != 2 {
+	duplicateReplacedState := w.addDocument(duplicate) != ref ||
+		w.selection != selection ||
+		w.position().Index != 1 ||
+		len(w.items()) != 2
+	if duplicateReplacedState {
 		t.Fatal("a separately completed duplicate import replaced existing state")
 	}
 }
@@ -110,7 +132,10 @@ func TestWorkspaceFailedImportsAndUnknownReferencesLeaveStateUntouched(t *testin
 			t.Fatal("invalid import succeeded")
 		}
 	}
-	for _, unknown := range []ItemRef{{ref.DocumentID + 1, ref.ItemID}, {ref.DocumentID, 999}} {
+	for _, unknown := range []ItemRef{
+		{DocumentID: ref.DocumentID + 1, ItemID: ref.ItemID},
+		{DocumentID: ref.DocumentID, ItemID: 999},
+	} {
 		for _, err := range []error{w.selectItem(unknown), w.setVisible(unknown, false), w.removeItem(unknown)} {
 			if err == nil {
 				t.Fatal("unknown item reference succeeded")
@@ -121,7 +146,13 @@ func TestWorkspaceFailedImportsAndUnknownReferencesLeaveStateUntouched(t *testin
 		t.Fatal("invalid document or point selection succeeded")
 	}
 	after, _ := w.visibleBounds()
-	if w.selection != selection || w.profile(80, 5) != profile || !w.selection.playback.Playing || w.position().Index != 3 || !reflect.DeepEqual(w.items(), items) || after != bounds {
+	workspaceChanged := w.selection != selection ||
+		w.profile(80, 5) != profile ||
+		!w.selection.playback.Playing ||
+		w.position().Index != 3 ||
+		!reflect.DeepEqual(w.items(), items) ||
+		after != bounds
+	if workspaceChanged {
 		t.Fatal("failed operation changed workspace data or active state")
 	}
 }
@@ -149,12 +180,17 @@ func TestWorkspaceClearsActiveStateWhenHiddenRemovedOrCleared(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w.selection != nil || w.position() != nil || old.playback.Playing {
+			activeStateRetained := w.selection != nil || w.position() != nil || old.playback.Playing
+			if activeStateRetained {
 				t.Fatal("active state survived or another item was selected automatically")
 			}
 			profile := w.profile(80, 5)
 			if action == "hide" || action == "remove item" {
-				if profile == nil || len(profile.Items) != 1 || profile.Items[0].Ref == ref || profile.Items[0].Active {
+				remainingProfileWrong := profile == nil ||
+					len(profile.Items) != 1 ||
+					profile.Items[0].Ref == ref ||
+					profile.Items[0].Active
+				if remainingProfileWrong {
 					t.Fatal("remaining visible elevation was cleared or retained the old selection")
 				}
 			} else if profile != nil {
@@ -168,7 +204,9 @@ func TestWorkspaceClearsActiveStateWhenHiddenRemovedOrCleared(t *testing.T) {
 				t.Fatal("unrelated document was removed", err)
 			}
 			if action == "hide" {
-				if err := w.selectItem(ref); err != nil || w.selection.ref != ref || w.selection.playback.Playing {
+				err := w.selectItem(ref)
+				selectionNotRestored := err != nil || w.selection.ref != ref || w.selection.playback.Playing
+				if selectionNotRestored {
 					t.Fatal("selecting a hidden item did not restore a fresh paused selection", err)
 				}
 				for _, item := range w.items() {
@@ -195,7 +233,11 @@ func TestWorkspaceItemRemovalUpdatesBoundsAndNeverReusesReferences(t *testing.T)
 		t.Fatal(err)
 	}
 	items := w.items()
-	if len(items) != 1 || items[0].Document.Bounds != selection.track.Bounds || w.selection != selection || w.profile(80, 5) != profile {
+	inactiveRemovalChangedState := len(items) != 1 ||
+		items[0].Document.Bounds != selection.track.Bounds ||
+		w.selection != selection ||
+		w.profile(80, 5) != profile
+	if inactiveRemovalChangedState {
 		t.Fatal("removing an inactive item left stale document bounds or reset active state")
 	}
 	if err := w.removeItem(active); err != nil {
@@ -222,11 +264,15 @@ func TestWorkspaceSameFilenameAndLocalIDRemainIndependentAcrossDocuments(t *test
 	body := []byte(`<gpx><rte><name>Route</name><rtept lat="51" lon="0"/><rtept lat="51" lon="0.001"/></rte></gpx>`)
 	first := openWorkspaceFile(t, &w, importFile(t, "ride.gpx", body))
 	second := openWorkspaceFile(t, &w, importFile(t, "ride.gpx", body))
-	if first.ItemID != second.ItemID || first.DocumentID == second.DocumentID || len(w.items()) != 2 {
+	documentsCollapsed := first.ItemID != second.ItemID ||
+		first.DocumentID == second.DocumentID ||
+		len(w.items()) != 2
+	if documentsCollapsed {
 		t.Fatal("document-local IDs or duplicate filenames collapsed separate files")
 	}
 	firstColor, secondColor := w.items()[0].Color, w.items()[1].Color
-	if firstColor == secondColor || firstColor == 0 || secondColor == 0 {
+	coloursIndistinguishable := firstColor == secondColor || firstColor == 0 || secondColor == 0
+	if coloursIndistinguishable {
 		t.Fatal("independent activities share a colour")
 	}
 	if err := w.selectItem(first); err != nil {
@@ -242,10 +288,13 @@ func TestWorkspaceSameFilenameAndLocalIDRemainIndependentAcrossDocuments(t *test
 		t.Fatal(err)
 	}
 	selection := w.selection
-	if w.items()[0].Visible || !w.items()[1].Visible || w.selection.ref != second {
+	visibilityCrossedOwnership := w.items()[0].Visible || !w.items()[1].Visible || w.selection.ref != second
+	if visibilityCrossedOwnership {
 		t.Fatal("visibility crossed document ownership")
 	}
-	if err := w.removeDocument(first.DocumentID); err != nil || len(w.items()) != 1 || w.selection != selection {
+	err := w.removeDocument(first.DocumentID)
+	unrelatedRemovalChangedState := err != nil || len(w.items()) != 1 || w.selection != selection
+	if unrelatedRemovalChangedState {
 		t.Fatal("removing an unrelated file changed the active import", err)
 	}
 	if w.items()[0].Color != secondColor {
@@ -271,7 +320,8 @@ func TestWorkspaceFitsAllVisibleGeometryWithoutMergingDistantFiles(t *testing.T)
 		}
 		for _, p := range item.Item.Track.Points {
 			s := c.screen(p.World)
-			if s.X < 0 || s.X >= 320 || s.Y < 0 || s.Y >= 200 {
+			outsideViewport := s.X < 0 || s.X >= 320 || s.Y < 0 || s.Y >= 200
+			if outsideViewport {
 				t.Fatal("fit omitted visible geometry", s)
 			}
 		}
@@ -283,7 +333,8 @@ func TestWorkspaceFitsAllVisibleGeometryWithoutMergingDistantFiles(t *testing.T)
 	for _, item := range w.items() {
 		for _, p := range item.Item.Track.Points {
 			s := narrow.screen(p.World)
-			if s.X < 0 || s.X >= 160 || s.Y < 0 || s.Y >= 96 {
+			outsideViewport := s.X < 0 || s.X >= 160 || s.Y < 0 || s.Y >= 96
+			if outsideViewport {
 				t.Fatal("narrow fit omitted visible geometry")
 			}
 		}
@@ -293,13 +344,21 @@ func TestWorkspaceFitsAllVisibleGeometryWithoutMergingDistantFiles(t *testing.T)
 		t.Fatal(err)
 	}
 	visible, _ := w.visibleBounds()
-	if visible != selection.track.Bounds || w.fitVisible(120, 40, 2).Zoom <= c.Zoom || w.selection != selection {
+	hiddenGeometryAffectsFit := visible != selection.track.Bounds ||
+		w.fitVisible(120, 40, 2).Zoom <= c.Zoom ||
+		w.selection != selection
+	if hiddenGeometryAffectsFit {
 		t.Fatal("hidden geometry affected fit or fitting changed selection")
 	}
 	if err := w.setVisible(selection.ref, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := w.visibleBounds(); ok || w.fitVisible(120, 40, 2) != fit(nil, 120, 40, 2) {
+	if _, ok := w.visibleBounds(); ok || w.fitVisible(120, 40, 2) != fit(
+		nil,
+		120,
+		40,
+		2,
+	) {
 		t.Fatal("empty visible workspace did not return the world view")
 	}
 	if err := w.setVisible(first, true); err != nil || w.selection != nil {
@@ -312,7 +371,14 @@ func TestWorkspaceWaypointOnlyItemHasBoundsWithoutPlaybackOrProfile(t *testing.T
 	ref := openWorkspaceFile(t, &w, importFile(t, "pin.gpx", []byte(`<gpx><wpt lat="0" lon="0"/></gpx>`)))
 	bounds, ok := w.visibleBounds()
 	w.selection.playback.toggle()
-	if !ok || bounds != [4]float64{} || w.selection.ref != ref || w.position() != nil || w.profile(80, 5) != nil || w.selection.playback.Playing || w.seek(0) == nil {
+	waypointTreatedAsRoute := !ok ||
+		bounds != [4]float64{} ||
+		w.selection.ref != ref ||
+		w.position() != nil ||
+		w.profile(80, 5) != nil ||
+		w.selection.playback.Playing ||
+		w.seek(0) == nil
+	if waypointTreatedAsRoute {
 		t.Fatal("waypoint-only data was treated as an empty workspace or playable route")
 	}
 	if w.fitVisible(120, 40, 2).Zoom == 0 {

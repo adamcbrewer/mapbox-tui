@@ -48,7 +48,16 @@ func (d *Document) itemInfos() []itemInfo {
 		}
 		slices.Reverse(groups)
 		t := item.Track
-		items = append(items, itemInfo{item.ID, t.Name, item.Kind, groups, t.Bounds, len(t.Points), len(t.Waypoints), true})
+		items = append(items, itemInfo{
+			ID:            item.ID,
+			Name:          t.Name,
+			Kind:          item.Kind,
+			Groups:        groups,
+			Bounds:        t.Bounds,
+			PointCount:    len(t.Points),
+			WaypointCount: len(t.Waypoints),
+			Visible:       true,
+		})
 	}
 	return items
 }
@@ -82,7 +91,12 @@ func (d *Document) prepare() error {
 			continue
 		}
 		if strings.TrimSpace(t.Name) == "" {
-			t.Name = fmt.Sprintf("%s%s %d", strings.ToUpper(item.Kind[:1]), item.Kind[1:], item.ID)
+			t.Name = fmt.Sprintf(
+				"%s%s %d",
+				strings.ToUpper(item.Kind[:1]),
+				item.Kind[1:],
+				item.ID,
+			)
 		}
 		if err := prepareTrack(t); err != nil {
 			return err
@@ -110,7 +124,7 @@ func (d *Document) prepare() error {
 	return nil
 }
 
-// Single-file consumers still use a combined snapshot while workspace support is introduced.
+// track preserves the combined snapshot used by single-file CLI and MCP consumers.
 func (d *Document) track() *Track {
 	out := &Track{Name: d.Name, Bounds: d.Bounds}
 	for _, item := range d.Items {

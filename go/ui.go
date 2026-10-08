@@ -47,6 +47,8 @@ type uiState struct {
 
 type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
 
+type viewerCommand struct{ title, shortcut, action string }
+
 func binding(keys, description string) key.Binding {
 	return key.NewBinding(key.WithKeys(strings.Split(keys, "/")...), key.WithHelp(keys, description))
 }
@@ -57,19 +59,47 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 	}
 	if k.freeRoam {
 		if k.compact {
-			return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("ctrl+l", "files")}
+			return []key.Binding{
+				binding("?", "help"),
+				binding("q", "quit"),
+				binding("ctrl+o", "open"),
+				binding("ctrl+l", "files"),
+			}
 		}
-		return []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("ctrl+p", "commands"), binding("tab", focus), binding("q", "quit")}
+		return []key.Binding{
+			binding("?", "help"),
+			binding("ctrl+o", "open"),
+			binding("ctrl+l", "files"),
+			binding("ctrl+p", "commands"),
+			binding("tab", focus),
+			binding("q", "quit"),
+		}
 	}
 	play := "play"
 	if k.playing {
 		play = "pause"
 	}
 	if k.compact {
-		return []key.Binding{binding("?", "help"), binding("q", "quit"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("space", play)}
+		return []key.Binding{
+			binding("?", "help"),
+			binding("q", "quit"),
+			binding("ctrl+o", "open"),
+			binding("ctrl+l", "files"),
+			binding("space", play),
+		}
 	}
-	keys := []key.Binding{binding("?", "help"), binding("ctrl+o", "open"), binding("ctrl+l", "files"), binding("space", play)}
-	keys = append(keys, binding("ctrl+p", "commands"), binding("p", "speed"), binding("tab", focus))
+	keys := []key.Binding{
+		binding("?", "help"),
+		binding("ctrl+o", "open"),
+		binding("ctrl+l", "files"),
+		binding("space", play),
+	}
+	keys = append(
+		keys,
+		binding("ctrl+p", "commands"),
+		binding("p", "speed"),
+		binding("tab", focus),
+	)
 	return append(keys, binding("q", "quit"))
 }
 func (k shortcutMap) FullHelp() [][]key.Binding {
@@ -79,17 +109,67 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			elevation = []key.Binding{binding("e", "elevation profiles")}
 		}
 		return [][]key.Binding{
-			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding(",/.", "rotate"), binding("n", "north-up")},
-			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
+			{
+				binding("arrows/hjkl", "pan"),
+				binding("+/-", "zoom"),
+				binding("ctrl/cmd+wheel", "2x zoom speed"),
+				binding("f/r", "fit all visible"),
+				binding(",/.", "rotate"),
+				binding("n", "north-up"),
+			},
+			{
+				binding("click", "select coordinates"),
+				binding("enter", "inspect location"),
+				binding("tab", "focus map/details"),
+			},
 			elevation,
-			{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("ctrl+t", "cycle theme"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+			{
+				binding("ctrl+o", "add file"),
+				binding("ctrl+l", "loaded files"),
+				binding("ctrl+p", "command palette"),
+				binding("ctrl+t", "cycle theme"),
+				binding("a", "ASCII map"),
+				binding("v", "credits"),
+				binding("m", "toggle camera animation"),
+				binding("esc", "close panel"),
+				binding("q", "quit"),
+			},
 		}
 	}
 	return [][]key.Binding{
-		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
-		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
-		{binding("space", "play/pause selected activity"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "visible elevation profiles")},
-		{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("ctrl+t", "cycle theme"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+		{
+			binding("arrows/hjkl", "pan; playback continues"),
+			binding("+/-", "zoom"),
+			binding("ctrl/cmd+wheel", "2x zoom speed"),
+			binding("f/r", "fit all visible"),
+			binding("c", "center and follow"),
+			binding(",/.", "rotate"),
+			binding("n", "north-up"),
+		},
+		{
+			binding("[/]", "previous/next point"),
+			binding("pgup/pgdown", "seek 100 points"),
+			binding("home/end", "first/last point"),
+			binding("enter", "inspect position"),
+			binding("tab", "focus map/details"),
+		},
+		{
+			binding("space", "play/pause selected activity"),
+			binding("s/S", "next/previous speed"),
+			binding("p", "speed picker"),
+			binding("e", "visible elevation profiles"),
+		},
+		{
+			binding("ctrl+o", "add file"),
+			binding("ctrl+l", "loaded files"),
+			binding("ctrl+p", "command palette"),
+			binding("ctrl+t", "cycle theme"),
+			binding("a", "ASCII map"),
+			binding("v", "credits"),
+			binding("m", "toggle camera animation"),
+			binding("esc", "close panel"),
+			binding("q", "quit"),
+		},
 	}
 }
 
@@ -178,22 +258,40 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	return nil
 }
 
-type viewerCommand struct{ title, shortcut, action string }
-
 func (m *viewer) commands() []viewerCommand {
-	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Loaded files and routes", "ctrl+l", "workspace"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}, {"Choose colour theme", "ctrl+t cycle", "theme"}}
+	commands := []viewerCommand{
+		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
+		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
+		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
+		{title: "Provider credits", shortcut: "v", action: "credits"},
+		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
+	}
 	if len(m.workspace.documents) > 0 {
-		commands = append(commands, viewerCommand{"Fit all visible routes", "f", "fit"}, viewerCommand{"Clear workspace (remove all files)", "", "clear"})
+		commands = append(commands,
+			viewerCommand{title: "Fit all visible routes", shortcut: "f", action: "fit"},
+			viewerCommand{title: "Clear workspace (remove all files)", action: "clear"},
+		)
 	} else {
-		commands = append(commands, viewerCommand{"Reset world view", "f", "fit"})
+		commands = append(commands, viewerCommand{title: "Reset world view", shortcut: "f", action: "fit"})
 	}
 	if len(m.workspace.profileItems()) > 0 {
-		commands = append(commands, viewerCommand{"Toggle elevation profiles", "e", "profile"})
+		commands = append(commands, viewerCommand{title: "Toggle elevation profiles", shortcut: "e", action: "profile"})
 	}
 	if m.activeTrack() != nil {
-		commands = append(commands, viewerCommand{"Free roam (clear selection)", "", "roam"}, viewerCommand{"Center and follow position", "c", "center"}, viewerCommand{"Play / pause", "space", "play"}, viewerCommand{"Playback speed", "p", "speed"})
+		commands = append(
+			commands,
+			viewerCommand{title: "Free roam (clear selection)", action: "roam"},
+			viewerCommand{title: "Center and follow position", shortcut: "c", action: "center"},
+			viewerCommand{title: "Play / pause", shortcut: "space", action: "play"},
+			viewerCommand{title: "Playback speed", shortcut: "p", action: "speed"},
+		)
 	}
-	commands = append(commands, viewerCommand{"Inspect position", "enter", "inspect"}, viewerCommand{"Toggle camera animation", "m", "motion"}, viewerCommand{"Toggle ASCII map", "a", "ascii"})
+	commands = append(
+		commands,
+		viewerCommand{title: "Inspect position", shortcut: "enter", action: "inspect"},
+		viewerCommand{title: "Toggle camera animation", shortcut: "m", action: "motion"},
+		viewerCommand{title: "Toggle ASCII map", shortcut: "a", action: "ascii"},
+	)
 	query := strings.ToLower(m.ui.search.Value())
 	filtered := []viewerCommand{}
 	for _, command := range commands {
@@ -225,7 +323,14 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 	case "inspect":
 		return m.openDialog(dialogInspect)
 	}
-	keys := map[string]string{"fit": "f", "center": "c", "play": "space", "profile": "e", "motion": "m", "ascii": "a"}
+	keys := map[string]string{
+		"fit":     "f",
+		"center":  "c",
+		"play":    "space",
+		"profile": "e",
+		"motion":  "m",
+		"ascii":   "a",
+	}
 	text := keys[action]
 	if text == "space" {
 		text = " "
@@ -238,7 +343,10 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
-		if pressed == "esc" || (m.ui.dialog == dialogCredits && pressed == "v") || (m.ui.dialog == dialogHelp && pressed == "?") || (m.ui.dialog == dialogWorkspace && pressed == "ctrl+l") {
+		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
+		closeHelp := m.ui.dialog == dialogHelp && pressed == "?"
+		closeWorkspace := m.ui.dialog == dialogWorkspace && pressed == "ctrl+l"
+		if pressed == "esc" || closeCredits || closeHelp || closeWorkspace {
 			m.closeDialog()
 			return nil
 		}
@@ -380,33 +488,23 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
 	case dialogHelp:
-		groups := shortcutMap{freeRoam: m.activeTrack() == nil, profiles: len(m.workspace.profileItems()) > 0}.FullHelp()
+		groups := shortcutMap{
+			freeRoam: m.activeTrack() == nil,
+			profiles: len(m.workspace.profileItems()) > 0,
+		}.FullHelp()
 		m.ui.help.SetWidth(max(width, 50))
+		var helpContent strings.Builder
 		for i, heading := range []string{"Navigate", "Inspect", "Playback", "Workspace"} {
 			if len(groups[i]) == 0 {
 				continue
 			}
-			content += m.gradient(heading, lipgloss.Color(m.theme().Surface)) + "\n" + m.ui.help.FullHelpView([][]key.Binding{groups[i]}) + "\n\n"
+			helpContent.WriteString(m.gradient(heading, lipgloss.Color(m.theme().Surface)) + "\n" +
+				m.ui.help.FullHelpView([][]key.Binding{groups[i]}) + "\n\n")
 		}
+		content = helpContent.String()
 	case dialogCredits:
 		title = "Provider credits"
-		sources := m.sources.view()
-		credits, links := sources.attribution()
-		content = s.dialogHeading.Render(credits) + "\n\n" + s.dialogText.Render(strings.Join(links, "\n"))
-		for _, source := range sources.Sources {
-			status := source.Status
-			if status == "" {
-				status = "Ready"
-			}
-			if source.Loading {
-				status = "Loading · " + status
-			}
-			content += "\n\n" + s.dialogHeading.Render(source.Name) + "\n" + s.dialogText.Render(status)
-			content += fmt.Sprintf("\n%d / %d / %d requests / hits / errors", source.Stats.Requests, source.Stats.Hits, source.Stats.Errors)
-			if source.RefreshAt != nil {
-				content += "\nRefresh after " + source.RefreshAt.Local().Format("15:04:05")
-			}
-		}
+		content = m.sourceCreditsContent(m.sources.view())
 	case dialogInspect:
 		title = "Selected position"
 		content = s.dialogText.Render(strings.Join(m.details(), "\n"))
@@ -417,8 +515,38 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	return title, m.ui.page.View(), "↑/↓ scroll   esc close"
 }
 
+func (m *viewer) sourceCreditsContent(sources sourceView) string {
+	s := m.styles
+	credits, links := sources.attribution()
+	var content strings.Builder
+	content.WriteString(s.dialogHeading.Render(credits) + "\n\n" + s.dialogText.Render(strings.Join(links, "\n")))
+	for _, source := range sources.Sources {
+		status := source.Status
+		if status == "" {
+			status = "Ready"
+		}
+		if source.Loading {
+			status = "Loading · " + status
+		}
+		content.WriteString("\n\n" + s.dialogHeading.Render(source.Name) + "\n" + s.dialogText.Render(status))
+		fmt.Fprintf(
+			&content,
+			"\n%d / %d / %d requests / hits / errors",
+			source.Stats.Requests,
+			source.Stats.Hits,
+			source.Stats.Errors,
+		)
+		if source.RefreshAt != nil {
+			content.WriteString("\nRefresh after " + source.RefreshAt.Local().Format("15:04:05"))
+		}
+	}
+	return content.String()
+}
+
 func (m *viewer) overlay() {
-	if m.ui.dialog == dialogNone || m.width < 30 || m.height < 12 {
+	dialogOpen := m.ui.dialog != dialogNone
+	hasRoom := m.width >= 30 && m.height >= 12
+	if !dialogOpen || !hasRoom {
 		return
 	}
 	width := min(64, m.width-8)
@@ -435,12 +563,26 @@ func (m *viewer) overlay() {
 	if m.ui.notice != "" {
 		body = s.dialogMuted.Render(ansi.Truncate(m.ui.notice, width, "…")) + "\n" + body
 	}
-	content := m.gradient(title, surface) + "\n\n" + lipgloss.NewStyle().Background(surface).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(body) + "\n\n" + s.dialogMuted.Render(ansi.Truncate(hints, width, "…"))
+	bodyStyle := lipgloss.NewStyle().
+		Background(surface).
+		Width(width).
+		MaxWidth(width).
+		Height(height).
+		MaxHeight(height)
+	content := m.gradient(title, surface) + "\n\n" + bodyStyle.Render(body) + "\n\n" +
+		s.dialogMuted.Render(ansi.Truncate(hints, width, "…"))
 	border := lipgloss.RoundedBorder()
 	if m.settings.ASCII {
 		border = lipgloss.ASCIIBorder()
 	}
-	box := lipgloss.NewStyle().Width(width+6).Padding(1, 2).Background(surface).Foreground(lipgloss.Color(t.Text)).Border(border).BorderForegroundBlend(lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight)).Render(content)
+	box := lipgloss.NewStyle().
+		Width(width+6).
+		Padding(1, 2).
+		Background(surface).
+		Foreground(lipgloss.Color(t.Text)).
+		Border(border).
+		BorderForegroundBlend(lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight)).
+		Render(content)
 	x, y := (m.width-lipgloss.Width(box))/2, (m.height-lipgloss.Height(box))/2
 	if m.ui.dialog == dialogSpeed {
 		x, y = max(1, m.camera.Width-lipgloss.Width(box)), max(1, m.height-lipgloss.Height(box)-3)
@@ -452,9 +594,14 @@ func (m *viewer) overlay() {
 			y = max(0, min(m.height-lipgloss.Height(box)-3, int(point.Y/4)+2))
 		}
 	}
-	base := lipgloss.NewLayer(lipgloss.NewStyle().Foreground(lipgloss.Color(t.Dimmed)).Background(lipgloss.Color(t.Background)).Render(ansi.Strip(m.content)))
+	baseStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(t.Dimmed)).
+		Background(lipgloss.Color(t.Background))
+	base := lipgloss.NewLayer(baseStyle.Render(ansi.Strip(m.content)))
 	x, y = max(0, x), max(0, y)
-	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)))
+	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(
+		lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)),
+	)
 	// Nested Bubbles views reset some cells to the terminal's default background.
 	for row := y + 1; row < min(m.height, y+lipgloss.Height(box)-1); row++ {
 		for column := x + 1; column < min(m.width, x+lipgloss.Width(box)-1); column++ {

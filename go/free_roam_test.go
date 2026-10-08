@@ -61,11 +61,21 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m := &viewer{camera: c, provider: newProvider("none"), ctx: context.Background(), args: Args{NoAnimation: true}, showProfile: true}
+		m := &viewer{
+			camera:      c,
+			provider:    newProvider("none"),
+			ctx:         context.Background(),
+			args:        Args{NoAnimation: true},
+			showProfile: true,
+		}
 		m.initUI()
 		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		m.Init()
-		if m.activeTrack() != nil || m.activePlayback() != nil || m.profileHeight != 0 || m.ui.dialog != dialogNone {
+		routeStateRequired := m.activeTrack() != nil ||
+			m.activePlayback() != nil ||
+			m.profileHeight != 0 ||
+			m.ui.dialog != dialogNone
+		if routeStateRequired {
 			t.Fatal("free roam required a route or opened track UI")
 		}
 		before := m.camera
@@ -91,7 +101,11 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		for _, code := range []rune{'[', ']', 'c', 'e', ' ', 's', 'S', 'p', tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown} {
 			m.Update(tea.KeyPressMsg{Code: code})
 		}
-		if m.ui.dialog != dialogNone || m.activePlayback() != nil || m.selectedPoint() != -1 || !m.showProfile {
+		routeControlsChangedState := m.ui.dialog != dialogNone ||
+			m.activePlayback() != nil ||
+			m.selectedPoint() != -1 ||
+			!m.showProfile
+		if routeControlsChangedState {
 			t.Fatal("route-only controls changed free roam state")
 		}
 		m.rebuild()
@@ -128,18 +142,43 @@ func TestFreeRoamRouteTransitionsAndFailedLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &viewer{camera: c, args: a, provider: newProvider("none"), ctx: context.Background(), width: 120, height: 40, showProfile: true}
+	m := &viewer{
+		camera:      c,
+		args:        a,
+		provider:    newProvider("none"),
+		ctx:         context.Background(),
+		width:       120,
+		height:      40,
+		showProfile: true,
+	}
 	m.initUI()
 	m.Init()
 	m.Update(loaded{path: "../fixtures/example.gpx", id: m.loadID, document: document})
 	track := m.activeTrack()
-	want := fit(track, m.camera.Width, m.camera.Height, m.camera.Aspect)
-	if m.activeTrack() != track || m.activePlayback() == nil || m.visibleProfile() == nil || m.following || m.camera.Center != want.Center || m.camera.Zoom != want.Zoom {
+	want := fit(
+		track,
+		m.camera.Width,
+		m.camera.Height,
+		m.camera.Aspect,
+	)
+	importNotInitialised := m.activeTrack() != track ||
+		m.activePlayback() == nil ||
+		m.visibleProfile() == nil ||
+		m.following ||
+		m.camera.Center != want.Center ||
+		m.camera.Zoom != want.Zoom
+	if importNotInitialised {
 		t.Fatal("opening a route from free roam did not fit and initialise it")
 	}
 	m.activePlayback().toggle()
 	m.runCommand("roam")
-	if m.activeTrack() != nil || m.activePlayback() != nil || m.visibleProfile() == nil || m.profileHeight == 0 || m.camera.Center != want.Center || len(m.workspace.documents) != 1 {
+	freeRoamLostWorkspace := m.activeTrack() != nil ||
+		m.activePlayback() != nil ||
+		m.visibleProfile() == nil ||
+		m.profileHeight == 0 ||
+		m.camera.Center != want.Center ||
+		len(m.workspace.documents) != 1
+	if freeRoamLostWorkspace {
 		t.Fatal("clearing the route did not preserve the map and stop playback")
 	}
 	for _, command := range m.commands() {
@@ -152,7 +191,10 @@ func TestFreeRoamRouteTransitionsAndFailedLoad(t *testing.T) {
 		t.Fatal("an outdated load restored a cleared route")
 	}
 	m.Update(loaded{id: m.loadID, err: io.EOF})
-	if m.activeTrack() != nil || m.ui.dialog != dialogFiles || !strings.Contains(m.ui.notice, "Could not open track file") {
+	failedImportNotRecovered := m.activeTrack() != nil ||
+		m.ui.dialog != dialogFiles ||
+		!strings.Contains(m.ui.notice, "Could not open track file")
+	if failedImportNotRecovered {
 		t.Fatal("failed import did not recover to the file picker")
 	}
 	m.closeDialog()

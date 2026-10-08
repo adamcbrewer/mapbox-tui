@@ -47,7 +47,12 @@ func run() error {
 	case "inspect":
 		result, e = t.inspect(a.PointIndex, a.Distance)
 	case "render":
-		result, e = renderFiles(context.Background(), command.Paths, a, newProvider(a.Provider))
+		result, e = renderFiles(
+			context.Background(),
+			command.Paths,
+			a,
+			newProvider(a.Provider),
+		)
 		if e == nil && !command.JSON {
 			r := result.(map[string]any)
 			fmt.Println(r["text"])

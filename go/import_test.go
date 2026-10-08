@@ -372,7 +372,13 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 			if _, err := s.call(context.Background(), "render_map", Args{TrackID: id, Provider: "none"}); err != nil {
 				t.Fatal(err)
 			}
-			m := &viewer{provider: newProvider("none"), ctx: context.Background(), width: 120, height: 40, showProfile: true}
+			m := &viewer{
+				provider:    newProvider("none"),
+				ctx:         context.Background(),
+				width:       120,
+				height:      40,
+				showProfile: true,
+			}
 			m.initUI()
 			batch := m.load(path)().(tea.BatchMsg)
 			for _, cmd := range batch {
@@ -380,7 +386,13 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 					m.Update(msg)
 				}
 			}
-			if m.activeTrack() == nil || m.path != path || m.activePlayback() == nil || m.visibleProfile() == nil || m.fatal != nil || m.loading {
+			importNotInitialised := m.activeTrack() == nil ||
+				m.path != path ||
+				m.activePlayback() == nil ||
+				m.visibleProfile() == nil ||
+				m.fatal != nil ||
+				m.loading
+			if importNotInitialised {
 				t.Fatal("viewer failed to initialise imported file")
 			}
 			m.openDialog(dialogFiles)
@@ -388,7 +400,10 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 				t.Fatal("viewer picker excludes imported format")
 			}
 			m.Update(loaded{id: m.loadID, err: os.ErrInvalid})
-			if m.activeTrack() == nil || m.path != path || !strings.Contains(m.ui.notice, "Could not open track file") {
+			failedImportLostRoute := m.activeTrack() == nil ||
+				m.path != path ||
+				!strings.Contains(m.ui.notice, "Could not open track file")
+			if failedImportLostRoute {
 				t.Fatal("failed import discarded the existing route")
 			}
 		})

@@ -56,13 +56,28 @@ func describeTrack(entry *workspaceDocument) trackInfo {
 		items[i].Visible = !entry.hidden[items[i].ID]
 	}
 	d := entry.document
-	return trackInfo{fmt.Sprintf("track-%d", entry.id), entry.id, d.Filename, d.Path, d.Name, d.Bounds, items}
+	return trackInfo{
+		TrackID:    "track-" + strconv.Itoa(entry.id),
+		DocumentID: entry.id,
+		Filename:   d.Filename,
+		Path:       d.Path,
+		Name:       d.Name,
+		Bounds:     d.Bounds,
+		Items:      items,
+	}
 }
 
 func (s *Service) loadedResult(ref ItemRef) map[string]any {
 	entry, _, _ := s.workspace.lookup(ref)
 	info := describeTrack(entry)
-	return map[string]any{"track_id": info.TrackID, "bounds": info.Bounds, "summary": entry.document.track().summary(), "document_id": info.DocumentID, "filename": info.Filename, "items": info.Items}
+	return map[string]any{
+		"track_id":    info.TrackID,
+		"bounds":      info.Bounds,
+		"summary":     entry.document.track().summary(),
+		"document_id": info.DocumentID,
+		"filename":    info.Filename,
+		"items":       info.Items,
+	}
 }
 
 func (s *Service) load(path string) (any, error) {
@@ -88,7 +103,7 @@ func (s *Service) load(path string) (any, error) {
 
 func (s *Service) document(id string) (*workspaceDocument, error) {
 	n, err := strconv.Atoi(strings.TrimPrefix(id, "track-"))
-	if err == nil && id == fmt.Sprintf("track-%d", n) {
+	if err == nil && id == "track-"+strconv.Itoa(n) {
 		for _, entry := range s.workspace.documents {
 			if entry.id == n {
 				return entry, nil
@@ -179,13 +194,13 @@ func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 		if a.ItemID == nil {
 			err = s.workspace.setDocumentVisible(entry.id, *a.Visible)
 		} else {
-			err = s.workspace.setVisible(ItemRef{entry.id, *a.ItemID}, *a.Visible)
+			err = s.workspace.setVisible(ItemRef{DocumentID: entry.id, ItemID: *a.ItemID}, *a.Visible)
 		}
 	case "select_item", "remove_item":
 		if a.ItemID == nil {
 			return nil, fmt.Errorf("item_id is required")
 		}
-		ref := ItemRef{entry.id, *a.ItemID}
+		ref := ItemRef{DocumentID: entry.id, ItemID: *a.ItemID}
 		if name == "select_item" {
 			err = s.workspace.selectItem(ref)
 		} else {
@@ -201,7 +216,10 @@ func (s *Service) call(ctx context.Context, name string, a Args) (any, error) {
 }
 
 func serveMCP() error {
-	s := &Service{providers: map[string]*Provider{"mapbox": newProvider("mapbox"), "none": newProvider("none")}}
+	s := &Service{providers: map[string]*Provider{
+		"mapbox": newProvider("mapbox"),
+		"none":   newProvider("none"),
+	}}
 	server := mcp.NewServer(&mcp.Implementation{Name: "shoe", Version: "0.1.0"}, nil)
 	var tools []*mcp.Tool
 	if e := json.Unmarshal(shared.Tools, &tools); e != nil {
@@ -215,13 +233,19 @@ func serveMCP() error {
 			}
 			v, e := s.call(ctx, req.Params.Name, a)
 			if e != nil {
-				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: e.Error()}}}, nil
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{&mcp.TextContent{Text: e.Error()}},
+				}, nil
 			}
 			b, e := json.Marshal(v)
 			if e != nil {
 				return nil, e
 			}
-			return &mcp.CallToolResult{StructuredContent: v, Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
+			return &mcp.CallToolResult{
+				StructuredContent: v,
+				Content:           []mcp.Content{&mcp.TextContent{Text: string(b)}},
+			}, nil
 		})
 	}
 	return server.Run(context.Background(), &mcp.StdioTransport{})

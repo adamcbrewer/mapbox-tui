@@ -36,7 +36,12 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.BoolVar(&a.ASCII, "ascii", false, "use ASCII rendering")
 		fs.Float64Var(&lon, "center-lon", 0, "starting longitude; supply with --center-lat")
 		fs.Float64Var(&lat, "center-lat", 0, "starting latitude; supply with --center-lon")
-		fs.Float64Var(&zoom, "zoom", 0, "starting zoom (-8..20); negative values fit wide extents in small viewports")
+		fs.Float64Var(
+			&zoom,
+			"zoom",
+			0,
+			"starting zoom (-8..20); negative values fit wide extents in small viewports",
+		)
 		fs.Float64Var(&bearing, "bearing", 0, "bearing in degrees (-360..360)")
 	}
 	if command.Name == "open" || command.Name == "render" {
@@ -44,7 +49,12 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	if command.Name == "open" {
 		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
-		fs.StringVar(&a.Theme, "theme", "catppuccin", "colour theme: catppuccin, catppuccin-latte, tokyo-night, or a TOML file path")
+		fs.StringVar(
+			&a.Theme,
+			"theme",
+			"catppuccin",
+			"colour theme: catppuccin, catppuccin-latte, tokyo-night, or a TOML file path",
+		)
 	}
 	if command.Name == "render" || command.Name == "bench" {
 		a.Width = fs.Int("width", 120, "map width in cells (10..300)")
@@ -53,11 +63,22 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	if command.Name == "open" || command.Name == "render" || command.Name == "inspect" {
 		fs.IntVar(&index, "point-index", 0, "zero-based recorded point to select, highlight or inspect")
 	}
-	if command.Name == "open" || command.Name == "render" || command.Name == "inspect" || command.Name == "summary" {
-		fs.IntVar(&itemID, "item-id", 0, "select a file's item; discover IDs with summary --items")
+	switch command.Name {
+	case "open", "render", "inspect", "summary":
+		fs.IntVar(
+			&itemID,
+			"item-id",
+			0,
+			"select a file's item; discover IDs with summary --items",
+		)
 	}
 	if command.Name == "summary" {
-		fs.BoolVar(&command.Items, "items", false, "list the file's items and IDs")
+		fs.BoolVar(
+			&command.Items,
+			"items",
+			false,
+			"list the file's items and IDs",
+		)
 	}
 	if command.Name == "inspect" {
 		fs.Float64Var(&distance, "distance-m", 0, "inspect the nearest recorded point at this distance in metres")
@@ -81,14 +102,16 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		}
 		return command, nil
 	}
-	if len(paths) > 1 && command.Name != "open" && command.Name != "render" {
+	multipleFiles := len(paths) > 1
+	workspaceCommand := command.Name == "open" || command.Name == "render"
+	if multipleFiles && !workspaceCommand {
 		return command, fmt.Errorf("supply at most one track file (GPX, FIT, TCX or KML)")
 	}
 	command.Paths = paths
 	if len(paths) > 0 {
 		command.Path = paths[0]
 	}
-	if command.Path == "" && command.Name != "open" && command.Name != "render" {
+	if command.Path == "" && !workspaceCommand {
 		return command, fmt.Errorf("%s requires a track file; see 'shoe %s --help'", command.Name, command.Name)
 	}
 	fs.Visit(func(f *flag.Flag) {
@@ -112,7 +135,8 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	if a.ItemID != nil && *a.ItemID < 1 {
 		return command, fmt.Errorf("item-id must be positive")
 	}
-	if len(paths) > 1 && (a.PointIndex != nil || a.ItemID != nil) {
+	hasSelector := a.PointIndex != nil || a.ItemID != nil
+	if multipleFiles && hasSelector {
 		return command, fmt.Errorf("point-index and item-id require a single file")
 	}
 	if command.Items && a.ItemID != nil {
@@ -162,11 +186,27 @@ func parseOptions(fs *flag.FlagSet, argv []string) ([]string, error) {
 func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	switch name {
 	case "open":
-		fmt.Fprintln(output, "Usage: shoe [FILE...] [OPTIONS]\n       shoe COMMAND [FILE] [OPTIONS]\n\nBrowse maps and load GPX, FIT, TCX or KML files into a workspace.\nCtrl-L lists loaded files and their routes. Opening a file adds it; reopening\na loaded path selects the existing import. 'open' is an optional alias.\nA configured Mapbox token adds a basemap; otherwise files use an empty canvas.\n\nCommands:\n  render   Print a static map; accepts zero or more files\n  summary  Print track statistics or list items as JSON\n  inspect  Print a recorded point as JSON\n  mcp      Run the local stdio MCP server\n  bench    Benchmark synthetic map rendering")
+		fmt.Fprintln(output, "Usage: shoe [FILE...] [OPTIONS]\n"+
+			"       shoe COMMAND [FILE] [OPTIONS]\n\n"+
+			"Browse maps and load GPX, FIT, TCX or KML files into a workspace.\n"+
+			"Ctrl-L lists loaded files and their routes. Opening a file adds it; reopening\n"+
+			"a loaded path selects the existing import. 'open' is an optional alias.\n"+
+			"A configured Mapbox token adds a basemap; otherwise files use an empty canvas.\n\n"+
+			"Commands:\n"+
+			"  render   Print a static map; accepts zero or more files\n"+
+			"  summary  Print track statistics or list items as JSON\n"+
+			"  inspect  Print a recorded point as JSON\n"+
+			"  mcp      Run the local stdio MCP server\n"+
+			"  bench    Benchmark synthetic map rendering")
 	case "render":
-		fmt.Fprintln(output, "Usage: shoe render [FILE...] [OPTIONS]\n\nPrint a static map with GPX, FIT, TCX or KML overlays. Multiple files fit all\nvisible items. Use --json for scene metadata. Item/point selectors require one\nfile. A configured Mapbox token adds a basemap.")
+		fmt.Fprintln(output, "Usage: shoe render [FILE...] [OPTIONS]\n\n"+
+			"Print a static map with GPX, FIT, TCX or KML overlays. Multiple files fit all\n"+
+			"visible items. Use --json for scene metadata. Item/point selectors require one\n"+
+			"file. A configured Mapbox token adds a basemap.")
 	case "summary":
-		fmt.Fprintln(output, "Usage: shoe summary FILE [OPTIONS]\n\nPrint GPX, FIT, TCX or KML statistics as JSON. Use --items to list item IDs,\nor --item-id to summarise one item.")
+		fmt.Fprintln(output, "Usage: shoe summary FILE [OPTIONS]\n\n"+
+			"Print GPX, FIT, TCX or KML statistics as JSON. Use --items to list item IDs,\n"+
+			"or --item-id to summarise one item.")
 	case "inspect":
 		fmt.Fprintln(output, "Usage: shoe inspect FILE [OPTIONS]\n\nPrint a recorded point from a GPX, FIT, TCX or KML file as JSON.\nSelect by index or distance, not both. Defaults to point index 0.")
 	case "bench":

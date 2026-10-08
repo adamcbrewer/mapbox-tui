@@ -11,3 +11,4 @@
 - [ ] [toggle traffic](https://github.com/adamcbrewer/shell-on-earth/issues/4)
 - [ ] [choose the next map data source](https://github.com/adamcbrewer/shell-on-earth/issues/6)
 - [ ] [activity reordering and sequential playback](https://github.com/adamcbrewer/shell-on-earth/issues/3) (deferred)
+- [ ] [local Git checks and automated CI](https://github.com/adamcbrewer/shell-on-earth/issues/8)

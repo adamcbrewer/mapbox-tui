@@ -47,7 +47,7 @@ func (p tcxPoint) point() (Point, bool) {
 func parseTCX(d *xml.Decoder) (*Document, error) {
 	document := &Document{Name: "Imported TCX"}
 	var t *Track
-	depth := 0
+	var depth int
 	err := xmlTokens(d, "TrainingCenterDatabase", func(v xml.StartElement, parents []string) (bool, error) {
 		if len(parents) < depth {
 			t = nil

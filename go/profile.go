@@ -28,7 +28,13 @@ func profileRows(height int, shown bool) int {
 	return 0
 }
 func newProfile(items []sceneItem, width, height int) *elevationProfile {
-	p := &elevationProfile{Grid: newGrid(width, height), Min: math.Inf(1), Max: math.Inf(-1), Items: items, AvailableItems: make(map[ItemRef]bool)}
+	p := &elevationProfile{
+		Grid:           newGrid(width, height),
+		Min:            math.Inf(1),
+		Max:            math.Inf(-1),
+		Items:          items,
+		AvailableItems: make(map[ItemRef]bool),
+	}
 	for _, item := range items {
 		p.Distance += item.Track.Distance
 		for _, point := range item.Track.Points {
@@ -43,7 +49,7 @@ func newProfile(items []sceneItem, width, height int) *elevationProfile {
 	if !p.Available {
 		return p
 	}
-	offset := 0.0
+	var offset float64
 	for _, item := range items {
 		p.draw(item, offset)
 		if offset > 0 && offset < p.Distance {
@@ -71,9 +77,19 @@ func (p *elevationProfile) draw(item sceneItem, offset float64) {
 				continue
 			}
 			xy := p.screen(offset+point.Distance, *point.Elevation)
-			p.Grid.dot(int(math.Round(xy.X)), int(math.Round(xy.Y)), role, item.Color)
+			p.Grid.dot(
+				int(math.Round(xy.X)),
+				int(math.Round(xy.Y)),
+				role,
+				item.Color,
+			)
 			if last != nil {
-				p.Grid.line(*last, xy, role, item.Color)
+				p.Grid.line(
+					*last,
+					xy,
+					role,
+					item.Color,
+				)
 			}
 			last = &xy
 		}
@@ -87,11 +103,11 @@ func (p *elevationProfile) screen(distance, elevation float64) XY {
 	return XY{distance / math.Max(p.Distance, 1) * float64(p.Grid.Width*2-1), y}
 }
 func (p *elevationProfile) frame(pos *ridePosition) (string, Grid, string) {
-	distance := 0.0
+	var distance float64
 	var color activityColor
 	if pos != nil {
 		distance = pos.Distance
-		offset := 0.0
+		var offset float64
 		for _, item := range p.Items {
 			if item.Active {
 				distance += offset
@@ -107,7 +123,12 @@ func (p *elevationProfile) frame(pos *ridePosition) (string, Grid, string) {
 	}
 	header := title + " | unavailable | e hide"
 	if p.Available {
-		header = fmt.Sprintf("%s | %.1f–%.1f m | e hide", title, p.Min, p.Max)
+		header = fmt.Sprintf(
+			"%s | %.1f–%.1f m | e hide",
+			title,
+			p.Min,
+			p.Max,
+		)
 	}
 	if pos != nil {
 		ele := "unavailable"
@@ -122,17 +143,33 @@ func (p *elevationProfile) frame(pos *ridePosition) (string, Grid, string) {
 	g := p.Grid
 	g.Cells = append([]Cell(nil), p.Grid.Cells...)
 	if !p.Available {
-		g.label(XY{2, 0}, "No recorded elevation", rolePlace, false)
+		g.label(
+			XY{2, 0},
+			"No recorded elevation",
+			rolePlace,
+			false,
+		)
 	}
 	if pos != nil {
 		x := math.Round(p.screen(distance, p.Min).X)
 		for y := 0; y < g.Height; y++ {
-			g.label(XY{x, float64(y * 4)}, "|", roleCursor, false)
+			g.label(
+				XY{x, float64(y * 4)},
+				"|",
+				roleCursor,
+				false,
+			)
 		}
 		if p.Available && pos.Elevation != nil {
 			point := p.screen(distance, *pos.Elevation)
 			point.X, point.Y = math.Round(point.X), math.Round(point.Y)
-			g.label(point, "@", roleCursor, false, color)
+			g.label(
+				point,
+				"@",
+				roleCursor,
+				false,
+				color,
+			)
 		}
 	}
 	end := fmt.Sprintf("%.2f km", p.Distance/1000)

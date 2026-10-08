@@ -28,19 +28,35 @@ func TestGPXDocumentPreservesSourceAndNamedItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Path != abs || d.Filename != "rides.data" || d.Format != "GPX" || d.Name != "Weekend collection" {
+	sourceMetadataLost := d.Path != abs ||
+		d.Filename != "rides.data" ||
+		d.Format != "GPX" ||
+		d.Name != "Weekend collection"
+	if sourceMetadataLost {
 		t.Fatalf("lost source metadata: %+v", d)
 	}
 	if len(d.Items) != 4 {
 		t.Fatalf("expected four independent items, got %d", len(d.Items))
 	}
-	for i, want := range []struct{ name, kind string }{{"Meeting point", "waypoint"}, {"Morning ride", "track"}, {"Way home", "route"}, {"Evening ride", "track"}} {
+	for i, want := range []struct{ name, kind string }{
+		{name: "Meeting point", kind: "waypoint"},
+		{name: "Morning ride", kind: "track"},
+		{name: "Way home", kind: "route"},
+		{name: "Evening ride", kind: "track"},
+	} {
 		item := d.Items[i]
-		if item.ID != i+1 || item.Track.Name != want.name || item.Kind != want.kind {
-			t.Fatalf("item %d lost its identity: %+v, name %q", i, item, item.Track.Name)
+		identityLost := item.ID != i+1 || item.Track.Name != want.name || item.Kind != want.kind
+		if identityLost {
+			t.Fatalf(
+				"item %d lost its identity: %+v, name %q",
+				i,
+				item,
+				item.Track.Name,
+			)
 		}
 	}
-	if len(d.Items[1].Track.Segments) != 2 || d.Items[1].Track.Points[2].Distance != d.Items[1].Track.Points[1].Distance {
+	if len(d.Items[1].Track.Segments) != 2 ||
+		d.Items[1].Track.Points[2].Distance != d.Items[1].Track.Points[1].Distance {
 		t.Fatal("a disconnected part became a new item or acquired distance")
 	}
 	for _, item := range d.Items[1:] {
@@ -49,14 +65,22 @@ func TestGPXDocumentPreservesSourceAndNamedItems(t *testing.T) {
 		}
 	}
 	combined := d.track()
-	if combined.summary()["route_count"] != 1 || len(combined.Points) != 6 || len(combined.Segments) != 4 || len(combined.Waypoints) != 1 {
+	geometryCountsChanged := combined.summary()["route_count"] != 1 ||
+		len(combined.Points) != 6 ||
+		len(combined.Segments) != 4 ||
+		len(combined.Waypoints) != 1
+	if geometryCountsChanged {
 		t.Fatal("single-file snapshot changed geometry or entity counts")
 	}
-	if combined.Points[3].Lon != 0.2 || combined.Points[5].Lon != 0.3 || combined.Points[3].Distance != combined.Points[2].Distance {
+	itemBoundariesChanged := combined.Points[3].Lon != 0.2 ||
+		combined.Points[5].Lon != 0.3 ||
+		combined.Points[3].Distance != combined.Points[2].Distance
+	if itemBoundariesChanged {
 		t.Fatal("single-file snapshot reordered points or connected items")
 	}
 	other, err := loadDocument(importFile(t, "rides.data", body))
-	if err != nil || other.Filename != d.Filename || other.Path == d.Path {
+	sourcesIndistinguishable := err != nil || other.Filename != d.Filename || other.Path == d.Path
+	if sourcesIndistinguishable {
 		t.Fatal("equally named source files cannot be distinguished", err)
 	}
 }
@@ -79,24 +103,41 @@ func TestTCXDocumentCountsCoursesRatherThanGPSParts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 2 || d.Items[0].Track.Name != "Outward" || d.Items[1].Track.Name != "Return" {
+	courseIdentityLost := len(d.Items) != 2 ||
+		d.Items[0].Track.Name != "Outward" ||
+		d.Items[1].Track.Name != "Return"
+	if courseIdentityLost {
 		t.Fatal("course identity was lost")
 	}
 	first, second := d.Items[0].Track, d.Items[1].Track
-	if first.summary()["route_count"] != 1 || second.summary()["route_count"] != 1 || d.track().summary()["route_count"] != 2 {
+	courseCountsChanged := first.summary()["route_count"] != 1 ||
+		second.summary()["route_count"] != 1 ||
+		d.track().summary()["route_count"] != 2
+	if courseCountsChanged {
 		t.Fatal("GPS gaps were counted as additional courses")
 	}
-	if len(first.Segments) != 2 || first.Points[2].Distance != first.Points[1].Distance || second.Points[0].Distance != 0 {
+	boundaryDistancesChanged := len(first.Segments) != 2 ||
+		first.Points[2].Distance != first.Points[1].Distance ||
+		second.Points[0].Distance != 0
+	if boundaryDistancesChanged {
 		t.Fatal("GPS gaps or course boundaries acquired distance")
 	}
-	if len(first.Waypoints) != 1 || len(second.Waypoints) != 0 || first.Waypoints[0].Name != "Water" {
+	coursePointOwnershipLost := len(first.Waypoints) != 1 ||
+		len(second.Waypoints) != 0 ||
+		first.Waypoints[0].Name != "Water"
+	if coursePointOwnershipLost {
 		t.Fatal("course points lost their owning course")
 	}
 	d, err = loadDocument(importFile(t, "activity.tcx", []byte(activityTCX)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 2 || d.Items[0].Kind != "activity" || d.Items[0].Track.Name != "2026-10-01T10:00:00Z" || len(d.Items[0].Track.Segments) != 3 || d.Items[1].Kind != "route" {
+	activityOwnershipChanged := len(d.Items) != 2 ||
+		d.Items[0].Kind != "activity" ||
+		d.Items[0].Track.Name != "2026-10-01T10:00:00Z" ||
+		len(d.Items[0].Track.Segments) != 3 ||
+		d.Items[1].Kind != "route"
+	if activityOwnershipChanged {
 		t.Fatal("activity/lap/course ownership changed")
 	}
 }
@@ -120,14 +161,25 @@ func TestFITDocumentKeepsSessionsWithinTheirActivityAndSeparatesSequences(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 2 || d.Items[0].Kind != "activity" || d.Items[1].Kind != "route" || d.Items[1].Track.Name != "Synthetic course" {
+	sequenceIdentityLost := len(d.Items) != 2 ||
+		d.Items[0].Kind != "activity" ||
+		d.Items[1].Kind != "route" ||
+		d.Items[1].Track.Name != "Synthetic course"
+	if sequenceIdentityLost {
 		t.Fatal("FIT sequences did not retain independent activity/course identity")
 	}
 	activity, course := d.Items[0].Track, d.Items[1].Track
-	if len(activity.Segments) != 2 || activity.Points[2].Distance != activity.Points[1].Distance || len(course.Segments) != 3 || course.Points[0].Distance != 0 {
+	sequenceBoundariesChanged := len(activity.Segments) != 2 ||
+		activity.Points[2].Distance != activity.Points[1].Distance ||
+		len(course.Segments) != 3 ||
+		course.Points[0].Distance != 0
+	if sequenceBoundariesChanged {
 		t.Fatal("session, pause or sequence boundaries changed")
 	}
-	if len(activity.Waypoints) != 0 || len(course.Waypoints) != 1 || d.track().summary()["route_count"] != 1 {
+	courseOwnershipLost := len(activity.Waypoints) != 0 ||
+		len(course.Waypoints) != 1 ||
+		d.track().summary()["route_count"] != 1
+	if courseOwnershipLost {
 		t.Fatal("FIT course points or route count lost entity ownership")
 	}
 }
@@ -145,7 +197,11 @@ func TestKMLDocumentPreservesPlacemarksAndLateContainerNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Name != "Collection" || len(d.Items) != 3 || d.Items[0].Track.Name != "Paths" || d.Items[1].Track.Name != "Pin" {
+	placemarkIdentityLost := d.Name != "Collection" ||
+		len(d.Items) != 3 ||
+		d.Items[0].Track.Name != "Paths" ||
+		d.Items[1].Track.Name != "Pin"
+	if placemarkIdentityLost {
 		t.Fatal("document or placemark identity was lost")
 	}
 	for i, want := range [][]string{{"Inner", "Outer", "Collection"}, {"Other", "Collection"}, {"Collection"}} {
@@ -154,17 +210,30 @@ func TestKMLDocumentPreservesPlacemarksAndLateContainerNames(t *testing.T) {
 			names = append(names, group.Name)
 		}
 		if !reflect.DeepEqual(names, want) {
-			t.Fatalf("item %d container path: got %v, want %v", i, names, want)
+			t.Fatalf(
+				"item %d container path: got %v, want %v",
+				i,
+				names,
+				want,
+			)
 		}
 	}
-	if len(d.Items[0].Track.Segments) != 2 || d.track().summary()["route_count"] != 1 || len(d.Items[1].Track.Waypoints) != 1 {
+	multiGeometryOwnershipLost := len(d.Items[0].Track.Segments) != 2 ||
+		d.track().summary()["route_count"] != 1 ||
+		len(d.Items[1].Track.Waypoints) != 1
+	if multiGeometryOwnershipLost {
 		t.Fatal("multi-geometry parts became separate placemarks or routes")
 	}
 	d, err = loadDocument(importFile(t, "timed.kml", []byte(mapKML)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 3 || d.Items[2].Track.Name != "Recorded ride" || len(d.Items[2].Track.Segments) != 3 || d.Items[2].Track.Points[0].Time == nil || d.Items[2].Track.Points[2].Time != nil {
+	timedPartsChanged := len(d.Items) != 3 ||
+		d.Items[2].Track.Name != "Recorded ride" ||
+		len(d.Items[2].Track.Segments) != 3 ||
+		d.Items[2].Track.Points[0].Time == nil ||
+		d.Items[2].Track.Points[2].Time != nil
+	if timedPartsChanged {
 		t.Fatal("timed multi-track placemark lost parts or missing measurements")
 	}
 }
@@ -188,10 +257,16 @@ func TestDocumentRecalculationAndSnapshotsPreserveIndependentGeometry(t *testing
 		t.Fatal(err)
 	}
 	wantDistance := haversine(first.Points[0], first.Points[1]) + haversine(first.Points[2], first.Points[3])
-	if math.Abs(first.Distance-wantDistance) > 1e-9 || first.Points[1].World != project(0.002, 51) || first.Points[2].Distance != first.Points[1].Distance {
+	editedGeometryStale := math.Abs(first.Distance-wantDistance) > 1e-9 ||
+		first.Points[1].World != project(0.002, 51) ||
+		first.Points[2].Distance != first.Points[1].Distance
+	if editedGeometryStale {
 		t.Fatal("edited geometry accumulated old distance or retained stale projection")
 	}
-	if !reflect.DeepEqual(second.summary(), secondSummary) || d.Items[0].ID != 1 || d.Items[1].ID != 2 {
+	unrelatedItemChanged := !reflect.DeepEqual(second.summary(), secondSummary) ||
+		d.Items[0].ID != 1 ||
+		d.Items[1].ID != 2
+	if unrelatedItemChanged {
 		t.Fatal("recalculation changed another item or reassigned identity")
 	}
 	combined := d.track()
@@ -200,17 +275,30 @@ func TestDocumentRecalculationAndSnapshotsPreserveIndependentGeometry(t *testing
 	}
 	combined.Points[0].Lon = 10
 	combined.Segments[0].Start = 1
-	if first.Points[0].Lon != 0 || first.Segments[0].Start != 0 || second.Points[0].Distance != 0 {
+	ownedGeometryChanged := first.Points[0].Lon != 0 ||
+		first.Segments[0].Start != 0 ||
+		second.Points[0].Distance != 0
+	if ownedGeometryChanged {
 		t.Fatal("combining geometry changed the owned items")
 	}
 }
 
 func TestDocumentSkipsEmptyItemsAndRetainsWaypointOnlyGeometry(t *testing.T) {
-	d, err := loadDocument(importFile(t, "pins.gpx", []byte(`<gpx><trk><name>Empty</name></trk><wpt lat="51" lon="0"/></gpx>`)))
+	d, err := loadDocument(importFile(
+		t,
+		"pins.gpx",
+		[]byte(`<gpx><trk><name>Empty</name></trk><wpt lat="51" lon="0"/></gpx>`),
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Items) != 1 || d.Items[0].ID != 2 || d.Items[0].Kind != "waypoint" || d.Items[0].Track.Name == "" || len(d.Items[0].Track.Waypoints) != 1 || d.track().Distance != 0 {
+	waypointGeometryChanged := len(d.Items) != 1 ||
+		d.Items[0].ID != 2 ||
+		d.Items[0].Kind != "waypoint" ||
+		d.Items[0].Track.Name == "" ||
+		len(d.Items[0].Track.Waypoints) != 1 ||
+		d.track().Distance != 0
+	if waypointGeometryChanged {
 		t.Fatal("empty items survived or a waypoint became a route")
 	}
 	if err := d.prepare(); err != nil || d.Items[0].ID != 2 {

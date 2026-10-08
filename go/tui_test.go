@@ -8,7 +8,12 @@ import (
 
 func testWorkspace(track *Track) Workspace {
 	var w Workspace
-	w.addDocument(&Document{Path: "test.gpx", Name: track.Name, Bounds: track.Bounds, Items: []*DocumentItem{{ID: 1, Kind: "track", Track: track}}})
+	w.addDocument(&Document{
+		Path:   "test.gpx",
+		Name:   track.Name,
+		Bounds: track.Bounds,
+		Items:  []*DocumentItem{{ID: 1, Kind: "track", Track: track}},
+	})
 	return w
 }
 

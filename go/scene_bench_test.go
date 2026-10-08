@@ -16,7 +16,10 @@ func BenchmarkWorkspaceScene(b *testing.B) {
 				t.Points = make([]Point, 100000)
 				for i := range t.Points {
 					u := float64(i) / 99999 * 2 * math.Pi
-					t.Points[i] = Point{Lon: -.105 + math.Cos(u)*.018 + float64(route)*.004, Lat: 51.505 + math.Sin(u)*.006}
+					t.Points[i] = Point{
+						Lon: -.105 + math.Cos(u)*.018 + float64(route)*.004,
+						Lat: 51.505 + math.Sin(u)*.006,
+					}
 				}
 				t.Segments = []Segment{{Kind: "track", Start: 0, End: len(t.Points)}}
 				if err := d.prepare(); err != nil {
@@ -28,7 +31,12 @@ func BenchmarkWorkspaceScene(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				c.pan(.2, 0)
-				g := renderScene(c, nil, w.sceneItems(), nil)
+				g := renderScene(
+					c,
+					nil,
+					w.sceneItems(),
+					nil,
+				)
 				_ = g.plain(false)
 			}
 		})

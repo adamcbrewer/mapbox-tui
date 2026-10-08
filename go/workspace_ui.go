@@ -20,13 +20,18 @@ type workspaceRow struct {
 func (m *viewer) workspaceRows() []workspaceRow {
 	var rows []workspaceRow
 	for _, entry := range m.workspace.documents {
-		visible := false
+		var visible bool
 		for _, item := range entry.document.Items {
 			visible = visible || !entry.hidden[item.ID]
 		}
-		rows = append(rows, workspaceRow{ItemRef{DocumentID: entry.id}, fmt.Sprintf("[%d] %s", entry.id, clean(entry.document.Filename)), entry.document.Path, visible, 0})
+		rows = append(rows, workspaceRow{
+			ref:     ItemRef{DocumentID: entry.id},
+			label:   fmt.Sprintf("[%d] %s", entry.id, clean(entry.document.Filename)),
+			path:    entry.document.Path,
+			visible: visible,
+		})
 		for _, item := range entry.document.Items {
-			ref := ItemRef{entry.id, item.ID}
+			ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
 			active, shown := " ", "x"
 			if m.workspace.selection != nil && m.workspace.selection.ref == ref {
 				active = "*"
@@ -34,8 +39,20 @@ func (m *viewer) workspaceRows() []workspaceRow {
 			if entry.hidden[item.ID] {
 				shown = " "
 			}
-			label := fmt.Sprintf(" %s [%s] %d %s", active, shown, item.ID, item.Track.Name)
-			rows = append(rows, workspaceRow{ref, label, entry.document.Path, !entry.hidden[item.ID], entry.colors[item.ID]})
+			label := fmt.Sprintf(
+				" %s [%s] %d %s",
+				active,
+				shown,
+				item.ID,
+				item.Track.Name,
+			)
+			rows = append(rows, workspaceRow{
+				ref:     ref,
+				label:   label,
+				path:    entry.document.Path,
+				visible: !entry.hidden[item.ID],
+				color:   entry.colors[item.ID],
+			})
 		}
 	}
 	return rows
@@ -122,12 +139,19 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 			style = s.selected
 		}
 		if rows[i].color != 0 {
-			style = style.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, rows[i].color))).Faint(!rows[i].visible)
+			style = style.
+				Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, rows[i].color))).
+				Faint(!rows[i].visible)
 		}
 		lines = append(lines, style.Render(pad(prefix+rows[i].label, width)))
 	}
 	if height > 3 {
-		lines = append(lines, "", s.dialogMuted.Render(pad(clean(rows[m.ui.selected].path), width)), s.dialogMuted.Render(pad("del remove row · D remove file", width)))
+		lines = append(
+			lines,
+			"",
+			s.dialogMuted.Render(pad(clean(rows[m.ui.selected].path), width)),
+			s.dialogMuted.Render(pad("del remove row · D remove file", width)),
+		)
 	}
 	return "Loaded files", strings.Join(lines, "\n"), "enter select · space hide/show · esc close"
 }
@@ -150,11 +174,26 @@ func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
 		if item.Active {
 			marker = "*"
 		}
-		label := fmt.Sprintf("%s %d:%d %s", marker, item.Ref.DocumentID, item.Ref.ItemID, item.Track.Name)
-		if profile != nil && len(item.Track.Points) > 0 && !profile.AvailableItems[item.Ref] {
-			label = fmt.Sprintf("%s %d:%d no elevation: %s", marker, item.Ref.DocumentID, item.Ref.ItemID, item.Track.Name)
+		label := fmt.Sprintf(
+			"%s %d:%d %s",
+			marker,
+			item.Ref.DocumentID,
+			item.Ref.ItemID,
+			item.Track.Name,
+		)
+		missingElevation := profile != nil && len(item.Track.Points) > 0 && !profile.AvailableItems[item.Ref]
+		if missingElevation {
+			label = fmt.Sprintf(
+				"%s %d:%d no elevation: %s",
+				marker,
+				item.Ref.DocumentID,
+				item.Ref.ItemID,
+				item.Track.Name,
+			)
 		}
-		labels = append(labels, s.text.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, item.Color))).Bold(item.Active).Render(pad(ansi.Truncate(label, columnWidth, "…"), columnWidth)))
+		style := s.text.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, item.Color))).Bold(item.Active)
+		label = pad(ansi.Truncate(label, columnWidth, "…"), columnWidth)
+		labels = append(labels, style.Render(label))
 	}
 	return pad(strings.Join(labels, "  ")+s.muted.Render(suffix), width)
 }

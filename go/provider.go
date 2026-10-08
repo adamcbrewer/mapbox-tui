@@ -52,7 +52,19 @@ func defaultProvider(token string) string {
 }
 
 func newProvider(kind string) *Provider {
-	return &Provider{Kind: kind, client: &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, token: accessToken(), cache: map[Tile]cacheEntry{}, batch: make(chan struct{}, 1), now: time.Now}
+	return &Provider{
+		Kind: kind,
+		client: &http.Client{
+			Timeout: 8 * time.Second,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		token: accessToken(),
+		cache: map[Tile]cacheEntry{},
+		batch: make(chan struct{}, 1),
+		now:   time.Now,
+	}
 }
 func accessToken() string {
 	if token, ok := os.LookupEnv("MAPBOX_ACCESS_TOKEN"); ok {
@@ -72,7 +84,11 @@ func accessToken() string {
 }
 func providerCredits(kind string) []sourceCredit {
 	if kind == "mapbox" {
-		return []sourceCredit{{"© Mapbox", "https://www.mapbox.com/about/maps/"}, {"© OpenStreetMap", "https://www.openstreetmap.org/copyright"}, {"Improve this map (v credits)", "https://apps.mapbox.com/feedback/"}}
+		return []sourceCredit{
+			{Text: "© Mapbox", URL: "https://www.mapbox.com/about/maps/"},
+			{Text: "© OpenStreetMap", URL: "https://www.openstreetmap.org/copyright"},
+			{Text: "Improve this map (v credits)", URL: "https://apps.mapbox.com/feedback/"},
+		}
 	}
 	return nil
 }
@@ -110,7 +126,14 @@ func visible(c Camera) []Tile {
 	}
 }
 func (p *Provider) sameRequest(a, b Camera) bool {
-	return a == b || p.Kind != "mapbox" || p.token == "" || slices.Equal(visible(a), visible(b))
+	if a == b {
+		return true
+	}
+	usesTiles := p.Kind == "mapbox" && p.token != ""
+	if !usesTiles {
+		return true
+	}
+	return slices.Equal(visible(a), visible(b))
 }
 func ttl(header string) time.Duration {
 	age := 0
@@ -163,7 +186,9 @@ func decodeTile(data []byte, t Tile) ([]Feature, error) {
 				}
 				return p
 			}
-			add := func(parts [][]XY, polygon bool) { out = append(out, Feature{parts, role, polygon, clean(label)}) }
+			add := func(parts [][]XY, polygon bool) {
+				out = append(out, Feature{Parts: parts, Role: role, Polygon: polygon, Label: clean(label)})
+			}
 			switch g := f.Geometry.(type) {
 			case orb.Point:
 				add([][]XY{convert(orb.LineString{g})}, false)
@@ -238,8 +263,19 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 			continue
 		}
 		p.mu.Unlock()
-		u := fmt.Sprintf("https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/%d/%d/%d.mvt?access_token=%s", tile.Z, tile.X, tile.Y, url.QueryEscape(p.token))
-		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		u := fmt.Sprintf(
+			"https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/%d/%d/%d.mvt?access_token=%s",
+			tile.Z,
+			tile.X,
+			tile.Y,
+			url.QueryEscape(p.token),
+		)
+		req, err := http.NewRequestWithContext(
+			ctx,
+			"GET",
+			u,
+			nil,
+		)
 		if err != nil {
 			snapshot.Status = "Cannot create tile request"
 			retryAt = p.fail(10 * time.Second)
@@ -295,29 +331,29 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 		if elapsed, e := strconv.Atoi(res.Header.Get("Age")); e == nil && elapsed > 0 {
 			age -= time.Duration(elapsed) * time.Second
 		}
-		if age > 0 {
-			expires := received.Add(age)
-			snapshot.RefreshAt = earlier(snapshot.RefreshAt, expires)
-			if !p.now().Before(expires) {
-				continue
-			}
-			p.mu.Lock()
-			if len(p.cache) >= 64 {
-				var oldest Tile
-				used := uint64(math.MaxUint64)
-				for key, v := range p.cache {
-					if v.Used < used {
-						used = v.Used
-						oldest = key
-					}
-				}
-				delete(p.cache, oldest)
-			}
-			p.cache[tile] = cacheEntry{fs, expires, p.clock}
-			p.mu.Unlock()
-		} else {
+		if age <= 0 {
 			snapshot.RefreshAt = earlier(snapshot.RefreshAt, received.Add(time.Minute))
+			continue
 		}
+		expires := received.Add(age)
+		snapshot.RefreshAt = earlier(snapshot.RefreshAt, expires)
+		if !p.now().Before(expires) {
+			continue
+		}
+		p.mu.Lock()
+		if len(p.cache) >= 64 {
+			var oldest Tile
+			used := uint64(math.MaxUint64)
+			for key, v := range p.cache {
+				if v.Used < used {
+					used = v.Used
+					oldest = key
+				}
+			}
+			delete(p.cache, oldest)
+		}
+		p.cache[tile] = cacheEntry{Features: fs, Expires: expires, Used: p.clock}
+		p.mu.Unlock()
 	}
 	if !retryAt.IsZero() {
 		snapshot.RefreshAt = retryAt

@@ -35,10 +35,15 @@ func (t *presentationTheme) styles() uiStyles {
 	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Accent))
 	surface := lipgloss.Color(t.Surface)
 	return uiStyles{
-		text: text, muted: muted, heading: text.Bold(true), accent: accent,
-		selected:   text.Bold(true).Foreground(lipgloss.Color(t.Highlight)).Background(lipgloss.Color(t.Selected)),
-		dialogText: text.Background(surface), dialogMuted: muted.Background(surface),
-		dialogHeading: text.Bold(true).Background(surface), dialogAccent: accent.Background(surface),
+		text:          text,
+		muted:         muted,
+		heading:       text.Bold(true),
+		accent:        accent,
+		selected:      text.Bold(true).Foreground(lipgloss.Color(t.Highlight)).Background(lipgloss.Color(t.Selected)),
+		dialogText:    text.Background(surface),
+		dialogMuted:   muted.Background(surface),
+		dialogHeading: text.Bold(true).Background(surface),
+		dialogAccent:  accent.Background(surface),
 	}
 }
 
@@ -62,8 +67,13 @@ func (m *viewer) applyTheme(index int) {
 	m.styles = t.styles()
 	s := m.styles
 	m.ui.help.Styles = help.Styles{
-		ShortKey: s.accent.Bold(true), ShortDesc: s.muted, ShortSeparator: s.muted, Ellipsis: s.muted,
-		FullKey: s.dialogAccent.Bold(true), FullDesc: s.dialogText, FullSeparator: s.dialogMuted,
+		ShortKey:       s.accent.Bold(true),
+		ShortDesc:      s.muted,
+		ShortSeparator: s.muted,
+		Ellipsis:       s.muted,
+		FullKey:        s.dialogAccent.Bold(true),
+		FullDesc:       s.dialogText,
+		FullSeparator:  s.dialogMuted,
 	}
 	m.ui.details.Style = s.text
 	m.ui.page.Style = s.dialogText
@@ -88,9 +98,16 @@ func (m *viewer) applyTheme(index int) {
 func (m *viewer) stylePicker() {
 	s := m.styles
 	m.ui.picker.Styles = filepicker.Styles{
-		File: s.dialogText, Directory: s.dialogAccent, Symlink: s.dialogAccent,
-		DisabledFile: s.dialogMuted, DisabledSelected: s.dialogMuted, DisabledCursor: s.dialogMuted,
-		Selected: s.selected, Cursor: s.dialogAccent, Permission: s.dialogMuted, FileSize: s.dialogMuted,
-		EmptyDirectory: s.dialogMuted.SetString("No files in this directory"),
+		File:             s.dialogText,
+		Directory:        s.dialogAccent,
+		Symlink:          s.dialogAccent,
+		DisabledFile:     s.dialogMuted,
+		DisabledSelected: s.dialogMuted,
+		DisabledCursor:   s.dialogMuted,
+		Selected:         s.selected,
+		Cursor:           s.dialogAccent,
+		Permission:       s.dialogMuted,
+		FileSize:         s.dialogMuted,
+		EmptyDirectory:   s.dialogMuted.SetString("No files in this directory"),
 	}
 }
