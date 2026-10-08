@@ -109,6 +109,29 @@ func TestPlaceClientPreservesSuggestionNames(t *testing.T) {
 	}
 }
 
+func TestPlaceClientPreservesPrintableUnicode(t *testing.T) {
+	p := newPlaceClient("token")
+	p.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/suggest") {
+			return locationResponse(`{"suggestions":[{"mapbox_id":"id","name":"Café Zürich\u001b","place_formatted":"日本\n"}]}`), nil
+		}
+		return locationResponse(`{"attribution":"© Mapbox\r\n© OpenStreetMap\u009b","features":[{"geometry":{"coordinates":[8.54,47.37]}}]}`), nil
+	})
+	suggestions, err := p.suggest(
+		t.Context(),
+		"Zürich",
+		"session",
+		XY{},
+	)
+	if err != nil || len(suggestions) != 1 || suggestions[0].Label != "Café Zürich , 日本 " {
+		t.Fatalf("Unicode suggestion was changed or controls retained: %v, %v", suggestions, err)
+	}
+	location, err := p.retrieve(t.Context(), suggestions[0], "session")
+	if err != nil || location.Name != suggestions[0].Label || location.Attribution != "© Mapbox  © OpenStreetMap " {
+		t.Fatalf("Unicode location/attribution was changed or controls retained: %+v, %v", location, err)
+	}
+}
+
 func TestPlaceClientRejectsBadResponsesAndRedactsTransportErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string

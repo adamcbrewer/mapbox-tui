@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type placeLocation struct {
@@ -84,9 +85,9 @@ func (w *Workspace) setJourneyLocation(ref ItemRef, id int, location placeLocati
 					location = *previous
 				}
 			}
-			location.Name = clean(location.Name)
-			location.Source = clean(location.Source)
-			location.Attribution = clean(location.Attribution)
+			location.Name = cleanPlaceText(location.Name)
+			location.Source = cleanPlaceText(location.Source)
+			location.Attribution = cleanPlaceText(location.Attribution)
 			stops[i].Location = &location
 			return w.editJourney(ref, stops)
 		}
@@ -184,7 +185,7 @@ func journeyTrack(stops []journeyStop) (*Track, error) {
 	if len(t.Points) == 0 {
 		return t, nil
 	}
-	if err := prepareTrack(t); err != nil {
+	if err := prepareTrackWithNameCleaner(t, cleanPlaceText); err != nil {
 		return nil, fmt.Errorf("journey: %w", err)
 	}
 	t.RouteCount = 1
@@ -212,4 +213,13 @@ func coordinateLocation(input string) (placeLocation, bool, error) {
 func validLocation(lon, lat float64) bool {
 	finite := !math.IsNaN(lon) && !math.IsNaN(lat) && !math.IsInf(lon, 0) && !math.IsInf(lat, 0)
 	return finite && math.Abs(lon) <= 180 && math.Abs(lat) <= 90
+}
+
+func cleanPlaceText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if !unicode.IsPrint(r) {
+			return ' '
+		}
+		return r
+	}, text)
 }

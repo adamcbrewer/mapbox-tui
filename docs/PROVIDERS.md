@@ -101,6 +101,9 @@ Errors leave chosen locations and imported geometry intact, with manual entry
 available. There are no automatic network retry/refresh loops for location lookup.
 Credits returned for selected Mapbox places remain with the session's locations,
 appear in provider credits and contribute to the map footer for visible plans.
+Place names and credits retain printable Unicode through suggestions, workspace
+storage and planned geometry. Control and other non-printable characters are
+replaced with spaces before display.
 
 Mapbox Search Box is billed by search session for suggest/retrieve; this is separate
 from Directions' free allowance. Its documentation lists coverage in the US, Canada

@@ -83,10 +83,14 @@ func loadDocument(path string) (*Document, error) {
 }
 
 func prepareTrack(t *Track) error {
+	return prepareTrackWithNameCleaner(t, clean)
+}
+
+func prepareTrackWithNameCleaner(t *Track, cleanName func(string) string) error {
 	if len(t.Points)+len(t.Waypoints) == 0 {
 		return fmt.Errorf("contains no supported geometry")
 	}
-	t.Name = clean(t.Name)
+	t.Name = cleanName(t.Name)
 	t.Distance = 0
 	t.Bounds = [4]float64{180, 90, -180, -90}
 	for _, points := range [][]Point{t.Points, t.Waypoints} {
@@ -103,7 +107,7 @@ func prepareTrack(t *Track) error {
 					return fmt.Errorf("invalid timestamp: %w", err)
 				}
 			}
-			p.Name = clean(p.Name)
+			p.Name = cleanName(p.Name)
 			p.World = project(p.Lon, p.Lat)
 			t.Bounds[0] = math.Min(t.Bounds[0], p.Lon)
 			t.Bounds[1] = math.Min(t.Bounds[1], p.Lat)

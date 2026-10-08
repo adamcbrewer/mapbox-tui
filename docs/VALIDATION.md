@@ -127,6 +127,7 @@ requests. Fake transports verify Mapbox search opt-in, suggest/retrieve session
 ownership and rotation, cancellation, clipboard/editor ownership and debounce
 ownership across replaced plans, paste-driven query invalidation,
 edited-place provenance/attribution,
+printable Unicode names/credits with control-character sanitization,
 stale responses after edits/removal, missing/invalid coordinates, HTTP/body limits
 and token/query redaction. Planned geometry does not acquire recorded playback or
 elevation profiles. Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12

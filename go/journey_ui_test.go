@@ -152,6 +152,55 @@ func TestJourneyViewerSearchOptInSessionsAndSupersededResults(t *testing.T) {
 	}
 }
 
+func TestJourneyUnicodeLocationsSurviveGeometryAndEdits(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	j, err := m.workspace.journey(m.planner.ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	location := placeLocation{
+		Name: "Café Zürich\n東京\x1b", Lon: 8.54, Lat: 47.37,
+		Source: "Mapbox Search Box", Attribution: "© Mapbox\r\n© OpenStreetMap\x1b",
+	}
+	if err := m.workspace.addJourneyWaypoint(m.planner.ref); err != nil {
+		t.Fatal(err)
+	}
+	for _, stop := range j.Stops {
+		if err := m.workspace.setJourneyLocation(m.planner.ref, stop.ID, location); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func() {
+		t.Helper()
+		for _, stop := range j.Stops {
+			if stop.Location.Name != "Café Zürich 東京 " || stop.Location.Attribution != "© Mapbox  © OpenStreetMap " {
+				t.Fatalf("workspace corrupted printable Unicode or retained controls: %+v", stop.Location)
+			}
+		}
+		track := m.activeTrack()
+		for _, points := range [][]Point{track.Points, track.Waypoints} {
+			for _, point := range points {
+				if point.Name != "Café Zürich 東京 " {
+					t.Fatalf("derived geometry corrupted the place name: %q", point.Name)
+				}
+			}
+		}
+		m.rebuild()
+		text := ansi.Strip(m.content)
+		if !strings.Contains(text, "Café Zürich 東京") || !strings.Contains(m.journeyCredits(), "© Mapbox") {
+			t.Fatal("journey display or credits lost printable Unicode")
+		}
+	}
+	check()
+	m.editJourneyLocation(0)
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	check()
+	m.Update(tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl})
+	check()
+}
+
 func TestJourneyViewerRequestsCancelOnCloseAndRemoval(t *testing.T) {
 	m := journeyViewer(t)
 	m.places.token = "token"

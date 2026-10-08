@@ -64,7 +64,7 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		if suggestion.Name != "" && !hasName {
 			label = strings.Trim(suggestion.Name+", "+label, ", ")
 		}
-		results = append(results, placeSuggestion{ID: suggestion.ID, Label: clean(label)})
+		results = append(results, placeSuggestion{ID: suggestion.ID, Label: cleanPlaceText(label)})
 	}
 	return results, nil
 }
@@ -96,7 +96,7 @@ func (p *placeClient) retrieve(ctx context.Context, suggestion placeSuggestion, 
 	}
 	return placeLocation{
 		Name: suggestion.Label, Lon: *coords[0], Lat: *coords[1],
-		Source: "Mapbox Search Box", Attribution: clean(response.Attribution),
+		Source: "Mapbox Search Box", Attribution: cleanPlaceText(response.Attribution),
 	}, nil
 }
 
