@@ -12,7 +12,7 @@ import (
 )
 
 type placeSuggestion struct {
-	ID, Label string
+	ID, Label, Attribution string
 }
 
 type placeClient struct {
@@ -41,6 +41,7 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		"proximity": {fmt.Sprintf("%.6f,%.6f", near.X, near.Y)},
 	}
 	var response struct {
+		Attribution string `json:"attribution"`
 		Suggestions []struct {
 			ID        string `json:"mapbox_id"`
 			Name      string `json:"name"`
@@ -52,6 +53,7 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		return nil, fmt.Errorf("Mapbox search: %w", err)
 	}
 	results := make([]placeSuggestion, 0, min(5, len(response.Suggestions)))
+	attribution := cleanPlaceText(response.Attribution)
 	for _, suggestion := range response.Suggestions[:min(5, len(response.Suggestions))] {
 		if suggestion.ID == "" || len(suggestion.ID) > 1024 {
 			continue
@@ -64,7 +66,9 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		if suggestion.Name != "" && !hasName {
 			label = strings.Trim(suggestion.Name+", "+label, ", ")
 		}
-		results = append(results, placeSuggestion{ID: suggestion.ID, Label: cleanPlaceText(label)})
+		results = append(results, placeSuggestion{
+			ID: suggestion.ID, Label: cleanPlaceText(label), Attribution: attribution,
+		})
 	}
 	return results, nil
 }

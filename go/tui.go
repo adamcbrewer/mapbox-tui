@@ -950,7 +950,7 @@ func (m *viewer) rebuild() {
 		freeRoam:       m.activePlayback() == nil,
 	}
 	credits, _ := sources.attribution()
-	if journeyCredits := m.journeyCredits(); journeyCredits != "" {
+	if journeyCredits := strings.ReplaceAll(m.journeyCredits(), "\n", " "); journeyCredits != "" {
 		credits += " " + journeyCredits
 	}
 	rows = append(

@@ -201,6 +201,83 @@ func TestJourneyUnicodeLocationsSurviveGeometryAndEdits(t *testing.T) {
 	check()
 }
 
+func TestJourneySuggestionCreditsAreVisibleAndTransient(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	m.editJourneyLocation(0)
+	m.planner.online = true
+	m.ui.search.SetValue("Zürich")
+	m.schedulePlaceSearch()
+	m.places.token = "token"
+	m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(r.URL.Path, "/suggest") {
+			return locationResponse(`{"attribution":"© Mapbox suggestions\n","suggestions":[{"mapbox_id":"id","name":"Zürich"}]}`), nil
+		}
+		return locationResponse(`{"attribution":"© Mapbox location","features":[{"geometry":{"coordinates":[8.54,47.37]}}]}`), nil
+	})
+	cmd := m.requestPlaceSearch(m.planner.searchID)
+	m.Update(cmd())
+	m.rebuild()
+	if !strings.Contains(ansi.Strip(m.content), "© Mapbox suggestions") {
+		t.Fatal("suggestions were displayed without provider attribution")
+	}
+	m.ui.search.SetValue("Bern")
+	m.schedulePlaceSearch()
+	if m.journeyCredits() != "" {
+		t.Fatal("clearing suggestions retained their attribution")
+	}
+	m.Update(m.requestPlaceSearch(m.planner.searchID)())
+	m.closeDialog()
+	if m.journeyCredits() != "" {
+		t.Fatal("closing the editor retained suggestion attribution")
+	}
+	m.editJourneyLocation(0)
+	m.ui.search.SetValue("Zürich")
+	m.schedulePlaceSearch()
+	m.Update(m.requestPlaceSearch(m.planner.searchID)())
+	_, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.Update(cmd())
+	if !strings.Contains(m.journeyCredits(), "© Mapbox location") ||
+		strings.Contains(m.journeyCredits(), "© Mapbox suggestions") {
+		t.Fatal("retrieval did not replace temporary suggestion credits with location credits")
+	}
+}
+
+func TestJourneyDistinctCreditsKeepFooterSingleLine(t *testing.T) {
+	for _, size := range [][2]int{{120, 40}, {70, 24}, {70, 18}, {30, 12}} {
+		for _, ascii := range []bool{false, true} {
+			m := journeyViewer(t)
+			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m.settings.ASCII = ascii
+			m.openJourney()
+			j, _ := m.workspace.journey(m.planner.ref)
+			for i, stop := range j.Stops {
+				if err := m.workspace.setJourneyLocation(m.planner.ref, stop.ID, placeLocation{
+					Lon: float64(i) * .01, Lat: 51,
+					Attribution: fmt.Sprintf("© C%d", i+1),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m.closeDialog()
+			m.rebuild()
+			if lipgloss.Height(m.content) > size[1] || lipgloss.Width(m.content) > size[0] {
+				t.Fatalf("distinct credits overflowed %v, ASCII %v", size, ascii)
+			}
+			lines := strings.Split(ansi.Strip(m.content), "\n")
+			footer := lines[len(lines)-1]
+			if !strings.Contains(footer, "© C1 © C2") {
+				t.Fatalf("footer lost distinct credits: %q", footer)
+			}
+			m.openDialog(dialogCredits)
+			_, _, _ = m.dialogContent(60, 17)
+			if !strings.Contains(m.journeyCredits(), "© C1\n© C2") {
+				t.Fatal("credits dialog no longer has separately listed credits")
+			}
+		}
+	}
+}
+
 func TestJourneyViewerRequestsCancelOnCloseAndRemoval(t *testing.T) {
 	m := journeyViewer(t)
 	m.places.token = "token"

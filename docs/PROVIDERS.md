@@ -101,6 +101,10 @@ Errors leave chosen locations and imported geometry intact, with manual entry
 available. There are no automatic network retry/refresh loops for location lookup.
 Credits returned for selected Mapbox places remain with the session's locations,
 appear in provider credits and contribute to the map footer for visible plans.
+Active autocomplete suggestions retain their returned attribution and show it in
+the location editor and footer until the suggestions are cleared or replaced by
+retrieved location data. The map footer joins distinct credits on one line;
+the credits dialog lists them separately.
 Place names and credits retain printable Unicode through suggestions, workspace
 storage and planned geometry. Control and other non-printable characters are
 replaced with spaces before display.

@@ -405,10 +405,21 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 	if m.ui.dialog == dialogJourneyLocation {
 		m.ui.search.SetWidth(max(1, width-2))
 		rows := []string{m.ui.search.View()}
+		credit := ""
+		if len(m.planner.suggestions) > 0 {
+			credit = m.planner.suggestions[0].Attribution
+		}
+		hints := "enter choose / esc back"
+		if height <= 2 && credit != "" {
+			hints = credit
+		}
 		if height > 2 {
 			status := "ctrl+s Mapbox | alt+m map centre"
 			if m.planner.online {
 				status = "Mapbox Search Box | lat, lon offline"
+			}
+			if credit != "" {
+				status = credit
 			}
 			if m.planner.searchBusy {
 				status = "Looking up location..."
@@ -424,7 +435,7 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 			}
 			rows = append(rows, style.Render(pad(m.planner.suggestions[i].Label, width)))
 		}
-		return journeyStopLabel(m.planner.row, len(j.Stops)), strings.Join(rows, "\n"), "enter choose / esc back"
+		return journeyStopLabel(m.planner.row, len(j.Stops)), strings.Join(rows, "\n"), hints
 	}
 	labels := []string{}
 	for i, stop := range j.Stops {
@@ -493,16 +504,23 @@ func (m *viewer) journeyDetails() []string {
 
 func (m *viewer) journeyCredits() string {
 	var credits []string
+	addCredit := func(credit string) {
+		if credit != "" && !slices.Contains(credits, credit) {
+			credits = append(credits, credit)
+		}
+	}
+	if m.ui.dialog == dialogJourneyLocation {
+		for _, suggestion := range m.planner.suggestions {
+			addCredit(suggestion.Attribution)
+		}
+	}
 	for _, item := range m.workspace.items() {
 		if !item.Visible || item.Item.Journey == nil {
 			continue
 		}
 		for _, stop := range item.Item.Journey.Stops {
-			if stop.Location != nil && stop.Location.Attribution != "" {
-				credit := stop.Location.Attribution
-				if !slices.Contains(credits, credit) {
-					credits = append(credits, credit)
-				}
+			if stop.Location != nil {
+				addCredit(stop.Location.Attribution)
 			}
 		}
 	}
