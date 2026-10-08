@@ -55,6 +55,97 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	}
 }
 
+func TestScenePlannedEndpointMarkersFollowStopsAndReverse(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		count    int
+		resolved []int
+		markers  []rune
+	}{
+		{name: "start only", count: 2, resolved: []int{0}, markers: []rune{'S'}},
+		{name: "destination only", count: 2, resolved: []int{1}, markers: []rune{'E'}},
+		{name: "unresolved waypoint", count: 3, resolved: []int{0, 2}, markers: []rune{'S', 'E'}},
+		{name: "waypoint only", count: 3, resolved: []int{1}, markers: []rune{'W'}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var w Workspace
+			ref := w.newJourney()
+			if tc.count == 3 {
+				if err := w.addJourneyWaypoint(ref); err != nil {
+					t.Fatal(err)
+				}
+			}
+			j, err := w.journey(ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, i := range tc.resolved {
+				if err := w.setJourneyLocation(
+					ref,
+					j.Stops[i].ID,
+					placeLocation{Lon: float64(i) * .01, Lat: 51},
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c := w.fitVisible(120, 40, 2)
+			checkMarkers := func(reversed bool) {
+				t.Helper()
+				items := w.sceneItems()
+				g := renderScene(
+					c,
+					nil,
+					items,
+					nil,
+				)
+				for i, stopIndex := range tc.resolved {
+					point := c.screen(project(float64(stopIndex)*.01, 51))
+					cell := g.Cells[int(point.Y/4)*g.Width+int(point.X/2)]
+					want := tc.markers[i]
+					if reversed {
+						switch want {
+						case 'S':
+							want = 'E'
+						case 'E':
+							want = 'S'
+						}
+					}
+					if cell.Text != want || cell.owner != ref {
+						t.Fatalf("reversed=%t stop=%d: marker %q, want %q", reversed, stopIndex, cell.Text, want)
+					}
+					probe := renderSceneCell(
+						c,
+						items,
+						nil,
+						point,
+					)
+					if probe != cell {
+						t.Fatal("planned marker cell probe differs from the rendered scene")
+					}
+				}
+				if w.selection.track.Distance != 0 {
+					t.Fatal("incomplete plan gained connecting distance")
+				}
+				if len(tc.resolved) == 2 {
+					middle := c.screen(project(.01, 51))
+					if cell := g.Cells[int(middle.Y/4)*g.Width+int(middle.X/2)]; cell != (Cell{}) {
+						t.Fatal("unresolved waypoint gained connecting geometry", cell)
+					}
+				}
+			}
+			checkMarkers(false)
+			if err := w.reverseJourney(ref); err != nil {
+				t.Fatal(err)
+			}
+			checkMarkers(true)
+			if err := w.undoJourney(ref); err != nil {
+				t.Fatal(err)
+			}
+			checkMarkers(false)
+		})
+	}
+}
+
 func addScreenItem(
 	t *testing.T,
 	w *Workspace,

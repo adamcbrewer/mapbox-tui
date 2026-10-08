@@ -37,16 +37,26 @@ type placeSearchResult struct {
 	err         error
 }
 
+var journeyActions = [...]struct{ title, key string }{
+	{title: "Add waypoint", key: "ctrl+n"},
+	{title: "Reverse journey", key: "ctrl+r"},
+	{title: "Undo edit", key: "ctrl+z"},
+	{title: "Show journey on map", key: "ctrl+f"},
+}
+
 func (m *viewer) openJourney() tea.Cmd {
 	if m.workspace.selection != nil {
 		ref := m.workspace.selection.ref
 		if _, err := m.workspace.journey(ref); err == nil && ref != m.planner.ref {
-			m.planner = journeyUI{ref: ref, online: m.planner.online}
+			m.cancelJourneySearch()
+			m.planner = journeyUI{ref: ref, online: m.planner.online, searchID: m.planner.searchID}
 		}
 	}
 	if _, err := m.workspace.journey(m.planner.ref); err != nil {
 		m.cancelJourneySearch()
-		m.planner = journeyUI{ref: m.workspace.newJourney(), online: m.planner.online}
+		m.planner = journeyUI{
+			ref: m.workspace.newJourney(), online: m.planner.online, searchID: m.planner.searchID,
+		}
 	}
 	if err := m.workspace.selectItem(m.planner.ref); err != nil {
 		m.ui.notice = err.Error()
@@ -89,6 +99,7 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 	m.planner.sessionStarted, m.planner.sessionRequests = time.Time{}, 0
 	m.planner.query = ""
 	m.ui.dialog, m.ui.notice = dialogJourneyLocation, ""
+	m.ui.inputID = rand.Text()
 	m.ui.search.CharLimit = 256
 	m.ui.search.Placeholder = "Place or latitude, longitude"
 	m.ui.search.SetValue("")
@@ -226,7 +237,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	count := len(j.Stops)
-	last := count + 3
+	last := count + len(journeyActions) - 1
 	m.planner.row = max(0, min(last, m.planner.row))
 	switch pressed {
 	case "esc", "ctrl+g":
@@ -244,16 +255,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		if m.planner.row < count {
 			return m.editJourneyLocation(m.planner.row)
 		}
-		switch m.planner.row - count {
-		case 0:
-			pressed = "ctrl+n"
-		case 1:
-			pressed = "ctrl+r"
-		case 2:
-			pressed = "ctrl+z"
-		case 3:
-			pressed = "ctrl+f"
-		}
+		pressed = journeyActions[m.planner.row-count].key
 	}
 	switch pressed {
 	case "ctrl+n":
@@ -336,7 +338,7 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 			return m.openDialog(dialogJourneySearch)
 		}
 		return m.schedulePlaceSearch()
-	case "ctrl+m":
+	case "alt+m":
 		geo := unproject(m.camera.Center)
 		m.applyJourneyLocation(placeLocation{
 			Name: fmt.Sprintf("%.6f, %.6f", geo.Y, geo.X), Lon: geo.X, Lat: geo.Y, Source: "map centre",
@@ -374,6 +376,7 @@ func (m *viewer) updateJourneySearchInput(msg tea.Msg) tea.Cmd {
 	before := m.ui.search.Value()
 	var cmd tea.Cmd
 	m.ui.search, cmd = m.ui.search.Update(msg)
+	cmd = m.clipboardCommand(msg, cmd)
 	if before != m.ui.search.Value() {
 		return tea.Batch(cmd, m.schedulePlaceSearch())
 	}
@@ -403,7 +406,7 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 		m.ui.search.SetWidth(max(1, width-2))
 		rows := []string{m.ui.search.View()}
 		if height > 2 {
-			status := "ctrl+s Mapbox | ctrl+m map centre"
+			status := "ctrl+s Mapbox | alt+m map centre"
 			if m.planner.online {
 				status = "Mapbox Search Box | lat, lon offline"
 			}
@@ -431,7 +434,9 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 		}
 		labels = append(labels, journeyStopLabel(i, len(j.Stops))+": "+name)
 	}
-	labels = append(labels, "Add waypoint (ctrl+n)", "Reverse journey (ctrl+r)", "Undo edit (ctrl+z)", "Show journey on map (ctrl+f)")
+	for _, action := range journeyActions {
+		labels = append(labels, action.title+" ("+action.key+")")
+	}
 	m.planner.row = max(0, min(len(labels)-1, m.planner.row))
 	rows := []string{}
 	if height > 3 {
@@ -464,6 +469,14 @@ func (m *viewer) journeyDetails() []string {
 		"Journey plan", "", "Manual straight-line geometry",
 		fmt.Sprintf("%.2f km plotted", m.activeTrack().Distance/1000),
 		"No road routing or travel time", "ctrl+g to edit", "",
+	}
+	if m.inspected != nil {
+		lines = append(lines,
+			"Selected position",
+			fmt.Sprintf("Lat %.6f", m.inspected.Y),
+			fmt.Sprintf("Lon %.6f", m.inspected.X),
+			"",
+		)
 	}
 	for i, stop := range j.Stops {
 		name := "Not set"

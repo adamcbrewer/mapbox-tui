@@ -124,12 +124,16 @@ Journey checks cover session-only generated item identity, isolation from import
 full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps
 and geometry recalculation. Tests verify opening/reopening makes no location
 requests. Fake transports verify Mapbox search opt-in, suggest/retrieve session
-ownership and rotation, cancellation,
-paste-driven query invalidation, edited-place provenance/attribution,
+ownership and rotation, cancellation, clipboard/editor ownership and debounce
+ownership across replaced plans, paste-driven query invalidation,
+edited-place provenance/attribution,
 stale responses after edits/removal, missing/invalid coordinates, HTTP/body limits
 and token/query redaction. Planned geometry does not acquire recorded playback or
 elevation profiles. Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
 in Braille/ASCII modes.
+Partial journeys retain the correct start/end markers without bridging unresolved
+stops. Checks also cover notice-aware selection visibility, coordinate inspection
+with a selected journey, imported profile reuse and playback command availability.
 
 Optional checks, after building:
 
@@ -150,7 +154,8 @@ Theme interactions cycle all three palettes at wide/compact sizes, recolour open
 help, credits, speed, workspace, file-picker and command dialogs, preserve filtered
 input and map text, and continue playback in ASCII mode.
 Journey interactions use offline coordinates to exercise
-start/destination entry, intermediate waypoints, full reversal/undo, reorder/removal,
+start/destination entry, Alt-M map-centre selection, intermediate waypoints,
+full reversal/undo, reorder/removal,
 map fit, ASCII mode and reopening at 120×40, 70×24 and 70×18. They make no location
 lookup requests; provider behaviour uses fake transports in Go tests.
 They don't verify physical mouse forwarding or other

@@ -47,7 +47,7 @@ route. Unknown elevation stays unknown; manual routes have no recorded timestamp
 
 Confirmed search provider: Mapbox Search Box, reusing the existing token with an
 explicit opt-in. Ctrl-G opens the planner; its location editor uses Ctrl-S to
-enable search, or coordinates/Ctrl-M for offline input. Ctrl-N adds a waypoint,
+enable search, or coordinates/Alt-M for offline input. Ctrl-N adds a waypoint,
 Ctrl-R reverses, Ctrl-Z undoes, Alt-Up/Down reorders, Delete clears/removes and
 Ctrl-F shows/fits the plan. The same actions are available as selectable rows
 where applicable. See the [controls](../README.md#journey-planner).

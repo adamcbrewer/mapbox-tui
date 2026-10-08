@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -211,6 +214,190 @@ func TestJourneyViewerRotatesExpiredAndFullSearchSessions(t *testing.T) {
 			}
 			m.closeDialog()
 		})
+	}
+}
+
+func TestJourneyDebounceDoesNotSurviveReplacingPlan(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	m.editJourneyLocation(0)
+	m.planner.online = true
+	m.ui.search.SetValue("Old place")
+	m.schedulePlaceSearch()
+	old := placeSearchReady{id: m.planner.searchID}
+	m.closeDialog()
+	if err := m.workspace.removeItem(m.planner.ref); err != nil {
+		t.Fatal(err)
+	}
+	m.openJourney()
+	m.editJourneyLocation(0)
+	m.ui.search.SetValue("New place")
+	m.schedulePlaceSearch()
+	if _, cmd := m.Update(old); cmd != nil || m.planner.searchBusy {
+		t.Fatal("an old plan's debounce started a new plan's request")
+	}
+}
+
+func TestJourneyClipboardKeepsEditorOwnership(t *testing.T) {
+	pasteKey := tea.KeyPressMsg{Code: 'v', Mod: tea.ModCtrl}
+	t.Run("same opening after query edits", func(t *testing.T) {
+		m := journeyViewer(t)
+		m.openJourney()
+		m.editJourneyLocation(0)
+		queued := m.clipboardCommand(pasteKey, func() tea.Msg { return tea.PasteMsg{Content: " pasted"} })
+		m.ui.search.SetValue("typed")
+		m.schedulePlaceSearch()
+		m.planner.suggestions = []placeSuggestion{{ID: "old", Label: "Old suggestion"}}
+		m.Update(queued())
+		if m.ui.search.Value() != "typed pasted" || len(m.planner.suggestions) != 0 {
+			t.Fatal("owned clipboard result did not insert and invalidate suggestions")
+		}
+	})
+	for _, scenario := range []string{"different stop", "same stop reopened", "command palette", "palette to journey"} {
+		t.Run(scenario, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.openJourney()
+			m.editJourneyLocation(0)
+			if scenario == "palette to journey" {
+				m.openDialog(dialogCommands)
+			}
+			queued := m.clipboardCommand(pasteKey, func() tea.Msg { return tea.PasteMsg{Content: "old clipboard"} })
+			switch scenario {
+			case "different stop", "palette to journey":
+				m.editJourneyLocation(1)
+			case "same stop reopened":
+				m.closeDialog()
+				m.openJourney()
+				m.editJourneyLocation(0)
+			case "command palette":
+				m.openDialog(dialogCommands)
+			}
+			m.ui.search.SetValue("new input")
+			m.ui.notice = "existing notice"
+			generation := m.planner.searchID
+			idle := func() tea.Msg { return nil }
+			var deliver func(tea.Cmd)
+			deliver = func(cmd tea.Cmd) {
+				msg := cmd()
+				if batch, ok := msg.(tea.BatchMsg); ok {
+					for _, child := range batch {
+						deliver(child)
+					}
+					return
+				}
+				m.Update(msg)
+			}
+			deliver(tea.Batch(tea.Batch(queued, idle), idle))
+			if m.ui.search.Value() != "new input" || m.ui.notice != "existing notice" || m.planner.searchID != generation {
+				t.Fatal("stale clipboard result modified a different input")
+			}
+		})
+	}
+}
+
+func TestJourneyClipboardOpaqueErrorIsOwnerScoped(t *testing.T) {
+	previous := clipboard.Unsupported
+	clipboard.Unsupported = true
+	t.Cleanup(func() { clipboard.Unsupported = previous })
+	for _, stale := range []bool{false, true} {
+		m := journeyViewer(t)
+		m.openJourney()
+		m.editJourneyLocation(0)
+		queued := m.clipboardCommand(tea.KeyPressMsg{Code: 'v', Mod: tea.ModCtrl}, textinput.Paste)
+		if stale {
+			m.editJourneyLocation(1)
+		}
+		m.Update(queued())
+		if (m.ui.search.Err == nil) != stale {
+			t.Fatalf("clipboard error ownership incorrect, stale=%v: %v", stale, m.ui.search.Err)
+		}
+	}
+}
+
+func TestJourneyNoticesKeepSelectedActionVisible(t *testing.T) {
+	for _, size := range [][2]int{{70, 18}, {30, 12}} {
+		for _, ascii := range []bool{false, true} {
+			m := journeyViewer(t)
+			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m.settings.ASCII = ascii
+			m.openJourney()
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt})
+			m.rebuild()
+			if m.ui.notice == "" || !strings.Contains(ansi.Strip(m.content), "> Show journey on map") {
+				t.Fatalf("notice hid selected action at %v, ASCII %v", size, ascii)
+			}
+		}
+	}
+}
+
+func TestJourneyCoordinateInspectionAndPlaybackCommands(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	enterJourneyCoordinate(m, 0, "51.5, -0.1")
+	enterJourneyCoordinate(m, 1, "51.6, -0.2")
+	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	type clickTarget struct {
+		name string
+		x, y int
+	}
+	targets := []clickTarget{{name: "off route", x: 2, y: 3}}
+	g := renderScene(m.camera, nil, m.workspace.sceneItems(), nil)
+	var endpoint, line bool
+	for y := range g.Height {
+		for x := range g.Width {
+			cell := g.Cells[y*g.Width+x]
+			name := ""
+			unlabelledLine := cell.Bits != 0 && cell.Text == 0
+			if cell.Text == 'S' && !endpoint {
+				name, endpoint = "endpoint", true
+			} else if unlabelledLine && !line {
+				name, line = "line", true
+			}
+			if name != "" {
+				targets = append(targets, clickTarget{name: name, x: x + 1, y: y + 2})
+			}
+		}
+	}
+	if !endpoint || !line {
+		t.Fatal("journey did not render an inspectable line and endpoint")
+	}
+	for _, target := range targets {
+		t.Run(target.name, func(t *testing.T) {
+			m.Update(tea.MouseClickMsg{X: target.x, Y: target.y, Button: tea.MouseLeft})
+			m.Update(tea.MouseReleaseMsg{X: target.x, Y: target.y, Button: tea.MouseLeft})
+			if m.inspected == nil {
+				t.Fatal("journey click did not inspect coordinates")
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			m.rebuild()
+			text := ansi.Strip(m.content)
+			if !strings.Contains(text, fmt.Sprintf("Lat %.6f", m.inspected.Y)) ||
+				!strings.Contains(text, fmt.Sprintf("Lon %.6f", m.inspected.X)) {
+				t.Fatal("journey inspection omitted the clicked coordinates")
+			}
+			m.closeDialog()
+		})
+	}
+	m.openDialog(dialogCommands)
+	for _, command := range m.commands() {
+		if command.action == "speed" || command.action == "play" || command.action == "center" {
+			t.Fatal("journey exposed an unavailable playback command")
+		}
+	}
+	d, err := loadDocument("../fixtures/example.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.workspace.addDocument(d)
+	var playbackCommands int
+	for _, command := range m.commands() {
+		if command.action == "speed" || command.action == "play" || command.action == "center" {
+			playbackCommands++
+		}
+	}
+	if playbackCommands != 3 {
+		t.Fatal("recorded activity lost playback commands")
 	}
 }
 

@@ -58,7 +58,11 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		}
 		label := suggestion.Address
 		if label == "" {
-			label = strings.Trim(suggestion.Name+", "+suggestion.Formatted, ", ")
+			label = suggestion.Formatted
+		}
+		hasName := label == suggestion.Name || strings.HasPrefix(label, suggestion.Name+", ")
+		if suggestion.Name != "" && !hasName {
+			label = strings.Trim(suggestion.Name+", "+label, ", ")
 		}
 		results = append(results, placeSuggestion{ID: suggestion.ID, Label: clean(label)})
 	}
@@ -74,7 +78,7 @@ func (p *placeClient) retrieve(ctx context.Context, suggestion placeSuggestion, 
 		Attribution string `json:"attribution"`
 		Features    []struct {
 			Geometry struct {
-				Coordinates []float64 `json:"coordinates"`
+				Coordinates []*float64 `json:"coordinates"`
 			} `json:"geometry"`
 		} `json:"features"`
 	}
@@ -86,11 +90,12 @@ func (p *placeClient) retrieve(ctx context.Context, suggestion placeSuggestion, 
 		return placeLocation{}, fmt.Errorf("Mapbox returned no location")
 	}
 	coords := response.Features[0].Geometry.Coordinates
-	if len(coords) != 2 || !validLocation(coords[0], coords[1]) {
+	hasCoordinates := len(coords) == 2 && coords[0] != nil && coords[1] != nil
+	if !hasCoordinates || !validLocation(*coords[0], *coords[1]) {
 		return placeLocation{}, fmt.Errorf("Mapbox returned invalid coordinates")
 	}
 	return placeLocation{
-		Name: suggestion.Label, Lon: coords[0], Lat: coords[1],
+		Name: suggestion.Label, Lon: *coords[0], Lat: *coords[1],
 		Source: "Mapbox Search Box", Attribution: clean(response.Attribution),
 	}, nil
 }
@@ -119,6 +124,9 @@ func (p *placeClient) getJSON(ctx context.Context, endpoint string, target any) 
 	const limit = 1 << 20
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("cannot read location response")
 	}
 	if len(data) > limit {

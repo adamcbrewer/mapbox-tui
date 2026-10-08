@@ -62,11 +62,12 @@ type Grid struct {
 }
 
 type sceneItem struct {
-	Ref     ItemRef
-	Track   *Track
-	Active  bool
-	Color   activityColor
-	Planned bool
+	Ref        ItemRef
+	Track      *Track
+	Active     bool
+	Color      activityColor
+	Planned    bool
+	Start, End *XY
 }
 
 func activitySwatch(colors ...activityColor) activityColor {
@@ -323,6 +324,9 @@ func renderSceneItems(g *Grid, c Camera, items []sceneItem) (ItemRef, activityCo
 					last = p
 				}
 			}
+			if item.Planned {
+				continue
+			}
 			g.label(
 				c.screen(t.Points[s.Start].World),
 				"S",
@@ -332,6 +336,24 @@ func renderSceneItems(g *Grid, c Camera, items []sceneItem) (ItemRef, activityCo
 			)
 			g.label(
 				c.screen(t.Points[s.End-1].World),
+				"E",
+				markerRole,
+				false,
+				item.Color,
+			)
+		}
+		if item.Start != nil {
+			g.label(
+				c.screen(*item.Start),
+				"S",
+				markerRole,
+				false,
+				item.Color,
+			)
+		}
+		if item.End != nil {
+			g.label(
+				c.screen(*item.End),
 				"E",
 				markerRole,
 				false,

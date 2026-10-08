@@ -211,6 +211,11 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
+	case searchClipboardResult:
+		if v.owner == "" || v.owner != m.ui.inputID || v.dialog != m.ui.dialog {
+			return m, nil
+		}
+		return m, m.updateDialog(v.msg)
 	case placeSearchReady:
 		return m, m.requestPlaceSearch(v.id)
 	case placeSearchResult:
@@ -519,11 +524,10 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if ref, i := m.workspace.pick(m.camera, p); ref != (ItemRef{}) {
 					_ = m.workspace.selectItem(ref)
 					m.selectionChanged()
-					if i >= 0 {
-						_ = m.workspace.seek(i)
+					m.inspected = &world
+					canSeek := i >= 0 && m.activePlayback() != nil
+					if canSeek && m.workspace.seek(i) == nil {
 						m.inspected = nil
-					} else {
-						m.inspected = &world
 					}
 				}
 				m.dirty = true

@@ -52,7 +52,7 @@ func (w *Workspace) editJourney(ref ItemRef, stops []journeyStop) error {
 	if err != nil {
 		return err
 	}
-	j.history = append(j.history, slices.Clone(j.Stops))
+	j.history = append(j.history, j.Stops)
 	if len(j.history) > 64 {
 		j.history = slices.Delete(j.history, 0, 1)
 	}
@@ -65,7 +65,6 @@ func (w *Workspace) replaceJourneyTrack(ref ItemRef, track *Track) {
 	entry, i, _ := w.lookup(ref)
 	entry.document.Items[i].Track = track
 	entry.document.Bounds = track.Bounds
-	w.elevation = nil
 	if w.selection != nil && w.selection.ref == ref {
 		w.activate(ref, track)
 	}

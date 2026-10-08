@@ -153,7 +153,7 @@ manual coordinate entry for either endpoint and for intermediate waypoints.
 
 Use Up/Down and Enter to choose/edit the start, destination or an intermediate
 waypoint. Enter **latitude, longitude** (for example `51.5, -0.1`) to set a location
-offline, or use **Ctrl-M** in the editor to use the current map centre.
+offline, or use **Alt-M** in the editor to use the current map centre.
 With a configured Mapbox token, **Ctrl-S** offers optional address/named-POI search.
 After allowing it, autocomplete starts after three characters and a short pause;
 Up/Down selects a suggestion and Enter resolves it. Mapbox receives the search text

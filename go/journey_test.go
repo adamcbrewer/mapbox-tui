@@ -122,6 +122,59 @@ func TestJourneyIncompleteLocationsAndInvalidEditsAreGapSafe(t *testing.T) {
 	}
 }
 
+func TestJourneyEditsAndUndoReuseImportedProfiles(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		importSelected bool
+	}{
+		{name: "journey selected"},
+		{name: "import selected", importSelected: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := loadDocument("../fixtures/example.gpx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var w Workspace
+			imported := w.addDocument(d)
+			ref := w.newJourney()
+			if tc.importSelected {
+				if err := w.selectItem(imported); err != nil {
+					t.Fatal(err)
+				}
+			}
+			profile := w.profile(80, 5)
+			if profile == nil || !profile.Available {
+				t.Fatal("imported elevation profile unavailable")
+			}
+			j, err := w.journey(ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := w.setJourneyLocation(ref, j.Stops[0].ID, placeLocation{Lon: 0, Lat: 51}); err != nil {
+				t.Fatal(err)
+			}
+			if w.profile(80, 5) != profile {
+				t.Fatal("journey edit rebuilt an unchanged imported profile")
+			}
+			if err := w.reverseJourney(ref); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := w.undoJourney(ref); err != nil {
+					t.Fatal(err)
+				}
+				if w.profile(80, 5) != profile {
+					t.Fatal("journey undo rebuilt an unchanged imported profile")
+				}
+			}
+			if j.Stops[0].Location != nil || j.Stops[1].Location != nil {
+				t.Fatal("undo did not restore the empty draft")
+			}
+		})
+	}
+}
+
 func TestCoordinateLocation(t *testing.T) {
 	for _, tc := range []struct {
 		name, input  string

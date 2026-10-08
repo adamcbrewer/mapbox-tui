@@ -144,10 +144,11 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 
 func (w *Workspace) activate(ref ItemRef, track *Track) {
 	w.clearSelection()
-	w.selection = &workspaceSelection{ref: ref, track: track, playback: newPlayback(track)}
+	w.selection = &workspaceSelection{ref: ref, track: track}
 	if entry, i, err := w.lookup(ref); err == nil && entry.document.Items[i].Journey != nil {
-		w.selection.playback = nil
+		return
 	}
+	w.selection.playback = newPlayback(track)
 }
 
 func (w *Workspace) clearSelection() {
@@ -329,13 +330,22 @@ func (w *Workspace) sceneItems() []sceneItem {
 	var items []sceneItem
 	for _, item := range w.items() {
 		if item.Visible {
-			items = append(items, sceneItem{
+			scene := sceneItem{
 				Ref:     item.Ref,
 				Track:   item.Item.Track,
 				Active:  w.selection != nil && w.selection.ref == item.Ref,
 				Color:   item.Color,
 				Planned: item.Item.Journey != nil,
-			})
+			}
+			if j := item.Item.Journey; j != nil {
+				if j.Stops[0].Location != nil {
+					scene.Start = &scene.Track.Points[0].World
+				}
+				if j.Stops[len(j.Stops)-1].Location != nil {
+					scene.End = &scene.Track.Points[len(scene.Track.Points)-1].World
+				}
+			}
+			items = append(items, scene)
 		}
 	}
 	return items

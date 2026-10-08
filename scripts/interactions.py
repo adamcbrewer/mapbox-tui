@@ -599,10 +599,15 @@ def journey_controls(binary, width, height):
         wait_for(lambda s: "Free roam" in s)
         send("\x07")
         wait_for(lambda s: "Plan journey" in s and "A Start" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "A Start" in s and "Place or latitude" in s)
+        tmux("send-keys", "-t", "poc:0.0", "M-m")
+        wait_for(lambda s: "Plan journey" in s and "A Start: 0.000000, 0.000000" in s)
 
         def location(title, coordinates):
             tmux("send-keys", "-t", "poc:0.0", "Enter")
-            wait_for(lambda s: title in s and "Place or latitude" in s)
+            wait_for(lambda s: title in s and "enter choose" in s)
+            tmux("send-keys", "-t", "poc:0.0", "C-u")
             if title == "B Destination":
                 send(f"\x1b[200~{coordinates}\x1b[201~")
             else:
@@ -637,7 +642,7 @@ def journey_controls(binary, width, height):
         assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "ASCII journey rendered Braille"
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name} {width}×{height}: manual start/destination entry, waypoints, full reversal/undo, reordering/removal, map fit, ASCII, reopen and terminal restoration passed")
+        print(f"{binary.name} {width}×{height}: manual start/destination entry, Alt-M map centre, waypoints, full reversal/undo, reordering/removal, map fit, ASCII, reopen and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 

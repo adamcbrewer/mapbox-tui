@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"image/color"
 	"path/filepath"
@@ -40,6 +41,7 @@ type uiState struct {
 	help           help.Model
 	picker         filepicker.Model
 	search         textinput.Model
+	inputID        string
 	page, details  pager.Model
 	spinner        spinner.Model
 	spinning       bool
@@ -51,6 +53,23 @@ type uiState struct {
 type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
 
 type viewerCommand struct{ title, shortcut, action string }
+
+type searchClipboardResult struct {
+	owner  string
+	dialog dialogKind
+	msg    tea.Msg
+}
+
+func (m *viewer) clipboardCommand(msg tea.Msg, cmd tea.Cmd) tea.Cmd {
+	pressed, isKey := msg.(tea.KeyPressMsg)
+	if cmd == nil || !isKey || !key.Matches(pressed, m.ui.search.KeyMap.Paste) {
+		return cmd
+	}
+	owner, dialog := m.ui.inputID, m.ui.dialog
+	return func() tea.Msg {
+		return searchClipboardResult{owner: owner, dialog: dialog, msg: cmd()}
+	}
+}
 
 func binding(keys, description string) key.Binding {
 	return key.NewBinding(key.WithKeys(strings.Split(keys, "/")...), key.WithHelp(keys, description))
@@ -229,6 +248,7 @@ func (m *viewer) closeDialog() {
 	m.cancelJourneySearch()
 	m.ui.dialog = dialogNone
 	m.ui.search.Blur()
+	m.ui.inputID = ""
 	m.ui.notice = ""
 	m.dirty = true
 }
@@ -241,6 +261,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	m.ui.page.GotoTop()
 	switch kind {
 	case dialogCommands:
+		m.ui.inputID = rand.Text()
 		m.ui.search.CharLimit = 80
 		m.ui.search.Placeholder = "Type a command…"
 		m.ui.search.SetValue("")
@@ -294,9 +315,11 @@ func (m *viewer) commands() []viewerCommand {
 		commands = append(commands, viewerCommand{title: "Toggle elevation profiles", shortcut: "e", action: "profile"})
 	}
 	if m.activeTrack() != nil {
+		commands = append(commands, viewerCommand{title: "Free roam (clear selection)", action: "roam"})
+	}
+	if m.activePlayback() != nil {
 		commands = append(
 			commands,
-			viewerCommand{title: "Free roam (clear selection)", action: "roam"},
 			viewerCommand{title: "Center and follow position", shortcut: "c", action: "center"},
 			viewerCommand{title: "Play / pause", shortcut: "space", action: "play"},
 			viewerCommand{title: "Playback speed", shortcut: "p", action: "speed"},
@@ -431,6 +454,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	case dialogCommands:
 		before := m.ui.search.Value()
 		m.ui.search, cmd = m.ui.search.Update(msg)
+		cmd = m.clipboardCommand(msg, cmd)
 		if before != m.ui.search.Value() {
 			m.ui.selected = 0
 		}
@@ -583,7 +607,11 @@ func (m *viewer) overlay() {
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
 	}
-	title, body, hints := m.dialogContent(width, height)
+	contentHeight := height
+	if m.ui.notice != "" {
+		contentHeight--
+	}
+	title, body, hints := m.dialogContent(width, contentHeight)
 	t, s := m.theme(), m.styles
 	surface := lipgloss.Color(t.Surface)
 	if m.ui.notice != "" {
