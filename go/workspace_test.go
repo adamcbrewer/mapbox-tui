@@ -226,7 +226,7 @@ func TestWorkspaceSameFilenameAndLocalIDRemainIndependentAcrossDocuments(t *test
 		t.Fatal("document-local IDs or duplicate filenames collapsed separate files")
 	}
 	firstColor, secondColor := w.items()[0].Color, w.items()[1].Color
-	if firstColor == secondColor || firstColor == "" || secondColor == "" {
+	if firstColor == secondColor || firstColor == 0 || secondColor == 0 {
 		t.Fatal("independent activities share a colour")
 	}
 	if err := w.selectItem(first); err != nil {

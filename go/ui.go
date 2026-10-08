@@ -18,22 +18,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var (
-	uiInk         = lipgloss.Color("#182431")
-	uiSurface     = lipgloss.Color("#223044")
-	uiSelected    = lipgloss.Color("#35435D")
-	uiViolet      = lipgloss.Color("#B8A1F4")
-	uiRose        = lipgloss.Color("#F1A5CB")
-	uiText        = lipgloss.NewStyle().Foreground(lipgloss.Color("#D5DFEA"))
-	uiMuted       = lipgloss.NewStyle().Foreground(lipgloss.Color("#8294A9"))
-	uiHeading     = uiText.Bold(true)
-	uiAccent      = lipgloss.NewStyle().Foreground(uiViolet)
-	dialogText    = uiText.Background(uiSurface)
-	dialogMuted   = uiMuted.Background(uiSurface)
-	dialogHeading = uiHeading.Background(uiSurface)
-	dialogAccent  = uiAccent.Background(uiSurface)
-)
-
 type dialogKind int
 
 const (
@@ -45,6 +29,7 @@ const (
 	dialogSpeed
 	dialogInspect
 	dialogWorkspace
+	dialogThemes
 )
 
 type uiState struct {
@@ -97,25 +82,25 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			{binding("arrows/hjkl", "pan"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding(",/.", "rotate"), binding("n", "north-up")},
 			{binding("click", "select coordinates"), binding("enter", "inspect location"), binding("tab", "focus map/details")},
 			elevation,
-			{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+			{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("ctrl+t", "cycle theme"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 		}
 	}
 	return [][]key.Binding{
 		{binding("arrows/hjkl", "pan; playback continues"), binding("+/-", "zoom"), binding("ctrl/cmd+wheel", "2x zoom speed"), binding("f/r", "fit all visible"), binding("c", "center and follow"), binding(",/.", "rotate"), binding("n", "north-up")},
 		{binding("[/]", "previous/next point"), binding("pgup/pgdown", "seek 100 points"), binding("home/end", "first/last point"), binding("enter", "inspect position"), binding("tab", "focus map/details")},
 		{binding("space", "play/pause selected activity"), binding("s/S", "next/previous speed"), binding("p", "speed picker"), binding("e", "visible elevation profiles")},
-		{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
+		{binding("ctrl+o", "add file"), binding("ctrl+l", "loaded files"), binding("ctrl+p", "command palette"), binding("ctrl+t", "cycle theme"), binding("a", "ASCII map"), binding("v", "credits"), binding("m", "toggle camera animation"), binding("esc", "close panel"), binding("q", "quit")},
 	}
 }
 
-func (m *viewer) initUI() {
-	m.settings = viewerSettings{m.args.ASCII, m.args.NoAnimation}
+func (m *viewer) initUI() error {
+	themes, selected, err := loadThemes(m.args.Theme)
+	if err != nil {
+		return err
+	}
+	m.themes = themes
+	m.settings = viewerSettings{ASCII: m.args.ASCII, NoAnimation: m.args.NoAnimation}
 	m.ui.help = help.New()
-	m.ui.help.Styles.ShortKey = uiAccent.Bold(true)
-	m.ui.help.Styles.ShortDesc = uiMuted
-	m.ui.help.Styles.ShortSeparator = uiMuted
-	m.ui.help.Styles.FullKey = dialogAccent.Bold(true)
-	m.ui.help.Styles.FullDesc = dialogText
 	m.ui.details = pager.New()
 	m.ui.details.SoftWrap = true
 	m.ui.page = pager.New()
@@ -125,17 +110,10 @@ func (m *viewer) initUI() {
 	m.ui.search.Placeholder = "Type a command…"
 	m.ui.search.CharLimit = 80
 	m.ui.search.SetVirtualCursor(false)
-	inputStyles := m.ui.search.Styles()
-	inputStyles.Focused.Text = uiText.Background(uiSelected)
-	inputStyles.Focused.Placeholder = uiMuted.Background(uiSelected)
-	inputStyles.Focused.Prompt = uiAccent.Background(uiSelected)
-	inputStyles.Blurred = inputStyles.Focused
-	inputStyles.Cursor.Color = uiRose
-	inputStyles.Cursor.Shape = tea.CursorBar
-	m.ui.search.SetStyles(inputStyles)
 	m.ui.spinner = spinner.New()
 	m.ui.spinner.Spinner = spinner.Dot
-	m.ui.spinner.Style = uiAccent
+	m.applyTheme(selected)
+	return nil
 }
 
 func (m *viewer) startSpinner() tea.Cmd {
@@ -145,9 +123,10 @@ func (m *viewer) startSpinner() tea.Cmd {
 	m.ui.spinning = true
 	return m.ui.spinner.Tick
 }
-func gradient(s string, background color.Color) string {
+func (m *viewer) gradient(s string, background color.Color) string {
 	runes := []rune(s)
-	colors := lipgloss.Blend1D(len(runes), uiViolet, uiRose)
+	t := m.theme()
+	colors := lipgloss.Blend1D(len(runes), lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight))
 	var out strings.Builder
 	for i, r := range runes {
 		out.WriteString(lipgloss.NewStyle().Foreground(colors[i]).Background(background).Bold(true).Render(string(r)))
@@ -179,16 +158,11 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		picker.SetHeight(max(1, min(17, m.height-10)-2))
 		picker.ShowPermissions, picker.ShowSize = false, false
 		picker.Cursor = "›"
-		picker.Styles.File = dialogText
-		picker.Styles.Directory = dialogAccent
-		picker.Styles.DisabledFile = dialogMuted
-		picker.Styles.DisabledSelected = dialogMuted
-		picker.Styles.Symlink = dialogAccent
-		picker.Styles.Selected = uiHeading.Foreground(uiRose).Background(uiSelected)
-		picker.Styles.Cursor = dialogAccent
-		picker.Styles.EmptyDirectory = dialogMuted.SetString("No files in this directory")
 		m.ui.picker = picker
+		m.stylePicker()
 		return picker.Init()
+	case dialogThemes:
+		m.ui.selected = m.settings.Theme
 	case dialogSpeed:
 		if p := m.activePlayback(); p != nil {
 			m.ui.selected = p.speed
@@ -207,7 +181,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 type viewerCommand struct{ title, shortcut, action string }
 
 func (m *viewer) commands() []viewerCommand {
-	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Loaded files and routes", "ctrl+l", "workspace"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}}
+	commands := []viewerCommand{{"Open track file", "ctrl+o", "open"}, {"Loaded files and routes", "ctrl+l", "workspace"}, {"Keyboard shortcuts", "?", "help"}, {"Provider credits", "v", "credits"}, {"Choose colour theme", "ctrl+t cycle", "theme"}}
 	if len(m.workspace.documents) > 0 {
 		commands = append(commands, viewerCommand{"Fit all visible routes", "f", "fit"}, viewerCommand{"Clear workspace (remove all files)", "", "clear"})
 	} else {
@@ -246,6 +220,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return m.openDialog(dialogCredits)
 	case "speed":
 		return m.openDialog(dialogSpeed)
+	case "theme":
+		return m.openDialog(dialogThemes)
 	case "inspect":
 		return m.openDialog(dialogInspect)
 	}
@@ -284,14 +260,20 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 				}
 				return nil
 			}
-		case dialogSpeed:
+		case dialogSpeed, dialogThemes:
+			last := 4
+			if m.ui.dialog == dialogThemes {
+				last = len(m.themes) - 1
+			}
 			switch pressed {
 			case "down", "j":
-				m.ui.selected = min(4, m.ui.selected+1)
+				m.ui.selected = min(last, m.ui.selected+1)
 			case "up", "k":
 				m.ui.selected = max(0, m.ui.selected-1)
 			case "enter":
-				if p := m.activePlayback(); p != nil {
+				if m.ui.dialog == dialogThemes {
+					m.applyTheme(m.ui.selected)
+				} else if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
 					p.speed = m.ui.selected
 				}
@@ -330,6 +312,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 }
 
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
+	s := m.styles
 	switch m.ui.dialog {
 	case dialogWorkspace:
 		return m.workspaceDialogContent(width, height)
@@ -341,36 +324,58 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		for i := start; i < min(len(commands), start+max(1, height-2)); i++ {
 			command := commands[i]
 			line := pad(command.title, max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
-			style := dialogText
+			style := s.dialogText
 			if i == m.ui.selected {
-				style = uiHeading.Foreground(uiRose).Background(uiSelected)
+				style = s.selected
 			}
 			rows = append(rows, style.Render(pad(line, width)))
 		}
 		if len(commands) == 0 {
-			rows = append(rows, dialogMuted.Render("No matching commands"))
+			rows = append(rows, s.dialogMuted.Render("No matching commands"))
 		}
 		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose   enter run   esc close"
 	case dialogFiles:
 		m.ui.picker.SetHeight(max(1, height-2))
 		m.ui.picker.Styles.Selected = m.ui.picker.Styles.Selected.Width(max(1, width-1)).MaxWidth(max(1, width-1))
-		m.ui.picker.Styles.File = dialogText.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		m.ui.picker.Styles.Directory = dialogAccent.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		m.ui.picker.Styles.DisabledFile = dialogMuted.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		path := dialogMuted.Render(pad(ansi.Truncate(m.ui.picker.CurrentDirectory, width, "…"), width))
+		m.ui.picker.Styles.File = s.dialogText.Width(max(1, width-2)).MaxWidth(max(1, width-2))
+		m.ui.picker.Styles.Directory = s.dialogAccent.Width(max(1, width-2)).MaxWidth(max(1, width-2))
+		m.ui.picker.Styles.DisabledFile = s.dialogMuted.Width(max(1, width-2)).MaxWidth(max(1, width-2))
+		path := s.dialogMuted.Render(pad(ansi.Truncate(m.ui.picker.CurrentDirectory, width, "…"), width))
 		return "Open track file", path + "\n\n" + m.ui.picker.View(), "↑/↓ choose   ←/→ folders   enter open   esc close"
 	case dialogSpeed:
-		rows := []string{dialogMuted.Render(pad("Playback speed multiplier", width)), ""}
+		rows := []string{s.dialogMuted.Render(pad("Playback speed multiplier", width)), ""}
 		for i, speed := range []int{1, 5, 20, 60, 120} {
 			line := fmt.Sprintf("  %dx", speed)
-			style := dialogText
+			style := s.dialogText
 			if i == m.ui.selected {
-				style = uiHeading.Foreground(uiRose).Background(uiSelected)
+				style = s.selected
 				line = "› " + strings.TrimSpace(line)
 			}
 			rows = append(rows, style.Render(pad(line, width)))
 		}
 		return "Playback speed", strings.Join(rows, "\n"), "↑/↓ choose   enter apply   esc close"
+	case dialogThemes:
+		var rows []string
+		count := height
+		if height > 3 {
+			rows = append(rows, s.dialogMuted.Render(pad("Terminal colours · ctrl+t cycles", width)), "")
+			count -= 2
+		}
+		start := max(0, m.ui.selected-max(1, count)+1)
+		for i := start; i < min(len(m.themes), start+max(1, count)); i++ {
+			theme := m.themes[i]
+			line := "  " + theme.Name
+			if i == m.settings.Theme {
+				line += " (current)"
+			}
+			style := s.dialogText
+			if i == m.ui.selected {
+				style = s.selected
+				line = "> " + strings.TrimSpace(line)
+			}
+			rows = append(rows, style.Render(pad(line, width)))
+		}
+		return "Colour theme", strings.Join(rows, "\n"), "↑/↓ choose   enter apply   esc close"
 	}
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
@@ -381,13 +386,13 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 			if len(groups[i]) == 0 {
 				continue
 			}
-			content += gradient(heading, uiSurface) + "\n" + m.ui.help.FullHelpView([][]key.Binding{groups[i]}) + "\n\n"
+			content += m.gradient(heading, lipgloss.Color(m.theme().Surface)) + "\n" + m.ui.help.FullHelpView([][]key.Binding{groups[i]}) + "\n\n"
 		}
 	case dialogCredits:
 		title = "Provider credits"
 		sources := m.sources.view()
 		credits, links := sources.attribution()
-		content = dialogHeading.Render(credits) + "\n\n" + dialogText.Render(strings.Join(links, "\n"))
+		content = s.dialogHeading.Render(credits) + "\n\n" + s.dialogText.Render(strings.Join(links, "\n"))
 		for _, source := range sources.Sources {
 			status := source.Status
 			if status == "" {
@@ -396,7 +401,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 			if source.Loading {
 				status = "Loading · " + status
 			}
-			content += "\n\n" + dialogHeading.Render(source.Name) + "\n" + dialogText.Render(status)
+			content += "\n\n" + s.dialogHeading.Render(source.Name) + "\n" + s.dialogText.Render(status)
 			content += fmt.Sprintf("\n%d / %d / %d requests / hits / errors", source.Stats.Requests, source.Stats.Hits, source.Stats.Errors)
 			if source.RefreshAt != nil {
 				content += "\nRefresh after " + source.RefreshAt.Local().Format("15:04:05")
@@ -404,7 +409,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		}
 	case dialogInspect:
 		title = "Selected position"
-		content = dialogText.Render(strings.Join(m.details(), "\n"))
+		content = s.dialogText.Render(strings.Join(m.details(), "\n"))
 	}
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(height)
@@ -417,23 +422,25 @@ func (m *viewer) overlay() {
 		return
 	}
 	width := min(64, m.width-8)
-	if m.ui.dialog == dialogSpeed {
+	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		width = min(38, m.width-8)
 	}
 	height := max(1, min(17, m.height-10))
-	if m.ui.dialog == dialogSpeed {
+	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
 	}
 	title, body, hints := m.dialogContent(width, height)
+	t, s := m.theme(), m.styles
+	surface := lipgloss.Color(t.Surface)
 	if m.ui.notice != "" {
-		body = dialogMuted.Render(ansi.Truncate(m.ui.notice, width, "…")) + "\n" + body
+		body = s.dialogMuted.Render(ansi.Truncate(m.ui.notice, width, "…")) + "\n" + body
 	}
-	content := gradient(title, uiSurface) + "\n\n" + lipgloss.NewStyle().Background(uiSurface).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(body) + "\n\n" + dialogMuted.Render(ansi.Truncate(hints, width, "…"))
+	content := m.gradient(title, surface) + "\n\n" + lipgloss.NewStyle().Background(surface).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(body) + "\n\n" + s.dialogMuted.Render(ansi.Truncate(hints, width, "…"))
 	border := lipgloss.RoundedBorder()
 	if m.settings.ASCII {
 		border = lipgloss.ASCIIBorder()
 	}
-	box := lipgloss.NewStyle().Width(width+6).Padding(1, 2).Background(uiSurface).Foreground(lipgloss.Color("#D5DFEA")).Border(border).BorderForegroundBlend(uiViolet, uiRose).Render(content)
+	box := lipgloss.NewStyle().Width(width+6).Padding(1, 2).Background(surface).Foreground(lipgloss.Color(t.Text)).Border(border).BorderForegroundBlend(lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight)).Render(content)
 	x, y := (m.width-lipgloss.Width(box))/2, (m.height-lipgloss.Height(box))/2
 	if m.ui.dialog == dialogSpeed {
 		x, y = max(1, m.camera.Width-lipgloss.Width(box)), max(1, m.height-lipgloss.Height(box)-3)
@@ -445,14 +452,14 @@ func (m *viewer) overlay() {
 			y = max(0, min(m.height-lipgloss.Height(box)-3, int(point.Y/4)+2))
 		}
 	}
-	base := lipgloss.NewLayer(lipgloss.NewStyle().Foreground(lipgloss.Color("#46576B")).Render(ansi.Strip(m.content)))
+	base := lipgloss.NewLayer(lipgloss.NewStyle().Foreground(lipgloss.Color(t.Dimmed)).Background(lipgloss.Color(t.Background)).Render(ansi.Strip(m.content)))
 	x, y = max(0, x), max(0, y)
 	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)))
 	// Nested Bubbles views reset some cells to the terminal's default background.
 	for row := y + 1; row < min(m.height, y+lipgloss.Height(box)-1); row++ {
 		for column := x + 1; column < min(m.width, x+lipgloss.Width(box)-1); column++ {
 			if cell := canvas.CellAt(column, row); cell != nil && cell.Style.Bg == nil {
-				cell.Style.Bg = uiSurface
+				cell.Style.Bg = surface
 			}
 		}
 	}

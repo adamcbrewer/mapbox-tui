@@ -44,6 +44,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	if command.Name == "open" {
 		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
+		fs.StringVar(&a.Theme, "theme", "catppuccin", "colour theme: catppuccin, catppuccin-latte, tokyo-night, or a TOML file path")
 	}
 	if command.Name == "render" || command.Name == "bench" {
 		a.Width = fs.Int("width", 120, "map width in cells (10..300)")

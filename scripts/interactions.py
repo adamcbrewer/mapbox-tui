@@ -65,10 +65,10 @@ def xterm_color(n):
     return "#" + "".join(f"{levels[v]:02x}" for v in (n // 36, n // 6 % 6, n % 6))
 
 
-def save_svg(path, width, height):
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width*9}" height="{height*18}" viewBox="0 0 {width*9} {height*18}">', '<rect width="100%" height="100%" fill="#182431"/>', '<g font-family="DejaVu Sans Mono,monospace" font-size="15" xml:space="preserve">']
-    fg = "#8d9daa"
-    bg = "#182431"
+def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width*9}" height="{height*18}" viewBox="0 0 {width*9} {height*18}">', f'<rect width="100%" height="100%" fill="{background}"/>', '<g font-family="DejaVu Sans Mono,monospace" font-size="15" xml:space="preserve">']
+    fg = foreground
+    bg = background
     for y, line in enumerate(capture(colors=True).splitlines()):
         x, position = 0, 0
         for match in [*ANSI.finditer(line), None]:
@@ -85,7 +85,7 @@ def save_svg(path, width, height):
                         expanded.append(char)
                         column += 1
                 chunk = "".join(expanded)
-                if bg != "#182431":
+                if bg != background:
                     out.append(f'<rect x="{x*9}" y="{y*18}" width="{len(chunk)*9}" height="18" fill="{bg}"/>')
                 out.append(f'<text x="{x*9}" y="{y*18+14}" fill="{fg}">{html.escape(chunk)}</text>')
                 x += len(chunk)
@@ -95,11 +95,11 @@ def save_svg(path, width, height):
                 while i < len(nums):
                     n = nums[i]
                     if n in (0, 39):
-                        fg = "#8d9daa"
+                        fg = foreground
                         if n == 0:
-                            bg = "#182431"
+                            bg = background
                     elif n == 49:
-                        bg = "#182431"
+                        bg = background
                     elif 30 <= n <= 37:
                         fg = xterm_color(n - 30)
                     elif 40 <= n <= 47:
@@ -448,6 +448,55 @@ def free_roam(binary, live=False):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+def theme_switching(binary, width, height):
+    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), "--theme", "catppuccin"])
+    tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+    try:
+        wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
+        baseline = settled()
+        original_colors = capture(colors=True)
+        send("\x10")
+        wait_for(lambda s: "Commands" in s)
+        send("theme")
+        wait_for(lambda s: "Choose colour theme" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Colour theme" in s and "Catppuccin (current)" in s)
+        for name, background, foreground in (("Tokyo Night", "#1a1b26", "#a9b1d6"), ("Catppuccin Latte", "#eff1f5", "#4c4f69"), ("Catppuccin", "#1e1e2e", "#cdd6f4")):
+            send("\x14")
+            wait_for(lambda s: f"{name} (current)" in s)
+            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{name.lower().replace(' ', '-')}-{width}x{height}.svg", width, height, background, foreground)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Colour theme" not in s)
+        assert settled() == baseline, "theme picker changed geometry, selection or playback"
+        send("\x14")
+        wait_for(lambda s: capture(colors=True) != original_colors)
+        assert settled() == baseline, "palette change affected map text or layout"
+        for key, label in (("?", "Keyboard shortcuts"), ("v", "Provider credits"), ("p", "Playback speed multiplier"), ("\x0c", "Loaded files"), ("\x0f", "Open track file"), ("\x10", "Commands")):
+            send(key)
+            wait_for(lambda s: label in s)
+            if label == "Commands":
+                send("theme")
+                wait_for(lambda s: "Choose colour theme" in s)
+            before = settled()
+            colors = capture(colors=True)
+            send("\x14")
+            wait_for(lambda s: capture(colors=True) != colors)
+            assert settled() == before, f"theme cycling reset the open {label} dialog"
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: label not in s)
+        send("a ")
+        wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+        send("p\x14")
+        wait_for(lambda s: "Playback speed multiplier" in s and "Playing 1x" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Playback speed multiplier" not in s and "Playing 1x" in s)
+        send(" q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        print(f"{binary.name} {width}×{height}: three themes, modal/widget recolouring, unchanged geometry, ASCII playback and terminal restoration passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
 def workspace_controls(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), str(ROOT / "fixtures/waypoints.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
@@ -560,6 +609,8 @@ if __name__ == "__main__":
             else:
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
+                for width, height in ((120, 40), (70, 24)):
+                    theme_switching(ROOT / "bin" / name, width, height)
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)

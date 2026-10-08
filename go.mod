@@ -11,6 +11,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/muktihari/fit v0.28.4
 	github.com/paulmach/orb v0.13.0
+	github.com/pelletier/go-toml/v2 v2.2.4
 )
 
 require (

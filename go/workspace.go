@@ -17,14 +17,14 @@ type WorkspaceItem struct {
 	Document *Document
 	Item     *DocumentItem
 	Visible  bool
-	Color    string
+	Color    activityColor
 }
 
 type workspaceDocument struct {
 	id       int
 	document *Document
 	hidden   map[int]bool
-	colors   map[int]string
+	colors   map[int]activityColor
 }
 
 type workspaceSelection struct {
@@ -62,9 +62,9 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 		return w.activateDocument(entry)
 	}
 	w.nextID++
-	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]string)}
+	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor)}
 	for _, item := range d.Items {
-		entry.colors[item.ID] = activityColors[w.nextColor%len(activityColors)]
+		entry.colors[item.ID] = activityColor(w.nextColor%activityColorCount + 1)
 		w.nextColor++
 	}
 	w.documents = append(w.documents, entry)

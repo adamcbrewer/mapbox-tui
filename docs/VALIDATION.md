@@ -48,6 +48,12 @@ no-cache behaviour, HTTP 429 recovery, malformed/oversized bodies, cache replace
 and cancellation while waiting for another batch. Viewer tests verify that file
 loading does not block refresh and source failures leave imported items intact.
 
+Theme checks cover the three embedded TOML palettes, startup selection, custom-file
+loading and invalid/incomplete palettes. Switching checks preserve loaded document
+identity, playback, camera, source freshness and cached elevation geometry while
+restyling existing widgets. They cover open-dialog input/focus/scroll state and
+theme-picker/map painting at 120×40, 70×24, 70×18 and 30×12, including ASCII mode.
+
 Optional checks, after building:
 
 ```sh
@@ -65,6 +71,9 @@ Ctrl-L list, visibility, selection, removal and clearing at wide/compact sizes.
 Two-activity checks also exercise ordered profiles, selected-only playback markers,
 pause, switching while playing and hiding the playing activity without losing the
 remaining profile. Colour captures are saved alongside the interaction results.
+Theme interactions cycle all three palettes at wide/compact sizes, recolour open
+help, credits, speed, workspace, file-picker and command dialogs, preserve filtered
+input and map text, and continue playback in ASCII mode.
 They don't verify physical mouse forwarding or other
 operating systems. Benchmark and capture output is ignored under `reports/`.
 
@@ -114,4 +123,9 @@ python3 scripts/interactions.py --mapbox
 14. With Mapbox configured, open provider credits with `v` to inspect the source's
     status and refresh deadline. Pan during a request and check the newer viewport
     wins; keep the camera still through expiry and check the source refreshes.
-    These live checks make billable requests; automated lifecycle tests use fakes.
+     These live checks make billable requests; automated lifecycle tests use fakes.
+15. Use Ctrl-P's **Choose colour theme** to select each palette. With help, the
+    file picker or speed dialog open, press Ctrl-T and check all visible colours
+    update. Repeat in a narrow terminal and ASCII mode; playback should continue.
+    Start with `--theme catppuccin-latte`, then try a custom TOML file with a unique
+    ID. Invalid palettes should fail before entering the viewer.

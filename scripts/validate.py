@@ -142,6 +142,11 @@ def validate_cli(binary):
         result = run(*argv)
         assert "Usage: shoe" in result.stdout and result.stderr == "", (argv, result)
 
+    assert "-theme" in run("--help").stdout
+    assert "-theme" not in run("render", "--help").stdout
+    result = run("--theme", "unknown-theme", success=False)
+    assert "unknown theme" in result.stderr and "\x1b" not in result.stdout, result
+
     path = str(ROOT / "fixtures/example.gpx")
     expected = cli(binary, "render", path, "--json", "--center-lon", "-0.1", "--center-lat", "51.5", "--point-index", "3")
     actual = run("render", "--json", "--center-lon", "-0.1", path, "--point-index", "3", "--center-lat=51.5")

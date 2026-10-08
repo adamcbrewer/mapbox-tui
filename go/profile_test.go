@@ -31,12 +31,12 @@ func TestElevationProfilesUseOrderedSectionsAndSummedDistance(t *testing.T) {
 	e10, e20, e100, e110 := 10.0, 20.0, 100.0, 110.0
 	short := &Track{Distance: 100, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e100}, {Distance: 100, Elevation: &e110}}}
 	long := &Track{Distance: 200, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e10}, {Distance: 200, Elevation: &e20}}}
-	items := []sceneItem{{Ref: ItemRef{1, 1}, Track: short, Color: activityColors[0]}, {Ref: ItemRef{2, 1}, Track: long, Active: true, Color: activityColors[1]}}
+	items := []sceneItem{{Ref: ItemRef{1, 1}, Track: short, Color: 1}, {Ref: ItemRef{2, 1}, Track: long, Active: true, Color: 2}}
 	p := newProfile(items, 61, 5)
 	if p.Min != 10 || p.Max != 110 || p.Distance != 300 || len(p.AvailableItems) != 2 {
 		t.Fatal("summed distance or shared elevation scale omitted an activity")
 	}
-	colourBounds := func(g Grid, colour string) (int, int) {
+	colourBounds := func(g Grid, colour activityColor) (int, int) {
 		start, end := g.Width, -1
 		for i, cell := range g.Cells {
 			if cell.Bits != 0 && cell.Color == colour {
@@ -72,9 +72,9 @@ func TestElevationProfilesUseOrderedSectionsAndSummedDistance(t *testing.T) {
 
 func TestMissingElevationKeepsItsSectionInTheSequence(t *testing.T) {
 	e10, e20 := 10.0, 20.0
-	first := sceneItem{Ref: ItemRef{1, 1}, Track: &Track{Distance: 100, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e10}, {Distance: 100, Elevation: &e20}}}, Color: activityColors[0]}
-	missing := sceneItem{Ref: ItemRef{2, 1}, Track: &Track{Distance: 200, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{}, {Distance: 200}}}, Color: activityColors[1]}
-	last := sceneItem{Ref: ItemRef{3, 1}, Track: &Track{Distance: 300, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e20}, {Distance: 300, Elevation: &e10}}}, Color: activityColors[2]}
+	first := sceneItem{Ref: ItemRef{1, 1}, Track: &Track{Distance: 100, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e10}, {Distance: 100, Elevation: &e20}}}, Color: 1}
+	missing := sceneItem{Ref: ItemRef{2, 1}, Track: &Track{Distance: 200, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{}, {Distance: 200}}}, Color: 2}
+	last := sceneItem{Ref: ItemRef{3, 1}, Track: &Track{Distance: 300, Segments: []Segment{{Start: 0, End: 2}}, Points: []Point{{Elevation: &e20}, {Distance: 300, Elevation: &e10}}}, Color: 3}
 	for _, items := range [][]sceneItem{{missing, first, last}, {first, missing, last}, {first, last, missing}} {
 		p := newProfile(items, 61, 5)
 		if p.Distance != 600 || p.Min != 10 || p.Max != 20 || p.AvailableItems[missing.Ref] {

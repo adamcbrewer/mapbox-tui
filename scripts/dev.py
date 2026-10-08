@@ -12,6 +12,7 @@ def snapshot():
     paths = [ROOT / "go.mod", ROOT / "go.sum", ROOT / "shared/tools.json", ROOT / "Makefile"]
     for folder in ("go", "shared"):
         paths.extend((ROOT / folder).rglob("*.go"))
+    paths.extend((ROOT / "go/themes").glob("*.toml"))
     result = {}
     for path in paths:
         try:

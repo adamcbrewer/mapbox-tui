@@ -14,7 +14,7 @@ type workspaceRow struct {
 	label   string
 	path    string
 	visible bool
-	color   string
+	color   activityColor
 }
 
 func (m *viewer) workspaceRows() []workspaceRow {
@@ -24,7 +24,7 @@ func (m *viewer) workspaceRows() []workspaceRow {
 		for _, item := range entry.document.Items {
 			visible = visible || !entry.hidden[item.ID]
 		}
-		rows = append(rows, workspaceRow{ItemRef{DocumentID: entry.id}, fmt.Sprintf("[%d] %s", entry.id, clean(entry.document.Filename)), entry.document.Path, visible, ""})
+		rows = append(rows, workspaceRow{ItemRef{DocumentID: entry.id}, fmt.Sprintf("[%d] %s", entry.id, clean(entry.document.Filename)), entry.document.Path, visible, 0})
 		for _, item := range entry.document.Items {
 			ref := ItemRef{entry.id, item.ID}
 			active, shown := " ", "x"
@@ -99,41 +99,43 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 }
 
 func (m *viewer) workspaceDialogContent(width, height int) (string, string, string) {
+	s := m.styles
 	rows := m.workspaceRows()
 	if len(rows) == 0 {
-		return "Loaded files", dialogMuted.Render("No files loaded. Use ctrl+o."), "esc close"
+		return "Loaded files", s.dialogMuted.Render("No files loaded. Use ctrl+o."), "esc close"
 	}
 	m.ui.selected = max(0, min(len(rows)-1, m.ui.selected))
 	count := max(1, height-3)
 	start := max(0, m.ui.selected-count+1)
 	lines := []string{}
 	for i := start; i < min(len(rows), start+count); i++ {
-		style := dialogText
+		style := s.dialogText
 		if rows[i].ref.ItemID == 0 {
-			style = dialogHeading
+			style = s.dialogHeading
 		} else if !rows[i].visible {
-			style = dialogMuted
+			style = s.dialogMuted
 		}
 		prefix := "  "
 		if i == m.ui.selected {
 			prefix = "> "
-			style = uiHeading.Foreground(uiRose).Background(uiSelected)
+			style = s.selected
 		}
-		if rows[i].color != "" {
-			style = style.Foreground(lipgloss.Color(rows[i].color)).Faint(!rows[i].visible)
+		if rows[i].color != 0 {
+			style = style.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, rows[i].color))).Faint(!rows[i].visible)
 		}
 		lines = append(lines, style.Render(pad(prefix+rows[i].label, width)))
 	}
 	if height > 3 {
-		lines = append(lines, "", dialogMuted.Render(pad(clean(rows[m.ui.selected].path), width)), dialogMuted.Render(pad("del remove row · D remove file", width)))
+		lines = append(lines, "", s.dialogMuted.Render(pad(clean(rows[m.ui.selected].path), width)), s.dialogMuted.Render(pad("del remove row · D remove file", width)))
 	}
 	return "Loaded files", strings.Join(lines, "\n"), "enter select · space hide/show · esc close"
 }
 
 func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
+	s := m.styles
 	items := m.workspace.sceneItems()
 	if len(items) == 0 {
-		return uiMuted.Render(pad("No visible items · ctrl+l files", width))
+		return s.muted.Render(pad("No visible items · ctrl+l files", width))
 	}
 	count := min(len(items), max(1, (width-16)/20))
 	suffix := " · ctrl+l files"
@@ -151,7 +153,7 @@ func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
 		if profile != nil && len(item.Track.Points) > 0 && !profile.AvailableItems[item.Ref] {
 			label = fmt.Sprintf("%s %d:%d no elevation: %s", marker, item.Ref.DocumentID, item.Ref.ItemID, item.Track.Name)
 		}
-		labels = append(labels, uiText.Foreground(lipgloss.Color(item.Color)).Bold(item.Active).Render(pad(ansi.Truncate(label, columnWidth, "…"), columnWidth)))
+		labels = append(labels, s.text.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, item.Color))).Bold(item.Active).Render(pad(ansi.Truncate(label, columnWidth, "…"), columnWidth)))
 	}
-	return pad(strings.Join(labels, "  ")+uiMuted.Render(suffix), width)
+	return pad(strings.Join(labels, "  ")+s.muted.Render(suffix), width)
 }

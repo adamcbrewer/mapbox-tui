@@ -47,12 +47,12 @@ func TestCLICameraValuesAndProviderDefaults(t *testing.T) {
 	if err != nil || command.Name != "open" || command.Path != "" || command.Args.Provider != "none" || command.Args.Zoom != nil {
 		t.Fatal("token-free invocation is not an empty canvas", command, err)
 	}
-	command, err = parseCLI([]string{"--center-lon", "-0.1", "fixtures/example.gpx", "--center-lat=51.5", "--bearing", "-45", "--ascii", "--no-animation", "--zoom", "12", "--zoom=13", "--point-index", "0"}, io.Discard)
+	command, err = parseCLI([]string{"--center-lon", "-0.1", "fixtures/example.gpx", "--center-lat=51.5", "--bearing", "-45", "--ascii", "--no-animation", "--theme", "tokyo-night", "--zoom", "12", "--zoom=13", "--point-index", "0"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := command.Args
-	if command.Path != "fixtures/example.gpx" || a.Provider != "none" || a.Lon == nil || *a.Lon != -0.1 || a.Lat == nil || *a.Lat != 51.5 || a.Bearing == nil || *a.Bearing != -45 || a.Zoom == nil || *a.Zoom != 13 || !a.ASCII || !a.NoAnimation || a.PointIndex == nil || *a.PointIndex != 0 {
+	if command.Path != "fixtures/example.gpx" || a.Provider != "none" || a.Lon == nil || *a.Lon != -0.1 || a.Lat == nil || *a.Lat != 51.5 || a.Bearing == nil || *a.Bearing != -45 || a.Zoom == nil || *a.Zoom != 13 || !a.ASCII || !a.NoAnimation || a.Theme != "tokyo-night" || a.PointIndex == nil || *a.PointIndex != 0 {
 		t.Fatal("flags were mistaken for input files or explicit values were lost", command)
 	}
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "synthetic-test-token")
@@ -103,6 +103,7 @@ func TestCLIRejectsIrrelevantFlagsAndInvalidInputCounts(t *testing.T) {
 		{"summary", "fixtures/example.gpx", "--demo"},
 		{"inspect", "fixtures/example.gpx", "--zoom", "3"},
 		{"render", "--no-animation"}, {"render", "--frames", "2"},
+		{"render", "--theme", "tokyo-night"}, {"mcp", "--theme", "catppuccin"},
 		{"bench", "fixtures/example.gpx", "--provider", "mapbox"},
 		{"mcp", "--demo"}, {"mcp", "fixtures/example.gpx"},
 		{"summary", "fixtures/example.gpx", "fixtures/waypoints.gpx"},

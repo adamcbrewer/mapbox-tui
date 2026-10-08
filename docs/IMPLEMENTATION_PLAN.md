@@ -6,14 +6,14 @@ workspace ownership, then build the remaining TODO features on those foundations
 ## New-thread handover
 
 - Continue on `feat/map-workspace`, tracking `origin/feat/map-workspace`.
-- Steps 1-4 are complete. Resume at **step 5** after confirming whether themes
-  mean terminal recolouring, basemap styles/tilesets, or both. Terminal recolouring
-  is the recommended first scope, but this choice has not been confirmed.
-- Theme entry points: `go/ui.go` owns global styles and initialises widgets;
-  `go/tui.go` has inline border/progress/background colours; `go/render.go` has
-  `mapStyles`, where drawing priority, colour and ASCII symbols are separate.
+- Steps 1-5 are complete. Resume at **step 6**, confirming manual route plotting
+  versus road-following directions and travel modes before implementing routing.
+- Theme scope is terminal recolouring. Three Omarchy-derived TOML palettes are
+  embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-T cycles
+  themes and Ctrl-P opens the picker. [Theme API](THEMES.md) records the format,
+  registry and viewer-owned style application.
 - The [confirmed interaction decisions](#confirmed-interaction-decisions) remain
-  the baseline. The remaining feature decisions are listed under steps 5 and 6.
+  the baseline. The remaining feature decisions are listed under step 6.
 - [Validation](VALIDATION.md) records check commands. Go runs through
   `mise exec go@1.27.1 -- ...` in this environment. Current source-lifecycle checks
   use fake providers; live Mapbox refresh has not been exercised for this slice.
@@ -54,8 +54,17 @@ combine their credits. Controlled-clock/provider tests, race checks, the full
 repository checks and offline terminal interactions pass. Mapbox remains the only
 external source; this does not add traffic data.
 
-Next: **step 5, centralised theme ownership**. Confirm terminal recolouring versus
-basemap-style switching before implementing it. New routing/traffic sources still
+Centralised theme ownership is complete. The viewer selects a data-only TOML
+palette and restyles open widgets in place. Workspace activities and renderer cells
+retain colour slots/roles rather than RGB values, so map/profile colours resolve
+from the selected palette without reimporting, refetching or resetting playback.
+The three built-ins are Catppuccin (dark/default), Catppuccin Latte (light) and Tokyo
+Night (dark), with custom-file loading through the same API. Palette validation,
+state-preservation tests, repository checks, race checks and offline terminal
+interactions pass at wide/compact sizes, including open dialogs and ASCII playback.
+
+Next: **step 6, route plotting / directions**. Confirm manual plotting versus
+road-following directions before implementing it. Routing/traffic sources still
 need decisions in their respective slices.
 
 Multi-activity presentation uses stable per-item colours and consecutive elevation
@@ -199,16 +208,16 @@ cannot replace current source state. Eligible sources refresh without camera mot
 
 ## 5. Centralise theme ownership
 
-This can be a smaller parallel feature after scope is confirmed. Terminal
-recolouring is distinct from selecting a different basemap style or tileset.
+Confirmed scope: terminal recolouring, using data-only TOML palettes and a shared
+registry/API. Basemap-style/tileset switching is separate.
 
-- [ ] Confirm whether theme switching covers terminal appearance, map data style,
+- [x] Confirm whether theme switching covers terminal appearance, map data style,
   or both; implement the chosen scope explicitly.
-- [ ] Own the selected presentation theme in viewer state and derive styles from
+- [x] Own the selected presentation theme in viewer state and derive styles from
   named roles rather than scattered globals/literals.
-- [ ] Apply changes to the map, profile, dialogs, progress bar, borders, background
+- [x] Apply changes to the map, profile, dialogs, progress bar, borders, background
   and already-created Bubbles widgets.
-- [ ] Check wide/narrow layouts and ASCII mode; a palette-only change must not
+- [x] Check wide/narrow layouts and ASCII mode; a palette-only change must not
   re-import files or fetch tiles.
 
 **Acceptance:** Switching themes with a dialog and playback UI already open updates
@@ -279,4 +288,4 @@ Keep this separate from the current presentation fixes and theme slice.
   select another item or move the camera.
 
 Later decisions belong to their implementation slice: plotting versus routing,
-traffic refresh policy and theme scope.
+traffic refresh policy. Terminal theme scope is confirmed above.

@@ -142,7 +142,7 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 		if profile.Distance != profile.Items[0].Track.Distance+profile.Items[1].Track.Distance {
 			t.Fatal("viewer did not sum the ordered activities' distances")
 		}
-		colours := make(map[string]bool)
+		colours := make(map[activityColor]bool)
 		for _, cell := range profile.Grid.Cells {
 			if cell.Bits != 0 {
 				colours[cell.Color] = true
@@ -170,7 +170,7 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 			for i, cell := range grid.Cells {
 				if cell.Text == '@' {
 					markers++
-					if cell.Color != m.activeColor() || cell.Role != roleCursor {
+					if cell.Color != m.activeSwatch() || cell.Role != roleCursor {
 						t.Fatal("playback marker lost activity identity or priority")
 					}
 					if gridIndex == 1 && i%grid.Width != chartColumn {

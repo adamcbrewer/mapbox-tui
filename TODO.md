@@ -6,7 +6,7 @@
 - [x] KML (Google Maps/Earth XML) geometry and track import
 - [x] multiple routes and activities
 - [x] loaded-files / routes UI: show filenames, select items, hide/show and remove
-- [ ] theme switching
+- [x] theme switching
 - [ ] plot a route / create directions
 - [ ] toggle traffic
 - [ ] other data sources and display ideas (ala mapbox playground)

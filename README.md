@@ -8,6 +8,7 @@ The executable is `shoe`.
 - Free roam around the map without loading a file.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
+- Switch terminal colour themes or load a custom TOML palette.
 - Get structured results through the CLI or a local MCP server.
 
 The bundled GPX fixtures are synthetic. The viewer doesn't provide directions,
@@ -187,6 +188,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 | Add another track file | Ctrl-O or `o` | |
 | Manage loaded files/items | Ctrl-L | Wheel scrolls the dialog |
 | Command palette / help | Ctrl-P / `?` | |
+| Cycle colour theme | Ctrl-T (also works in dialogs) | |
 | Pan | Arrows or `h j k l` | Left-drag |
 | Zoom | `+` / `-` | Wheel, anchored to pointer |
 | Zoom at 2× speed | | Ctrl / Cmd + wheel |
@@ -220,6 +222,33 @@ Playback speeds are 1x, 5x, 20x, 60x and 120x. Parts with complete, increasing
 timestamps use recorded timing. Other parts use a labelled **6 m/s estimate**.
 Disconnected parts jump without inventing a connecting path. Interpolated values
 are prefixed with `~`; missing elevations and timestamps remain unavailable.
+
+## Colour themes
+
+Three terminal palettes are bundled, based on Omarchy's theme catalogue:
+
+- **Catppuccin** (`catppuccin`): dark, the default.
+- **Catppuccin Latte** (`catppuccin-latte`): light.
+- **Tokyo Night** (`tokyo-night`): dark.
+
+Press **Ctrl-T** to cycle themes, including while a dialog is open. For a picker,
+use Ctrl-P and **Choose colour theme**, then arrows or `j`/`k` and Enter.
+The map, elevation chart, activity colours, dialogs and playback controls update
+together without re-importing files, fetching tiles or resetting playback.
+Each activity keeps its palette slot; the slot's colour changes with the theme.
+
+```sh
+./bin/shoe fixtures/example.gpx --theme catppuccin-latte
+./bin/shoe --theme tokyo-night
+./bin/shoe fixtures/example.gpx --theme "/path/to/my-theme.toml"
+```
+
+Built-ins are embedded in the binary. Custom palettes are read at startup and
+join the picker for that session. Copy a file from [`go/themes/`](go/themes/),
+give it a unique `id` and `name`, edit its colours and pass its path with `--theme`.
+Theme changes last for the current viewer session. These are terminal palettes;
+they do not select a different Mapbox style or tileset.
+See [the palette format and theme API](docs/THEMES.md) for adding a theme.
 
 ## CLI
 
@@ -286,9 +315,9 @@ Camera options for the viewer, rendering and benchmarks: `--center-lon` and
 `--cell-aspect` (1-3, default 2), and `--ascii`.
 
 The viewer and `render` accept `--provider mapbox|none` for the basemap, plus
-`--point-index` to select or highlight a recorded point. `--no-animation` is
-viewer-only. Negative zoom allows widely separated items to fit in a small
-terminal; file-free browsing still starts at zoom 0. `--width` (10-300) and
+`--point-index` to select or highlight a recorded point. `--no-animation` and
+`--theme` are viewer-only. Negative zoom allows widely separated items to fit in a
+small terminal; file-free browsing still starts at zoom 0. `--width` (10-300) and
 `--height` (5-100) size static maps and
 benchmarks; the viewer uses the terminal size. `--json` belongs to `render`,
 `--distance-m` to `inspect`, and `--frames` to `bench`. Benchmarks use internal
@@ -347,8 +376,9 @@ make fixtures
 make bench
 ```
 
-The development watcher rebuilds and restarts the viewer when Go/build inputs
-change. It requires a Unix-like interactive terminal; view state resets on restart.
+The development watcher rebuilds and restarts the viewer when Go/build inputs or
+bundled TOML palettes change. It requires a Unix-like interactive terminal; view
+state resets on restart.
 
 `make test` builds, runs Go tests and vet, then checks CLI/MCP consistency without
 Mapbox credentials. Benchmarks and captures are generated locally under ignored

@@ -87,7 +87,8 @@ func (p *elevationProfile) screen(distance, elevation float64) XY {
 	return XY{distance / math.Max(p.Distance, 1) * float64(p.Grid.Width*2-1), y}
 }
 func (p *elevationProfile) frame(pos *ridePosition) (string, Grid, string) {
-	distance, color := 0.0, ""
+	distance := 0.0
+	var color activityColor
 	if pos != nil {
 		distance = pos.Distance
 		offset := 0.0

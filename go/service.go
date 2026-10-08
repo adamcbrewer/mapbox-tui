@@ -31,6 +31,7 @@ type Args struct {
 	ASCII       bool     `json:"ascii"`
 	Provider    string   `json:"provider"`
 	NoAnimation bool     `json:"-"`
+	Theme       string   `json:"-"`
 }
 
 type Service struct {

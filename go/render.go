@@ -23,22 +23,21 @@ const (
 
 var mapStyles = [...]struct {
 	priority int
-	color    string
 	ascii    rune
 }{
-	{0, "#8D9DAA", ' '}, {1, "#548EAB", '~'}, {2, "#536575", '.'},
-	{3, "#303F4C", ':'}, {4, "#A7BCCB", '-'}, {5, "#66B6C6", '*'},
-	{6, "#66B6C6", 'S'}, {9, "#F2F6FA", '@'}, {7, "#FFC66D", '#'},
-	{8, "#FFC66D", 'S'},
+	{0, ' '}, {1, '~'}, {2, '.'}, {3, ':'}, {4, '-'},
+	{5, '*'}, {6, 'S'}, {9, '@'}, {7, '#'}, {8, 'S'},
 }
 
-var activityColors = [...]string{"#FFC66D", "#66B6C6", "#F1A5CB", "#93D5A5", "#B8A1F4", "#84B9F4"}
+type activityColor uint8
 
-func mapColor(role mapRole, colors ...string) string {
-	if len(colors) > 0 && colors[0] != "" {
+const activityColorCount = 6
+
+func activitySwatch(colors ...activityColor) activityColor {
+	if len(colors) > 0 {
 		return colors[0]
 	}
-	return mapStyles[role].color
+	return 0
 }
 
 type Feature struct {
@@ -51,7 +50,7 @@ type Cell struct {
 	Bits  uint8
 	Role  mapRole
 	Text  rune
-	Color string
+	Color activityColor
 }
 type Grid struct {
 	Width, Height int
@@ -59,7 +58,7 @@ type Grid struct {
 }
 
 func newGrid(w, h int) Grid { return Grid{w, h, make([]Cell, w*h)} }
-func (g *Grid) dot(x, y int, role mapRole, colors ...string) {
+func (g *Grid) dot(x, y int, role mapRole, colors ...activityColor) {
 	if x < 0 || y < 0 || x >= g.Width*2 || y >= g.Height*4 {
 		return
 	}
@@ -67,7 +66,7 @@ func (g *Grid) dot(x, y int, role mapRole, colors ...string) {
 	if mapStyles[role].priority < mapStyles[c.Role].priority {
 		return
 	}
-	color := mapColor(role, colors...)
+	color := activitySwatch(colors...)
 	if mapStyles[role].priority > mapStyles[c.Role].priority || c.Color != color {
 		c.Bits = 0
 		c.Text = 0
@@ -77,7 +76,7 @@ func (g *Grid) dot(x, y int, role mapRole, colors ...string) {
 	bits := [2][4]uint8{{1, 2, 4, 64}, {8, 16, 32, 128}}
 	c.Bits |= bits[x%2][y%4]
 }
-func (g *Grid) line(a, b XY, role mapRole, colors ...string) {
+func (g *Grid) line(a, b XY, role mapRole, colors ...activityColor) {
 	dx, dy := b.X-a.X, b.Y-a.Y
 	lo, hi := 0.0, 1.0
 	for _, v := range [][2]float64{{-dx, a.X}, {dx, float64(g.Width*2-1) - a.X}, {-dy, a.Y}, {dy, float64(g.Height*4-1) - a.Y}} {
@@ -129,7 +128,7 @@ func (g *Grid) polygon(parts [][]XY, role mapRole) {
 		}
 	}
 }
-func (g *Grid) label(p XY, s string, role mapRole, collision bool, colors ...string) {
+func (g *Grid) label(p XY, s string, role mapRole, collision bool, colors ...activityColor) {
 	x, y := int(math.Floor(p.X/2)), int(math.Floor(p.Y/4))
 	r := []rune(clean(s))
 	if x < 0 || y < 0 || x+len(r) > g.Width || y >= g.Height {
@@ -142,7 +141,7 @@ func (g *Grid) label(p XY, s string, role mapRole, collision bool, colors ...str
 		}
 	}
 	for i, v := range r {
-		g.Cells[y*g.Width+x+i] = Cell{Bits: 0, Role: role, Text: v, Color: mapColor(role, colors...)}
+		g.Cells[y*g.Width+x+i] = Cell{Bits: 0, Role: role, Text: v, Color: activitySwatch(colors...)}
 	}
 }
 func render(t *Track, c Camera, features []Feature, selected int, ascii bool) Grid {
@@ -161,7 +160,7 @@ type sceneItem struct {
 	Ref    ItemRef
 	Track  *Track
 	Active bool
-	Color  string
+	Color  activityColor
 }
 
 func renderScene(c Camera, features []Feature, items []sceneItem, cursor *XY) Grid {
@@ -183,7 +182,7 @@ func renderScene(c Camera, features []Feature, items []sceneItem, cursor *XY) Gr
 			}
 		}
 	}
-	cursorColor := ""
+	var cursorColor activityColor
 	for _, item := range items {
 		t := item.Track
 		lineRole, markerRole := roleRoute, roleMarker

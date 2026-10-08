@@ -22,7 +22,10 @@ type loaded struct {
 	err      error
 }
 type pulse time.Time
-type viewerSettings struct{ ASCII, NoAnimation bool }
+type viewerSettings struct {
+	ASCII, NoAnimation bool
+	Theme              int
+}
 type viewer struct {
 	path                      string
 	args                      Args
@@ -49,6 +52,8 @@ type viewer struct {
 	profileHeight             int
 	progress                  *progress.Model
 	ui                        uiState
+	styles                    uiStyles
+	themes                    []presentationTheme
 	cursor                    *tea.Cursor
 	loadID                    uint64
 	following                 bool
@@ -110,12 +115,15 @@ func (m *viewer) visibleProfile() *elevationProfile {
 	return m.workspace.profile(max(1, m.width-2), m.profileHeight-2)
 }
 func (m *viewer) activeColor() string {
+	return m.theme().mapColor(roleActiveRoute, m.activeSwatch())
+}
+func (m *viewer) activeSwatch() activityColor {
 	if m.workspace.selection != nil {
 		if entry, _, err := m.workspace.lookup(m.workspace.selection.ref); err == nil {
 			return entry.colors[m.workspace.selection.ref.ItemID]
 		}
 	}
-	return mapStyles[roleActiveRoute].color
+	return 0
 }
 func (m *viewer) selectionChanged() {
 	m.camera = m.destination()
@@ -276,6 +284,10 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		key := v.String()
 		if key == "ctrl+c" || (key == "q" && m.ui.dialog != dialogCommands && m.ui.dialog != dialogFiles) {
 			return m, tea.Quit
+		}
+		if key == "ctrl+t" {
+			m.applyTheme((m.settings.Theme + 1) % len(m.themes))
+			return m, nil
 		}
 		if m.ui.dialog != dialogNone {
 			return m, m.updateDialog(msg)
@@ -538,7 +550,7 @@ func (m *viewer) advancePlayback(now time.Time) {
 	m.lastTick = now
 }
 
-func gridRow(g Grid, y int, ascii bool) string {
+func (m *viewer) gridRow(g Grid, y int, ascii bool) string {
 	var line strings.Builder
 	for x := 0; x < g.Width; {
 		cell := g.Cells[y*g.Width+x]
@@ -547,7 +559,7 @@ func gridRow(g Grid, y int, ascii bool) string {
 			run.WriteRune(g.glyph(g.Cells[y*g.Width+x], ascii))
 			x++
 		}
-		line.WriteString(paint(run.String(), cell.Role, cell.Color))
+		line.WriteString(m.paint(run.String(), cell.Role, cell.Color))
 	}
 	return line.String()
 }
@@ -565,8 +577,8 @@ func (m *viewer) zoomWheel(p XY, direction int, mod tea.KeyMod, now time.Time) {
 	m.dirty = true
 }
 
-func paint(s string, role mapRole, colors ...string) string {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(mapColor(role, colors...))).Bold(role == roleCursor).Render(s)
+func (m *viewer) paint(s string, role mapRole, colors ...activityColor) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme().mapColor(role, colors...))).Bold(role == roleCursor).Render(s)
 }
 func pad(s string, w int) string {
 	s = ansi.Truncate(s, max(0, w), "")
@@ -644,7 +656,8 @@ func (m *viewer) rebuild() {
 	sources := m.sources.view()
 	g := renderScene(c, sources.Features, m.workspace.sceneItems(), cursor)
 	details := m.details()
-	provider := uiAccent.Background(uiSelected).Padding(0, 1).Render(m.provider.Kind)
+	t, s := m.theme(), m.styles
+	provider := s.accent.Background(lipgloss.Color(t.Selected)).Padding(0, 1).Render(m.provider.Kind)
 	name := "Free roam"
 	if t := m.activeTrack(); t != nil {
 		name = t.Name
@@ -652,7 +665,7 @@ func (m *viewer) rebuild() {
 	if len(m.workspace.documents) > 1 {
 		name += fmt.Sprintf(" · %d files", len(m.workspace.documents))
 	}
-	title := gradient("shoe", uiInk) + "  " + uiHeading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
+	title := m.gradient("shoe", lipgloss.Color(t.Background)) + "  " + s.heading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
 	rows := []string{pad(title, m.width-lipgloss.Width(provider)-1) + " " + provider}
 	border := lipgloss.NormalBorder()
 	if m.settings.ASCII {
@@ -660,26 +673,26 @@ func (m *viewer) rebuild() {
 	}
 	mapRows := []string{}
 	for y := 0; y < c.Height; y++ {
-		mapRows = append(mapRows, gridRow(g, y, m.settings.ASCII))
+		mapRows = append(mapRows, m.gridRow(g, y, m.settings.ASCII))
 	}
-	frame := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color("#43556B")).Render(strings.Join(mapRows, "\n"))
+	frame := lipgloss.NewStyle().Border(border).BorderForeground(lipgloss.Color(t.Border)).Render(strings.Join(mapRows, "\n"))
 	if m.width >= 90 {
 		styled := []string{}
 		for i, line := range details {
-			style := uiText
+			style := s.text
 			if i == 0 || line == "Selected position" {
-				style = uiHeading.Foreground(uiViolet)
+				style = s.heading.Foreground(lipgloss.Color(t.Accent))
 			} else if i > 16 || strings.Contains(line, "unavailable") {
-				style = uiMuted
+				style = s.muted
 			}
 			styled = append(styled, style.Render(line))
 		}
 		m.ui.details.SetWidth(28)
 		m.ui.details.SetHeight(c.Height)
 		m.ui.details.SetContent(strings.Join(styled, "\n"))
-		focus := uiMuted.Render("tab focus · wheel scroll")
+		focus := s.muted.Render("tab focus · wheel scroll")
 		if m.ui.detailsFocused {
-			focus = uiAccent.Render("Details focused · tab map")
+			focus = s.accent.Render("Details focused · tab map")
 		}
 		panel := "\n" + m.ui.details.View() + "\n" + focus
 		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+strings.ReplaceAll(panel, "\n", "\n  "))
@@ -691,25 +704,25 @@ func (m *viewer) rebuild() {
 	}
 	if m.width < 90 {
 		if t := m.activeTrack(); t != nil {
-			rows = append(rows, paint(pad(fmt.Sprintf("%.2f km | %d points | zoom %.2f | bearing %.0f", t.Distance/1000, len(t.Points), c.Zoom, c.Bearing), m.width), roleActiveRoute, m.activeColor()))
-			s := strings.Join(details[7:min(len(details), 14)], " | ")
-			rows = append(rows, uiText.Render(pad(s, m.width)), uiMuted.Render(pad("[ ] select; PgUp/PgDn ±100; c follow · enter inspect", m.width)))
+			rows = append(rows, m.paint(pad(fmt.Sprintf("%.2f km | %d points | zoom %.2f | bearing %.0f", t.Distance/1000, len(t.Points), c.Zoom, c.Bearing), m.width), roleActiveRoute, m.activeSwatch()))
+			line := strings.Join(details[7:min(len(details), 14)], " | ")
+			rows = append(rows, s.text.Render(pad(line, m.width)), s.muted.Render(pad("[ ] select; PgUp/PgDn ±100; c follow · enter inspect", m.width)))
 		} else {
 			center := unproject(c.Center)
 			location := fmt.Sprintf("Lat %.6f | Lon %.6f", center.Y, center.X)
 			if m.inspected != nil {
 				location = fmt.Sprintf("Selected: %.6f, %.6f", m.inspected.Y, m.inspected.X)
 			}
-			rows = append(rows, paint(pad(fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing), m.width), roleActiveRoute), uiText.Render(pad(location, m.width)), uiMuted.Render(pad("ctrl+l loaded files · f fit visible", m.width)))
+			rows = append(rows, m.paint(pad(fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing), m.width), roleActiveRoute), s.text.Render(pad(location, m.width)), s.muted.Render(pad("ctrl+l loaded files · f fit visible", m.width)))
 		}
 	}
 	if profile != nil {
 		header, chart, axis := profile.frame(pos)
-		rows = append(rows, uiHeading.Foreground(uiViolet).Render(pad(header, m.width)))
+		rows = append(rows, s.heading.Foreground(lipgloss.Color(t.Accent)).Render(pad(header, m.width)))
 		for y := 0; y < chart.Height; y++ {
-			rows = append(rows, " "+gridRow(chart, y, m.settings.ASCII)+" ")
+			rows = append(rows, " "+m.gridRow(chart, y, m.settings.ASCII)+" ")
 		}
-		rows = append(rows, paint(pad(" "+axis, m.width), roleRoad))
+		rows = append(rows, m.paint(pad(" "+axis, m.width), roleRoad))
 	}
 	status := "Left-drag pan · wheel zoom · click inspect · right-drag rotate"
 	playback := m.activePlayback()
@@ -739,10 +752,10 @@ func (m *viewer) rebuild() {
 	if playback != nil {
 		if m.progress == nil {
 			bar := progress.New(progress.WithoutPercentage(), progress.WithFillCharacters('█', '░'))
-			bar.EmptyColor = lipgloss.Color("#536575")
 			m.progress = &bar
 		}
 		m.progress.FullColor = lipgloss.Color(m.activeColor())
+		m.progress.EmptyColor = lipgloss.Color(t.ProgressEmpty)
 		m.progress.SetWidth(max(6, min(14, m.width/6)))
 		m.progress.Full, m.progress.Empty = '█', '░'
 		if m.settings.ASCII {
@@ -753,20 +766,20 @@ func (m *viewer) rebuild() {
 			label := fmt.Sprintf("%d:%d %s", ref.DocumentID, ref.ItemID, m.activeTrack().Name)
 			status = ansi.Truncate(label, min(24, m.width/4), "…") + " | " + status
 		}
-		status = m.progress.ViewAs(playback.ratio()) + "  " + paint(status, roleActiveRoute, m.activeColor())
+		status = m.progress.ViewAs(playback.ratio()) + "  " + m.paint(status, roleActiveRoute, m.activeSwatch())
 	}
 	m.ui.help.SetWidth(m.width)
 	keys := shortcutMap{compact: m.width < 90, playing: playback != nil && playback.Playing, detailsFocused: m.ui.detailsFocused, freeRoam: m.activeTrack() == nil}
 	credits, _ := sources.attribution()
-	rows = append(rows, pad(status, m.width), pad(m.ui.help.View(keys), m.width), uiMuted.Render(pad(credits, m.width)))
-	m.content = strings.Join(rows, "\n")
+	rows = append(rows, pad(status, m.width), pad(m.ui.help.View(keys), m.width), s.muted.Render(pad(credits, m.width)))
+	m.content = s.text.Background(lipgloss.Color(t.Background)).Width(m.width).Render(strings.Join(rows, "\n"))
 	m.overlay()
 }
 func (m *viewer) View() tea.View {
 	v := tea.NewView(m.content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	v.BackgroundColor = lipgloss.Color("#182431")
+	v.BackgroundColor = lipgloss.Color(m.theme().Background)
 	v.Cursor = m.cursor
 	return v
 }
@@ -792,7 +805,9 @@ func openViewerFiles(paths []string, a Args) error {
 	if len(paths) > 0 {
 		m.path, m.pendingPaths = paths[0], paths[1:]
 	}
-	m.initUI()
+	if err := m.initUI(); err != nil {
+		return err
+	}
 	m.layout()
 	defer m.sources.close()
 	_, e = tea.NewProgram(m).Run()
