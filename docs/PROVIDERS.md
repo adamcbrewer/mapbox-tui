@@ -51,6 +51,11 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 - Failures pause requests for ten seconds; HTTP 429 pauses for at least 60 seconds
   and honours integer `Retry-After` values. Invalid or oversized tile bodies also
   use the ten-second pause. Provider diagnostics exclude response bodies and URLs.
+- When a viewer refresh fails without replacement geometry, retain the last usable
+  source features and their credits while updating status, statistics and the retry
+  deadline. Successful empty responses clear old geometry; replacing or disabling
+  a source clears its snapshot. Retained display data does not become a fresh tile
+  cache entry.
 - The viewer refreshes a stationary view when the earliest displayed tile expires,
   subject to provider backoff. Responses without reusable freshness, including
   `no-store` and `no-cache`, schedule another fetch after 60 seconds. They are still

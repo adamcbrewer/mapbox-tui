@@ -54,6 +54,9 @@ They cover returning to a cancelled viewport, cache expiry and `Age`, no-store/
 no-cache behaviour, HTTP 429 recovery, malformed/oversized bodies, cache replacement
 and cancellation while waiting for another batch. Viewer tests verify that file
 loading does not block refresh and source failures leave imported items intact.
+Failed-refresh checks retain the last usable scene and attribution while exposing
+updated errors/retry deadlines; repeated errors and successful empty responses are
+covered separately from source replacement and disabling.
 
 Theme checks cover the three embedded TOML palettes, startup selection, custom-file
 loading and invalid/incomplete palettes. Switching checks preserve loaded document

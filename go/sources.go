@@ -18,6 +18,7 @@ type sourceSnapshot struct {
 	Status    string
 	RefreshAt time.Time
 	Credits   []sourceCredit
+	Failed    bool
 }
 
 type mapSource interface {
@@ -176,13 +177,19 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 			return false
 		}
 		snapshot := result.snapshot
-		if result.err != nil {
+		snapshot.Failed = snapshot.Failed || result.err != nil
+		if snapshot.Failed {
 			if snapshot.Status == "" {
 				snapshot.Status = "Source request failed"
 			}
 			if snapshot.RefreshAt.IsZero() {
 				snapshot.RefreshAt = now.Add(10 * time.Second)
 			}
+		}
+		retainPrevious := snapshot.Failed && len(snapshot.Features) == 0
+		if retainPrevious && len(state.snapshot.Features) > 0 {
+			snapshot.Features = state.snapshot.Features
+			snapshot.Credits = state.snapshot.Credits
 		}
 		if !snapshot.RefreshAt.IsZero() && snapshot.RefreshAt.Before(now.Add(time.Second)) {
 			snapshot.RefreshAt = now.Add(time.Second)

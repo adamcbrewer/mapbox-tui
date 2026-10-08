@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,7 @@ func TestViewerRefreshesStationaryDataWhileLoadingFilesAndKeepsImportsOnFailure(
 	if m.sources.view().Stats.Requests <= before || m.workspace.selection != selection {
 		t.Fatal("stationary refresh was blocked by file loading or reset selection")
 	}
+	usable := m.sources.view()
 	m.loading = false
 	fail = true
 	now = now.Add(3 * time.Second)
@@ -97,6 +99,16 @@ func TestViewerRefreshesStationaryDataWhileLoadingFilesAndKeepsImportsOnFailure(
 		!strings.Contains(ansi.Strip(m.content), "Riverside exploration")
 	if failureLostImports {
 		t.Fatal("provider failure lost imported geometry or source status")
+	}
+	failed := m.sources.view()
+	if !reflect.DeepEqual(failed.Features, usable.Features) || !reflect.DeepEqual(failed.Credits, usable.Credits) {
+		t.Fatal("failed refresh discarded the last usable basemap or its attribution")
+	}
+	if failed.Stats.Requests <= usable.Stats.Requests || failed.Stats.Errors <= usable.Stats.Errors {
+		t.Fatal("retaining the basemap hid refresh failure statistics")
+	}
+	if failed.Sources[0].RefreshAt == nil || !failed.Sources[0].RefreshAt.Equal(now.Add(10*time.Second)) {
+		t.Fatal("retaining the basemap discarded the provider retry deadline")
 	}
 }
 

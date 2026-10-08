@@ -422,6 +422,76 @@ func TestSourcesCancelOnShutdownAndSanitiseUnexpectedErrors(t *testing.T) {
 	}
 }
 
+func TestSourcesRetainUsableDataOnErrorsButAcceptSuccessfulEmptySnapshots(t *testing.T) {
+	now := time.Unix(1000, 0)
+	camera := fit(
+		nil,
+		120,
+		40,
+		2,
+	)
+	var loader sourceLoader
+	t.Cleanup(loader.close)
+	usable := sourceSnapshot{
+		Features:  []Feature{{Label: "last usable scene"}},
+		Credits:   []sourceCredit{{Text: "Original credit", URL: "https://original.test"}},
+		RefreshAt: now.Add(time.Second),
+	}
+	var phase int
+	loader.set("overlay", sourceFunc(func(context.Context, Camera) (sourceSnapshot, error) {
+		switch phase {
+		case 0:
+			return usable, nil
+		case 1:
+			return sourceSnapshot{}, errors.New("private source diagnostic")
+		case 2:
+			return sourceSnapshot{Failed: true}, nil
+		default:
+			return sourceSnapshot{RefreshAt: now.Add(time.Hour)}, nil
+		}
+	}), true)
+	first := oneSourceRequest(t, loader.poll(
+		context.Background(),
+		camera,
+		now,
+		false,
+	))
+	loader.accept(first.run(), camera, now)
+	for phase = 1; phase < 3; phase++ {
+		now = now.Add(10 * time.Second)
+		refresh := oneSourceRequest(t, loader.poll(
+			context.Background(),
+			camera,
+			now,
+			false,
+		))
+		if !loader.accept(refresh.run(), camera, now) {
+			t.Fatal("failed refresh was not recorded")
+		}
+		view := loader.view()
+		if !reflect.DeepEqual(view.Features, usable.Features) || !reflect.DeepEqual(view.Credits, usable.Credits) {
+			t.Fatal("a source error removed previously usable geometry or attribution")
+		}
+		retryAt := view.Sources[0].RefreshAt
+		hasRetryDeadline := retryAt != nil && retryAt.Equal(now.Add(10*time.Second))
+		if view.status() != "Source request failed" || !hasRetryDeadline {
+			t.Fatal("retaining old geometry hid the error or retry deadline")
+		}
+	}
+	now = now.Add(10 * time.Second)
+	empty := oneSourceRequest(t, loader.poll(
+		context.Background(),
+		camera,
+		now,
+		false,
+	))
+	loader.accept(empty.run(), camera, now)
+	view := loader.view()
+	if len(view.Features) != 0 || len(view.Credits) != 0 || view.status() != "" {
+		t.Fatal("a successful empty snapshot retained stale data or failure status")
+	}
+}
+
 func TestSourceViewCombinesAttributionWithoutMutatingSnapshots(t *testing.T) {
 	features := make([]Feature, 1, 2)
 	features[0].Label = "first"

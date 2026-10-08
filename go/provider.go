@@ -357,6 +357,7 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 	}
 	if !retryAt.IsZero() {
 		snapshot.RefreshAt = retryAt
+		snapshot.Failed = true
 	}
 	if !snapshot.RefreshAt.IsZero() && snapshot.RefreshAt.Before(p.now().Add(time.Second)) {
 		snapshot.RefreshAt = p.now().Add(time.Second)
