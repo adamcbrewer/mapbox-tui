@@ -1,14 +1,70 @@
 # Validation
 
+## Local Git checks
+
+The bundled hooks require Make, Python 3 and the Go version declared in `go.mod`,
+with `go` and `gofmt` available on `PATH` when Git runs. With mise, use its shims
+or run Git through `mise exec go@1.27.1 --`.
+
+From the repository root, inspect any existing hook setup before enabling:
+
+```sh
+git config --get core.hooksPath
+git config --local core.hooksPath .githooks
+```
+
+If you already use hooks in another directory or `.git/hooks`, add these Make
+commands to that setup instead of replacing it. No hook framework is required.
+
+| Hook | Reproduce manually | Scope |
+|---|---|---|
+| Pre-commit | `make pre-commit` | Staged whitespace and staged Go formatting; reads the index, including partially staged files, without rewriting or staging anything |
+| Pre-push | `make check` | Working-tree Go formatting, build/tests/vet, CLI/MCP parity and Go race checks |
+
+Terminal interactions stay out of pre-push to keep local checks lighter; run
+`make interactions` for viewer changes. To disable this hook setup, use
+`git config --local --unset core.hooksPath`, or restore your previous value.
+
+## CI and required merge checks
+
+GitHub Actions runs on every pull request and push to `main`. It reads the Go
+version from `go.mod` and uses Make and Python 3 from the Ubuntu runner. The
+terminal job installs tmux, `rsvg-convert` (`librsvg2-bin`) and DejaVu fonts.
+All jobs explicitly set `MAPBOX_ACCESS_TOKEN=""`; tests use fake providers and
+do not need credentials or make live Mapbox requests. Superseded runs for the
+same pull request or branch are cancelled. Terminal captures are uploaded on
+failure and retained for seven days.
+
+Agreed required checks for merging to `main` (issue #8):
+
+| Required check | Local equivalent |
+|---|---|
+| **Go checks** | `make format-check test` |
+| **Race checks** | `make race` |
+| **Terminal interactions** | `make interactions` |
+
+Configure these exact names in the `main` branch protection/ruleset once the first
+CI run publishes them. The workflow defines the checks; merge enforcement is a
+separate repository setting.
+
+CI actions use commit-hash pins, read-only repository permissions and checkout
+without persisted credentials. Setup follows the dependency-minimisation and
+deterministic-install principles in the
+[supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+
 ## Automated checks
 
 From the repository root:
 
 ```sh
-make test
+make format-check
+MAPBOX_ACCESS_TOKEN='' make test
+make race
+make interactions
 ```
 
-This builds `bin/shoe`, runs Go tests and `go vet`, then checks the CLI and local
+`make check` combines formatting, `make test` and race checks. `make test` builds
+`bin/shoe`, runs Go tests and `go vet`, then checks the CLI and local
 stdio MCP server. It covers GPX/FIT/TCX/KML topology and missing measurements,
 camera/picking, playback/profile behaviour, tile decoding and cache policy, token-free provider
 errors, free-roam navigation and route transitions, tool schemas, and CLI/MCP
@@ -69,8 +125,6 @@ Optional checks, after building:
 ```sh
 make fixtures
 make bench
-python3 scripts/interactions.py
-mise exec go@1.27.1 -- go test -race ./go
 mise exec go@1.27.1 -- go test ./go -run '^$' -bench BenchmarkWorkspaceScene -benchmem
 ```
 

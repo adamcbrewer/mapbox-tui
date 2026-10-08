@@ -374,7 +374,8 @@ Python 3 is required for the development and validation scripts:
 ```sh
 make dev
 make dev ARGS='fixtures/example.gpx --zoom 13'
-make test
+make check
+make interactions
 make fixtures
 make bench
 ```
@@ -383,14 +384,22 @@ The development watcher rebuilds and restarts the viewer when Go/build inputs or
 bundled TOML palettes change. It requires a Unix-like interactive terminal; view
 state resets on restart.
 
-`make test` builds, runs Go tests and vet, then checks CLI/MCP consistency without
-Mapbox credentials. Benchmarks and captures are generated locally under ignored
-`reports/`. See [validation notes](docs/VALIDATION.md) for interaction and live
-provider checks.
+`make check` checks Go formatting, builds, runs tests and vet, checks CLI/MCP
+consistency, and runs the race detector. `make test` runs just the build/test/vet
+and CLI/MCP suite. These checks disable Mapbox credentials explicitly.
+`make interactions` also checks the terminal viewer; it needs tmux and
+`rsvg-convert`. CI runs all three required checks on pull requests and pushes to
+main. Benchmarks and captures are generated under ignored `reports/`.
+
+Enable the bundled pre-commit and pre-push hooks with
+`git config --local core.hooksPath .githooks`. See [validation notes](docs/VALIDATION.md)
+for the hook split, existing-hook setup, required CI checks and live provider checks.
 
 Dependencies are pinned in `go.mod` with checksums in `go.sum`. Setup follows the
 dependency-minimisation and deterministic-install principles in this
 [supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+CI actions are pinned to commit hashes and use a read-only repository token;
+checkout does not persist credentials.
 
 ## Limitations
 
