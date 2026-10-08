@@ -103,6 +103,8 @@ Opening another file adds it to the workspace, selects its first item containing
 track points (or a waypoint-only item) and fits the camera to that item. Reopening
 the same absolute path selects the existing import and restores its visibility;
 it does not reread changed file contents. Remove it first to import it again.
+Camera flags supplied at startup apply after all initial files load; later
+interactive imports use the usual fit-new-item behaviour.
 
 Press **Ctrl-L** for loaded files and their individual routes, activities or
 placemarks. File IDs distinguish equally named files; the selected row also shows
@@ -134,7 +136,8 @@ the map, elevation chart and Ctrl-L list, even when selection or visibility chan
 The six-colour palette cycles for larger workspaces. A colour key below the map
 shows item references and names; `*` identifies the selected item. Active routes use
 `#` and other routes use `*` in ASCII mode. The active item wins overlaps;
-otherwise later-loaded items win equal-distance picking ties. Selection markers
+clicking an occupied cell selects its displayed item. Elsewhere, nearest geometry
+wins, with later-loaded items winning equal-distance picking ties. Selection markers
 take priority over route geometry and map labels.
 
 Activity reordering and journey-wide playback are tracked separately in
@@ -154,8 +157,8 @@ Mapbox requests use your account and may incur charges. Provider errors leave th
 file inspectable. See [provider notes](docs/PROVIDERS.md) for caching and attribution
 requirements, including the unresolved graphical-logo requirement.
 
-The viewer cancels obsolete viewport requests and refreshes stationary views as
-tiles expire. Uncacheable responses use a 60-second refresh interval; provider
+The viewer cancels requests for obsolete tile coverage and refreshes stationary
+views as tiles expire. Uncacheable responses use a 60-second refresh interval; provider
 backoff still applies. Press `v` to see source status, refresh deadlines and credit
 links. CLI/MCP renders remain one-shot requests and expose this information in
 `scene.sources`; they do not run background refresh loops.

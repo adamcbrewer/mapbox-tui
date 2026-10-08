@@ -67,6 +67,65 @@ func TestViewerLoadsMultipleFilesAndFitsOnlyVisibleItems(t *testing.T) {
 	}
 }
 
+func TestViewerStartupCameraOverridesApplyAfterAllFilesAndOnlyOnce(t *testing.T) {
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
+	zoom, bearing, lon, lat := 13.0, 45.0, 10.0, 20.0
+	for _, paths := range [][2]string{
+		{"../fixtures/example.gpx", "../fixtures/waypoints.gpx"},
+		{"../fixtures/example.gpx", "../fixtures/invalid.gpx"},
+		{"../fixtures/invalid.gpx", "../fixtures/waypoints.gpx"},
+	} {
+		t.Run(strings.Join(paths[:], "+"), func(t *testing.T) {
+			m := &viewer{provider: newProvider("none"), ctx: context.Background(), width: 120, height: 40, camera: fit(nil, 88, 34, 2), showProfile: true,
+				args: Args{Zoom: &zoom, Bearing: &bearing, Lon: &lon, Lat: &lat}, pendingPaths: []string{paths[1]}}
+			if err := m.initUI(); err != nil {
+				t.Fatal(err)
+			}
+			runLoadCommand(m, m.load(paths[0]))
+			if paths[0] == "../fixtures/example.gpx" && paths[1] == "../fixtures/waypoints.gpx" && (len(m.workspace.documents) != 2 || m.camera.Zoom != zoom || m.camera.Bearing != bearing || m.camera.Center != project(lon, lat)) {
+				t.Fatal("queued startup imports discarded the explicit camera settings", m.camera)
+			}
+			if m.startupCameraPending || len(m.pendingPaths) > 0 || !m.initialised {
+				t.Fatal("startup completion or failure retained pending camera overrides")
+			}
+			m.closeDialog()
+			path := importFile(t, "later.gpx", []byte(`<gpx><rte><rtept lat="52" lon="1"/><rtept lat="52" lon="1.01"/></rte></gpx>`))
+			runLoadCommand(m, m.load(path))
+			if m.camera != fit(m.activeTrack(), m.camera.Width, m.camera.Height, m.camera.Aspect) {
+				t.Fatal("an interactive import reused startup camera overrides", m.camera)
+			}
+		})
+	}
+}
+
+func TestLoadedFilesChangesStopAnimationWithoutMovingCurrentCamera(t *testing.T) {
+	for _, action := range []string{"space", "delete", "D"} {
+		t.Run(action, func(t *testing.T) {
+			m := themeViewer(t, 120, 40, false)
+			m.settings.NoAnimation = false
+			p := m.activePlayback()
+			p.toggle()
+			target := m.camera
+			target.pan(16, 8)
+			target.Zoom++
+			target.Bearing += 45
+			m.moveCamera(target)
+			m.following = true
+			m.motion.advance(&m.camera, .016)
+			before := m.camera
+			m.openDialog(dialogWorkspace)
+			m.updateWorkspaceDialog(action)
+			if m.camera.Center != before.Center || m.camera.Zoom != before.Zoom || m.camera.Bearing != before.Bearing || m.motion.Active || m.following || p.Playing || m.workspace.selection != nil {
+				t.Fatal("hiding/removing the active item moved the view or retained animation/playback", m.camera, before)
+			}
+			m.motion.advance(&m.camera, 1)
+			if m.camera.Center != before.Center || m.camera.Zoom != before.Zoom || m.camera.Bearing != before.Bearing {
+				t.Fatal("a cancelled camera transition resumed")
+			}
+		})
+	}
+}
+
 func TestLoadedFilesDialogShowsOwnershipAndClearsRemovedActiveState(t *testing.T) {
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	m := &viewer{provider: newProvider("none"), ctx: context.Background(), width: 120, height: 40, camera: fit(nil, 88, 34, 2), showProfile: true}

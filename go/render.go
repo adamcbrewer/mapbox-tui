@@ -51,19 +51,31 @@ type Cell struct {
 	Role  mapRole
 	Text  rune
 	Color activityColor
+	owner ItemRef
 }
 type Grid struct {
 	Width, Height int
 	Cells         []Cell
+	owner         ItemRef
+	sample        *[2]int
 }
 
-func newGrid(w, h int) Grid { return Grid{w, h, make([]Cell, w*h)} }
+func newGrid(w, h int) Grid { return Grid{Width: w, Height: h, Cells: make([]Cell, w*h)} }
+func (g *Grid) cell(x, y int) *Cell {
+	if g.sample != nil {
+		if x != g.sample[0] || y != g.sample[1] {
+			return nil
+		}
+		return &g.Cells[0]
+	}
+	return &g.Cells[y*g.Width+x]
+}
 func (g *Grid) dot(x, y int, role mapRole, colors ...activityColor) {
 	if x < 0 || y < 0 || x >= g.Width*2 || y >= g.Height*4 {
 		return
 	}
-	c := &g.Cells[y/4*g.Width+x/2]
-	if mapStyles[role].priority < mapStyles[c.Role].priority {
+	c := g.cell(x/2, y/4)
+	if c == nil || mapStyles[role].priority < mapStyles[c.Role].priority {
 		return
 	}
 	color := activitySwatch(colors...)
@@ -75,8 +87,16 @@ func (g *Grid) dot(x, y int, role mapRole, colors ...activityColor) {
 	}
 	bits := [2][4]uint8{{1, 2, 4, 64}, {8, 16, 32, 128}}
 	c.Bits |= bits[x%2][y%4]
+	c.owner = g.owner
 }
 func (g *Grid) line(a, b XY, role mapRole, colors ...activityColor) {
+	if g.sample != nil {
+		// Reject distant lines without changing viewport clipping or raster rounding.
+		x, y := float64(g.sample[0]*2), float64(g.sample[1]*4)
+		if math.Max(a.X, b.X) < x-0.5 || math.Min(a.X, b.X) > x+1.5 || math.Max(a.Y, b.Y) < y-0.5 || math.Min(a.Y, b.Y) > y+3.5 {
+			return
+		}
+	}
 	dx, dy := b.X-a.X, b.Y-a.Y
 	lo, hi := 0.0, 1.0
 	for _, v := range [][2]float64{{-dx, a.X}, {dx, float64(g.Width*2-1) - a.X}, {-dy, a.Y}, {dy, float64(g.Height*4-1) - a.Y}} {
@@ -135,13 +155,15 @@ func (g *Grid) label(p XY, s string, role mapRole, collision bool, colors ...act
 		return
 	}
 	for i := range r {
-		c := g.Cells[y*g.Width+x+i]
-		if mapStyles[c.Role].priority > mapStyles[role].priority || (collision && (c.Text != 0 || mapStyles[c.Role].priority >= mapStyles[roleRoute].priority)) {
+		c := g.cell(x+i, y)
+		if c != nil && (mapStyles[c.Role].priority > mapStyles[role].priority || (collision && (c.Text != 0 || mapStyles[c.Role].priority >= mapStyles[roleRoute].priority))) {
 			return
 		}
 	}
 	for i, v := range r {
-		g.Cells[y*g.Width+x+i] = Cell{Bits: 0, Role: role, Text: v, Color: activitySwatch(colors...)}
+		if c := g.cell(x+i, y); c != nil {
+			*c = Cell{Bits: 0, Role: role, Text: v, Color: activitySwatch(colors...), owner: g.owner}
+		}
 	}
 }
 func render(t *Track, c Camera, features []Feature, selected int, ascii bool) Grid {
@@ -182,12 +204,44 @@ func renderScene(c Camera, features []Feature, items []sceneItem, cursor *XY) Gr
 			}
 		}
 	}
+	cursorRef, cursorColor := renderSceneItems(&g, c, items)
+	g.owner = ItemRef{}
+	for _, f := range features {
+		if f.Label != "" && len(f.Parts) > 0 && len(f.Parts[0]) > 0 {
+			g.label(c.screen(f.Parts[0][0]), f.Label, rolePlace, true)
+		}
+	}
+	if cursor != nil {
+		g.owner = cursorRef
+		g.label(c.screen(*cursor), "@", roleCursor, false, cursorColor)
+	}
+	return g
+}
+
+func renderSceneCell(c Camera, items []sceneItem, cursor *XY, point XY) Cell {
+	x, y := int(math.Floor(point.X/2)), int(math.Floor(point.Y/4))
+	if x < 0 || y < 0 || x >= c.Width || y >= c.Height {
+		return Cell{}
+	}
+	g := Grid{Width: c.Width, Height: c.Height, Cells: make([]Cell, 1), sample: &[2]int{x, y}}
+	cursorRef, cursorColor := renderSceneItems(&g, c, items)
+	if cursor != nil {
+		g.owner = cursorRef
+		g.label(c.screen(*cursor), "@", roleCursor, false, cursorColor)
+	}
+	return g.Cells[0]
+}
+
+func renderSceneItems(g *Grid, c Camera, items []sceneItem) (ItemRef, activityColor) {
+	var cursorRef ItemRef
 	var cursorColor activityColor
 	for _, item := range items {
+		g.owner = item.Ref
 		t := item.Track
 		lineRole, markerRole := roleRoute, roleMarker
 		if item.Active {
 			lineRole, markerRole = roleActiveRoute, roleActiveMarker
+			cursorRef = item.Ref
 			cursorColor = item.Color
 		}
 		for _, s := range t.Segments {
@@ -209,15 +263,7 @@ func renderScene(c Camera, features []Feature, items []sceneItem, cursor *XY) Gr
 			g.label(c.screen(p.World), "W", markerRole, false, item.Color)
 		}
 	}
-	for _, f := range features {
-		if f.Label != "" && len(f.Parts) > 0 && len(f.Parts[0]) > 0 {
-			g.label(c.screen(f.Parts[0][0]), f.Label, rolePlace, true)
-		}
-	}
-	if cursor != nil {
-		g.label(c.screen(*cursor), "@", roleCursor, false, cursorColor)
-	}
-	return g
+	return cursorRef, cursorColor
 }
 func (g Grid) glyph(c Cell, ascii bool) rune {
 	if c.Text != 0 {

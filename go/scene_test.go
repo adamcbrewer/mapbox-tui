@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +36,158 @@ func TestSceneOverlapAndPickingPreferActiveItem(t *testing.T) {
 	}
 	if ref, _ := w.pick(c, mid); ref != second {
 		t.Fatal("hidden geometry remained pickable")
+	}
+}
+
+func addScreenItem(t *testing.T, w *Workspace, c Camera, points, waypoints []XY) ItemRef {
+	t.Helper()
+	d := &Document{Path: fmt.Sprintf("scene-%d.gpx", len(w.documents))}
+	track := d.addItem("track").Track
+	for _, p := range points {
+		ll := unproject(c.world(p))
+		track.Points = append(track.Points, Point{Lon: ll.X, Lat: ll.Y})
+	}
+	if len(points) > 0 {
+		track.Segments = []Segment{{Kind: "track", End: len(points)}}
+	}
+	for _, p := range waypoints {
+		ll := unproject(c.world(p))
+		track.Waypoints = append(track.Waypoints, Point{Lon: ll.X, Lat: ll.Y})
+	}
+	if err := d.prepare(); err != nil {
+		t.Fatal(err)
+	}
+	return w.addDocument(d)
+}
+
+func TestScenePickingMatchesOccupiedCell(t *testing.T) {
+	near := []XY{{20, 62}, {100, 62}}
+	far := []XY{{20, 60.25}, {100, 60.25}}
+	type geometry struct{ points, waypoints []XY }
+	tests := []struct {
+		name           string
+		items          []geometry
+		active, winner int
+		role           mapRole
+		text           rune
+		waypoint       bool
+	}{
+		{"active route", []geometry{{points: far}, {points: near}}, 0, 0, roleActiveRoute, 0, false},
+		{"later inactive route", []geometry{{points: near}, {points: far}}, -1, 1, roleRoute, 0, false},
+		{"inactive waypoint above route", []geometry{{waypoints: []XY{{61, 60.25}}}, {points: near}}, -1, 0, roleMarker, 'W', true},
+		{"active route above inactive waypoint", []geometry{{points: far}, {waypoints: []XY{{61, 62}}}}, 0, 0, roleActiveRoute, 0, false},
+		{"waypoint above its own route", []geometry{{points: near, waypoints: []XY{{61, 60.25}}}}, 0, 0, roleActiveMarker, 'W', true},
+		{"endpoint above later route", []geometry{{points: []XY{{20, 60.25}, {61, 60.25}}}, {points: near}}, -1, 0, roleMarker, 'E', false},
+		{"later inactive waypoint", []geometry{{waypoints: []XY{{61, 62}}}, {waypoints: []XY{{61, 60.25}}}}, -1, 1, roleMarker, 'W', true},
+		{"cursor above waypoint", []geometry{{points: []XY{{61, 60.25}, {100, 60.25}}, waypoints: []XY{{61, 62}}}}, 0, 0, roleCursor, '@', false},
+		{"reused colour", []geometry{{points: near}, {points: []XY{{20, 8}, {100, 8}}}, {points: []XY{{20, 12}, {100, 12}}}, {points: []XY{{20, 16}, {100, 16}}}, {points: []XY{{20, 20}, {100, 20}}}, {points: []XY{{20, 24}, {100, 24}}}, {points: far}}, -1, 6, roleRoute, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := fit(nil, 60, 30, 2)
+			c.Zoom = 12
+			var w Workspace
+			var refs []ItemRef
+			for _, item := range tt.items {
+				refs = append(refs, addScreenItem(t, &w, c, item.points, item.waypoints))
+			}
+			w.clearSelection()
+			if tt.active >= 0 {
+				if err := w.selectItem(refs[tt.active]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var cursor *XY
+			if pos := w.position(); pos != nil {
+				cursor = &pos.World
+			}
+			g := renderScene(c, nil, w.sceneItems(), cursor)
+			cell := g.Cells[15*g.Width+30]
+			winner := refs[tt.winner]
+			if cell.owner != winner || cell.Role != tt.role || cell.Text != tt.text || cell.Color != w.items()[tt.winner].Color {
+				t.Fatalf("unexpected cell winner: %+v", cell)
+			}
+			ref, index := w.pick(c, XY{61, 62})
+			if ref != winner || (index == -1) != tt.waypoint {
+				t.Fatalf("picked %v point %d instead of cell owner %v (waypoint=%t)", ref, index, winner, tt.waypoint)
+			}
+			for _, ascii := range []bool{false, true} {
+				t.Run(fmt.Sprintf("ascii=%t", ascii), func(t *testing.T) {
+					glyph := tt.text
+					if glyph == 0 {
+						glyph = rune(0x2800) + rune(cell.Bits)
+						if ascii {
+							glyph = mapStyles[tt.role].ascii
+						}
+					}
+					plain := g.plain(ascii)
+					if strings.Contains(plain, "\x1b") || []rune(strings.Split(plain, "\n")[15])[30] != glyph {
+						t.Fatal("plain scene lost its winning glyph or included ANSI escapes")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestSceneCellProbeMatchesClippedAndRotatedRendering(t *testing.T) {
+	c := fit(nil, 30, 12, 2)
+	c.Zoom = 12
+	var w Workspace
+	first := addScreenItem(t, &w, c, []XY{{-40, 5.5}, {18.25, 24.5}, {18.5, 24.75}, {18.75, 24.5}, {100, 39.5}}, []XY{{18.5, 24.25}})
+	addScreenItem(t, &w, c, []XY{{20, -40}, {30, 20}, {40, 90}}, []XY{{30, 20.5}})
+	for _, active := range []bool{false, true} {
+		w.clearSelection()
+		if active {
+			if err := w.selectItem(first); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.seek(1); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var cursor *XY
+		if pos := w.position(); pos != nil {
+			cursor = &pos.World
+		}
+		for _, bearing := range []float64{0, 37} {
+			c.Bearing = bearing
+			items := w.sceneItems()
+			g := renderScene(c, nil, items, cursor)
+			for y := 0; y < c.Height; y++ {
+				for x := 0; x < c.Width; x++ {
+					point := XY{float64(x*2 + 1), float64(y*4 + 2)}
+					if got, want := renderSceneCell(c, items, cursor, point), g.Cells[y*g.Width+x]; got != want {
+						t.Fatalf("active=%t bearing=%g cell=(%d,%d): probe %+v; rendered %+v", active, bearing, x, y, got, want)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestWorkspacePickingKeepsNearestGeometryInEmptyCells(t *testing.T) {
+	c := fit(nil, 60, 30, 2)
+	c.Zoom = 12
+	var w Workspace
+	active := addScreenItem(t, &w, c, []XY{{20, 58}, {100, 58}}, nil)
+	nearer := addScreenItem(t, &w, c, []XY{{20, 66}, {100, 66}}, nil)
+	if err := w.selectItem(active); err != nil {
+		t.Fatal(err)
+	}
+	point := XY{61, 62.5}
+	if cell := renderSceneCell(c, w.sceneItems(), nil, point); cell.owner != (ItemRef{}) {
+		t.Fatal("nearest-geometry regression does not click an empty cell", cell)
+	}
+	if ref, index := w.pick(c, point); ref != nearer || index < 0 {
+		t.Fatal("active precedence replaced nearest-geometry picking in an empty cell", ref, index)
+	}
+	pin := addScreenItem(t, &w, c, nil, []XY{{81, 65.25}})
+	if ref, index := w.pick(c, XY{81, 62.5}); ref != pin || index != -1 {
+		t.Fatal("nearby waypoint lost nearest-geometry picking outside its marker cell", ref, index)
+	}
+	if ref, _ := w.pick(c, XY{61, 90}); ref != (ItemRef{}) {
+		t.Fatal("empty-cell picking lost its distance tolerance", ref)
 	}
 }
 

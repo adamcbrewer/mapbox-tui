@@ -24,6 +24,10 @@ type mapSource interface {
 	load(context.Context, Camera) (sourceSnapshot, error)
 }
 
+type sourceRequestMatcher interface {
+	sameRequest(Camera, Camera) bool
+}
+
 type sourceRequest struct {
 	name       string
 	generation uint64
@@ -69,11 +73,19 @@ func (s *sourceState) invalidate() {
 	s.generation++
 }
 
-func (s *sourceState) observe(camera Camera, now time.Time) {
-	if !s.hasView || s.wanted != camera {
-		s.invalidate()
-		s.wanted, s.hasView, s.changed = camera, true, now
+func (s *sourceState) sameRequest(a, b Camera) bool {
+	if source, ok := s.source.(sourceRequestMatcher); ok {
+		return source.sameRequest(a, b)
 	}
+	return a == b
+}
+
+func (s *sourceState) observe(camera Camera, now time.Time) {
+	if !s.hasView || !s.sameRequest(s.wanted, camera) {
+		s.invalidate()
+		s.changed = now
+	}
+	s.wanted, s.hasView = camera, true
 }
 
 type sourceLoader struct{ states []*sourceState }
@@ -112,7 +124,7 @@ func (l *sourceLoader) poll(ctx context.Context, camera Camera, now time.Time, m
 			continue
 		}
 		if state.hasRequest {
-			if state.requested != camera || !state.completed {
+			if !state.sameRequest(state.requested, camera) || !state.completed {
 				if now.Sub(state.changed) < 100*time.Millisecond && !(moving && now.Sub(state.started) >= 250*time.Millisecond) {
 					continue
 				}
@@ -135,7 +147,7 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 			continue
 		}
 		state.observe(camera, now)
-		if state.generation != result.generation || state.cancel == nil || result.camera != camera {
+		if state.generation != result.generation || state.cancel == nil || !state.sameRequest(result.camera, camera) {
 			return false
 		}
 		state.cancel()

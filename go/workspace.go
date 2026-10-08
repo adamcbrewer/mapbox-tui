@@ -306,9 +306,26 @@ func (w *Workspace) sceneItems() []sceneItem {
 }
 
 func (w *Workspace) pick(c Camera, point XY) (ItemRef, int) {
+	items := w.sceneItems()
+	var cursor *XY
+	if position := w.position(); position != nil {
+		cursor = &position.World
+	}
+	cell := renderSceneCell(c, items, cursor, point)
+	if cell.owner != (ItemRef{}) {
+		if cell.Text == 'W' {
+			return cell.owner, -1
+		}
+		for _, item := range items {
+			if item.Ref == cell.owner {
+				index, _ := pickDistance(item.Track, c, point)
+				return item.Ref, index
+			}
+		}
+	}
 	var ref ItemRef
 	index, best, active := -1, 6.0, false
-	for _, item := range w.sceneItems() {
+	for _, item := range items {
 		i, distance := pickDistance(item.Track, c, point)
 		for _, waypoint := range item.Track.Waypoints {
 			p := c.screen(waypoint.World)

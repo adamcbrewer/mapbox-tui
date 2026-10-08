@@ -80,6 +80,7 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 	case "delete", "backspace", "D":
 		m.loadID++
 		m.loading, m.pendingPaths = false, nil
+		m.startupCameraPending = false
 		if row.ref.ItemID == 0 || key == "D" {
 			err = m.workspace.removeDocument(row.ref.DocumentID)
 		} else {

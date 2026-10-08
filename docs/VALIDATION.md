@@ -35,14 +35,21 @@ hidden items and waypoint-only imports. Profile checks cover consecutive distanc
 sections, summed distance, common elevation scale, ordering, missing measurements,
 cursor offsets, visibility and cache invalidation.
 Scene tests cover stable per-item colours, active-item overlap
-priority, waypoint picking, gaps between files and negative-zoom fitting. CLI/MCP
-checks exercise item selectors, duplicate loads, listing, visibility, item/file
+priority, waypoint picking, gaps between files and negative-zoom fitting.
+Occupied-cell picking checks match rendered ownership in Braille/ASCII mode,
+including shared colours, markers, clipping and rotation. Viewer checks cover
+multi-file startup camera overrides, first/queued import failure recovery and
+hiding/removing an active item during camera animation without moving the view.
+CLI/MCP checks exercise item selectors, duplicate loads, listing, visibility, item/file
 removal and multi-file rendering parity. A fake-provider test checks that network
 rendering does not hold the workspace lifecycle lock.
 
 Source lifecycle tests use controlled clocks and fake sources/transports to check
 viewport cancellation, delayed/out-of-order results, source replacement and
 visibility, stationary refresh, independent source completion and shutdown.
+Provider-specific tests prove moving-camera requests complete within unchanged
+tile coverage, retain fresh snapshots and refresh on expiry; obsolete coverage
+still cancels and superseded generations stay rejected.
 They cover returning to a cancelled viewport, cache expiry and `Age`, no-store/
 no-cache behaviour, HTTP 429 recovery, malformed/oversized bodies, cache replacement
 and cancellation while waiting for another batch. Viewer tests verify that file

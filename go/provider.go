@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,6 +108,9 @@ func visible(c Camera) []Tile {
 		}
 		return out
 	}
+}
+func (p *Provider) sameRequest(a, b Camera) bool {
+	return a == b || p.Kind != "mapbox" || p.token == "" || slices.Equal(visible(a), visible(b))
 }
 func ttl(header string) time.Duration {
 	age := 0

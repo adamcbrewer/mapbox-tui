@@ -32,6 +32,7 @@ type viewer struct {
 	settings                  viewerSettings
 	workspace                 Workspace
 	pendingPaths              []string
+	startupCameraPending      bool
 	initialised               bool
 	provider                  *Provider
 	sources                   sourceLoader
@@ -74,6 +75,7 @@ func (m *viewer) freeRoam() tea.Cmd {
 	m.loadID++
 	m.workspace.clearSelection()
 	m.pendingPaths = nil
+	m.startupCameraPending = false
 	m.initialised = true
 	m.camera = m.destination()
 	m.motion.Active = false
@@ -126,7 +128,6 @@ func (m *viewer) activeSwatch() activityColor {
 	return 0
 }
 func (m *viewer) selectionChanged() {
-	m.camera = m.destination()
 	m.motion.Active, m.following = false, false
 	m.inspected = nil
 	m.lastTick = time.Now()
@@ -198,6 +199,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		if v.err != nil {
 			m.pendingPaths = nil
+			m.startupCameraPending = false
+			m.initialised = true
 			m.dirty = true
 			cmd := m.openDialog(dialogFiles)
 			m.ui.notice = "Could not open track file: " + v.err.Error()
@@ -207,21 +210,20 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.initialised = true
 		m.path = v.path
 		ref := m.workspace.addDocument(v.document)
-		a := Args{Aspect: m.args.Aspect}
 		if initial {
-			a = m.args
-			if a.ItemID != nil {
-				if err := m.workspace.selectItem(ItemRef{ref.DocumentID, *a.ItemID}); err != nil {
+			m.startupCameraPending = true
+			if m.args.ItemID != nil {
+				if err := m.workspace.selectItem(ItemRef{ref.DocumentID, *m.args.ItemID}); err != nil {
 					m.fatal = err
 					return m, tea.Quit
 				}
 			}
-			if a.PointIndex != nil {
+			if m.args.PointIndex != nil {
 				var err error
-				if a.ItemID != nil {
-					err = m.workspace.seek(*a.PointIndex)
+				if m.args.ItemID != nil {
+					err = m.workspace.seek(*m.args.PointIndex)
 				} else {
-					err = m.workspace.selectDocumentPoint(ref.DocumentID, *a.PointIndex)
+					err = m.workspace.selectDocumentPoint(ref.DocumentID, *m.args.PointIndex)
 				}
 				if err != nil {
 					m.fatal = err
@@ -230,6 +232,11 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.selectionChanged()
+		a := Args{Aspect: m.args.Aspect}
+		if m.startupCameraPending && len(m.pendingPaths) == 0 {
+			a = m.args
+			m.startupCameraPending = false
+		}
 		w, h := m.camera.Width, m.camera.Height
 		vw, vh := max(10, min(300, w)), max(5, min(100, h))
 		a.Width = &vw

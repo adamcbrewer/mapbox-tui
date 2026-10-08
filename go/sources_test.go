@@ -68,6 +68,29 @@ func TestSourcesReturningToCancelledViewportStartsAnotherRequest(t *testing.T) {
 	}
 }
 
+func TestSourcesCameraIndependentProvidersDoNotReload(t *testing.T) {
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
+	for _, kind := range []string{"none", "mapbox"} {
+		t.Run(kind, func(t *testing.T) {
+			now := time.Unix(1000, 0)
+			a := fit(nil, 120, 40, 2)
+			b := a
+			b.pan(20, 0)
+			b.Zoom = 12
+			var loader sourceLoader
+			t.Cleanup(loader.close)
+			loader.set("basemap", newProvider(kind), true)
+			first := oneSourceRequest(t, loader.poll(context.Background(), a, now, false))
+			if !loader.accept(first.run(), b, now.Add(50*time.Millisecond)) {
+				t.Fatal("camera-independent provider result was rejected after movement")
+			}
+			if jobs := loader.poll(context.Background(), b, now.Add(time.Second), false); len(jobs) != 0 {
+				t.Fatal("camera-independent provider reloaded after movement")
+			}
+		})
+	}
+}
+
 func TestSourcesRefreshIndependentlyWhileAnotherSourceIsBlocked(t *testing.T) {
 	now := time.Unix(1000, 0)
 	c := fit(nil, 120, 40, 2)

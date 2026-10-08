@@ -38,10 +38,13 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 - Each source owns its request state, usable snapshot and refresh deadline. A slow
   or failed source does not block other sources or imported geometry. Mapbox
   Streets is currently the only external source; traffic is not implemented.
-- Camera changes cancel obsolete work and are debounced for 100 ms. Continuously
+- Changes to source request inputs cancel obsolete work and are debounced for 100 ms.
+  For Mapbox, relevance follows the visible tile set: movement within the same
+  coverage lets an in-flight batch finish and retains fresh snapshots. Continuously
   moving playback can request an update every 250 ms without waiting for the
-  camera to settle. Late results are rejected by source generation and viewport,
-  including after source replacement or disabling.
+  camera to settle. Late results are rejected by source generation and request relevance,
+  including after source replacement or disabling. Sources without a request-input
+  matcher retain exact-viewport relevance checks.
 - One tile batch per provider runs at a time, with sequential requests. Waiting
   for a batch is cancellable; network I/O does not hold the cache/statistics mutex.
   Cancellation itself does not increment provider errors or start backoff.
