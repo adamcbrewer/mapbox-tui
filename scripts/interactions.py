@@ -125,10 +125,12 @@ def scenario(binary, width, height):
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
         wait_for(lambda s: "Route details" in s and "Elevation profile" in s and "Loading basemap" not in s)
+        settled()
+        send("f")
+        initial = settled()
         folder = ROOT / "reports/generated"
         folder.mkdir(exist_ok=True, parents=True)
         save_svg(folder / f"{binary.name}-{width}x{height}.svg", width, height)
-        initial = capture()
         assert "No basemap" in initial and "token missing" not in initial, "token-free GPX viewing did not use a quiet empty canvas"
         zoom = re.search(r"Zoom ([\d.]+)", initial).group(1)
         send("]")
@@ -658,7 +660,9 @@ def auth_setup(binary):
         "schema_version": 1,
         "global_options": [{"flag": flag, "values": ["text", "json"]}
                            for flag in ("--profile", "--use-login", "--output", "--timeout")],
-        "commands": [{"command": "mapbox " + name, "arguments": [{"flag": flag} for flag in flags]}
+        "commands": [{"command": "mapbox " + name,
+                      "arguments": [{"flag": flag, "values": ["pk", "sk"] if flag == "--usage" else []}
+                                    for flag in flags]}
                      for name, flags in operations.items()],
     })
     with tempfile.TemporaryDirectory() as folder:
@@ -685,6 +689,8 @@ def auth_setup(binary):
                 send("\x10Mapbox")
                 wait_for(lambda s: "Mapbox account" in s)
                 send("\r")
+                wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Up")
                 wait_for(lambda s: "Mapbox setup" in s and "Sign in" in s)
                 send("\r")
                 wait_for(lambda s: "Mapbox setup" in s and marker.exists())
