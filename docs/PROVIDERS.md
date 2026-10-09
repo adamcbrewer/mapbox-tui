@@ -127,6 +127,8 @@ The journey planner uses user-triggered location lookups:
   after the usual pause. `--no-provider` disables only the basemap; search availability
   still follows the selected token. An explicitly empty environment token disables
   both discovery and search. Requests include text and the current map-centre bias.
+  Complete coordinates and unfinished numeric coordinate prefixes do not trigger
+  searches. Numbered addresses and plain numeric postcodes remain searchable.
 - Coordinates in latitude/longitude order and the current map centre are usable
   without a token or network. Location lookup does not call Directions or Matrix.
 

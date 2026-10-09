@@ -244,6 +244,15 @@ func coordinateLocation(input string) (placeLocation, bool, error) {
 	}, true, nil
 }
 
+func coordinatePrefix(input string) bool {
+	if !strings.ContainsAny(input, ",.+-") {
+		return false
+	}
+	return !strings.ContainsFunc(input, func(r rune) bool {
+		return !strings.ContainsRune("0123456789eE,+-.", r) && !unicode.IsSpace(r)
+	})
+}
+
 func validLocation(lon, lat float64) bool {
 	finite := !math.IsNaN(lon) && !math.IsNaN(lat) && !math.IsInf(lon, 0) && !math.IsInf(lat, 0)
 	return finite && math.Abs(lon) <= 180 && math.Abs(lat) <= 90

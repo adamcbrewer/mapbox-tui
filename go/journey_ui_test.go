@@ -242,11 +242,41 @@ func TestJourneyConnectedCoordinatesAndShortQueriesDoNotSearch(t *testing.T) {
 	m.places.token = "token"
 	m.openJourney()
 	m.editJourneyLocation(0)
-	for _, query := range []string{"", "Hi", "51.5, -0.1"} {
+	for _, query := range []string{
+		"", "Hi", "51", "-51", "51.", "51.5", "51.5,", "51.5, ",
+		"51.5, -", "51.5, -0.", "51.5, -0.1", "5.15e1, -",
+	} {
 		m.ui.search.SetValue(query)
 		if m.schedulePlaceSearch() != nil || m.planner.searchBusy {
-			t.Fatal("empty, short or coordinate input scheduled search", query)
+			t.Fatal("empty, short or unfinished/complete coordinate input scheduled search", query)
 		}
+	}
+}
+
+func TestJourneyNumberedAddressesAndPostcodesStillSearch(t *testing.T) {
+	for _, query := range []string{"10 Downing Street", "90210", "51.5 Café"} {
+		t.Run(query, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.places.token = "token"
+			var requests int
+			m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+				requests++
+				if r.URL.Query().Get("q") != query {
+					t.Fatal("search query changed")
+				}
+				return locationResponse(`{"suggestions":[]}`), nil
+			})
+			m.openJourney()
+			m.editJourneyLocation(0)
+			m.ui.search.SetValue(query)
+			if m.schedulePlaceSearch() == nil {
+				t.Fatal("numbered address/place or postcode did not schedule search")
+			}
+			m.Update(m.requestPlaceSearch(m.planner.searchID)())
+			if requests != 1 {
+				t.Fatal("scheduled query did not make one search request")
+			}
+		})
 	}
 }
 

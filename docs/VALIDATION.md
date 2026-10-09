@@ -152,6 +152,8 @@ and token/query redaction. Planned geometry does not acquire recorded playback o
 elevation profiles. Search checks prove automatic availability on fresh/repeated
 launches, delayed credential discovery resuming typed queries, cancellation on
 disconnect, minimum query length/debounce and no requests for empty/coordinate input.
+Incomplete coordinate prefixes also stay offline without blocking numbered
+addresses or numeric postcodes.
 Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
 in Braille/ASCII modes.
 Partial journeys retain the correct start/end markers without bridging unresolved

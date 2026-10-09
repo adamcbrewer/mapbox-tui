@@ -121,8 +121,8 @@ func (m *viewer) schedulePlaceSearch() tea.Cmd {
 	m.planner.query = strings.TrimSpace(m.ui.search.Value())
 	m.ui.notice = ""
 	_, coordinate, _ := coordinateLocation(m.planner.query)
-	canSearch := m.places.token != "" && len([]rune(m.planner.query)) >= 3 && !coordinate
-	if !canSearch {
+	searchAvailable := m.places.token != "" && len([]rune(m.planner.query)) >= 3
+	if !searchAvailable || coordinate || coordinatePrefix(m.planner.query) {
 		return nil
 	}
 	id := m.planner.searchID
