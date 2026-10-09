@@ -6,7 +6,7 @@ The executable is `shoe`.
 
 - Pan, zoom and inspect multiple tracks, routes and waypoint collections.
 - Free roam around the map without loading a file.
-- Plan a manual A-to-B journey with editable waypoints and optional Mapbox place search.
+- Plan an A-to-B journey with editable waypoints, offline plotting and optional Mapbox search/road routing.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
 - Switch terminal colour themes or load a custom TOML palette.
@@ -224,15 +224,28 @@ Activity reordering and journey-wide playback are tracked separately in
 
 ### Journey planner
 
-Press **Ctrl-G** or choose **Plan journey** in the command palette. A new journey
-starts with editable start and destination fields. Use the same place search or
-manual coordinate entry for either endpoint and for intermediate waypoints.
+Press **Ctrl-G** or choose **Journey Planner** in the command palette. The planner
+docks beside the live map at 70 columns or wider, and uses a compact strip above
+the map on smaller terminals. Locations, travel modes and feedback stay in that
+panel. Added locations and resolved routes automatically fit the map, leaving
+roughly a one-mile radius of context around each stop so short plans aren't overly
+zoomed in. Longer journeys still fit the whole route. Mouse pan/zoom remains
+available while editing; **Tab** in the main planner switches keyboard focus
+between the map and planner.
+
+A new journey starts with editable start and destination fields. Use the same
+place search or manual coordinate entry for either endpoint and intermediate waypoints.
 
 Use Up/Down and Enter to choose/edit the start, destination or an intermediate
 waypoint. Enter **latitude, longitude** (for example `51.5, -0.1`) to set a location
 offline, or use **Alt-M** in the editor to use the current map centre.
-With a configured Mapbox token, **Ctrl-S** offers optional address/named-POI search.
-After allowing it, autocomplete starts after three characters and a short pause;
+You can also click a location row and then click its point on the map, including
+start, destination and intermediate waypoints. A simple click places the selected
+location; dragging pans without changing it. Planned endpoints use **A** (start)
+and **B** (destination), matching the planner; stop details have space between them.
+With a configured Mapbox token or saved login, address/named-POI search is enabled
+automatically, without a confirmation on each launch. Autocomplete starts after
+three characters and a short pause; **Ctrl-S** retries the current search.
 Up/Down selects a suggestion and Enter resolves it. Mapbox receives the search text
 and map-centre bias. Search uses the existing token independently of the basemap
 setting, and may incur account charges. No new provider account or SDK is required.
@@ -241,29 +254,65 @@ setting, and may incur account charges. No new provider account or SDK is requir
 |---|---|
 | Add a waypoint before the destination | Ctrl-N or the Add waypoint row |
 | Reverse the entire journey | Ctrl-R or Reverse journey |
-| Undo the last location/order edit | Ctrl-Z or Undo edit |
+| Undo the last location/order/mode edit | Ctrl-Z or Undo edit |
 | Clear an endpoint / remove a waypoint | Delete or Backspace |
 | Reorder intermediate waypoints | Alt-Up / Alt-Down |
+| Choose Manual, Walking, Cycling or Driving; see the current choice in the list | Ctrl-B or Travel mode |
+| Recalculate or retry a routed plan | Ctrl-D or Recalculate route |
+| Read full routing feedback, account usage and limits | Ctrl-U or Routing feedback / usage |
 | Show and fit the journey on the map | Ctrl-F or Show journey on map |
+| Switch keyboard focus between the map and planner | Tab in the main planner |
 | Return from a location editor / close the planner | Esc |
 
 Reversal changes `A → W1 → W2 → B` to `B → W2 → W1 → A`; one undo restores the
 whole order. Locations remain editable, and stale lookup results cannot overwrite
 a newer edit. Cancelled/failed lookups leave the plan and imported items usable.
 
-The map connects resolved consecutive locations with **manual straight-line
-geometry** and reports its plotted distance. An unresolved waypoint leaves a gap.
-This does not calculate road routes or travel-time estimates. Planned geometry
-has no invented timestamps/elevation and is separate from recorded playback and
+**Driving** is the default when Mapbox is connected. Routes calculate automatically
+once all locations are set, including intermediate waypoints. The planner shows
+the current choice directly in **Travel mode: Driving** (or Walking, Cycling, Manual).
+There is no separate initial calculate step; **Recalculate route** refreshes/retries
+the result. **Show journey on map** waits for a current road/path route, then closes
+the panel and fits that resolved geometry. Routing failures keep the planner open
+with feedback.
+
+Without credentials, the default is **Manual**: the map connects resolved consecutive
+locations with straight lines and reports plotted distance. An unresolved waypoint
+leaves a gap. You can explicitly choose Manual even with Mapbox connected; that
+choice is preserved through credential discovery and reopening the planner.
+
+**Walking, Cycling and Driving** use Mapbox Directions with the same selected token
+as maps/search, independently of basemap visibility. Mapbox
+receives the ordered stop coordinates; each calculation uses one account request
+and may be billable. See current [account/trial limits](https://docs.mapbox.com/accounts/guides/signup/)
+and [pricing](https://www.mapbox.com/pricing#directions-api).
+
+Routed plans show the road/path, provider distance and **estimated travel time**.
+Your chosen locations stay separate from snapped road/path coordinates, which are
+listed in the journey details. Completing a location edit, adding/removing/reordering
+waypoints, reversal or undo recalculates an enabled routed plan. Typing, panning,
+redrawing and reopening the planner make no Directions calls. Incomplete plans wait
+for every location to be set. Reversal requests new directions rather than reversing
+the old line, respecting directional road/access rules.
+
+Mapbox accepts 2–25 locations, with total between-stop distance limits of 1,000 km
+walking, 1,500 km cycling and 10,000 km driving. Over-limit plans show the cause and
+keep every stop; they are never split or truncated. **Ctrl-U** opens the full,
+scrollable feedback when a notice is clipped in a narrow terminal. Rate limiting
+honours the provider's retry delay, with no automatic retry loop; use **Ctrl-D**
+after the wait. Failed or stale results leave a clearly labelled manual preview,
+with outdated routed estimates hidden. Choose **Manual** at any time for offline
+plotting. Imported items remain usable through routing failures.
+
+Planned geometry has no invented timestamps/elevation and is separate from recorded playback and
 elevation profiles. It appears in Ctrl-L alongside imports with stable identity
 and colour, and shares the scene renderer. Ctrl-G reopens the selected or most
 recent plan; removing it or clearing the workspace discards it.
 
 Plans and search results are **session-only**. Favorites and persistent/offline
 geolocation caching are tracked in [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
-Road/path-following routes and estimated route elevation are tracked separately
-in [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12) and
-[issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+Road/path routing is implemented for [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+Estimated route elevation remains in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
 See [provider notes](docs/PROVIDERS.md#journey-location-lookups) for request and
 storage policies and [route-planning notes](docs/ROUTE_PLANNING.md) for API research.
 
@@ -299,6 +348,12 @@ An explicit `MAPBOX_CLI_NO_TELEMETRY` environment opt-out takes precedence. See
 [Mapbox CLI privacy](https://github.com/mapbox/mapbox-cli#privacy) for the usage
 information it collects. Background map/search API requests are still normal
 Mapbox service requests regardless of this setting.
+
+`settings.json` currently persists only that telemetry preference. Theme/camera/
+travel-mode choices and workspace plans are session-only. Login credentials are
+owned by Mapbox CLI under `~/.mapbox/` (or `MAPBOX_CONFIG_DIR`); `shoe` doesn't save
+another token copy. Place-search availability is derived from the selected token,
+so it needs no separate remembered permission.
 
 Manual journey planning works offline. The location editor greys out unavailable
 Mapbox address/place search and prevents its shortcut from starting a search.
@@ -343,7 +398,8 @@ ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are trac
 | Imported files, inspection, elevation and playback | No | No | Fully available |
 | Manual journey coordinates, editing and reversal | No | No | Fully available |
 | Real basemaps in viewer, `render` or MCP | Yes | Recommended for saved login; unnecessary with an environment token | Imported geometry/empty canvas |
-| Journey address/named-POI search | Yes, user opt-in | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
+| Journey address/named-POI search | Yes; automatic when connected | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
+| Journey walking/cycling/driving routes | Yes, with Directions access; Driving defaults when connected | Recommended for saved login; unnecessary with an environment token | Manual straight-line plotting |
 | `shoe auth login` / `logout` | Login signs in or creates one | Required | Offline features remain available |
 | `shoe auth status` | No to report status | Needed to inspect the saved login and token metadata | Reports unavailable sections |
 | `shoe auth status --usage` | Yes, with statistics access | Required for usage queries | Maps/local features still work without statistics |

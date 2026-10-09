@@ -1,9 +1,10 @@
 # Route planning
 
 Implementation notes and provider research for
-[issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5).
-Research checked against provider documentation on 2026-10-08. The confirmed
-journey-planner scope is implemented; other API capabilities below are research
+[issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5) and
+[issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+Research checked against provider documentation on 2026-10-09. The confirmed
+journey planner and walking/cycling/driving routing are implemented; other API capabilities below are research
 findings, not additional implemented features.
 
 ## Product direction
@@ -45,21 +46,47 @@ Manual geometry is explicitly labelled straight-line plotting, not road-followin
 directions. Distance describes the plotted geometry, not a promise of a navigable
 route. Unknown elevation stays unknown; manual routes have no recorded timestamps.
 
-Confirmed search provider: Mapbox Search Box, reusing the existing token with an
-explicit opt-in. Ctrl-G opens the planner; its location editor uses Ctrl-S to
-enable search, or coordinates/Alt-M for offline input. Ctrl-N adds a waypoint,
+Confirmed search provider: Mapbox Search Box, automatically using the selected
+token whenever connected. Ctrl-G opens the planner; its location editor searches
+after three typed characters and a short pause. Ctrl-S retries; coordinates/Alt-M
+work offline. No repeated confirmation or separate saved permission is needed. Ctrl-N adds a waypoint,
 Ctrl-R reverses, Ctrl-Z undoes, Alt-Up/Down reorders, Delete clears/removes and
 Ctrl-F shows/fits the plan. The same actions are available as selectable rows
 where applicable. See the [controls](../README.md#journey-planner).
 
-This slice draws manual straight-line geometry. No Directions/Matrix calls,
-road-route generation or travel-time estimates are included.
+Journey Planner defaults to Driving with a connected Mapbox token and Manual
+without one. Ctrl-B's Travel mode row displays the current choice and offers Manual,
+Walking, Cycling or Driving; Ctrl-D recalculates/retries and Ctrl-U opens full feedback, usage and limits.
+The planner docks beside the live map (70+ columns), with a compact top strip on
+smaller terminals. Location editors, mode selection and feedback use the same panel;
+mouse navigation remains available, and Tab switches keyboard map/planner focus.
+Automatic fitting and Show journey on map include about a one-mile radius around
+each entered location, preserving wider bounds when needed for the resolved route.
+Routed geometry and estimated distance/time use Mapbox Directions; Matrix is not used.
 
 ## Mapbox enhancements
 
-### Directions: separate follow-up
+### Directions: implemented scope
 
 Tracked in [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+
+Confirmed on 2026-10-09: walking, cycling and standard driving; recalculate after
+committed edits/reversal/undo, with explicit recalculate/retry; reject provider-limit
+violations with cause/remedy and a usable manual fallback. No splitting/truncation.
+The model keeps ordered user stops, snapped locations and resolved geometry separate.
+Completed plans route automatically. Show journey on map waits for the resolved
+route instead of fitting straight-line preview geometry; failures leave feedback
+in the planner, with Manual available as an explicit fallback.
+Undo restores stop/mode intent and recalculates; it never reuses a reversed polyline.
+Request cancellation and revision checks live with the workspace, including removal
+and clearing. Failed/stale routes retain their last result but draw manual geometry
+without obsolete estimates. See [provider policy](PROVIDERS.md#journey-roadpath-routing).
+
+Current profile limits are 1,000 km walking, 1,500 km cycling and 10,000 km driving
+between stops. Both standard and card-free accounts document Directions access;
+the trial currently allows 10,000 requests/month at lower rates. Account checks
+must test each chosen profile independently of Streets access. The opt-in live
+check is recorded in [validation](VALIDATION.md).
 
 The [Directions API](https://docs.mapbox.com/api/navigation/directions/) can supply:
 
@@ -75,9 +102,10 @@ Standard profiles accept 2–25 input coordinates per request. Longer plans need
 explicit strategy; silently truncating stops or splitting requests changes the
 route and request count. Keep traffic-overlay work in issue #4.
 
-Use the existing Mapbox credential mechanism. A basemap token does not implicitly
-enable routing. Offer Manual (offline) and Mapbox road-following as separate
-choices, and explain that Mapbox routing uses the user's account allowance.
+Use the existing Mapbox credential mechanism. Connected journeys default to
+Driving; Manual (offline) and other travel modes remain explicit choices. Explain
+that Mapbox routing uses the user's account allowance and starts only when the
+plan's locations are complete, not merely when the basemap is displayed.
 
 The [published pricing](https://www.mapbox.com/pricing#directions-api) includes
 100,000 Directions requests per month free, then $2 per 1,000 in the next tier.
@@ -86,8 +114,8 @@ local request counts cannot establish whether an account will be charged.
 The API's published rate limit is 300 requests/minute. Routing should follow
 completed edits or an explicit calculate action, not autocomplete keystrokes.
 
-If online route generation is chosen, walking/cycling/driving, route distance and
-estimated duration provide planning benefits. Textual navigation instructions,
+Walking/cycling/driving, route distance and estimated duration are implemented.
+Textual navigation instructions,
 alternatives and avoidance controls are research findings, not agreed requirements
 for this slice.
 
@@ -249,8 +277,8 @@ per-endpoint plan quotas need confirmation in its account portal before selectio
 
 Delivery scope:
 
-1. Use Mapbox Search Box for destination search with the existing runtime token
-   and explicit opt-in.
+1. Use Mapbox Search Box for destination search automatically with the existing
+   selected runtime token.
 2. Deliver the journey planner: searched/manually entered start and destination,
    intermediate waypoints, location edits and full-order reversal.
    Retain an offline manual baseline.
@@ -290,13 +318,18 @@ implement every investigated adapter in the first slice.
 Focused tests cover edit/undo atomicity, full-order reversal, invalid coordinates,
 independent items, stable references, distance/bounds recalculation, unresolved
 waypoint gaps and unknown measurements. Planned geometry has no playback or
-recorded elevation profile. Fake location transports cover search opt-in,
+recorded elevation profile. Fake location transports cover automatic search availability,
 cancelled queries, stale results, HTTP/body errors, token/query redaction and search
 session rotation. Terminal interactions
 cover offline input, reversal/undo, waypoint reorder/removal, map fit and reopening
 at wide/narrow sizes and in ASCII mode without live/billable lookup calls.
 
-Online route generation remains future work and would require its own fake-provider
-checks for profile limits, failures, cancellation and superseded results.
+Directions fake transports cover profiles, ordered stops, separate snapped intent,
+body/coordinate/estimate validation, token/coordinate redaction, missing credentials,
+no-route/no-segment errors, HTTP failures, rate-limit backoff and provider limits.
+Workspace/viewer checks cover reversal/undo recalculation, superseded successes and
+failures, removal/clearing/credential changes, manual fallback, imported playback/profile
+isolation, attribution and wide/narrow/ASCII layouts. Live account access is a separate,
+explicit opt-in check; standard and card-free accounts need separate runs.
 
 Run the repository checks and terminal interaction script for each delivered slice.

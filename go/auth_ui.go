@@ -145,6 +145,10 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	}
 	if credential.token != m.provider.token || kind != m.provider.Kind {
 		m.cancelJourneySearch()
+		if credential.token != m.directions.token {
+			m.workspace.invalidateJourneyRoutes()
+			m.directions = newDirectionsClient(credential.token)
+		}
 		m.provider = providerForCredential(kind, credential)
 		m.provider.quiet = m.args.ProviderSet && kind == "none"
 		m.places = newPlaceClient(credential.token)
@@ -199,10 +203,18 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	} else if m.ui.dialog == dialogJourneyLocation {
 		m.ui.notice = credential.guidance
 		if credential.token != "" {
-			m.ui.notice = "Saved Mapbox login ready; ctrl+s enables place search"
+			m.ui.notice = "Mapbox ready; place search is automatic"
 		}
 	}
-	return m.fetch()
+	var routing tea.Cmd
+	if j, err := m.workspace.journey(m.planner.ref); err == nil && m.defaultJourneyMode(j) {
+		routing = m.calculateJourneyIfRouted()
+	}
+	var search tea.Cmd
+	if m.ui.dialog == dialogJourneyLocation && m.places.token != "" {
+		search = m.schedulePlaceSearch()
+	}
+	return tea.Batch(m.fetch(), routing, search)
 }
 
 func (m *viewer) beginMapboxLogin() tea.Cmd {

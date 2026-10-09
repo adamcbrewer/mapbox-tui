@@ -345,7 +345,7 @@ func renderSceneItems(g *Grid, c Camera, items []sceneItem) (ItemRef, activityCo
 		if item.Start != nil {
 			g.label(
 				c.screen(*item.Start),
-				"S",
+				"A",
 				markerRole,
 				false,
 				item.Color,
@@ -354,7 +354,7 @@ func renderSceneItems(g *Grid, c Camera, items []sceneItem) (ItemRef, activityCo
 		if item.End != nil {
 			g.label(
 				c.screen(*item.End),
-				"E",
+				"B",
 				markerRole,
 				false,
 				item.Color,

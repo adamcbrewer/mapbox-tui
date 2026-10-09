@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
@@ -89,7 +90,7 @@ func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T)
 		t.Fatal("unavailable Mapbox search was not visibly disabled")
 	}
 	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
-	if cmd != nil || m.ui.dialog != dialogJourneyLocation || m.planner.online || m.authBusy {
+	if cmd != nil || m.ui.dialog != dialogJourneyLocation || m.authBusy {
 		t.Fatal("disabled place search started work or became selectable")
 	}
 	enterJourneyCoordinate(m, 0, "51.5, -0.1")
@@ -100,7 +101,7 @@ func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T)
 	}
 }
 
-func TestJourneyViewerSearchOptInSessionsAndSupersededResults(t *testing.T) {
+func TestJourneyViewerAutomaticSearchSessionsAndSupersededResults(t *testing.T) {
 	m := journeyViewer(t)
 	m.places.token = "test-token"
 	var requests int
@@ -119,14 +120,13 @@ func TestJourneyViewerSearchOptInSessionsAndSupersededResults(t *testing.T) {
 	m.openJourney()
 	m.editJourneyLocation(1)
 	m.ui.search.SetValue("Brighton")
-	if m.schedulePlaceSearch() != nil || requests != 0 {
-		t.Fatal("search requested Mapbox without opting in")
+	if m.schedulePlaceSearch() == nil || requests != 0 {
+		t.Fatal("connected search was not automatically scheduled after the pause")
 	}
 	m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
-	if m.ui.dialog != dialogJourneySearch {
-		t.Fatal("search did not explain account-dependent option")
+	if m.ui.dialog != dialogJourneyLocation {
+		t.Fatal("search retry interrupted the editor with a confirmation prompt")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'y'})
 	cmd := m.requestPlaceSearch(m.planner.searchID)
 	old := cmd()
 	m.ui.search.SetValue("Brighton station")
@@ -169,6 +169,84 @@ func TestJourneyViewerSearchOptInSessionsAndSupersededResults(t *testing.T) {
 	m.Update(result)
 	if j.Stops[1].Location.Lat != 51.6 {
 		t.Fatal("old retrieval replaced an edited destination")
+	}
+}
+
+func TestJourneySearchAutomaticallyWorksOnEveryLaunch(t *testing.T) {
+	for _, name := range []string{"first launch", "next launch"} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				m := journeyViewer(t)
+				m.places.token = "token"
+				var requests int
+				m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+					requests++
+					return locationResponse(`{"suggestions":[{"mapbox_id":"village","name":"Hinton"}]}`), nil
+				})
+				m.openJourney()
+				m.editJourneyLocation(0)
+				if requests != 0 {
+					t.Fatal("opening an empty editor made a search request")
+				}
+				_, cmd := m.Update(tea.PasteMsg{Content: "Hinton"})
+				if cmd == nil || m.ui.dialog != dialogJourneyLocation || requests != 0 {
+					t.Fatal("typing did not automatically debounce connected search")
+				}
+				start := time.Now()
+				_, request := m.Update(cmd())
+				if request == nil || time.Since(start) != 350*time.Millisecond {
+					t.Fatal("search started before the pause or required confirmation")
+				}
+				m.Update(request())
+				if requests != 1 || len(m.planner.suggestions) != 1 {
+					t.Fatal("automatic search did not display matching places")
+				}
+				m.closeDialog()
+			})
+		})
+	}
+}
+
+func TestJourneySearchStartsWhenCredentialsArriveAndCancelsOnDisconnect(t *testing.T) {
+	m := journeyViewer(t)
+	m.args.Provider, m.args.ProviderSet = "none", true
+	m.openJourney()
+	m.editJourneyLocation(0)
+	_, cmd := m.Update(tea.PasteMsg{Content: "Hinton"})
+	if cmd != nil {
+		t.Fatal("disconnected editor scheduled a network search")
+	}
+	ready := m.acceptCredentials(credentialResult{credential: renderingCredential{token: "token", source: "login"}})
+	if ready == nil || m.ui.dialog != dialogJourneyLocation || m.planner.query != "Hinton" {
+		t.Fatal("credential discovery did not resume the current typed query")
+	}
+	var requestContext context.Context
+	m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		requestContext = r.Context()
+		return locationResponse(`{"suggestions":[{"mapbox_id":"village","name":"Hinton"}]}`), nil
+	})
+	cmd = m.requestPlaceSearch(m.planner.searchID)
+	late := cmd()
+	m.acceptCredentials(credentialResult{credential: renderingCredential{source: "disabled"}})
+	m.Update(late)
+	if requestContext.Err() == nil || len(m.planner.suggestions) != 0 || m.planner.searchBusy {
+		t.Fatal("disconnect did not cancel/reject old search work")
+	}
+	if m.schedulePlaceSearch() != nil {
+		t.Fatal("search remained enabled without selected credentials")
+	}
+}
+
+func TestJourneyConnectedCoordinatesAndShortQueriesDoNotSearch(t *testing.T) {
+	m := journeyViewer(t)
+	m.places.token = "token"
+	m.openJourney()
+	m.editJourneyLocation(0)
+	for _, query := range []string{"", "Hi", "51.5, -0.1"} {
+		m.ui.search.SetValue(query)
+		if m.schedulePlaceSearch() != nil || m.planner.searchBusy {
+			t.Fatal("empty, short or coordinate input scheduled search", query)
+		}
 	}
 }
 
@@ -225,10 +303,9 @@ func TestJourneySuggestionCreditsAreVisibleAndTransient(t *testing.T) {
 	m := journeyViewer(t)
 	m.openJourney()
 	m.editJourneyLocation(0)
-	m.planner.online = true
+	m.places.token = "token"
 	m.ui.search.SetValue("Zürich")
 	m.schedulePlaceSearch()
-	m.places.token = "token"
 	m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(r.URL.Path, "/suggest") {
 			return locationResponse(`{"attribution":"© Mapbox suggestions\n","suggestions":[{"mapbox_id":"id","name":"Zürich"}]}`), nil
@@ -308,7 +385,6 @@ func TestJourneyViewerRequestsCancelOnCloseAndRemoval(t *testing.T) {
 	})
 	m.openJourney()
 	m.editJourneyLocation(1)
-	m.planner.online = true
 	m.ui.search.SetValue("Place")
 	m.schedulePlaceSearch()
 	cmd := m.requestPlaceSearch(m.planner.searchID)
@@ -323,7 +399,6 @@ func TestJourneyViewerRequestsCancelOnCloseAndRemoval(t *testing.T) {
 		t.Fatal("reopening planner did not return to the journey")
 	}
 	m.editJourneyLocation(1)
-	m.planner.online = true
 	m.ui.search.SetValue("Place")
 	m.schedulePlaceSearch()
 	cmd = m.requestPlaceSearch(m.planner.searchID)
@@ -344,7 +419,7 @@ func TestJourneyViewerRotatesExpiredAndFullSearchSessions(t *testing.T) {
 			m := journeyViewer(t)
 			m.openJourney()
 			m.editJourneyLocation(1)
-			m.planner.online = true
+			m.places.token = "token"
 			m.ui.search.SetValue("Place")
 			m.schedulePlaceSearch()
 			m.planner.session = "old-session"
@@ -367,7 +442,7 @@ func TestJourneyDebounceDoesNotSurviveReplacingPlan(t *testing.T) {
 	m := journeyViewer(t)
 	m.openJourney()
 	m.editJourneyLocation(0)
-	m.planner.online = true
+	m.places.token = "token"
 	m.ui.search.SetValue("Old place")
 	m.schedulePlaceSearch()
 	old := placeSearchReady{id: m.planner.searchID}
@@ -471,8 +546,21 @@ func TestJourneyNoticesKeepSelectedActionVisible(t *testing.T) {
 			m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt})
 			m.rebuild()
 			if m.ui.notice == "" || !strings.Contains(ansi.Strip(m.content), "> Show journey on map") {
-				t.Fatalf("notice hid selected action at %v, ASCII %v", size, ascii)
+				t.Fatalf("notice hid selected action at %v, ASCII %v: %s", size, ascii, ansi.Strip(m.content))
 			}
+		}
+	}
+}
+
+func TestJourneyDetailsSeparateStopSections(t *testing.T) {
+	m, _ := routingTestViewer(t)
+	m.Update(m.calculateJourneyRoute()())
+	j, _ := m.workspace.journey(m.planner.ref)
+	lines := m.journeyDetails()
+	for i := range j.Stops {
+		index := slices.Index(lines, journeyStopLabel(i, len(j.Stops)))
+		if index <= 0 || lines[index-1] != "" {
+			t.Fatal("journey stop details lacked spacing", i)
 		}
 	}
 }
@@ -495,7 +583,7 @@ func TestJourneyCoordinateInspectionAndPlaybackCommands(t *testing.T) {
 			cell := g.Cells[y*g.Width+x]
 			name := ""
 			unlabelledLine := cell.Bits != 0 && cell.Text == 0
-			if cell.Text == 'S' && !endpoint {
+			if cell.Text == 'A' && !endpoint {
 				name, endpoint = "endpoint", true
 			} else if unlabelledLine && !line {
 				name, line = "line", true
@@ -554,7 +642,7 @@ func TestJourneyDialogsFitWideNarrowAndASCIITerminals(t *testing.T) {
 			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m.settings.ASCII = ascii
 			m.openJourney()
-			for _, dialog := range []dialogKind{dialogJourney, dialogJourneyLocation, dialogJourneySearch} {
+			for _, dialog := range []dialogKind{dialogJourney, dialogJourneyLocation} {
 				m.ui.dialog = dialog
 				m.rebuild()
 				if lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {

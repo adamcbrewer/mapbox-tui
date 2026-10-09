@@ -199,6 +199,9 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	if len(entry.document.Items) == 1 {
 		return w.removeDocument(entry.id)
 	}
+	if j := entry.document.Items[i].Journey; j != nil {
+		j.cancelRoute()
+	}
 	if w.selection != nil && w.selection.ref == ref {
 		w.clearSelection()
 	}
@@ -215,6 +218,11 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 func (w *Workspace) removeDocument(id int) error {
 	for i, entry := range w.documents {
 		if entry.id == id {
+			for _, item := range entry.document.Items {
+				if item.Journey != nil {
+					item.Journey.cancelRoute()
+				}
+			}
 			if w.selection != nil && w.selection.ref.DocumentID == id {
 				w.clearSelection()
 			}
@@ -226,9 +234,18 @@ func (w *Workspace) removeDocument(id int) error {
 }
 
 func (w *Workspace) clear() {
+	w.cancelJourneyRoutes()
 	w.clearSelection()
 	w.documents = nil
 	w.elevation = nil
+}
+
+func (w *Workspace) cancelJourneyRoutes() {
+	for _, item := range w.items() {
+		if item.Item.Journey != nil {
+			item.Item.Journey.cancelRoute()
+		}
+	}
 }
 
 func (w *Workspace) position() *ridePosition {

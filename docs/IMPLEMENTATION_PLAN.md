@@ -5,14 +5,15 @@ workspace ownership, then build the remaining TODO features on those foundations
 
 ## New-thread handover
 
-- Continue on `feat/11-mapbox-cli-auth`. Journey planning is merged into `main`.
+- Continue on `feat/12-road-path-planning`. Manual journey planning and Mapbox auth are merged into `main`.
   [Auth notes](MAPBOX_AUTH_PLAN.md) record the implemented optional-CLI login,
   shared home-directory credentials, status/usage and viewer setup. Repo token
   files are removed; new card-free signup/trial-account checks are deferred.
 - Steps 1-5 are complete. Step 6 now includes manual A-to-B planning with typed
   locations, ordered waypoints, reversal/undo and optional Mapbox Search Box for
-  start, destination and waypoints. Road-following remains future work requiring
-  its own travel-mode/provider scope.
+  start, destination and waypoints. Issue #12 adds Mapbox walking/cycling/driving,
+  connected Driving default, a docked planner/live map, committed-edit recalculation,
+  route estimates and a manual fallback with full feedback.
 - Theme scope is terminal recolouring. Three Omarchy-derived TOML palettes are
   embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-T cycles
   themes and Ctrl-P opens the picker. [Theme API](THEMES.md) records the format,
@@ -70,8 +71,8 @@ interactions pass at wide/compact sizes, including open dialogs and ASCII playba
 
 The first **step 6 journey-planning slice** is complete: shared editable planned
 geometry, stable workspace identity, ordered waypoints, full reversal/undo and
-keyboard editing. Ctrl-G opens the planner, Ctrl-S offers Mapbox Search Box using
-the existing token for any location field.
+keyboard editing. Ctrl-G opens the planner; Mapbox Search Box is automatic with
+selected credentials for any location field, with Ctrl-S available to retry.
 Coordinates/map-centre input works offline. Planned geometry has no recorded
 playback/elevation; unresolved locations leave gaps. Search requests cancel
 obsolete work and reject late results, including pasted queries and edited starts.
@@ -285,8 +286,11 @@ Search Box and the first slice's controls are confirmed and verified.
   sharing geometry and workspace display.
 - [x] Define edit/undo behaviour and recompute or invalidate derived geometry,
   profiles and playback data together.
-- Road/path-following is deferred to [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
-  Visual Streets tiles are not a routing graph. Estimated route elevation is
+- Road/path-following for [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12)
+  uses explicit Mapbox walking/cycling/driving. It preserves stop intent separately
+  from snapped locations and routes, rejects provider limits with feedback, cancels
+  obsolete requests and invalidates estimates on edit/undo. Visual Streets tiles
+  are not a routing graph. Estimated route elevation is
   separate in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
 - [x] Add manually planned routes to the workspace without inventing recorded
   timestamps, elevation or journey-time estimates.

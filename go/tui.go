@@ -62,6 +62,7 @@ type viewer struct {
 	lastMotionTick            time.Time
 	planner                   journeyUI
 	places                    *placeClient
+	directions                *directionsClient
 	authID                    uint64
 	authCancel                context.CancelFunc
 	authBusy, authFirstRun    bool
@@ -287,7 +288,25 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case placeSearchReady:
 		return m, m.requestPlaceSearch(v.id)
 	case placeSearchResult:
-		m.acceptPlaceSearch(v)
+		return m, m.acceptPlaceSearch(v)
+	case journeyRouteResult:
+		if m.workspace.acceptJourneyRoute(v) {
+			if m.ui.dialog == dialogJourney && m.planner.ref == v.ref {
+				j, _ := m.workspace.journey(v.ref)
+				m.ui.notice = j.Error
+				if revision := m.planner.showRevision; revision != nil && *revision == v.revision {
+					m.planner.showRevision = nil
+					if v.err == nil {
+						return m, m.showJourneyOnMap()
+					}
+				}
+			}
+			m.layout()
+			if v.err == nil {
+				m.fitPlannerJourney(v.ref)
+			}
+			m.dirty = true
+		}
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
@@ -383,6 +402,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.ui.dialog == dialogJourneyLocation
 		if key == "ctrl+c" || (key == "q" && !enteringText) {
 			m.cancelJourneySearch()
+			m.workspace.cancelJourneyRoutes()
 			m.cancelAuth()
 			return m, tea.Quit
 		}
@@ -390,7 +410,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyTheme((m.settings.Theme + 1) % len(m.themes))
 			return m, nil
 		}
-		if m.ui.dialog != dialogNone {
+		if m.ui.dialog == dialogJourney && key == "tab" {
+			m.planner.mapFocused = !m.planner.mapFocused
+			m.dirty = true
+			return m, nil
+		}
+		mapKey := m.ui.dialog == dialogJourney && m.planner.mapFocused && journeyMapKey(key)
+		if m.ui.dialog != dialogNone && !mapKey {
 			return m, m.updateDialog(msg)
 		}
 		switch key {
@@ -541,18 +567,20 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.dirty = true
 	case tea.MouseMsg:
-		if m.ui.dialog != dialogNone {
-			return m, m.updateDialog(msg)
-		}
 		mouse := v.Mouse()
 		m.advancePlayback(time.Now())
 		x, y := mouse.X, mouse.Y
 		insideMapX := x >= 1 && x < m.camera.Width+1
-		insideMapY := y >= 2 && y < m.camera.Height+2
+		originY := m.mapOriginY()
+		insideMapY := y >= originY && y < m.camera.Height+originY
 		inside := insideMapX && insideMapY
 		overDetails := m.width >= 90 && x >= m.camera.Width+4
 		mapGesture := m.dragging || m.rotating
-		if !inside && !mapGesture && overDetails {
+		outsidePlannerMap := !m.journeyPanelOpen() || (!inside && !mapGesture)
+		if m.ui.dialog != dialogNone && outsidePlannerMap {
+			return m, m.updateDialog(msg)
+		}
+		if !inside && !mapGesture && overDetails && !m.journeyPanelOpen() {
 			var cmd tea.Cmd
 			m.ui.details, cmd = m.ui.details.Update(msg)
 			m.dirty = true
@@ -587,10 +615,14 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseReleaseMsg:
 			if m.dragging && !m.moved && inside {
 				m.pausePlayback()
-				p := XY{float64((x-1)*2 + 1), float64((y-2)*4 + 2)}
+				p := XY{float64((x-1)*2 + 1), float64((y-originY)*4 + 2)}
 				world := unproject(m.camera.world(p))
+				m.dragging, m.rotating = false, false
+				if cmd, picked := m.pickJourneyLocation(world); picked {
+					return m, cmd
+				}
 				m.inspected = &world
-				if ref, i := m.workspace.pick(m.camera, p); ref != (ItemRef{}) {
+				if ref, i := m.workspace.pick(m.camera, p); ref != (ItemRef{}) && !m.journeyPanelOpen() {
 					_ = m.workspace.selectItem(ref)
 					m.selectionChanged()
 					m.inspected = &world
@@ -609,7 +641,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					direction = 1
 				}
 				m.zoomWheel(
-					XY{float64((x-1)*2 + 1), float64((y-2)*4 + 2)},
+					XY{float64((x-1)*2 + 1), float64((y-originY)*4 + 2)},
 					direction,
 					mouse.Mod,
 					time.Now(),
@@ -626,13 +658,21 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *viewer) layout() {
 	w, h := mapSize(m.width, m.height)
+	if m.journeySidebar() {
+		w, h = m.width-m.journeyPanelWidth()-4, m.height-6
+	} else if m.journeyPanelOpen() {
+		w, h = m.width-2, m.height-m.journeyStripHeight()-4
+	}
 	if len(m.workspace.items()) > 1 {
 		h--
 	}
 	m.profileHeight = profileRows(h, m.showProfile && len(m.workspace.profileItems()) > 0)
-	m.camera.Width, m.camera.Height = w, h-m.profileHeight
+	m.camera.Width, m.camera.Height = max(1, w), max(1, h-m.profileHeight)
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
 	if m.width < 90 {
+		m.ui.detailsFocused = false
+	}
+	if m.journeyPanelOpen() {
 		m.ui.detailsFocused = false
 	}
 }
@@ -893,7 +933,10 @@ func (m *viewer) rebuild() {
 		Border(border).
 		BorderForeground(lipgloss.Color(t.Border)).
 		Render(strings.Join(mapRows, "\n"))
-	if m.width >= 90 {
+	if m.journeySidebar() {
+		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+
+			strings.ReplaceAll(m.journeyPanel(), "\n", "\n  "))
+	} else if m.width >= 90 {
 		styled := []string{}
 		for i, line := range details {
 			style := s.text
@@ -914,12 +957,15 @@ func (m *viewer) rebuild() {
 		panel := "\n" + m.ui.details.View() + "\n" + focus
 		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+strings.ReplaceAll(panel, "\n", "\n  "))
 	}
+	if m.journeyStripHeight() > 0 {
+		rows = append(rows, m.journeyPanel())
+	}
 	rows = append(rows, frame)
 	profile := m.visibleProfile()
 	if len(m.workspace.items()) > 1 {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
 	}
-	if m.width < 90 {
+	if m.width < 90 && !m.journeyPanelOpen() {
 		if t := m.activeTrack(); t != nil {
 			summary := fmt.Sprintf(
 				"%.2f km | %d points | zoom %.2f | bearing %.0f",
@@ -932,7 +978,9 @@ func (m *viewer) rebuild() {
 			line := strings.Join(details[7:min(len(details), 14)], " | ")
 			hint := "[ ] select; PgUp/PgDn ±100; c follow · enter inspect"
 			if m.activePlayback() == nil {
-				hint = "Manual straight-line · ctrl+g edit journey"
+				j, _ := m.workspace.journey(m.workspace.selection.ref)
+				line = journeyRoutingStatus(j, t)
+				hint = "ctrl+g edit journey · enter details"
 			}
 			rows = append(
 				rows,
@@ -1028,12 +1076,14 @@ func (m *viewer) rebuild() {
 	if journeyCredits != "" {
 		credits += " " + journeyCredits
 	}
-	rows = append(
-		rows,
-		pad(status, m.width),
-		pad(m.ui.help.View(keys), m.width),
-		s.muted.Render(pad(credits, m.width)),
-	)
+	if m.journeyStripHeight() == 0 {
+		help := m.ui.help.View(keys)
+		if m.journeyPanelOpen() {
+			help = s.muted.Render("ctrl+g planner · mouse pan/zoom · esc back/close")
+		}
+		rows = append(rows, pad(status, m.width), pad(help, m.width))
+	}
+	rows = append(rows, s.muted.Render(pad(credits, m.width)))
 	m.content = s.text.Background(lipgloss.Color(t.Background)).Width(m.width).Render(strings.Join(rows, "\n"))
 	m.overlay()
 }
@@ -1086,6 +1136,7 @@ func openViewerFiles(paths []string, a Args) error {
 	m.layout()
 	defer m.sources.close()
 	defer m.cancelJourneySearch()
+	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	_, e = tea.NewProgram(m).Run()
 	if e != nil {

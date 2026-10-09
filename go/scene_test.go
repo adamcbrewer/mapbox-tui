@@ -62,9 +62,9 @@ func TestScenePlannedEndpointMarkersFollowStopsAndReverse(t *testing.T) {
 		resolved []int
 		markers  []rune
 	}{
-		{name: "start only", count: 2, resolved: []int{0}, markers: []rune{'S'}},
-		{name: "destination only", count: 2, resolved: []int{1}, markers: []rune{'E'}},
-		{name: "unresolved waypoint", count: 3, resolved: []int{0, 2}, markers: []rune{'S', 'E'}},
+		{name: "start only", count: 2, resolved: []int{0}, markers: []rune{'A'}},
+		{name: "destination only", count: 2, resolved: []int{1}, markers: []rune{'B'}},
+		{name: "unresolved waypoint", count: 3, resolved: []int{0, 2}, markers: []rune{'A', 'B'}},
 		{name: "waypoint only", count: 3, resolved: []int{1}, markers: []rune{'W'}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,10 +104,10 @@ func TestScenePlannedEndpointMarkersFollowStopsAndReverse(t *testing.T) {
 					want := tc.markers[i]
 					if reversed {
 						switch want {
-						case 'S':
-							want = 'E'
-						case 'E':
-							want = 'S'
+						case 'A':
+							want = 'B'
+						case 'B':
+							want = 'A'
 						}
 					}
 					if cell.Text != want || cell.owner != ref {

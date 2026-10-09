@@ -119,12 +119,16 @@ are in [auth help and README](../README.md#runtime-configuration).
 The journey planner uses user-triggered location lookups:
 
 - **Mapbox Search Box** supplies address/place/named-POI autocomplete and selected
-  coordinates. Ctrl-S in the location editor offers an explicit opt-in using the
-  existing runtime Mapbox token. A basemap token alone does not start search calls.
-  `--no-provider` disables the basemap; explicitly allowed place search remains
-  available. Search requests include the text and the current map centre as a bias.
+  coordinates. It is automatically available in location editors when the shared
+  runtime token is present, including saved-login discovery; no separate permission
+  or confirmation is stored. Typing three characters schedules a debounced lookup;
+  Ctrl-S retries. An empty editor and credential discovery without a query make no
+  search calls. If credentials arrive while a query is being edited, lookup starts
+  after the usual pause. `--no-provider` disables only the basemap; search availability
+  still follows the selected token. An explicitly empty environment token disables
+  both discovery and search. Requests include text and the current map-centre bias.
 - Coordinates in latitude/longitude order and the current map centre are usable
-  without a token or network. This slice does not call Directions or Matrix.
+  without a token or network. Location lookup does not call Directions or Matrix.
 
 The client uses Go's standard HTTP/JSON libraries, HTTPS, an eight-second timeout,
 disabled redirects and a 1 MiB decoded response limit. The host is fixed; request
@@ -162,6 +166,64 @@ Search results and plans remain in memory for this session only. The
 restricts returned data to temporary use. No disk cache, favorites or export is
 added here. Provider-compatible persistence is tracked in
 [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+
+## Journey road/path routing
+
+The planner defaults to **Driving** when a Mapbox token is connected, otherwise
+**Manual** (offline straight lines). **Travel mode** shows the current selection
+in the planner's action list and offers Walking, Cycling, Driving and Manual.
+Late credential discovery enables the default Driving plan without overriding an
+explicit Manual choice. Search, routing and basemap selection are independent; `--no-provider`
+only disables tiles. Routing consumes the same environment/saved-login token,
+including explicit-empty environment opt-out. Streets/auth success is not treated
+as proof of Directions access.
+
+- A completed location/order/mode edit, reversal or undo requests one full GeoJSON
+  route through all ordered locations. Incomplete stops wait without premature
+  warnings. Ctrl-D explicitly recalculates/retries. Show journey on map waits for
+  the pending current route, or calculates a missing/stale route before fitting;
+  failure keeps the planner open with feedback. Dismissal or another edit cancels
+  the pending camera-fit action. Typing, camera movement, redraw and reopening do
+  not make Directions requests. No automatic retry or refresh loop is added.
+- User locations remain unchanged; snapped locations and route geometry are separate.
+  The displayed distance/duration come from Directions, with travel time labelled
+  estimated. Geometry has no recorded timestamps, playback or elevation.
+- Workspace-owned cancellation and monotonically increasing request/edit identities
+  reject obsolete successes and failures after edits, retries, mode changes, undo,
+  removal, clearing and credential replacement. Closing the planner lets a valid
+  route calculation finish for its workspace item. Completion never selects a
+  different item or resets its playback. While the planner is open, committed
+  locations and resolved geometry fit the live map; closed planners don't move
+  the camera on completion.
+- Edits retain the previous result as stale but display a current manual preview
+  without its obsolete estimates. Failures preserve stop intent and manual geometry;
+  full cause/remedy is available through Ctrl-U's scrollable routing feedback.
+- Validate 2–25 locations and total geodesic distance between stops before HTTP:
+  walking 1,000 km, cycling 1,500 km and driving 10,000 km. Limits reject the whole
+  plan with its locations intact; no silent splitting/truncation. Provider rejection
+  still reports HTTP 422 and the profile limits, without forwarding response bodies.
+- HTTPS/fixed host, eight-second timeout, disabled redirects and an 8 MiB decoded
+  body limit match existing bounded-provider practices. Errors omit tokens, URLs,
+  stop coordinates and raw responses. No SDK or other dependency is added, following
+  the [supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+- HTTP 429 applies client-wide backoff of at least 60 seconds, honouring integer
+  or HTTP-date `Retry-After`. An explicit request during backoff returns the remaining
+  wait instead of calling Mapbox. No assumption is made that trial accounts have
+  the standard 300-request/minute allowance.
+- Routing data stays in memory for this session only. Current resolved geometry
+  contributes `© Mapbox © OpenStreetMap` to the footer and credits dialog even with
+  the basemap off; stale snapshots aren't drawn or credited as current routes.
+
+Each multi-stop calculation is **one Directions request**, separate from Search Box
+and tile usage. Standard pricing advertises 100,000 requests/month free; card-free
+trial access currently lists 10,000/month and lower rate limits. These are account-wide
+allowances, not app-enforced spending caps. Follow current
+[pricing](https://www.mapbox.com/pricing#directions-api) and
+[signup/trial limits](https://docs.mapbox.com/accounts/guides/signup/) rather than
+assuming the same allowance or capability for every account. The three profiles
+can be checked independently using the opt-in live check in [validation](VALIDATION.md).
+Traffic-aware routing, alternatives, instructions, elevation and persistent caching
+remain separate work.
 
 ## Attribution
 

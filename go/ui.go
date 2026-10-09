@@ -35,7 +35,8 @@ const (
 	dialogMapboxHelp
 	dialogJourney
 	dialogJourneyLocation
-	dialogJourneySearch
+	dialogJourneyRouting
+	dialogJourneyRoutingHelp
 )
 
 type uiState struct {
@@ -213,6 +214,9 @@ func (m *viewer) initUI() error {
 		}
 		m.places = newPlaceClient(token)
 	}
+	if m.directions == nil {
+		m.directions = newDirectionsClient(m.places.token)
+	}
 	themes, selected, err := loadThemes(m.args.Theme)
 	if err != nil {
 		return err
@@ -253,20 +257,31 @@ func (m *viewer) gradient(s string, background color.Color) string {
 	return out.String()
 }
 func (m *viewer) closeDialog() {
+	wasPlanner := m.journeyPanelOpen()
 	m.cancelJourneySearch()
+	m.planner.showRevision = nil
 	m.ui.dialog = dialogNone
 	m.ui.search.Blur()
 	m.ui.inputID = ""
 	m.ui.notice = ""
+	if wasPlanner {
+		m.layout()
+	}
 	m.dirty = true
 }
 func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
+	wasPlanner := m.journeyPanelOpen()
+	m.planner.showRevision = nil
+	m.planner.mapFocused = false
 	m.ui.dialog = kind
 	m.ui.selected = 0
 	m.ui.notice = ""
 	m.dragging, m.rotating = false, false
 	m.dirty = true
 	m.ui.page.GotoTop()
+	if wasPlanner != m.journeyPanelOpen() {
+		m.layout()
+	}
 	switch kind {
 	case dialogCommands:
 		m.ui.inputID = rand.Text()
@@ -312,7 +327,7 @@ func (m *viewer) commands() []viewerCommand {
 	commands = append(commands, []viewerCommand{
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
-		{title: "Plan journey", shortcut: "ctrl+g", action: "journey"},
+		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
 		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
 	}...)
 	if m.mapboxConnected() {
@@ -499,7 +514,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		return m.mapboxDialogContent(width, height)
 	case dialogMapboxHelp:
 		return m.mapboxHelpContent(width, height)
-	case dialogJourney, dialogJourneyLocation, dialogJourneySearch:
+	case dialogJourney, dialogJourneyLocation, dialogJourneyRouting, dialogJourneyRoutingHelp:
 		return m.journeyDialogContent(width, height)
 	case dialogWorkspace:
 		return m.workspaceDialogContent(width, height)
@@ -589,7 +604,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		title = "Map credits"
 		content = m.sourceCreditsContent(m.sources.view())
 		if credits := m.journeyCredits(); credits != "" {
-			content += "\n\n" + s.dialogHeading.Render("Journey place search") + "\n" + s.dialogText.Render(credits)
+			content += "\n\n" + s.dialogHeading.Render("Journey providers") + "\n" + s.dialogText.Render(credits)
 		}
 	case dialogInspect:
 		title = "Selected position"
@@ -632,7 +647,7 @@ func (m *viewer) sourceCreditsContent(sources sourceView) string {
 func (m *viewer) overlay() {
 	dialogOpen := m.ui.dialog != dialogNone
 	hasRoom := m.width >= 30 && m.height >= 12
-	if !dialogOpen || !hasRoom {
+	if !dialogOpen || !hasRoom || m.journeyPanelOpen() {
 		return
 	}
 	width := min(64, m.width-8)

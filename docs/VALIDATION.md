@@ -141,7 +141,7 @@ theme-picker/map painting at 120×40, 70×24, 70×18 and 30×12, including ASCII
 Journey checks cover session-only generated item identity, isolation from imports,
 full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps
 and geometry recalculation. Tests verify opening/reopening makes no location
-requests. Fake transports verify Mapbox search opt-in, suggest/retrieve session
+requests. Fake transports verify automatic Mapbox search, suggest/retrieve session
 ownership and rotation, cancellation, clipboard/editor ownership and debounce
 ownership across replaced plans, paste-driven query invalidation,
 edited-place provenance/attribution,
@@ -149,11 +149,48 @@ printable Unicode names/credits with control-character sanitization,
 transient suggestion attribution and single-line footers with distinct credits,
 stale responses after edits/removal, missing/invalid coordinates, HTTP/body limits
 and token/query redaction. Planned geometry does not acquire recorded playback or
-elevation profiles. Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
+elevation profiles. Search checks prove automatic availability on fresh/repeated
+launches, delayed credential discovery resuming typed queries, cancellation on
+disconnect, minimum query length/debounce and no requests for empty/coordinate input.
+Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
 in Braille/ASCII modes.
 Partial journeys retain the correct start/end markers without bridging unresolved
 stops. Checks also cover notice-aware selection visibility, coordinate inspection
 with a selected journey, imported profile reuse and playback command availability.
+
+Directions checks use fake transports for ordered multi-stop requests and all three
+profiles, separate snapped/user locations, geometry/estimate validation, HTTP/body
+limits, redacted errors, cancellation and timeouts, no-route/no-segment responses,
+account denial, profile limits and HTTP 429 backoff (integer/date Retry-After).
+Workspace/viewer tests cover reversal/undo recalculation, committed coordinates and
+search retrieval, superseded successes/errors, mode switches, retries, removal,
+clearing, credential replacement, unchanged imported playback/elevation, manual
+fallback and route attribution. Routed map/dialog layouts are checked at 120×40,
+70×24, 70×18 and 30×12 in Braille/ASCII, including scrollable full error feedback.
+Planner regressions cover the visible travel-mode selection, connected Driving
+default (including delayed credential discovery), explicit Manual preservation,
+automatic routing after complete endpoints/waypoints, Show waiting for resolved
+geometry without duplicate requests, failure feedback and cancelled pending camera fits.
+Panel checks verify unobscured map cells, input-cursor placement, sidebar/compact-strip
+resizing, independent map/list mouse navigation and Tab keyboard focus at 120×40,
+70×24, 70×18, 50×18 and 30×12 in Braille/ASCII.
+Mouse checks cover selecting location/action/mode rows, placing start/destination/
+waypoint coordinates, automatic recalculation and drag-versus-click separation.
+View checks verify a mile-radius context across latitudes/viewports without cropping
+longer plans. Planned endpoint A/B markers and separated stop-detail sections have
+regression coverage.
+
+Opt-in live account check (three Directions requests, using shared credential resolution):
+
+```sh
+SHOE_DIRECTIONS_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestDirectionsAccountAccess$' -v
+```
+
+On 2026-10-09 this passed with the existing saved-login account: walking 1.27 km /
+16 min, cycling 1.50 km / 6 min, driving 1.47 km / 7 min for the short London plan.
+This proves those profiles independently of authentication/Streets access for that
+account. A separate card-free trial-account run remains pending; no trial signup
+was performed. Ordinary repository checks remain offline and don't run this test.
 
 Optional checks, after building:
 
@@ -185,6 +222,10 @@ start/destination entry, Alt-M map-centre selection, intermediate waypoints,
 full reversal/undo, reorder/removal,
 map fit, ASCII mode and reopening at 120×40, 70×24 and 70×18. They make no location
 lookup requests; provider behaviour uses fake transports in Go tests.
+They also exercise the routing-mode picker, disconnected-account feedback,
+scrollable usage/limits and explicit Manual fallback without Directions requests.
+Planner terminal checks keep the map visible beside the panel and exercise Tab
+map/planner focus, mouse zoom, clicking a waypoint row and placing its map point.
 They don't verify physical mouse forwarding or other
 operating systems. Benchmark and capture output is ignored under `reports/`.
 

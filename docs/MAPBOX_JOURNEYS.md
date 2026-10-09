@@ -119,8 +119,9 @@ Once connected, the palette offers **Mapbox settings** rather than account setup
 and its first action is **Check connection** instead of sign-in. The login operation reports the saved
 credential location before returning to the viewer.
 
-For place search, Ctrl-G opens a journey; edit a location and use Ctrl-S to opt
-into Mapbox search when connected. Unavailable search is greyed out; manual
+For place search, Ctrl-G opens a journey; edit a location and type a place name.
+Mapbox search is automatic when connected, after three characters and a short pause.
+Ctrl-S retries the query. Unavailable search is greyed out; manual
 coordinates/map-centre input, editing and reversal work without an account.
 
 Mapbox settings also includes **CLI telemetry**, off by default. Toggle it only
