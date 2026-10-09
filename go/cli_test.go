@@ -8,6 +8,35 @@ import (
 	"testing"
 )
 
+func TestCLIAuthCommandsAndSetupHelp(t *testing.T) {
+	for _, action := range []string{"login", "logout", "status"} {
+		t.Run(action, func(t *testing.T) {
+			command, err := parseCLI([]string{"auth", action}, io.Discard)
+			if err != nil || command.Name != "auth" || command.AuthAction != action {
+				t.Fatal("auth command was mistaken for a track file", err)
+			}
+		})
+	}
+	command, err := parseCLI([]string{"auth", "status", "--usage", "--json"}, io.Discard)
+	if err != nil || !command.Usage || !command.JSON {
+		t.Fatal("status flags were not parsed", err)
+	}
+	for _, args := range [][]string{{"auth", "signup"}, {"auth", "login", "--json"}, {"auth", "status", "file.gpx"}} {
+		if _, err := parseCLI(args, io.Discard); err == nil {
+			t.Fatal("invalid auth arguments were accepted")
+		}
+	}
+	var help bytes.Buffer
+	if _, err := parseCLI([]string{"auth", "--help"}, &help); err != flag.ErrHelp {
+		t.Fatal("auth help did not return the normal help result", err)
+	}
+	for _, text := range []string{mapboxInstallURL, mapboxSignupURL, "MAPBOX_CONFIG_DIR", "Offline imports", "statistics"} {
+		if !strings.Contains(help.String(), text) {
+			t.Fatal("auth help omitted setup/account requirements", text)
+		}
+	}
+}
+
 func TestCLIViewerAcceptsOptionalFileAndInterspersedFlags(t *testing.T) {
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	for _, test := range []struct {
@@ -75,9 +104,13 @@ func TestCLICameraValuesAndProviderDefaults(t *testing.T) {
 	if err != nil || command.Args.Provider != "mapbox" {
 		t.Fatal("configured token did not choose Mapbox", command, err)
 	}
-	command, err = parseCLI([]string{"fixtures/example.gpx", "--provider", "none"}, io.Discard)
-	if err != nil || command.Args.Provider != "none" {
-		t.Fatal("explicit none did not override the configured token", command, err)
+	command, err = parseCLI([]string{"fixtures/example.gpx", "--no-provider"}, io.Discard)
+	if err != nil || command.Args.Provider != "none" || !command.Args.ProviderSet {
+		t.Fatal("no-provider did not disable the configured basemap", command, err)
+	}
+	command, err = parseCLI([]string{"render", "--no-provider=false"}, io.Discard)
+	if err != nil || command.Args.ProviderSet || command.Args.Provider != "mapbox" {
+		t.Fatal("no-provider=false disabled the configured basemap", command, err)
 	}
 }
 
@@ -120,6 +153,8 @@ func TestCLIRejectsIrrelevantFlagsAndInvalidInputCounts(t *testing.T) {
 		{"render", "--no-animation"}, {"render", "--frames", "2"},
 		{"render", "--theme", "tokyo-night"}, {"mcp", "--theme", "catppuccin"},
 		{"bench", "fixtures/example.gpx", "--provider", "mapbox"},
+		{"bench", "fixtures/example.gpx", "--no-provider"},
+		{"summary", "fixtures/example.gpx", "--no-provider"},
 		{"mcp", "--demo"}, {"mcp", "fixtures/example.gpx"},
 		{"summary", "fixtures/example.gpx", "fixtures/waypoints.gpx"},
 		{"fixtures/example.gpx", "fixtures/waypoints.gpx", "--point-index", "0"},
@@ -146,6 +181,11 @@ func TestCLIHelpIsAvailableWithoutInputOrCredentials(t *testing.T) {
 			t.Fatal("help tried to execute the command", argv, err)
 		}
 		help := output.String()
+		if command.Name == "open" || command.Name == "render" {
+			if !strings.Contains(help, "-no-provider") || strings.Contains(help, "  -provider ") {
+				t.Fatal("help did not prefer the explicit offline toggle")
+			}
+		}
 		viewerHelpInvalid := command.Name == "open" &&
 			(!strings.Contains(help, "shoe [FILE...]") ||
 				!strings.Contains(help, "Commands:") ||

@@ -80,6 +80,26 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	}
 }
 
+func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	m.editJourneyLocation(0)
+	_, content, _ := m.journeyDialogContent(70, 12)
+	if !strings.Contains(ansi.Strip(content), "disabled: not connected") {
+		t.Fatal("unavailable Mapbox search was not visibly disabled")
+	}
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	if cmd != nil || m.ui.dialog != dialogJourneyLocation || m.planner.online || m.authBusy {
+		t.Fatal("disabled place search started work or became selectable")
+	}
+	enterJourneyCoordinate(m, 0, "51.5, -0.1")
+	enterJourneyCoordinate(m, 1, "51.6, -0.2")
+	j, err := m.workspace.journey(m.planner.ref)
+	if err != nil || j.Stops[0].Location == nil || j.Stops[1].Location == nil {
+		t.Fatal("offline coordinates were disabled along with search", err)
+	}
+}
+
 func TestJourneyViewerSearchOptInSessionsAndSupersededResults(t *testing.T) {
 	m := journeyViewer(t)
 	m.places.token = "test-token"

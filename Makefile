@@ -1,8 +1,17 @@
-.PHONY: build dev pre-commit format-check check test race interactions fixtures bench
+.PHONY: build install package mapbox-check dev pre-commit format-check check test race interactions fixtures bench
 ARGS ?= fixtures/example.gpx
+PREFIX ?= $(HOME)/.local
 build:
 	mkdir -p bin
 	cd go && go build -trimpath -o ../bin/shoe .
+mapbox-check:
+	python3 scripts/check_mapbox_contract.py
+install: build
+	install -d "$(DESTDIR)$(PREFIX)/bin"
+	install -m 755 bin/shoe "$(DESTDIR)$(PREFIX)/bin/shoe"
+package: build
+	mkdir -p dist
+	tar -czf "dist/shoe-$$(go env GOOS)-$$(go env GOARCH).tar.gz" -C bin shoe
 dev:
 	python3 scripts/dev.py $(ARGS)
 pre-commit:

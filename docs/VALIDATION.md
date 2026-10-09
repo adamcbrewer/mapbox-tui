@@ -70,9 +70,24 @@ camera/picking, playback/profile behaviour, tile decoding and cache policy, toke
 errors, free-roam navigation and route transitions, tool schemas, and CLI/MCP
 track-free rendering consistency. CLI checks cover default file opening, options
 before/after files, scoped flags, help exit codes and benchmark dispatch. Provider
-checks cover token-free geometry, missing-token warnings, runtime config and
+checks cover token-free geometry, missing-token warnings, saved-login discovery and
 environment precedence, and automatic Mapbox selection for MCP. No Mapbox account
 is required.
+
+Auth tests use a fake CLI to cover schema compatibility, environment/debug/account
+isolation, public-token retrieval, expired stored identity followed by successful
+account access, warning-prefixed structured errors, malformed/oversized output,
+whole-child timeout, opt-out, missing CLI, logged-out status, credential location,
+HTTP-200 token validity, usage denial/empty reports, mismatched accounts/periods
+and token-free text/JSON. Viewer tests cover cancellation/stale-result rejection,
+both-client replacement and preserved imports/camera/playback. No installed
+Mapbox CLI or account is needed for `make test`.
+
+With the optional CLI installed, `make mapbox-check` inspects six released command
+schemas without account/API requests. `python3 scripts/mapbox_auth_check.py` is a
+live saved-login/token/Streets/usage check and makes a tile request. Auth/signup
+verification and deferred trial-account checks are recorded in
+[the auth notes](MAPBOX_AUTH_PLAN.md).
 
 Import regressions cover Garmin KML coordinate spacing and FIT header checksum
 variants, including Zwift-style omitted header checksums. Edge cases include
@@ -147,7 +162,14 @@ mise exec go@1.27.1 -- go test ./go -run '^$' -bench BenchmarkWorkspaceScene -be
 
 Interaction checks require tmux and `rsvg-convert` and run in headless Linux
 pseudo-terminals. They exercise keyboard/mouse input, dialogs, playback, resizing
-and terminal restoration. Multi-file checks cover startup with two files, the
+and terminal restoration. Auth checks use a fake external CLI at wide/compact/tiny
+sizes, verify terminal streams are inherited, preserve imported files through
+palette login, and exercise file-free setup/offline continuation with a missing
+CLI. Missing-CLI GPX launches display the concise connection notice without a
+prompt, and echo it once to stdout; the same echo is checked at tiny/compact sizes.
+Dependency-aware setup checks exercise installation help, all three selectable
+actions and rechecking an executable that appears while the viewer is open.
+Multi-file checks cover startup with two files, the
 Ctrl-L list, visibility, selection, removal and clearing at wide/compact sizes.
 Two-activity checks also exercise ordered profiles, selected-only playback markers,
 pause, switching while playing and hiding the playing activity without losing the
@@ -181,7 +203,7 @@ python3 scripts/interactions.py --mapbox
 5. Resize the terminal and try ASCII mode with `a`.
 6. Quit with `q` or Ctrl-C and check the terminal is restored.
 7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe` without a GPX; check the empty canvas
-   includes token setup guidance. Pan, zoom, rotate and click to inspect
+    includes a concise connection notice. Pan, zoom, rotate and click to inspect
    coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear selection)**
     and check its geometry and elevation stay visible without playback or a profile cursor.
 8. With a token configured, run `./bin/shoe` for the world view or
@@ -189,8 +211,9 @@ python3 scripts/interactions.py --mapbox
    basemap. Check tiles load while panning and no route/playback/profile is shown.
 9. Try `./bin/shoe --zoom 13 fixtures/example.gpx`, then check
    `./bin/shoe --help` and `./bin/shoe inspect --help` show the relevant options.
-10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe render fixtures/example.gpx --provider mapbox`;
-    check the file is rendered and stderr explains how to configure a token.
+10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe render fixtures/example.gpx`;
+    check the file is rendered and stdout reports **No basemap · Mapbox not connected**.
+    Repeat with `--no-provider`; check the intentional offline render is quiet.
 11. Open FIT, TCX and KML files with Ctrl-O. Check their tracks/waypoints, elevation
      and playback match the measurements present; a failed import keeps the previous file.
 12. Open two files and press Ctrl-L. Check filenames and individual item names,

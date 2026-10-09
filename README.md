@@ -17,7 +17,8 @@ traffic data or live GPS navigation.
 
 ## Quick start
 
-Requires Go **1.27.1** and Make. Run from the repository root:
+Building requires Go **1.27.1** and Make. Development checks use Python 3.
+Run from the repository root:
 
 ```sh
 make build
@@ -29,6 +30,41 @@ basemap automatically. Run `./bin/shoe` without a file to free roam; without a
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
 file picker, Ctrl-L to manage loaded files and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
+
+### Build, install and package
+
+`shoe` is a standalone executable. Builds, installations and release archives
+don't download or bundle Mapbox CLI. Install that optional tool separately for
+browser login, automatic rendering-token retrieval and account usage reports.
+
+```sh
+make install                              # ~/.local/bin/shoe
+make install PREFIX=/your/install/prefix
+make package                              # dist/shoe-linux-amd64.tar.gz
+make mapbox-check                         # optional installed CLI's offline schemas
+```
+
+`DESTDIR` supports staged installs. `make package` produces an archive containing
+only `shoe` for the build target. Linux x86-64 is verified in this environment.
+Use the [official Mapbox release instructions](https://github.com/mapbox/mapbox-cli#install-a-released-binary)
+for the optional CLI; v0.3.0 is tested. The official installer checks the archive's
+SHA-256 and supports `MAPBOX_CLI_VERSION` for versioned installation. Follow
+versioned acquisition and reviewed-update principles from the
+[supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+
+Install Mapbox CLI by following the
+[official installation documentation](https://github.com/mapbox/mapbox-cli#install-a-released-binary).
+The separate **Mapbox Tilesets CLI** offered by its installer is for publishing
+datasets; `shoe` doesn't require it. After installation:
+
+```sh
+mapbox --version
+./bin/shoe auth status
+```
+
+If status reports a saved usable login, it is ready to use; otherwise run
+`./bin/shoe auth login` and sign into your existing account. Installation doesn't
+remove the login already stored by Mapbox CLI.
 
 Braille rendering works best in a Unicode terminal. Use `--ascii` for a text
 fallback. The minimum terminal size is 30 columns by 12 rows.
@@ -73,22 +109,63 @@ Real basemap tiles and optional journey place search use a Mapbox account and
 public access token. Imported geometry, measurements, playback and manual journey
 coordinates work without Mapbox authentication.
 
+See the [existing-account journey walkthrough](docs/MAPBOX_JOURNEYS.md) for
+standalone-binary and local-development setup, login, viewing, usage and logout.
+
 ### Runtime configuration
 
-Tokens are read when the viewer or MCP server starts, **not compiled into the
-binary**. Changing credentials needs no rebuild. Supply your own public access
-token through `MAPBOX_ACCESS_TOKEN`, or copy the placeholder in
-`mapbox.example.json` into an ignored `mapbox.local.json` in the current working
-directory and replace it locally. The environment variable takes precedence;
-an explicitly empty value disables the local token. `.env` files aren't loaded
-automatically.
+The recommended setup is the optional official Mapbox CLI plus your own Mapbox
+account. Install the CLI from the link above, make `mapbox` available on `PATH`,
+then run:
+
+```sh
+./bin/shoe auth login
+./bin/shoe auth status
+./bin/shoe auth status --usage --json
+```
+
+Login opens Mapbox's browser flow to sign in **or create an account**. Signup,
+email verification, passwords, MFA and billing stay on Mapbox's website. See
+[account creation and card-free trial details](https://docs.mapbox.com/accounts/guides/signup/)
+and [current pricing](https://www.mapbox.com/pricing/); trial limits and standard
+free allowances differ. If email verification exceeds the browser callback's
+five-minute window, finish verification and run login again.
+
+Mapbox CLI owns the persistent OAuth login and refresh. The shared `default`
+profile lives at `~/.mapbox/credentials.json`; `MAPBOX_CONFIG_DIR` relocates its
+store. **Login, logout and status print the resolved path on your machine**;
+JSON status includes `credential_file`. The CLI uses owner-only Unix credential
+files and plain JSON rather than an OS keychain. `shoe` uses the CLI's documented
+JSON interface, retrieves the default public rendering token and holds it in
+memory. It neither reads the CLI's private files nor saves another token copy.
+The saved login works from any directory, without files or auth keys in this repo.
+
+`SHOE_MAPBOX_CLI=/absolute/path/to/mapbox` selects an executable outside `PATH`.
+The adapter checks its JSON/schema contract and gives install/update guidance if
+the CLI is missing or incompatible. v0.3.0 requests general-purpose account
+permissions, including write scopes `shoe` doesn't use; that release has no
+scope-selection option. Account token retrieval needs `tokens:read`; usage
+needs `statistics:read` and account access to the Statistics API.
+
+`shoe auth status` starts with a system check of `PATH` or the explicit
+`SHOE_MAPBOX_CLI` selection. It reports the executable used, validates its version
+and command schema, and links official installation instructions when missing/unusable.
+JSON includes `cli.checked`, `cli.path` and `cli.install_url`. A missing CLI
+means the saved login couldn't be inspected, rather than that you are logged out.
+
+For scripts/CI, `MAPBOX_ACCESS_TOKEN` can directly supply a public token without
+Mapbox CLI. It overrides the saved login; an explicitly empty value disables all
+automatic credential discovery and first-run setup. Tokens are runtime-only,
+**never compiled into the binary**. `.env` and repo-local Mapbox JSON files
+aren't loaded. Restart an existing viewer/MCP process to rediscover credentials,
+or use the viewer's **Mapbox account setup** action.
 
 ```sh
 MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/shoe
+MAPBOX_ACCESS_TOKEN='' ./bin/shoe           # deliberately offline
 ./bin/shoe
 ./bin/shoe --center-lon -0.1065 --center-lat 51.505 --zoom 13
-./bin/shoe fixtures/example.gpx --provider mapbox
-./bin/shoe fixtures/example.gpx --provider none
+./bin/shoe fixtures/example.gpx --no-provider
 ```
 
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
@@ -192,13 +269,59 @@ storage policies and [route-planning notes](docs/ROUTE_PLANNING.md) for API rese
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
-canvas. `--provider none` (MCP: `provider: "none"`) disables the basemap even when
+canvas. `--no-provider` (MCP: `provider: "none"`) disables the basemap even when
 a token is available.
 
-Opening a track file without credentials is quiet. An explicit Mapbox request
-without a token, or a file-free launch without a basemap, shows token setup guidance
-and keeps the viewer/file usable. The viewer shows this in its status line; plain
-CLI renders warn on stderr, while JSON/MCP renders include it in `scene.status`.
+Opening a track file never blocks on an authentication prompt. If Mapbox isn't
+connected, the viewer shows **No basemap · Mapbox not connected** and echoes that
+notice once to stdout. Human CLI renders also print the short notice; structured
+JSON/MCP output carries setup details in its status fields. Explicit
+`--no-provider` is quiet. Credential
+discovery can run while imports display. A file-free launch without credentials
+offers setup or continuing offline; explicit `--no-provider` and an empty token
+environment skip the offer. Ctrl-P lists **Keyboard shortcuts** first, followed
+by **Mapbox account setup** when disconnected. Connected viewers offer **Mapbox
+settings** instead. Login hands the terminal to Mapbox CLI and restores the
+viewer afterward, preserving workspace/camera and replacing map/search clients.
+The setup dialog separates actions from information. With a missing CLI, choose
+**Installation help**, **Check again**, or **Continue offline**. Official
+documentation links open in a scrollable help page; checking again reports
+success/failure and can detect a newly
+installed CLI and reuse your saved login. Sign-in is offered when the CLI passes
+its system/compatibility check and the viewer is disconnected. Connected settings
+show **Connected** and **Check connection**, instead of asking you to sign in again.
+
+**CLI telemetry** in Mapbox settings is an opt-in toggle, off by default. The
+preference is shared by viewer/CLI/MCP calls and saved at
+`~/.config/shoe/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it). It controls
+only Mapbox CLI processes launched by `shoe`, not standalone `mapbox` commands.
+An explicit `MAPBOX_CLI_NO_TELEMETRY` environment opt-out takes precedence. See
+[Mapbox CLI privacy](https://github.com/mapbox/mapbox-cli#privacy) for the usage
+information it collects. Background map/search API requests are still normal
+Mapbox service requests regardless of this setting.
+
+Manual journey planning works offline. The location editor greys out unavailable
+Mapbox address/place search and prevents its shortcut from starting a search.
+**Map credits** is shown in the command palette only when external map or place
+data carries attribution; attribution depends on data usage, not CLI login state.
+Explicit Mapbox renders without credentials get actionable setup guidance; plain
+CLI warns on stderr, while JSON/MCP includes it in `scene.status`. These
+non-interactive operations never open a browser. MCP discovers login lazily when
+a render needs maps, rather than when importing/inspecting local files.
+
+`shoe auth status` separates stored login, active rendering-token source/account,
+token validity and actual Streets access. Login and status probe Streets with a
+tile request. `--usage` adds account and eligible active-public-token Vector Tiles
+reports, with matching inclusive UTC dates and generation timestamps. A rendering
+override from another account can't receive the logged-in account's token usage.
+Unavailable statistics don't make a working map token invalid; no usage is an
+empty report. Counts can lag 24 hours, include other applications and aren't an
+invoice or exact remaining allowance. Completed status reports exit zero even
+when sections are logged out/unavailable.
+
+`shoe auth logout` removes the selected shared CLI profile. It doesn't revoke the
+account's public token, unset environment overrides, or erase tokens already held
+by other running apps. A subsequent launch must resolve credentials again.
 
 Mapbox requests use your account and may incur charges. Provider errors leave the
 file inspectable. See [provider notes](docs/PROVIDERS.md) for caching and attribution
@@ -215,20 +338,18 @@ ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are trac
 
 ### Which commands need Mapbox authentication?
 
-| Command / feature | Mapbox authentication | Without credentials |
-|---|---|---|
-| `shoe FILE` or `shoe open FILE` | Optional, for the basemap | View imported tracks, routes and waypoints on an empty canvas |
-| File inspection, elevation profile and playback | No | Fully available for the loaded geometry/measurements |
-| Journey coordinates, waypoint editing and reversal | No | Manual planning on an empty canvas |
-| Journey address/named-POI autocomplete | Yes, explicit opt-in | Enter coordinates or use the map centre |
-| `shoe` / file-free browsing | Required for real maps | Empty canvas with a setup hint; Ctrl-O loads a track file |
-| `shoe render [FILE]` | Optional, for the basemap | Render only the file geometry; no file produces an empty map with a setup hint |
-| `shoe summary FILE` | No | Local geometry and measurement statistics as JSON |
-| `shoe inspect FILE` | No | Local recorded-point inspection as JSON |
-| `shoe bench FILE` | No | Local synthetic rendering benchmark |
-| `shoe mcp` | No to start the server | Local tools work; real basemap rendering needs a token in the server's environment/config |
+| Command / feature | Mapbox account/token | Mapbox CLI | Offline alternative |
+|---|---|---|---|
+| Imported files, inspection, elevation and playback | No | No | Fully available |
+| Manual journey coordinates, editing and reversal | No | No | Fully available |
+| Real basemaps in viewer, `render` or MCP | Yes | Recommended for saved login; unnecessary with an environment token | Imported geometry/empty canvas |
+| Journey address/named-POI search | Yes, user opt-in | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
+| `shoe auth login` / `logout` | Login signs in or creates one | Required | Offline features remain available |
+| `shoe auth status` | No to report status | Needed to inspect the saved login and token metadata | Reports unavailable sections |
+| `shoe auth status --usage` | Yes, with statistics access | Required for usage queries | Maps/local features still work without statistics |
+| `shoe summary`, `inspect`, `bench`, local MCP tools | No | No | Fully available |
 
-`--provider mapbox` selects the credential-dependent service. Camera and display
+Mapbox is the default external basemap; `--no-provider` disables it. Camera and display
 options (`--center-lon`, `--center-lat`, `--zoom`, `--bearing`, `--ascii`,
 `--cell-aspect`), file selection and `--point-index` do not require authentication.
 The [MCP tool table](#mcp) lists the same distinction for each service operation.
@@ -256,7 +377,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 | Focus route details | Tab | Wheel over sidebar |
 | Rotate / north-up | `,` / `.` / `n` | Right-drag |
 | Toggle ASCII / camera animation | `a` / `m` | |
-| Provider credits | `v` | |
+| Map credits | `v` | |
 | Close dialog / quit | Esc / `q` or Ctrl-C | |
 
 `S` and `E` mark part endpoints, `W` marks waypoints, and `@` marks the selected
@@ -329,6 +450,7 @@ Subcommands select a different operation:
 | `inspect` | Required | Recorded point as JSON |
 | `mcp` | None | Local stdio MCP server |
 | `bench` | Required | Synthetic rendering benchmark timings as JSON |
+| `auth login`, `logout`, `status` | None | Mapbox browser login, shared-profile logout, text/JSON status and optional usage |
 
 ```sh
 ./bin/shoe render --center-lon -0.1065 --center-lat 51.505 --zoom 13 --json
@@ -367,7 +489,7 @@ Camera options for the viewer, rendering and benchmarks: `--center-lon` and
 `--center-lat` together, `--zoom` (-8 to 20), `--bearing` (-360 to 360),
 `--cell-aspect` (1-3, default 2), and `--ascii`.
 
-The viewer and `render` accept `--provider mapbox|none` for the basemap, plus
+The viewer and `render` accept `--no-provider` to disable the basemap, plus
 `--point-index` to select or highlight a recorded point. `--no-animation` and
 `--theme` are viewer-only. Negative zoom allows widely separated items to fit in a
 small terminal; file-free browsing still starts at zoom 0. `--width` (10-300) and

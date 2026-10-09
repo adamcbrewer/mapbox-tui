@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"time"
 )
 
@@ -19,6 +20,11 @@ func run() error {
 	}
 	if command.Name == "mcp" {
 		return serveMCP()
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	if command.Name == "auth" {
+		return runAuth(ctx, command, authStreams{in: os.Stdin, out: os.Stdout, err: os.Stderr})
 	}
 	a := command.Args
 	if command.Name == "open" {
@@ -47,16 +53,30 @@ func run() error {
 	case "inspect":
 		result, e = t.inspect(a.PointIndex, a.Distance)
 	case "render":
+		var credential renderingCredential
+		kind := a.Provider
+		if !a.ProviderSet {
+			kind = ""
+		}
+		if kind != "none" {
+			credential = resolveCredential(ctx)
+		}
+		provider := providerForCredential(kind, credential)
+		provider.quiet = kind == "none"
 		result, e = renderFiles(
-			context.Background(),
+			ctx,
 			command.Paths,
 			a,
-			newProvider(a.Provider),
+			provider,
 		)
 		if e == nil && !command.JSON {
 			r := result.(map[string]any)
 			fmt.Println(r["text"])
-			fmt.Println(r["scene"].(map[string]any)["attribution"])
+			if notice := providerConnectionNotice(provider); notice != "" {
+				fmt.Println(notice)
+			} else {
+				fmt.Println(r["scene"].(map[string]any)["attribution"])
+			}
 			if status := r["scene"].(map[string]any)["status"].(string); status != "" {
 				fmt.Fprintln(os.Stderr, "warning:", status)
 			}

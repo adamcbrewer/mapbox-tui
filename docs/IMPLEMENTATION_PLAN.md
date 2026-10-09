@@ -5,8 +5,10 @@ workspace ownership, then build the remaining TODO features on those foundations
 
 ## New-thread handover
 
-- Continue on `feat/5-route-plotting`. The journey-planner slice is implemented
-  and verified locally.
+- Continue on `feat/11-mapbox-cli-auth`. Journey planning is merged into `main`.
+  [Auth notes](MAPBOX_AUTH_PLAN.md) record the implemented optional-CLI login,
+  shared home-directory credentials, status/usage and viewer setup. Repo token
+  files are removed; new card-free signup/trial-account checks are deferred.
 - Steps 1-5 are complete. Step 6 now includes manual A-to-B planning with typed
   locations, ordered waypoints, reversal/undo and optional Mapbox Search Box for
   start, destination and waypoints. Road-following remains future work requiring

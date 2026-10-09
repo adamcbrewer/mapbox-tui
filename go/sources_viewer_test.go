@@ -156,7 +156,7 @@ func TestViewerRejectsResultsForReplacedProviderBeforePolling(t *testing.T) {
 	}
 }
 
-func TestViewerImportLoadingDoesNotShowUnnecessaryTokenGuidance(t *testing.T) {
+func TestViewerImportShowsConnectionNoticeAfterLoading(t *testing.T) {
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	m := &viewer{
 		provider: newProvider("none"),
@@ -174,5 +174,27 @@ func TestViewerImportLoadingDoesNotShowUnnecessaryTokenGuidance(t *testing.T) {
 	m.rebuild()
 	if strings.Contains(m.content, "MAPBOX_ACCESS_TOKEN") {
 		t.Fatal("local file loading showed a basemap setup warning")
+	}
+	if strings.Contains(m.content, mapboxDisconnectedNotice) {
+		t.Fatal("connection notice appeared before the local file loaded")
+	}
+	document, err := loadDocument("../fixtures/example.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.workspace.addDocument(document)
+	m.loading = false
+	m.layout()
+	m.rebuild()
+	if !strings.Contains(m.content, mapboxDisconnectedNotice) {
+		t.Fatal("imported geometry hid the missing Mapbox connection")
+	}
+	if m.echoConnectionNotice() == nil || m.echoConnectionNotice() != nil {
+		t.Fatal("connection notice was not scheduled exactly once")
+	}
+	m.provider.quiet = true
+	m.rebuild()
+	if strings.Contains(m.content, mapboxDisconnectedNotice) {
+		t.Fatal("deliberate offline viewing showed an account warning")
 	}
 }

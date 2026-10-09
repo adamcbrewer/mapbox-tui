@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -30,19 +29,29 @@ type Stats struct {
 	Cached                 int
 }
 type Provider struct {
-	Kind   string
-	client *http.Client
-	token  string
-	cache  map[Tile]cacheEntry
-	stats  Stats
-	clock  uint64
-	retry  time.Time
-	mu     sync.Mutex
-	batch  chan struct{}
-	now    func() time.Time
+	Kind     string
+	client   *http.Client
+	token    string
+	guidance string
+	quiet    bool
+	cache    map[Tile]cacheEntry
+	stats    Stats
+	clock    uint64
+	retry    time.Time
+	mu       sync.Mutex
+	batch    chan struct{}
+	now      func() time.Time
 }
 
-const mapboxTokenMissing = "Mapbox token missing; set MAPBOX_ACCESS_TOKEN or access_token in mapbox.local.json"
+const mapboxTokenMissing = "Mapbox token missing; " + mapboxLoginGuidance + "; or set MAPBOX_ACCESS_TOKEN"
+const mapboxDisconnectedNotice = "No basemap · Mapbox not connected"
+
+func providerConnectionNotice(p *Provider) string {
+	if p.quiet || p.token != "" {
+		return ""
+	}
+	return mapboxDisconnectedNotice
+}
 
 func defaultProvider(token string) string {
 	if token != "" {
@@ -67,20 +76,7 @@ func newProvider(kind string) *Provider {
 	}
 }
 func accessToken() string {
-	if token, ok := os.LookupEnv("MAPBOX_ACCESS_TOKEN"); ok {
-		return token
-	}
-	data, err := os.ReadFile("mapbox.local.json")
-	if err != nil {
-		return ""
-	}
-	var config struct {
-		Token string `json:"access_token"`
-	}
-	if json.Unmarshal(data, &config) != nil {
-		return ""
-	}
-	return config.Token
+	return os.Getenv("MAPBOX_ACCESS_TOKEN")
 }
 func providerCredits(kind string) []sourceCredit {
 	if kind == "mapbox" {
@@ -93,7 +89,13 @@ func providerCredits(kind string) []sourceCredit {
 	return nil
 }
 func providerGuidance(p *Provider, hasImports bool) string {
+	if p.quiet {
+		return ""
+	}
 	if p.Kind == "none" && p.token == "" && !hasImports {
+		if p.guidance != "" {
+			return p.guidance
+		}
 		return mapboxTokenMissing
 	}
 	return ""
@@ -227,6 +229,9 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 	}
 	if p.token == "" {
 		snapshot.Status = mapboxTokenMissing
+		if p.guidance != "" {
+			snapshot.Status = p.guidance
+		}
 		return snapshot, nil
 	}
 	select {

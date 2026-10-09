@@ -31,6 +31,8 @@ const (
 	dialogInspect
 	dialogWorkspace
 	dialogThemes
+	dialogMapbox
+	dialogMapboxHelp
 	dialogJourney
 	dialogJourneyLocation
 	dialogJourneySearch
@@ -198,6 +200,11 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 }
 
 func (m *viewer) initUI() error {
+	preferences, err := loadAppSettings()
+	if err != nil {
+		return err
+	}
+	m.preferences = preferences
 	if m.places == nil {
 		token := ""
 		if m.provider != nil {
@@ -296,12 +303,22 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 
 func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
+		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
+	}
+	if !m.mapboxConnected() {
+		commands = append(commands, viewerCommand{title: "Mapbox account setup", action: "auth"})
+	}
+	commands = append(commands, []viewerCommand{
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Plan journey", shortcut: "ctrl+g", action: "journey"},
-		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
-		{title: "Provider credits", shortcut: "v", action: "credits"},
 		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
+	}...)
+	if m.mapboxConnected() {
+		commands = append(commands, viewerCommand{title: "Mapbox settings", action: "auth"})
+	}
+	if len(m.sources.view().Credits) > 0 || m.journeyCredits() != "" {
+		commands = append(commands, viewerCommand{title: "Map credits", shortcut: "v", action: "credits"})
 	}
 	if len(m.workspace.documents) > 0 {
 		commands = append(commands,
@@ -361,6 +378,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return m.openDialog(dialogSpeed)
 	case "theme":
 		return m.openDialog(dialogThemes)
+	case "auth":
+		return m.openMapboxSetup()
 	case "inspect":
 		return m.openDialog(dialogInspect)
 	}
@@ -387,14 +406,22 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	}
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
+		if pressed == "esc" && m.ui.dialog == dialogMapboxHelp {
+			return m.openDialog(dialogMapbox)
+		}
 		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
 		closeHelp := m.ui.dialog == dialogHelp && pressed == "?"
 		closeWorkspace := m.ui.dialog == dialogWorkspace && pressed == "ctrl+l"
 		if pressed == "esc" || closeCredits || closeHelp || closeWorkspace {
+			if m.ui.dialog == dialogMapbox {
+				m.cancelAuth()
+			}
 			m.closeDialog()
 			return nil
 		}
 		switch m.ui.dialog {
+		case dialogMapbox:
+			return m.updateMapboxDialog(pressed)
 		case dialogWorkspace:
 			return m.updateWorkspaceDialog(pressed)
 		case dialogCommands:
@@ -458,7 +485,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		if before != m.ui.search.Value() {
 			m.ui.selected = 0
 		}
-	case dialogHelp, dialogCredits, dialogInspect:
+	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp:
 		m.ui.page, cmd = m.ui.page.Update(msg)
 	}
 	return cmd
@@ -467,16 +494,24 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	switch m.ui.dialog {
+	case dialogMapbox:
+		return m.mapboxDialogContent(width, height)
+	case dialogMapboxHelp:
+		return m.mapboxHelpContent(width, height)
 	case dialogJourney, dialogJourneyLocation, dialogJourneySearch:
 		return m.journeyDialogContent(width, height)
 	case dialogWorkspace:
 		return m.workspaceDialogContent(width, height)
 	case dialogCommands:
 		m.ui.search.SetWidth(width - 2)
-		rows := []string{m.ui.search.View(), ""}
+		rows := []string{m.ui.search.View()}
+		if height > 2 {
+			rows = append(rows, "")
+		}
 		commands := m.commands()
-		start := max(0, m.ui.selected-max(1, height-3)+1)
-		for i := start; i < min(len(commands), start+max(1, height-2)); i++ {
+		count := max(1, height-len(rows))
+		start := max(0, m.ui.selected-count+1)
+		for i := start; i < min(len(commands), start+count); i++ {
 			command := commands[i]
 			line := pad(command.title, max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
 			style := s.dialogText
@@ -550,7 +585,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		}
 		content = helpContent.String()
 	case dialogCredits:
-		title = "Provider credits"
+		title = "Map credits"
 		content = m.sourceCreditsContent(m.sources.view())
 		if credits := m.journeyCredits(); credits != "" {
 			content += "\n\n" + s.dialogHeading.Render("Journey place search") + "\n" + s.dialogText.Render(credits)
@@ -603,9 +638,15 @@ func (m *viewer) overlay() {
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		width = min(38, m.width-8)
 	}
+	if m.ui.dialog == dialogMapbox {
+		width = min(52, m.width-8)
+	}
 	height := max(1, min(17, m.height-10))
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
+	}
+	if m.ui.dialog == dialogMapbox {
+		height = min(height, 8)
 	}
 	contentHeight := height
 	if m.ui.notice != "" {

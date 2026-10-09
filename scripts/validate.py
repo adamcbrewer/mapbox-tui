@@ -122,7 +122,11 @@ def validate_mcp(binary):
             equivalent(result, cli(binary, "render", None, *options))
             assert result["scene"]["selected_point_index"] == -1
             assert "\x1b" not in result["text"]
-            assert not result["text"].strip() and "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
+            assert not result["text"].strip()
+            if args.get("provider") == "none":
+                assert result["scene"]["status"] == ""
+            else:
+                assert "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
         for mode in ("summary", "inspect", "bench"):
             cli(binary, mode, None, success=False)
         cli(binary, "render", None, "--point-index", "0", success=False)
@@ -133,12 +137,12 @@ def validate_mcp(binary):
 
 
 def validate_cli(binary):
-    def run(*argv, success=True):
-        result = subprocess.run([str(binary), *argv], cwd=ROOT, env=ENV, capture_output=True, text=True, timeout=20)
+    def run(*argv, success=True, env=ENV):
+        result = subprocess.run([str(binary), *argv], cwd=ROOT, env=env, capture_output=True, text=True, timeout=20)
         assert (result.returncode == 0) == success, (argv, result.stderr)
         return result
 
-    for argv in (("--help",), ("-h",), *((name, "--help") for name in ("open", "render", "summary", "inspect", "bench", "mcp"))):
+    for argv in (("--help",), ("-h",), *((name, "--help") for name in ("open", "render", "summary", "inspect", "bench", "mcp", "auth"))):
         result = run(*argv)
         assert "Usage: shoe" in result.stdout and result.stderr == "", (argv, result)
 
@@ -160,10 +164,28 @@ def validate_cli(binary):
         assert result.stdout == "" and result.stderr.strip()
     plain = run("render", path)
     assert "No basemap" in plain.stdout and plain.stderr == ""
+    assert plain.stdout.count("No basemap · Mapbox not connected") == 1
     requested = run("render", path, "--provider", "mapbox")
     assert "S" in requested.stdout and "warning:" in requested.stderr and "MAPBOX_ACCESS_TOKEN" in requested.stderr
     result = json.loads(run("render", "--json").stdout)
     assert result["scene"]["provider"] == "none" and "MAPBOX_ACCESS_TOKEN" in result["scene"]["status"]
+    offline = run("render", "--no-provider", "--json")
+    assert json.loads(offline.stdout)["scene"]["status"] == ""
+    assert "Mapbox not connected" not in run("render", path, "--no-provider").stdout
+    with tempfile.TemporaryDirectory() as folder:
+        credentials = Path(folder) / "credentials"
+        env = {**ENV, "SHOE_MAPBOX_CLI": str(Path(folder) / "missing-mapbox"), "MAPBOX_CONFIG_DIR": str(credentials)}
+        status = run("auth", "status", "--usage", "--json", env=env)
+        report = json.loads(status.stdout)
+        assert report["cli"]["state"] == "missing" and report["rendering"]["source"] == "disabled"
+        assert report["cli"]["checked"] == "SHOE_MAPBOX_CLI" and "mapbox-cli#install" in report["cli"]["install_url"]
+        assert report["credential_file"] == str(credentials / "credentials.json") and status.stderr == ""
+        text = run("auth", "status", env=env).stdout
+        assert str(credentials) in text and "official instructions" in text and "\x1b" not in text and "curl " not in text
+        failure = run("auth", "login", success=False, env=env)
+        assert str(credentials) in failure.stdout and "install" in failure.stderr
+        assert not credentials.exists(), "shoe wrote its own credential copy"
+    run("auth", "login", "--json", success=False)
 
 
 def synthetic_fit(omit_header_crc=False):
@@ -212,7 +234,7 @@ def validate_imports(binary):
                 point = cli(binary, "inspect", path, "--point-index", "0")
                 assert abs(point["point"]["lat"] - 51) < 1e-6 and point["point"]["lon"] == 0
                 equivalent(point, m.call("inspect_track", {"track_id": track_id, "point_index": 0})["result"]["structuredContent"])
-                rendered = cli(binary, "render", path, "--json", "--provider", "none")
+                rendered = cli(binary, "render", path, "--json", "--no-provider")
                 equivalent(rendered, m.call("render_map", {"track_id": track_id, "provider": "none"})["result"]["structuredContent"])
                 assert rendered["scene"]["status"] == "" and rendered["text"].strip()
                 invalid = body[:-1] + bytes([body[-1] ^ 1]) if path.suffix.lower() == ".fit" else body[:-1]
@@ -248,7 +270,7 @@ def validate_workspace(binary):
         args = {"track_id": loaded[0]["track_id"], "item_id": item["item_id"]}
         equivalent(cli(binary, "summary", paths[0], "--item-id", str(item["item_id"])), m.call("summarize_track", args)["result"]["structuredContent"])
         equivalent(cli(binary, "inspect", paths[0], "--item-id", str(item["item_id"]), "--point-index", "0"), m.call("inspect_track", {**args, "point_index": 0})["result"]["structuredContent"])
-        rendered = cli(binary, "render", paths[0], str(paths[1]), "--json", "--provider", "none")
+        rendered = cli(binary, "render", paths[0], str(paths[1]), "--json", "--no-provider")
         workspace = m.call("render_map", {"workspace": True, "provider": "none"})["result"]["structuredContent"]
         equivalent(rendered, workspace)
         assert len(workspace["scene"]["visible_items"]) > 4 and workspace["scene"]["active_item"]["document_id"] == loaded[1]["document_id"]

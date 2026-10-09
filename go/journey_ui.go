@@ -312,6 +312,10 @@ func (m *viewer) updateJourneyConsent(pressed string, msg tea.Msg) tea.Cmd {
 		return m.ui.search.Focus()
 	}
 	if pressed == "y" {
+		if m.places.token == "" {
+			m.ui.notice = "Mapbox search disabled · account not connected"
+			return nil
+		}
 		m.planner.online = true
 		m.ui.dialog = dialogJourneyLocation
 		return tea.Batch(m.ui.search.Focus(), m.schedulePlaceSearch())
@@ -330,7 +334,7 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 		return nil
 	case "ctrl+s":
 		if m.places.token == "" {
-			m.ui.notice = "Mapbox token missing; enter latitude, longitude offline"
+			m.ui.notice = "Place search unavailable · connect Mapbox in settings"
 			return nil
 		}
 		if !m.planner.online {
@@ -366,7 +370,10 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 		if len(m.planner.suggestions) > 0 && !m.planner.searchBusy {
 			return m.retrieveJourneyLocation()
 		}
-		m.ui.notice = "Enter latitude, longitude or use ctrl+s for Mapbox search"
+		m.ui.notice = "Enter latitude, longitude"
+		if m.places.token != "" {
+			m.ui.notice += " or use ctrl+s for Mapbox search"
+		}
 		return nil
 	}
 	return m.updateJourneySearchInput(msg)
@@ -410,12 +417,19 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 			credit = m.planner.suggestions[0].Attribution
 		}
 		hints := "enter choose / esc back"
+		if m.places.token == "" {
+			hints = "enter coordinates / alt+m centre / esc back"
+		}
 		if height <= 2 && credit != "" {
 			hints = credit
 		}
 		if height > 2 {
 			status := "ctrl+s Mapbox | alt+m map centre"
-			if m.planner.online {
+			style := s.dialogAccent
+			if m.places.token == "" {
+				status = "Mapbox search [disabled: not connected]"
+				style = s.dialogMuted
+			} else if m.planner.online {
 				status = "Mapbox Search Box | lat, lon offline"
 			}
 			if credit != "" {
@@ -424,7 +438,7 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 			if m.planner.searchBusy {
 				status = "Looking up location..."
 			}
-			rows = append(rows, s.dialogMuted.Render(pad(status, width)))
+			rows = append(rows, style.Render(pad(status, width)))
 		}
 		count := max(1, height-len(rows))
 		start := max(0, m.planner.result-count+1)
@@ -453,7 +467,7 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 	if height > 3 {
 		entry, i, _ := m.workspace.lookup(m.planner.ref)
 		distance := entry.document.Items[i].Track.Distance / 1000
-		status := fmt.Sprintf("Manual straight-line | %.2f km", distance)
+		status := fmt.Sprintf("Manual · works offline | %.2f km", distance)
 		rows = append(rows, s.dialogMuted.Render(pad(status, width)))
 		if height > 5 {
 			rows = append(rows, s.dialogMuted.Render(pad("del clear/remove | alt+up/down reorder", width)))

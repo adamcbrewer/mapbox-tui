@@ -14,9 +14,14 @@ type cliCommand struct {
 	JSON       bool
 	Items      bool
 	Frames     int
+	AuthAction string
+	Usage      bool
 }
 
 func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
+	if len(argv) > 0 && argv[0] == "auth" {
+		return parseAuthCLI(argv[1:], output)
+	}
 	command := cliCommand{Name: "open", Frames: 100}
 	if len(argv) > 0 {
 		switch argv[0] {
@@ -30,6 +35,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	a := &command.Args
 	var lon, lat, zoom, bearing, distance float64
 	var index, itemID int
+	var noProvider bool
 	mapMode := command.Name == "open" || command.Name == "render" || command.Name == "bench"
 	if mapMode {
 		a.Aspect = fs.Float64("cell-aspect", 2, "cell height/width (1..3)")
@@ -45,7 +51,8 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.Float64Var(&bearing, "bearing", 0, "bearing in degrees (-360..360)")
 	}
 	if command.Name == "open" || command.Name == "render" {
-		fs.StringVar(&a.Provider, "provider", "", "basemap: mapbox, none; defaults to Mapbox when a token is configured")
+		fs.BoolVar(&noProvider, "no-provider", false, "disable the Mapbox basemap and automatic account discovery")
+		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider for offline viewing")
 	}
 	if command.Name == "open" {
 		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
@@ -130,6 +137,8 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			a.Zoom = &zoom
 		case "bearing":
 			a.Bearing = &bearing
+		case "provider":
+			a.ProviderSet = true
 		}
 	})
 	if a.ItemID != nil && *a.ItemID < 1 {
@@ -143,11 +152,14 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		return command, fmt.Errorf("choose --items or --item-id")
 	}
 	if command.Name == "open" || command.Name == "render" {
+		if noProvider {
+			a.Provider, a.ProviderSet = "none", true
+		}
 		if a.Provider == "" {
 			a.Provider = defaultProvider(accessToken())
 		}
 		if a.Provider != "mapbox" && a.Provider != "none" {
-			return command, fmt.Errorf("unknown provider %q; choose mapbox or none", a.Provider)
+			return command, fmt.Errorf("unknown provider; Mapbox is the default basemap; use --no-provider to disable it")
 		}
 	}
 	if command.Name == "inspect" && a.PointIndex == nil && a.Distance == nil {
@@ -197,12 +209,14 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 			"  summary  Print track statistics or list items as JSON\n"+
 			"  inspect  Print a recorded point as JSON\n"+
 			"  mcp      Run the local stdio MCP server\n"+
+			"  auth     Mapbox login, logout and status (optional Mapbox CLI)\n"+
 			"  bench    Benchmark synthetic map rendering")
 	case "render":
 		fmt.Fprintln(output, "Usage: shoe render [FILE...] [OPTIONS]\n\n"+
 			"Print a static map with GPX, FIT, TCX or KML overlays. Multiple files fit all\n"+
 			"visible items. Use --json for scene metadata. Item/point selectors require one\n"+
-			"file. A configured Mapbox token adds a basemap.")
+			"file. Mapbox needs your account's public token, supplied through a saved CLI\n"+
+			"login or MAPBOX_ACCESS_TOKEN. Offline: --no-provider. Setup: shoe auth --help.")
 	case "summary":
 		fmt.Fprintln(output, "Usage: shoe summary FILE [OPTIONS]\n\n"+
 			"Print GPX, FIT, TCX or KML statistics as JSON. Use --items to list item IDs,\n"+
@@ -212,15 +226,73 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	case "bench":
 		fmt.Fprintln(output, "Usage: shoe bench FILE [OPTIONS]\n\nBenchmark GPX, FIT, TCX or KML parsing and synthetic map rendering.\nOutput timings as JSON.")
 	case "mcp":
-		fmt.Fprintln(output, "Usage: shoe mcp\n\nRun the local MCP server over stdin/stdout. Takes no file argument.")
+		fmt.Fprintln(output, "Usage: shoe mcp\n\nRun the local MCP server over stdin/stdout. Takes no file argument.\nLocal imports/tools need no account. Mapbox renders use an environment token\nor saved optional-CLI login; browser login never runs here. Setup: shoe auth --help.")
 	}
 	fmt.Fprintln(output, "\nOptions:\n  -h, --help\n        show this help")
-	fs.SetOutput(output)
-	fs.PrintDefaults()
+	helpFlags := flag.NewFlagSet(name, flag.ContinueOnError)
+	helpFlags.SetOutput(output)
+	fs.VisitAll(func(option *flag.Flag) {
+		if option.Name == "provider" {
+			return
+		}
+		helpFlags.Var(option.Value, option.Name, option.Usage)
+		helpFlags.Lookup(option.Name).DefValue = option.DefValue
+	})
+	helpFlags.PrintDefaults()
 	if name != "mcp" {
 		fmt.Fprintln(output, "\nOptions may appear before or after FILE. Use -- before filenames that start\nwith '-' or match a command name.")
 	}
 	if name == "open" {
-		fmt.Fprintln(output, "\nExamples:\n  shoe\n  shoe fixtures/example.gpx\n  shoe --zoom 13 fixtures/example.gpx\n\nMapbox tokens are read at runtime from MAPBOX_ACCESS_TOKEN or mapbox.local.json.\nUse 'shoe COMMAND --help' for command-specific options.")
+		fmt.Fprintln(output, "\nExamples:\n  shoe\n  shoe fixtures/example.gpx\n  shoe --zoom 13 fixtures/example.gpx\n\nOffline files/manual journeys need no account. Mapbox maps/search require your\naccount's public token. 'shoe auth login' uses the optional Mapbox CLI to sign\nin or create an account; login credentials live in ~/.mapbox (MAPBOX_CONFIG_DIR\noverrides it). MAPBOX_ACCESS_TOKEN overrides login; empty disables discovery.\nUse 'shoe auth --help' for setup or 'shoe COMMAND --help' for specific options.")
 	}
+}
+
+func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
+	command := cliCommand{Name: "auth"}
+	if len(argv) == 0 || argv[0] == "--help" || argv[0] == "-h" {
+		printAuthHelp(output)
+		return command, flag.ErrHelp
+	}
+	command.AuthAction, argv = argv[0], argv[1:]
+	switch command.AuthAction {
+	case "login", "logout", "status":
+	default:
+		return command, fmt.Errorf("choose 'shoe auth login', 'logout' or 'status'; see 'shoe auth --help'")
+	}
+	fs := flag.NewFlagSet("auth "+command.AuthAction, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if command.AuthAction == "status" {
+		fs.BoolVar(&command.JSON, "json", false, "output the status report as token-free JSON")
+		fs.BoolVar(&command.Usage, "usage", false, "include optional account/active-token Vector Tiles statistics")
+	}
+	paths, err := parseOptions(fs, argv)
+	if err == flag.ErrHelp {
+		printAuthHelp(output)
+		return command, err
+	}
+	if err != nil || len(paths) != 0 {
+		return command, fmt.Errorf("invalid auth arguments; see 'shoe auth --help'")
+	}
+	return command, nil
+}
+
+func printAuthHelp(output io.Writer) {
+	fmt.Fprintln(output, "Usage: shoe auth login\n       shoe auth logout\n       shoe auth status [--json] [--usage]\n\n"+
+		"Login opens Mapbox's browser flow to sign in or create an account. The optional\n"+
+		"Mapbox CLI owns OAuth, saved credentials and refresh. Credentials live in\n"+
+		"~/.mapbox/credentials.json for the shared default profile; MAPBOX_CONFIG_DIR\n"+
+		"can relocate them. Login/logout/status report the resolved path on your machine.\n"+
+		"Logout removes that shared login; it doesn't revoke public or environment tokens.\n\n"+
+		"Offline imports, measurements, playback and manual journeys need no account.\n"+
+		"Mapbox maps and place search need your account's public token. A configured\n"+
+		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise shoe retrieves a public\n"+
+		"token through the saved login. An empty variable disables automatic discovery.\n\n"+
+		"Install the optional Mapbox CLI (tested with v0.3.0): "+mapboxInstallURL+"\n"+
+		"shoe finds mapbox on PATH; SHOE_MAPBOX_CLI can select its executable explicitly.\n"+
+		"Create an account/email verification: "+mapboxSignupURL+"\n"+
+		"Current pricing/trial limits: https://www.mapbox.com/pricing/\n\n"+
+		"The official CLI requests general-purpose account permissions, including write\n"+
+		"scopes shoe doesn't use; v0.3.0 cannot narrow them. Status probes Streets with a\n"+
+		"tile request. Usage requires statistics access, may lag 24 hours, and may include\n"+
+		"other apps using your token. --help shows this help.")
 }

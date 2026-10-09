@@ -30,6 +30,7 @@ type Args struct {
 	Aspect      *float64 `json:"cell_aspect"`
 	ASCII       bool     `json:"ascii"`
 	Provider    string   `json:"provider"`
+	ProviderSet bool     `json:"-"`
 	NoAnimation bool     `json:"-"`
 	Theme       string   `json:"-"`
 }
@@ -114,20 +115,39 @@ func (s *Service) document(id string) (*workspaceDocument, error) {
 }
 
 func (s *Service) render(ctx context.Context, a Args) (any, error) {
+	kind := a.Provider
+	if kind != "" && kind != "mapbox" && kind != "none" {
+		return nil, fmt.Errorf("unknown provider")
+	}
 	s.mu.Lock()
 	r, err := s.mapRequest(a)
+	p := s.providers["mapbox"]
 	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	kind := a.Provider
+	if kind != "none" && p.token == "" {
+		credential := resolveCredential(ctx)
+		s.mu.Lock()
+		if s.providers["mapbox"].token == "" {
+			s.providers["mapbox"] = providerForCredential("mapbox", credential)
+		}
+		p = s.providers["mapbox"]
+		s.mu.Unlock()
+	}
 	if kind == "" {
-		kind = defaultProvider(s.providers["mapbox"].token)
+		kind = defaultProvider(p.token)
 	}
 	if kind != "mapbox" && kind != "none" {
 		return nil, fmt.Errorf("unknown provider")
 	}
-	return r.render(ctx, a.ASCII, s.providers[kind])
+	if kind == "none" {
+		p = providerForCredential("none", renderingCredential{guidance: p.guidance})
+		if a.Provider == "none" {
+			p.quiet = true
+		}
+	}
+	return r.render(ctx, a.ASCII, p)
 }
 
 func (s *Service) mapRequest(a Args) (mapRequest, error) {

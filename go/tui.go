@@ -62,16 +62,28 @@ type viewer struct {
 	lastMotionTick            time.Time
 	planner                   journeyUI
 	places                    *placeClient
+	authID                    uint64
+	authCancel                context.CancelFunc
+	authBusy, authFirstRun    bool
+	authMessage               string
+	authCLI                   mapboxDependencyStatus
+	preferences               appSettings
+	connectionEchoed          bool
 }
 
 func tick() tea.Cmd {
 	return tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg { return pulse(t) })
 }
 func (m *viewer) Init() tea.Cmd {
-	if m.path == "" {
-		return tea.Batch(tick(), m.freeRoam())
+	var credentials tea.Cmd
+	_, explicit := environmentCredential()
+	if !explicit && !(m.args.ProviderSet && m.args.Provider == "none") {
+		credentials = m.discoverCredentials(false)
 	}
-	return tea.Batch(tick(), m.load(m.path))
+	if m.path == "" {
+		return tea.Batch(tick(), m.freeRoam(), credentials)
+	}
+	return tea.Batch(tick(), m.load(m.path), credentials)
 }
 func (m *viewer) freeRoam() tea.Cmd {
 	m.loadID++
@@ -211,6 +223,61 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
+	case mapboxDependencyResult:
+		if v.id != m.authID {
+			return m, nil
+		}
+		m.authBusy, m.authCLI = false, v.status
+		switch v.status.State {
+		case "ready":
+			m.authMessage = "Check passed: Mapbox CLI is ready."
+		case "missing":
+			m.authMessage = "Check failed: Mapbox CLI not found."
+		default:
+			m.authMessage = "Check failed: Mapbox CLI needs repair/update."
+		}
+		m.ui.selected = 0
+		m.dirty = true
+		if m.authCancel != nil {
+			m.authCancel()
+			m.authCancel = nil
+		}
+		if v.status.State == "ready" {
+			return m, m.discoverCredentials(false)
+		}
+		return m, nil
+	case credentialResult:
+		return m, m.acceptCredentials(v)
+	case mapboxLoginReady:
+		if v.id != m.authID {
+			return m, nil
+		}
+		if v.err != nil {
+			m.authBusy = false
+			m.authMessage = v.err.Error()
+			if problem, ok := v.err.(*mapboxDependencyError); ok {
+				m.authCLI = problem.status
+				m.ui.selected = 0
+			}
+			m.dirty = true
+			return m, nil
+		}
+		m.authCLI = mapboxDependencyStatus{State: "ready", Path: v.cli.path}
+		m.closeDialog()
+		command := &viewerMapboxLogin{ctx: m.ctx, cli: v.cli}
+		return m, tea.Exec(command, func(err error) tea.Msg { return mapboxLoginDone{id: v.id, err: err} })
+	case mapboxLoginDone:
+		if v.id != m.authID {
+			return m, nil
+		}
+		m.authBusy = false
+		m.lastTick, m.lastMotionTick = time.Time{}, time.Now()
+		if v.err != nil {
+			m.openDialog(dialogMapbox)
+			m.authMessage = v.err.Error()
+			return m, nil
+		}
+		return m, m.discoverCredentials(true)
 	case searchClipboardResult:
 		if v.owner == "" || v.owner != m.ui.inputID || v.dialog != m.ui.dialog {
 			return m, nil
@@ -302,7 +369,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuild()
 			m.dirty = false
 		}
-		return m, tea.Batch(tick(), command)
+		return m, tea.Batch(tick(), command, m.echoConnectionNotice())
 	case spinner.TickMsg:
 		if m.ui.spinning {
 			var cmd tea.Cmd
@@ -315,6 +382,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.ui.dialog == dialogJourneyLocation
 		if key == "ctrl+c" || (key == "q" && !enteringText) {
 			m.cancelJourneySearch()
+			m.cancelAuth()
 			return m, tea.Quit
 		}
 		if key == "ctrl+t" {
@@ -899,8 +967,8 @@ func (m *viewer) rebuild() {
 		status = playback.status()
 	}
 	sourceStatus := sources.status()
-	if sourceStatus == "" {
-		sourceStatus = providerGuidance(m.provider, len(m.workspace.documents) > 0 || m.loading)
+	if m.provider.token == "" {
+		sourceStatus = ""
 	}
 	if sourceStatus != "" {
 		status = sourceStatus + " | " + status
@@ -950,7 +1018,13 @@ func (m *viewer) rebuild() {
 		freeRoam:       m.activePlayback() == nil,
 	}
 	credits, _ := sources.attribution()
-	if journeyCredits := strings.ReplaceAll(m.journeyCredits(), "\n", " "); journeyCredits != "" {
+	journeyCredits := strings.ReplaceAll(m.journeyCredits(), "\n", " ")
+	notice := m.connectionNotice()
+	noticeFits := journeyCredits == "" || lipgloss.Width(notice+" "+journeyCredits) <= m.width
+	if notice != "" && noticeFits {
+		credits = notice
+	}
+	if journeyCredits != "" {
 		credits += " " + journeyCredits
 	}
 	rows = append(
@@ -986,18 +1060,21 @@ func openViewerFiles(paths []string, a Args) error {
 	if len(paths) == 0 && needsTrack {
 		return fmt.Errorf("point_index requires a track file")
 	}
-	p := newProvider(a.Provider)
+	credential, explicit := environmentCredential()
+	p := providerForCredential(a.Provider, credential)
+	p.quiet = a.ProviderSet && a.Provider == "none"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	m := &viewer{
-		args:        a,
-		provider:    p,
-		ctx:         ctx,
-		camera:      c,
-		width:       120,
-		height:      40,
-		dirty:       true,
-		showProfile: true,
+		args:         a,
+		provider:     p,
+		ctx:          ctx,
+		camera:       c,
+		width:        120,
+		height:       40,
+		dirty:        true,
+		showProfile:  true,
+		authFirstRun: len(paths) == 0 && !explicit && !p.quiet,
 	}
 	if len(paths) > 0 {
 		m.path, m.pendingPaths = paths[0], paths[1:]
@@ -1008,6 +1085,7 @@ func openViewerFiles(paths []string, a Args) error {
 	m.layout()
 	defer m.sources.close()
 	defer m.cancelJourneySearch()
+	defer m.cancelAuth()
 	_, e = tea.NewProgram(m).Run()
 	if e != nil {
 		return e

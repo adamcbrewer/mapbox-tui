@@ -126,7 +126,7 @@ func TestTokenFreeGPXRendersOnlyImportedGeometryWithoutWarnings(t *testing.T) {
 	}
 }
 
-func TestMapboxConfigurationIsReadAtRuntimeWithEnvironmentPrecedence(t *testing.T) {
+func TestEnvironmentTokenOverridesAndRepoCredentialsAreIgnored(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	if err := os.Unsetenv("MAPBOX_ACCESS_TOKEN"); err != nil {
@@ -135,12 +135,12 @@ func TestMapboxConfigurationIsReadAtRuntimeWithEnvironmentPrecedence(t *testing.
 	if err := os.WriteFile("mapbox.local.json", []byte(`{"access_token":"synthetic-local-token"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if p := newProvider("mapbox"); p.token != "synthetic-local-token" {
-		t.Fatal("runtime local config was not loaded")
+	if p := newProvider("mapbox"); p.token != "" {
+		t.Fatal("provider loaded obsolete repo-local credentials")
 	}
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "synthetic-env-token")
 	if p := newProvider("mapbox"); p.token != "synthetic-env-token" {
-		t.Fatal("runtime environment did not override local config")
+		t.Fatal("runtime environment token was not loaded")
 	}
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	if p := newProvider("mapbox"); p.token != "" || defaultProvider(p.token) != "none" {
