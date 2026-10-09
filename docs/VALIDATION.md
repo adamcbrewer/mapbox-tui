@@ -179,6 +179,8 @@ Planner regressions cover the visible travel-mode selection, connected Driving
 default (including delayed credential discovery), explicit Manual preservation,
 automatic routing after complete endpoints/waypoints, Show waiting for resolved
 geometry without duplicate requests, failure feedback and cancelled pending camera fits.
+Show also waits for explicit recalculation of an already current route, fitting
+the replacement on success or keeping the planner open with feedback on failure.
 Panel checks verify unobscured map cells, input-cursor placement, sidebar/compact-strip
 resizing, independent map/list mouse navigation and Tab keyboard focus at 120×40,
 70×24, 70×18, 50×18 and 30×12 in Braille/ASCII.

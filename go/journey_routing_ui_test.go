@@ -235,6 +235,51 @@ func TestJourneyFailedRecalculationUsesManualPreview(t *testing.T) {
 	}
 }
 
+func TestJourneyShowWaitsForCurrentRouteRecalculation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail bool
+	}{
+		{name: "success"},
+		{name: "failure", fail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, requests := routingTestViewer(t)
+			m.Update(m.calculateJourneyRoute()())
+			j, _ := m.workspace.journey(m.planner.ref)
+			m.directions.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+				*requests++
+				if tc.fail {
+					return locationResponse(`{"code":"NoRoute"}`), nil
+				}
+				locations := directionsRequestLocations(t, r)
+				locations[1].Lon = -.5
+				return locationResponse(directionsTestResponse(locations, 20000, 7200)), nil
+			})
+			_, retry := m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+			result := retry()
+			camera := m.camera
+			_, show := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+			if show != nil || m.ui.dialog != dialogJourney || m.camera != camera {
+				t.Fatal("Show closed the planner, fitted the old route or duplicated the pending request")
+			}
+			m.Update(result)
+			if *requests != 2 {
+				t.Fatal("Show requested the route again")
+			}
+			if tc.fail {
+				if m.ui.dialog != dialogJourney || !strings.Contains(m.ui.notice, "no Walking route") {
+					t.Fatal("failed recalculation did not keep the planner open with feedback")
+				}
+				return
+			}
+			if m.ui.dialog != dialogNone || m.camera != journeyView(j, j.Route.Track, m.camera) {
+				t.Fatal("Show did not fit the replacement route after recalculation")
+			}
+		})
+	}
+}
+
 func TestJourneyUnchangedLocationAndModeKeepResolvedRoute(t *testing.T) {
 	m, requests := routingTestViewer(t)
 	m.Update(m.calculateJourneyRoute()())

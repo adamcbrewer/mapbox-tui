@@ -59,7 +59,8 @@ func (m *viewer) showJourneyOnMap() tea.Cmd {
 		return nil
 	}
 	m.defaultJourneyMode(j)
-	if j.Mode != journeyManual && !j.routeCurrent() {
+	pendingRoute := j.Busy || !j.routeCurrent()
+	if j.Mode != journeyManual && pendingRoute {
 		var cmd tea.Cmd
 		if !j.Busy {
 			cmd = m.calculateJourneyRoute()
