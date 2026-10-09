@@ -73,7 +73,9 @@ after eight seconds, and tile bodies are limited to 8 MiB.
   the camera is still and may incur the same account charges as navigation.
 - Missing credentials do not cause periodic retries. Viewer discovery runs
   alongside imports; CLI rendering resolves once and MCP resolves lazily for a map
-  render. In-viewer setup is available through the command palette and replaces
+  render, retaining completed unavailable results until restart. Concurrent MCP
+  renders share that lookup; a cancelled attempt can be retried. In-viewer setup
+  is available through the command palette and replaces
   map/search clients through source lifecycle without resetting the workspace or
   camera. Otherwise restart to rediscover credentials.
 - CLI/MCP renders fetch one snapshot per call; they do not start background
@@ -93,6 +95,10 @@ CLI telemetry is off unless the user explicitly opts in through Mapbox settings;
 an environment opt-out wins. The preference is stored under the user's config
 directory, separately from Mapbox credentials. Known JSON fields become token-free app messages;
 raw API/error bodies are not forwarded by status/discovery.
+
+Viewer connection rechecks report the final credential and Streets result, rather
+than treating a working CLI as proof of map access. These rechecks also make tile
+requests, including when an environment token is selected.
 
 Status separates login/storage, rendering credentials, token validation (including
 the verdict carried in HTTP 200) and Streets access. Login/status Streets probes

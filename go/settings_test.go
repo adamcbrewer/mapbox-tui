@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -38,6 +40,7 @@ func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
 }
 
 func TestMapboxTelemetryToggleSavesSelection(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := authTestViewer(t)
 	t.Setenv("MAPBOX_CLI_NO_TELEMETRY", "")
 	m.openDialog(dialogMapbox)
@@ -55,5 +58,95 @@ func TestMapboxTelemetryToggleSavesSelection(t *testing.T) {
 	settings, err = loadAppSettings()
 	if err != nil || settings.MapboxCLITelemetry {
 		t.Fatal("settings action did not turn telemetry back off", err)
+	}
+}
+
+func TestSettingsReplacementPreservesOpenReaders(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := saveAppSettings(appSettings{MapboxCLITelemetry: true}); err != nil {
+		t.Fatal(err)
+	}
+	path, err := appSettingsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if err := saveAppSettings(appSettings{}); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := io.ReadAll(reader)
+	if err != nil || !strings.Contains(string(previous), `"mapbox_cli_telemetry": true`) {
+		t.Fatal("saving settings overwrote an in-progress reader's snapshot", err)
+	}
+	settings, err := loadAppSettings()
+	if err != nil || settings.MapboxCLITelemetry {
+		t.Fatal("new readers did not see the replacement settings", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "settings.json" {
+		t.Fatal("saving settings left temporary files behind", err)
+	}
+}
+
+func TestBrokenTelemetrySettingsDoNotBlockOfflineViewer(t *testing.T) {
+	for _, test := range []struct {
+		name, data string
+		directory  bool
+	}{
+		{name: "malformed", data: `{"mapbox_cli_telemetry":true,`},
+		{name: "oversized", data: strings.Repeat(" ", 65537)},
+		{name: "unreadable", directory: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			path, err := appSettingsPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if test.directory {
+				err = os.Mkdir(path, 0700)
+			} else {
+				err = os.WriteFile(path, []byte(test.data), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := authTestViewer(t)
+			m.args.Provider, m.args.ProviderSet = "none", true
+			m.provider.quiet = true
+			runLoadCommand(m, m.load("../fixtures/example.gpx"))
+			m.rebuild()
+			if !strings.Contains(m.content, "Point 1 / 10") || m.preferences.MapboxCLITelemetry {
+				t.Fatal("broken telemetry settings prevented offline geometry or enabled telemetry")
+			}
+			if !strings.Contains(m.authMessage, "telemetry is off") {
+				t.Fatal("viewer did not retain the settings warning")
+			}
+		})
+	}
+}
+
+func TestBrokenTelemetrySettingsDoNotBlockMapboxCLI(t *testing.T) {
+	fakeMapbox(t, "good")
+	path, err := appSettingsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"mapbox_cli_telemetry":true,`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cli, status := checkMapboxCLI(t.Context())
+	if cli == nil || status.State != "ready" || cli.telemetry {
+		t.Fatal("broken optional settings blocked the CLI or enabled telemetry")
 	}
 }

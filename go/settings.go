@@ -60,8 +60,21 @@ func saveAppSettings(settings appSettings) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return fmt.Errorf("create shoe settings directory: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
-		return fmt.Errorf("save shoe settings: %w", err)
+	file, err := os.CreateTemp(filepath.Dir(path), ".settings-*.json")
+	if err != nil {
+		return fmt.Errorf("create shoe settings file: %w", err)
+	}
+	defer os.Remove(file.Name())
+	_, writeErr := file.Write(append(data, '\n'))
+	closeErr := file.Close()
+	if writeErr != nil {
+		return fmt.Errorf("save shoe settings: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close shoe settings: %w", closeErr)
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
+		return fmt.Errorf("replace shoe settings: %w", err)
 	}
 	return nil
 }

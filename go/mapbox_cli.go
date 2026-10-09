@@ -137,8 +137,7 @@ func checkMapboxCLI(ctx context.Context) (*mapboxCLI, mapboxDependencyStatus) {
 	}
 	settings, err := loadAppSettings()
 	if err != nil {
-		status.State, status.Guidance = "unavailable", err.Error()
-		return nil, status
+		settings = appSettings{}
 	}
 	cli := &mapboxCLI{path: path, telemetry: settings.MapboxCLITelemetry}
 	if err := cli.check(ctx); err != nil {
@@ -240,7 +239,8 @@ func (c *mapboxCLI) check(ctx context.Context) error {
 		Commands []struct {
 			Command   string `json:"command"`
 			Arguments []struct {
-				Flag string `json:"flag"`
+				Flag   string   `json:"flag"`
+				Values []string `json:"values"`
 			} `json:"arguments"`
 		} `json:"commands"`
 	}
@@ -270,6 +270,10 @@ func (c *mapboxCLI) check(ctx context.Context) error {
 			continue
 		}
 		for _, argument := range command.Arguments {
+			publicTokenFilter := command.Command == "mapbox accounts list-tokens" && argument.Flag == "--usage"
+			if publicTokenFilter && !slices.Contains(argument.Values, "pk") {
+				return fmt.Errorf("Mapbox CLI lacks the public-token filter; update it: %s", mapboxInstallURL)
+			}
 			flags = slices.DeleteFunc(flags, func(flag string) bool { return flag == argument.Flag })
 		}
 		if len(flags) == 0 {

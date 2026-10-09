@@ -206,12 +206,15 @@ func TestViewerDependencyRecheckReusesSavedLogin(t *testing.T) {
 	m.openDialog(dialogMapbox)
 	check := m.checkMapboxSetup()
 	_, discover := m.Update(check())
-	if !strings.Contains(m.authMessage, "Check passed:") {
-		t.Fatal("dependency recheck did not report success")
+	if !strings.Contains(m.authMessage, "checking connection") {
+		t.Fatal("dependency recheck did not wait for the connection result")
 	}
 	if discover == nil {
 		t.Fatal("validated dependency did not discover the saved login")
 	}
+	discover = m.discoverCredentialsWith(false, true, func(context.Context, *Provider) authSection {
+		return authSection{State: "ready"}
+	})
 	m.Update(discover())
 	if m.provider.Kind != "mapbox" || m.provider.token != "pk.synthetic-login-token" || m.ui.dialog != dialogMapbox {
 		t.Fatal("dependency recheck failed to reuse login in the current viewer")
@@ -219,6 +222,75 @@ func TestViewerDependencyRecheckReusesSavedLogin(t *testing.T) {
 	calls, err := os.ReadFile(os.Getenv("SHOE_MAPBOX_TEST_LOG"))
 	if err != nil || strings.Contains(string(calls), `"auth","login"`) {
 		t.Fatal("dependency recheck started browser login", err)
+	}
+	if !strings.Contains(m.authMessage, "Check passed: Mapbox Streets is ready") {
+		t.Fatal("connection recheck did not report the Streets result")
+	}
+}
+
+func TestViewerConnectionCheckReportsFinalCredentialsAndStreets(t *testing.T) {
+	for _, test := range []struct {
+		name, token, access, guidance, expected string
+	}{
+		{name: "removed login", expected: "Check failed:"},
+		{name: "environment ready", token: "pk.environment", access: "ready", expected: "Check passed:"},
+		{name: "environment rejected", token: "pk.environment", access: "unavailable", guidance: "HTTP 403", expected: "HTTP 403"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := authTestViewer(t)
+			fakeMapbox(t, "loggedout")
+			if test.token == "" {
+				if err := os.Unsetenv("MAPBOX_ACCESS_TOKEN"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				t.Setenv("MAPBOX_ACCESS_TOKEN", test.token)
+			}
+			m.openDialog(dialogMapbox)
+			probes := 0
+			check := m.discoverCredentialsWith(false, true, func(_ context.Context, p *Provider) authSection {
+				probes++
+				if p.token != test.token {
+					t.Fatal("connection check probed the wrong rendering token")
+				}
+				return authSection{State: test.access, Guidance: test.guidance}
+			})
+			m.Update(check())
+			if !strings.Contains(m.authMessage, test.expected) || m.authBusy {
+				t.Fatal("connection check did not report its final result", m.authMessage)
+			}
+			if (probes == 1) != (test.token != "") {
+				t.Fatal("connection check skipped Streets or probed without credentials")
+			}
+		})
+	}
+}
+
+func TestViewerCredentialDiscoveryPreservesSelectedSetupAction(t *testing.T) {
+	for _, action := range []string{"install", "telemetry", "continue"} {
+		t.Run(action, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			m := authTestViewer(t)
+			m.openDialog(dialogMapbox)
+			m.authBusy = true
+			for i, command := range m.mapboxActions() {
+				if command.action == action {
+					m.ui.selected = i
+				}
+			}
+			m.acceptCredentials(credentialResult{credential: renderingCredential{
+				source: "none", dependency: mapboxDependencyStatus{State: "ready"},
+			}})
+			if m.mapboxActions()[m.ui.selected].action != action {
+				t.Fatal("credential discovery changed the selected action")
+			}
+			if action == "continue" {
+				m.updateMapboxDialog("enter")
+				if m.ui.dialog != dialogNone || m.preferences.MapboxCLITelemetry {
+					t.Fatal("Continue offline opted into telemetry instead of closing")
+				}
+			}
+		})
 	}
 }
 

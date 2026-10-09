@@ -21,8 +21,12 @@ func run() error {
 	if command.Name == "mcp" {
 		return serveMCP()
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
+	ctx := context.Background()
+	if command.Name == "auth" || command.Name == "render" {
+		var cancel context.CancelFunc
+		ctx, cancel = signal.NotifyContext(ctx, os.Interrupt)
+		defer cancel()
+	}
 	if command.Name == "auth" {
 		return runAuth(ctx, command, authStreams{in: os.Stdin, out: os.Stdout, err: os.Stderr})
 	}

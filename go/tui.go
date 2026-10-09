@@ -78,7 +78,7 @@ func (m *viewer) Init() tea.Cmd {
 	var credentials tea.Cmd
 	_, explicit := environmentCredential()
 	if !explicit && !(m.args.ProviderSet && m.args.Provider == "none") {
-		credentials = m.discoverCredentials(false)
+		credentials = m.discoverCredentials(false, false)
 	}
 	if m.path == "" {
 		return tea.Batch(tick(), m.freeRoam(), credentials)
@@ -230,7 +230,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.authBusy, m.authCLI = false, v.status
 		switch v.status.State {
 		case "ready":
-			m.authMessage = "Check passed: Mapbox CLI is ready."
+			m.authMessage = "Mapbox CLI is ready; checking connection…"
 		case "missing":
 			m.authMessage = "Check failed: Mapbox CLI not found."
 		default:
@@ -242,8 +242,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.authCancel()
 			m.authCancel = nil
 		}
-		if v.status.State == "ready" {
-			return m, m.discoverCredentials(false)
+		credential, _ := environmentCredential()
+		if v.status.State == "ready" || credential.token != "" {
+			return m, m.discoverCredentials(false, true)
 		}
 		return m, nil
 	case credentialResult:
@@ -277,7 +278,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.authMessage = v.err.Error()
 			return m, nil
 		}
-		return m, m.discoverCredentials(true)
+		return m, m.discoverCredentials(true, false)
 	case searchClipboardResult:
 		if v.owner == "" || v.owner != m.ui.inputID || v.dialog != m.ui.dialog {
 			return m, nil

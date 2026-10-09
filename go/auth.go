@@ -215,9 +215,7 @@ func (c *mapboxCLI) usage(ctx context.Context, account, tokenID string, period u
 		return report
 	}
 	report.State, report.Period = "empty", &result.Data.Period
-	if !result.GeneratedAt.IsZero() {
-		report.GeneratedAt = &result.GeneratedAt
-	}
+	report.GeneratedAt = &result.GeneratedAt
 	report.Daily = map[string]int64{}
 	for name, product := range result.Data.Products {
 		if !strings.Contains(strings.ToLower(name), "vector tiles") {

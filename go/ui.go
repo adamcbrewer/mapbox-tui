@@ -202,7 +202,8 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 func (m *viewer) initUI() error {
 	preferences, err := loadAppSettings()
 	if err != nil {
-		return err
+		preferences = appSettings{}
+		m.authMessage = "Could not load telemetry settings; telemetry is off: " + err.Error()
 	}
 	m.preferences = preferences
 	if m.places == nil {

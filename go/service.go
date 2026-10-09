@@ -36,9 +36,11 @@ type Args struct {
 }
 
 type Service struct {
-	mu        sync.Mutex
-	workspace Workspace
-	providers map[string]*Provider
+	mu                sync.Mutex
+	workspace         Workspace
+	providers         map[string]*Provider
+	credentialChecked bool
+	credentialPending chan struct{}
 }
 
 type trackInfo struct {
@@ -126,28 +128,53 @@ func (s *Service) render(ctx context.Context, a Args) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if kind != "none" && p.token == "" {
-		credential := resolveCredential(ctx)
-		s.mu.Lock()
-		if s.providers["mapbox"].token == "" {
-			s.providers["mapbox"] = providerForCredential("mapbox", credential)
+	if kind != "none" {
+		p, err = s.mapboxProvider(ctx)
+		if err != nil {
+			return nil, err
 		}
-		p = s.providers["mapbox"]
-		s.mu.Unlock()
 	}
 	if kind == "" {
 		kind = defaultProvider(p.token)
 	}
-	if kind != "mapbox" && kind != "none" {
-		return nil, fmt.Errorf("unknown provider")
-	}
 	if kind == "none" {
 		p = providerForCredential("none", renderingCredential{guidance: p.guidance})
-		if a.Provider == "none" {
-			p.quiet = true
-		}
+		p.quiet = a.Provider == "none"
 	}
 	return r.render(ctx, a.ASCII, p)
+}
+
+func (s *Service) mapboxProvider(ctx context.Context) (*Provider, error) {
+	for {
+		s.mu.Lock()
+		p := s.providers["mapbox"]
+		if p.token != "" || s.credentialChecked {
+			s.mu.Unlock()
+			return p, nil
+		}
+		if pending := s.credentialPending; pending != nil {
+			s.mu.Unlock()
+			select {
+			case <-pending:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		s.credentialPending = make(chan struct{})
+		s.mu.Unlock()
+
+		credential := resolveCredential(ctx)
+		s.mu.Lock()
+		if ctx.Err() == nil {
+			p = providerForCredential("mapbox", credential)
+			s.providers["mapbox"], s.credentialChecked = p, true
+		}
+		close(s.credentialPending)
+		s.credentialPending = nil
+		s.mu.Unlock()
+		return p, ctx.Err()
+	}
 }
 
 func (s *Service) mapRequest(a Args) (mapRequest, error) {

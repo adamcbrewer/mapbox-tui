@@ -80,8 +80,11 @@ account access, warning-prefixed structured errors, malformed/oversized output,
 whole-child timeout, opt-out, missing CLI, logged-out status, credential location,
 HTTP-200 token validity, usage denial/empty reports, mismatched accounts/periods
 and token-free text/JSON. Viewer tests cover cancellation/stale-result rejection,
-both-client replacement and preserved imports/camera/playback. No installed
-Mapbox CLI or account is needed for `make test`.
+both-client replacement, final connection-probe results, stable setup-action
+selection and preserved imports/camera/playback. Settings checks cover atomic
+replacement and telemetry-off fallback without blocking offline viewing. MCP
+checks cover shared negative credential discovery and cancellation recovery.
+No installed Mapbox CLI or account is needed for `make test`.
 
 With the optional CLI installed, `make mapbox-check` inspects six released command
 schemas without account/API requests. `python3 scripts/mapbox_auth_check.py` is a

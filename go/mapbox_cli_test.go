@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const fakeMapboxSchema = `{"schema_version":1,"global_options":[{"flag":"--profile"},{"flag":"--use-login"},{"flag":"--timeout"},{"flag":"--output","values":["text","json"]}],"commands":[{"command":"mapbox auth login","arguments":[]},{"command":"mapbox auth logout","arguments":[]},{"command":"mapbox auth whoami","arguments":[]},{"command":"mapbox accounts list-tokens","arguments":[{"flag":"--default"},{"flag":"--usage"}]},{"command":"mapbox accounts retrieve-token","arguments":[]},{"command":"mapbox usage","arguments":[{"flag":"--token-id"},{"flag":"--period-start"},{"flag":"--period-end"}]}]}`
+const fakeMapboxSchema = `{"schema_version":1,"global_options":[{"flag":"--profile"},{"flag":"--use-login"},{"flag":"--timeout"},{"flag":"--output","values":["text","json"]}],"commands":[{"command":"mapbox auth login","arguments":[]},{"command":"mapbox auth logout","arguments":[]},{"command":"mapbox auth whoami","arguments":[]},{"command":"mapbox accounts list-tokens","arguments":[{"flag":"--default"},{"flag":"--usage","values":["pk","sk"]}]},{"command":"mapbox accounts retrieve-token","arguments":[]},{"command":"mapbox usage","arguments":[{"flag":"--token-id"},{"flag":"--period-start"},{"flag":"--period-end"}]}]}`
 
 func fakeMapbox(t *testing.T, scenario string) string {
 	t.Helper()
@@ -55,6 +55,8 @@ func TestMapboxCLIProcess(t *testing.T) {
 	if len(args) == 1 && args[0] == "--schema" {
 		if scenario == "incompatible" {
 			fmt.Println(`{"schema_version":2}`)
+		} else if scenario == "no-public-filter" {
+			fmt.Println(strings.ReplaceAll(fakeMapboxSchema, `["pk","sk"]`, `["sk"]`))
 		} else {
 			fmt.Println(fakeMapboxSchema)
 		}
@@ -148,14 +150,14 @@ func TestMapboxCLIProcess(t *testing.T) {
 }
 
 func TestMapboxCLIContractAndSafeFailures(t *testing.T) {
-	for _, scenario := range []string{"good", "incompatible", "failure", "malformed", "oversized", "hang"} {
+	for _, scenario := range []string{"good", "incompatible", "no-public-filter", "failure", "malformed", "oversized", "hang"} {
 		t.Run(scenario, func(t *testing.T) {
 			fakeMapbox(t, scenario)
 			t.Setenv("MAPBOX_USERNAME", "wrong-account")
 			t.Setenv("MAPBOX_DEBUG", "true")
 			t.Setenv("MAPBOX_ACCESS_TOKEN", "pk.environment")
 			cli, err := findMapboxCLI(t.Context())
-			if scenario == "incompatible" {
+			if scenario == "incompatible" || scenario == "no-public-filter" {
 				if err == nil {
 					t.Fatal("incompatible CLI was accepted")
 				}

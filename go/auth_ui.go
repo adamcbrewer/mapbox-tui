@@ -15,6 +15,7 @@ type credentialResult struct {
 	id         uint64
 	credential renderingCredential
 	afterLogin bool
+	checked    bool
 	access     authSection
 }
 
@@ -95,7 +96,15 @@ func (m *viewer) cancelAuth() {
 	m.authBusy = false
 }
 
-func (m *viewer) discoverCredentials(afterLogin bool) tea.Cmd {
+func (m *viewer) discoverCredentials(afterLogin, checkConnection bool) tea.Cmd {
+	return m.discoverCredentialsWith(afterLogin, checkConnection, streetsAccess)
+}
+
+func (m *viewer) discoverCredentialsWith(
+	afterLogin bool,
+	checkConnection bool,
+	probe func(context.Context, *Provider) authSection,
+) tea.Cmd {
 	m.cancelAuth()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.authCancel, m.authBusy = cancel, true
@@ -103,16 +112,23 @@ func (m *viewer) discoverCredentials(afterLogin bool) tea.Cmd {
 	return func() tea.Msg {
 		credential := resolveCredential(ctx)
 		var access authSection
-		if afterLogin && credential.token != "" {
-			access = streetsAccess(ctx, providerForCredential("mapbox", credential))
+		if (afterLogin || checkConnection) && credential.token != "" {
+			access = probe(ctx, providerForCredential("mapbox", credential))
 		}
-		return credentialResult{id: id, credential: credential, afterLogin: afterLogin, access: access}
+		return credentialResult{
+			id: id, credential: credential, afterLogin: afterLogin, checked: checkConnection, access: access,
+		}
 	}
 }
 
 func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	if result.id != m.authID {
 		return nil
+	}
+	selectedAction := ""
+	if m.ui.dialog == dialogMapbox {
+		actions := m.mapboxActions()
+		selectedAction = actions[min(m.ui.selected, len(actions)-1)].action
 	}
 	m.authBusy = false
 	if m.authCancel != nil {
@@ -137,6 +153,25 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		m.configureSources()
 	} else {
 		m.provider.guidance = credential.guidance
+	}
+	if selectedAction != "" {
+		m.ui.selected = 0
+		for i, action := range m.mapboxActions() {
+			if action.action == selectedAction {
+				m.ui.selected = i
+				break
+			}
+		}
+	}
+	if result.checked {
+		switch {
+		case credential.token == "":
+			m.authMessage = "Check failed: " + credential.guidance
+		case result.access.State != "ready":
+			m.authMessage = "Check failed: Streets unavailable; " + result.access.Guidance
+		default:
+			m.authMessage = "Check passed: Mapbox Streets is ready; rendering source: " + credential.source
+		}
 	}
 	m.dirty = true
 	firstRun := m.authFirstRun && m.path == "" && len(m.workspace.documents) == 0 && !m.loading
