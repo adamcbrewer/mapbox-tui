@@ -185,6 +185,8 @@ as proof of Directions access.
   failure keeps the planner open with feedback. Dismissal or another edit cancels
   the pending camera-fit action. Typing, camera movement, redraw and reopening do
   not make Directions requests. No automatic retry or refresh loop is added.
+  Accepting unchanged locations or the current mode does not invalidate or request
+  a route; Ctrl-D remains the explicit refresh/retry action.
 - User locations remain unchanged; snapped locations and route geometry are separate.
   The displayed distance/duration come from Directions, with travel time labelled
   estimated. Geometry has no recorded timestamps, playback or elevation.
@@ -198,6 +200,8 @@ as proof of Directions access.
 - Edits retain the previous result as stale but display a current manual preview
   without its obsolete estimates. Failures preserve stop intent and manual geometry;
   full cause/remedy is available through Ctrl-U's scrollable routing feedback.
+  A failed recalculation also marks a previously current result stale and restores
+  the manual preview, even when the stops and mode have not changed.
 - Validate 2–25 locations and total geodesic distance between stops before HTTP:
   walking 1,000 km, cycling 1,500 km and driving 10,000 km. Limits reject the whole
   plan with its locations intact; no silent splitting/truncation. Provider rejection

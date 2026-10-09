@@ -111,6 +111,7 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 		lon := strconv.FormatFloat(location.Lon, 'f', -1, 64)
 		m.ui.search.SetValue(lat + ", " + lon)
 	}
+	m.layout()
 	m.dirty = true
 	return m.ui.search.Focus()
 }
@@ -200,6 +201,12 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 }
 
 func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
+	j, err := m.workspace.journey(m.planner.ref)
+	if err != nil {
+		m.ui.notice = err.Error()
+		return nil
+	}
+	revision := j.revision
 	if err := m.workspace.setJourneyLocation(m.planner.ref, m.planner.stopID, location); err != nil {
 		m.ui.notice = err.Error()
 		return nil
@@ -213,6 +220,9 @@ func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
 	m.ui.dialog, m.ui.notice = dialogJourney, ""
 	m.planner.mapFocused = false
 	m.selectionChanged()
+	if revision == j.revision {
+		return nil
+	}
 	m.fitPlannerJourney(m.planner.ref)
 	return m.calculateJourneyIfRouted()
 }
@@ -327,6 +337,7 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 		m.cancelJourneySearch()
 		m.ui.search.Blur()
 		m.ui.dialog, m.ui.notice = dialogJourney, ""
+		m.layout()
 		return nil
 	case "ctrl+s":
 		if m.places.token == "" {

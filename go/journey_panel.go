@@ -28,7 +28,11 @@ func (m *viewer) journeyStripHeight() int {
 	if !m.journeyPanelOpen() || m.journeySidebar() {
 		return 0
 	}
-	return min(8, max(5, m.height/3))
+	minimum := 5
+	if m.ui.dialog == dialogJourneyLocation {
+		minimum = 6
+	}
+	return min(8, max(minimum, m.height/3))
 }
 
 func (m *viewer) mapOriginY() int {
@@ -44,6 +48,10 @@ func (m *viewer) journeyPanel() string {
 	bodyHeight := max(1, height-4)
 	if m.ui.notice != "" {
 		bodyHeight = max(1, bodyHeight-1)
+	}
+	compactInput := m.ui.dialog == dialogJourneyLocation && bodyHeight < 2
+	if compactInput {
+		bodyHeight = 2
 	}
 	title, body, hints := m.journeyDialogContent(innerWidth, bodyHeight)
 	if m.ui.dialog == dialogJourney {
@@ -64,11 +72,11 @@ func (m *viewer) journeyPanel() string {
 		rows = append(rows, m.styles.dialogMuted.Render(pad(m.ui.notice, innerWidth)))
 	}
 	surface := lipgloss.Color(m.theme().Surface)
-	rows = append(rows,
-		lipgloss.NewStyle().Background(surface).Width(innerWidth).
-			Height(bodyHeight).MaxHeight(bodyHeight).Render(body),
-		m.styles.dialogMuted.Render(pad(hints, innerWidth)),
-	)
+	rows = append(rows, lipgloss.NewStyle().Background(surface).Width(innerWidth).
+		Height(bodyHeight).MaxHeight(bodyHeight).Render(body))
+	if !compactInput {
+		rows = append(rows, m.styles.dialogMuted.Render(pad(hints, innerWidth)))
+	}
 	border := lipgloss.NormalBorder()
 	if m.settings.ASCII {
 		border = lipgloss.ASCIIBorder()

@@ -643,7 +643,11 @@ func TestJourneyDialogsFitWideNarrowAndASCIITerminals(t *testing.T) {
 			m.settings.ASCII = ascii
 			m.openJourney()
 			for _, dialog := range []dialogKind{dialogJourney, dialogJourneyLocation} {
-				m.ui.dialog = dialog
+				if dialog == dialogJourneyLocation {
+					m.editJourneyLocation(0)
+				} else {
+					m.openDialog(dialog)
+				}
 				m.rebuild()
 				if lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {
 					t.Fatalf("dialog %d overflowed %v, ASCII %v: %dx%d", dialog, size, ascii,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -46,6 +47,62 @@ func TestJourneyPanelKeepsMapVisibleAtEverySize(t *testing.T) {
 			if m.journeySidebar() && m.cursor.X < m.camera.Width+6 {
 				t.Fatal("sidebar input cursor appeared over the map", size)
 			}
+		}
+	}
+}
+
+func TestJourneyPanelSearchSelectionStaysVisible(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		imported      bool
+	}{
+		{width: 30, height: 12},
+		{width: 30, height: 12, imported: true},
+		{width: 50, height: 18},
+		{width: 70, height: 15, imported: true},
+		{width: 70, height: 18, imported: true},
+	} {
+		for _, ascii := range []bool{false, true} {
+			name := fmt.Sprintf("%dx%d-imported-%t-ascii-%t", tc.width, tc.height, tc.imported, ascii)
+			t.Run(name, func(t *testing.T) {
+				m := journeyViewer(t)
+				m.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height})
+				m.settings.ASCII = ascii
+				if tc.imported {
+					if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				m.openJourney()
+				m.editJourneyLocation(0)
+				m.places.token = "token"
+				m.places.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+					return locationResponse(`{"suggestions":[{"mapbox_id":"first","name":"First Place"},{"mapbox_id":"second","name":"Second Place"}]}`), nil
+				})
+				m.ui.search.SetValue("Place")
+				m.schedulePlaceSearch()
+				m.Update(m.requestPlaceSearch(m.planner.searchID)())
+				for i, label := range []string{"First Place", "Second Place"} {
+					if i > 0 {
+						m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+					}
+					for _, notice := range []string{"", "Search feedback"} {
+						m.ui.notice = notice
+						m.rebuild()
+						if !strings.Contains(ansi.Strip(m.content), label) {
+							t.Fatal("selected search suggestion hidden", label, notice)
+						}
+						if lipgloss.Width(m.content) > tc.width || lipgloss.Height(m.content) > tc.height {
+							t.Fatal("search panel overflowed the terminal", notice)
+						}
+					}
+				}
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+				m.rebuild()
+				if lipgloss.Height(m.content) > tc.height {
+					t.Fatal("returning to the planner kept the location-editor layout")
+				}
+			})
 		}
 	}
 }
@@ -96,6 +153,7 @@ func TestJourneyPanelMapAndListHaveIndependentNavigation(t *testing.T) {
 			t.Fatal("planner wheel zoomed the map", size)
 		}
 		m.editJourneyLocation(0)
+		y = m.mapOriginY()
 		center, value := m.camera.Center, m.ui.search.Value()
 		m.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
 		m.Update(tea.MouseMotionMsg{X: 8, Y: y, Button: tea.MouseLeft})

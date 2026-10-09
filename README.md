@@ -294,6 +294,8 @@ waypoints, reversal or undo recalculates an enabled routed plan. Typing, panning
 redrawing and reopening the planner make no Directions calls. Incomplete plans wait
 for every location to be set. Reversal requests new directions rather than reversing
 the old line, respecting directional road/access rules.
+Accepting an unchanged location or choosing the current travel mode keeps the
+resolved route without another request; use **Ctrl-D** to explicitly refresh it.
 
 Mapbox accepts 2–25 locations, with total between-stop distance limits of 1,000 km
 walking, 1,500 km cycling and 10,000 km driving. Over-limit plans show the cause and

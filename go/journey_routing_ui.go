@@ -135,12 +135,21 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 			m.ui.notice = "Mapbox not connected; connect in settings or choose Manual; ctrl+u for details"
 			return nil
 		}
+		j, err := m.workspace.journey(m.planner.ref)
+		if err != nil {
+			m.ui.notice = err.Error()
+			return nil
+		}
+		revision := j.revision
 		if err := m.workspace.setJourneyMode(m.planner.ref, mode); err != nil {
 			m.ui.notice = err.Error()
 			return nil
 		}
 		m.openDialog(dialogJourney)
 		m.selectionChanged()
+		if revision == j.revision {
+			return nil
+		}
 		return m.calculateJourneyIfRouted()
 	}
 	return nil
@@ -229,17 +238,16 @@ func journeyRoutingStatus(j *Journey, track *Track) string {
 			return j.Mode.label() + " · set all locations to route"
 		}
 	}
-	status := j.Mode.label() + " · manual preview; no estimate"
-	if j.Route != nil {
-		status = j.Mode.label() + " · stale route; manual preview"
+	status := "manual preview; no estimate"
+	switch {
+	case j.Busy && j.Route != nil:
+		status = "stale; calculating · manual preview"
+	case j.Busy:
+		status = "calculating; manual preview"
+	case j.Route != nil:
+		status = "stale route; manual preview"
 	}
-	if j.Busy {
-		status = j.Mode.label() + " · calculating; manual preview"
-		if j.Route != nil {
-			status = j.Mode.label() + " · stale; calculating · manual preview"
-		}
-	}
-	return status
+	return j.Mode.label() + " · " + status
 }
 
 func journeyDuration(seconds float64) string {

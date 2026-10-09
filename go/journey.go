@@ -118,6 +118,9 @@ func (w *Workspace) setJourneyLocation(ref ItemRef, id int, location placeLocati
 			location.Name = cleanPlaceText(location.Name)
 			location.Source = cleanPlaceText(location.Source)
 			location.Attribution = cleanPlaceText(location.Attribution)
+			if stop.Location != nil && *stop.Location == location {
+				return nil
+			}
 			stops[i].Location = &location
 			return w.editJourney(ref, stops)
 		}

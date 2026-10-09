@@ -187,6 +187,12 @@ func (w *Workspace) acceptJourneyRoute(result journeyRouteResult) bool {
 	}
 	j.Busy = false
 	if result.err != nil {
+		if j.routeCurrent() {
+			j.invalidateRoute()
+			if track, err := journeyTrack(j.Stops); err == nil {
+				w.replaceJourneyTrack(result.ref, track)
+			}
+		}
 		j.Error = result.err.Error()
 		return true
 	}

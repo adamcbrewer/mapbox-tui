@@ -290,23 +290,24 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case placeSearchResult:
 		return m, m.acceptPlaceSearch(v)
 	case journeyRouteResult:
-		if m.workspace.acceptJourneyRoute(v) {
-			if m.ui.dialog == dialogJourney && m.planner.ref == v.ref {
-				j, _ := m.workspace.journey(v.ref)
-				m.ui.notice = j.Error
-				if revision := m.planner.showRevision; revision != nil && *revision == v.revision {
-					m.planner.showRevision = nil
-					if v.err == nil {
-						return m, m.showJourneyOnMap()
-					}
+		if !m.workspace.acceptJourneyRoute(v) {
+			return m, nil
+		}
+		if m.ui.dialog == dialogJourney && m.planner.ref == v.ref {
+			j, _ := m.workspace.journey(v.ref)
+			m.ui.notice = j.Error
+			if revision := m.planner.showRevision; revision != nil && *revision == v.revision {
+				m.planner.showRevision = nil
+				if v.err == nil {
+					return m, m.showJourneyOnMap()
 				}
 			}
-			m.layout()
-			if v.err == nil {
-				m.fitPlannerJourney(v.ref)
-			}
-			m.dirty = true
 		}
+		m.layout()
+		if v.err == nil {
+			m.fitPlannerJourney(v.ref)
+		}
+		m.dirty = true
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
@@ -667,6 +668,10 @@ func (m *viewer) layout() {
 		h--
 	}
 	m.profileHeight = profileRows(h, m.showProfile && len(m.workspace.profileItems()) > 0)
+	sidebarInput := m.journeySidebar() && m.ui.dialog == dialogJourneyLocation
+	if sidebarInput && h-m.profileHeight < 4 {
+		m.profileHeight = 0
+	}
 	m.camera.Width, m.camera.Height = max(1, w), max(1, h-m.profileHeight)
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
 	if m.width < 90 {

@@ -205,6 +205,53 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 	}
 }
 
+func TestJourneyFailedRecalculationUsesManualPreview(t *testing.T) {
+	m, requests := routingTestViewer(t)
+	m.Update(m.calculateJourneyRoute()())
+	j, _ := m.workspace.journey(m.planner.ref)
+	previous, stops := j.Route, slices.Clone(j.Stops)
+	m.directions.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		*requests++
+		return locationResponse(`{"code":"NoRoute"}`), nil
+	})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	m.Update(cmd())
+	if *requests != 2 || j.routeCurrent() || j.Route != previous || !slices.Equal(j.Stops, stops) {
+		t.Fatal("failed retry retained a current route or changed the previous snapshot/stops")
+	}
+	if m.activeTrack() == previous.Track || m.activeTrack().Points[0].Lon != stops[0].Location.Lon {
+		t.Fatal("failed retry did not restore manual geometry")
+	}
+	details := strings.Join(m.journeyDetails(), "\n")
+	if strings.Contains(details, "Estimated travel time") || strings.Contains(m.journeyCredits(), directionsCredits) {
+		t.Fatal("failed retry still displayed current estimates or routing credits")
+	}
+	if !strings.Contains(m.ui.notice, "no Walking route") {
+		t.Fatal("failed retry lost its feedback")
+	}
+	_, show := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	if show == nil || m.ui.dialog != dialogJourney {
+		t.Fatal("Show accepted the failed route instead of requesting current directions")
+	}
+}
+
+func TestJourneyUnchangedLocationAndModeKeepResolvedRoute(t *testing.T) {
+	m, requests := routingTestViewer(t)
+	m.Update(m.calculateJourneyRoute()())
+	j, _ := m.workspace.journey(m.planner.ref)
+	previous := j.Route
+	m.editJourneyLocation(1)
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil || *requests != 1 || !j.routeCurrent() || j.Route != previous || m.activeTrack() != previous.Track {
+		t.Fatal("accepting unchanged coordinates invalidated or recalculated the route")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	_, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil || *requests != 1 || !j.routeCurrent() || j.Route != previous {
+		t.Fatal("choosing the current travel mode requested the route again")
+	}
+}
+
 func TestJourneyPendingShowDoesNotMoveCameraAfterDismissalOrEdit(t *testing.T) {
 	for _, edit := range []bool{false, true} {
 		t.Run(map[bool]string{false: "dismissed", true: "edited"}[edit], func(t *testing.T) {

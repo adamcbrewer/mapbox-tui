@@ -167,6 +167,9 @@ search retrieval, superseded successes/errors, mode switches, retries, removal,
 clearing, credential replacement, unchanged imported playback/elevation, manual
 fallback and route attribution. Routed map/dialog layouts are checked at 120×40,
 70×24, 70×18 and 30×12 in Braille/ASCII, including scrollable full error feedback.
+Regressions cover failed unchanged-plan recalculation falling back to manual
+geometry without current estimates/credits, and unchanged locations/modes making
+no extra Directions requests.
 Planner regressions cover the visible travel-mode selection, connected Driving
 default (including delayed credential discovery), explicit Manual preservation,
 automatic routing after complete endpoints/waypoints, Show waiting for resolved
@@ -174,6 +177,8 @@ geometry without duplicate requests, failure feedback and cancelled pending came
 Panel checks verify unobscured map cells, input-cursor placement, sidebar/compact-strip
 resizing, independent map/list mouse navigation and Tab keyboard focus at 120×40,
 70×24, 70×18, 50×18 and 30×12 in Braille/ASCII.
+Search checks keep the selected suggestion visible beside its input at compact
+sizes, including notices and imported elevation profiles in a 70×15 sidebar.
 Mouse checks cover selecting location/action/mode rows, placing start/destination/
 waypoint coordinates, automatic recalculation and drag-versus-click separation.
 View checks verify a mile-radius context across latitudes/viewports without cropping
