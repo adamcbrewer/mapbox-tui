@@ -110,6 +110,38 @@ func TestViewerFirstRunPromptAndOfflineSetupSuppression(t *testing.T) {
 	}
 }
 
+func TestViewerNoBasemapDiscoversSavedLoginForJourneyServices(t *testing.T) {
+	m := authTestViewer(t)
+	fakeMapbox(t, "good")
+	if err := os.Unsetenv("MAPBOX_ACCESS_TOKEN"); err != nil {
+		t.Fatal(err)
+	}
+	m.args.Provider, m.args.ProviderSet = "none", true
+	m.provider.quiet = true
+	cmd := m.Init()
+	if !m.authBusy {
+		t.Fatal("no-provider startup skipped saved-login discovery for journey services")
+	}
+	var discovered bool
+	for _, child := range cmd().(tea.BatchMsg) {
+		if result, ok := child().(credentialResult); ok {
+			discovered = true
+			m.Update(result)
+		}
+	}
+	if !discovered || m.places.token != "pk.synthetic-login-token" || m.directions.token != m.places.token {
+		t.Fatal("saved login did not enable both journey clients")
+	}
+	if m.provider.Kind != "none" || !m.provider.quiet || len(m.sources.poll(m.ctx, m.camera, time.Now(), false)) != 0 {
+		t.Fatal("journey credential discovery enabled basemap requests")
+	}
+	m.openJourney()
+	j, _ := m.workspace.journey(m.planner.ref)
+	if j.Mode != journeyDriving {
+		t.Fatal("saved-login journey did not default to Driving without a basemap")
+	}
+}
+
 func TestViewerSetupFitsCompactAndWideTerminals(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {70, 18}, {30, 12}} {
 		m := authTestViewer(t)

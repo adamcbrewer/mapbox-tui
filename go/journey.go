@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"unicode"
 )
+
+var coordinateNumberPrefix = regexp.MustCompile(`^[+-]?(([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]*)?|\.)?$`)
 
 type placeLocation struct {
 	Name, Source, Attribution string
@@ -245,12 +248,14 @@ func coordinateLocation(input string) (placeLocation, bool, error) {
 }
 
 func coordinatePrefix(input string) bool {
-	if !strings.ContainsAny(input, ",.+-") {
+	if !strings.ContainsAny(input, ",.+-eE") {
 		return false
 	}
-	return !strings.ContainsFunc(input, func(r rune) bool {
-		return !strings.ContainsRune("0123456789eE,+-.", r) && !unicode.IsSpace(r)
-	})
+	lat, lon, pair := strings.Cut(input, ",")
+	if !coordinateNumberPrefix.MatchString(strings.TrimSpace(lat)) {
+		return false
+	}
+	return !pair || coordinateNumberPrefix.MatchString(strings.TrimSpace(lon))
 }
 
 func validLocation(lon, lat float64) bool {

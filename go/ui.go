@@ -602,8 +602,9 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		content = helpContent.String()
 	case dialogCredits:
 		title = "Map credits"
-		content = m.sourceCreditsContent(m.sources.view())
-		if credits := m.journeyCredits(); credits != "" {
+		sources := m.sources.view()
+		content = m.sourceCreditsContent(sources)
+		if credits := m.journeyCredits(sources.Credits...); credits != "" {
 			content += "\n\n" + s.dialogHeading.Render("Journey providers") + "\n" + s.dialogText.Render(credits)
 		}
 	case dialogInspect:

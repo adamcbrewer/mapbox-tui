@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const directionsCredits = "© Mapbox © OpenStreetMap"
+const directionsCredits = "© Mapbox\n© OpenStreetMap"
 
 type directionsClient struct {
 	client  *http.Client

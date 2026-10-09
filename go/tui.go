@@ -78,7 +78,7 @@ func tick() tea.Cmd {
 func (m *viewer) Init() tea.Cmd {
 	var credentials tea.Cmd
 	_, explicit := environmentCredential()
-	if !explicit && !(m.args.ProviderSet && m.args.Provider == "none") {
+	if !explicit {
 		credentials = m.discoverCredentials(false, false)
 	}
 	if m.path == "" {
@@ -1072,7 +1072,7 @@ func (m *viewer) rebuild() {
 		freeRoam:       m.activePlayback() == nil,
 	}
 	credits, _ := sources.attribution()
-	journeyCredits := strings.ReplaceAll(m.journeyCredits(), "\n", " ")
+	journeyCredits := strings.ReplaceAll(m.journeyCredits(sources.Credits...), "\n", " ")
 	notice := m.connectionNotice()
 	noticeFits := journeyCredits == "" || lipgloss.Width(notice+" "+journeyCredits) <= m.width
 	if notice != "" && noticeFits {

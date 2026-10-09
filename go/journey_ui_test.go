@@ -244,7 +244,7 @@ func TestJourneyConnectedCoordinatesAndShortQueriesDoNotSearch(t *testing.T) {
 	m.editJourneyLocation(0)
 	for _, query := range []string{
 		"", "Hi", "51", "-51", "51.", "51.5", "51.5,", "51.5, ",
-		"51.5, -", "51.5, -0.", "51.5, -0.1", "5.15e1, -",
+		"51.5, -", "51.5, -0.", "51.5, -0.1", "5e1", "5.15e1, -", "51.5, -0e-",
 	} {
 		m.ui.search.SetValue(query)
 		if m.schedulePlaceSearch() != nil || m.planner.searchBusy {
@@ -254,7 +254,7 @@ func TestJourneyConnectedCoordinatesAndShortQueriesDoNotSearch(t *testing.T) {
 }
 
 func TestJourneyNumberedAddressesAndPostcodesStillSearch(t *testing.T) {
-	for _, query := range []string{"10 Downing Street", "90210", "51.5 Café"} {
+	for _, query := range []string{"10 Downing Street", "90210", "10001-0001", "51.5 Café"} {
 		t.Run(query, func(t *testing.T) {
 			m := journeyViewer(t)
 			m.places.token = "token"

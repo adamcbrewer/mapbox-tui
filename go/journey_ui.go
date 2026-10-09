@@ -536,12 +536,16 @@ func (m *viewer) journeyDetails() []string {
 	return append(lines, "Session only; no locations saved")
 }
 
-func (m *viewer) journeyCredits() string {
+func (m *viewer) journeyCredits(existing ...sourceCredit) string {
 	var credits []string
 	addCredit := func(credit string) {
-		if credit != "" && !slices.Contains(credits, credit) {
-			credits = append(credits, credit)
+		if credit == "" || slices.Contains(credits, credit) {
+			return
 		}
+		if slices.ContainsFunc(existing, func(c sourceCredit) bool { return c.Text == credit }) {
+			return
+		}
+		credits = append(credits, credit)
 	}
 	if m.ui.dialog == dialogJourneyLocation {
 		for _, suggestion := range m.planner.suggestions {
@@ -558,7 +562,9 @@ func (m *viewer) journeyCredits() string {
 			}
 		}
 		if item.Item.Journey.routeCurrent() {
-			addCredit(directionsCredits)
+			for _, credit := range strings.Split(directionsCredits, "\n") {
+				addCredit(credit)
+			}
 		}
 	}
 	return strings.Join(credits, "\n")

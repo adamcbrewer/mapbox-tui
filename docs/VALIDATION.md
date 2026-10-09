@@ -153,7 +153,9 @@ elevation profiles. Search checks prove automatic availability on fresh/repeated
 launches, delayed credential discovery resuming typed queries, cancellation on
 disconnect, minimum query length/debounce and no requests for empty/coordinate input.
 Incomplete coordinate prefixes also stay offline without blocking numbered
-addresses or numeric postcodes.
+addresses or numeric/ZIP+4 postcodes.
+Viewer startup discovers saved-login credentials for search/routing with the
+basemap disabled, while preserving explicit-empty opt-out and avoiding tile requests.
 Journey dialogs are checked at 120×40, 70×24, 70×18 and 30×12
 in Braille/ASCII modes.
 Partial journeys retain the correct start/end markers without bridging unresolved
@@ -172,6 +174,7 @@ fallback and route attribution. Routed map/dialog layouts are checked at 120×40
 Regressions cover failed unchanged-plan recalculation falling back to manual
 geometry without current estimates/credits, and unchanged locations/modes making
 no extra Directions requests.
+Routing credits are deduplicated against basemap credits in the map footer.
 Planner regressions cover the visible travel-mode selection, connected Driving
 default (including delayed credential discovery), explicit Manual preservation,
 automatic routing after complete endpoints/waypoints, Show waiting for resolved

@@ -252,6 +252,22 @@ func TestJourneyUnchangedLocationAndModeKeepResolvedRoute(t *testing.T) {
 	}
 }
 
+func TestJourneyFooterDeduplicatesBasemapAndRoutingCredits(t *testing.T) {
+	m, _ := routingTestViewer(t)
+	m.Update(m.calculateJourneyRoute()())
+	m.provider = providerForCredential("mapbox", renderingCredential{token: "token"})
+	m.configureSources()
+	m.sources.states[0].snapshot.Credits = providerCredits("mapbox")
+	m.rebuild()
+	lines := strings.Split(ansi.Strip(m.content), "\n")
+	footer := lines[len(lines)-1]
+	for _, credit := range []string{"© Mapbox", "© OpenStreetMap", "Improve this map"} {
+		if strings.Count(footer, credit) != 1 {
+			t.Fatalf("footer lost or repeated %q: %q", credit, footer)
+		}
+	}
+}
+
 func TestJourneyPendingShowDoesNotMoveCameraAfterDismissalOrEdit(t *testing.T) {
 	for _, edit := range []bool{false, true} {
 		t.Run(map[bool]string{false: "dismissed", true: "edited"}[edit], func(t *testing.T) {
