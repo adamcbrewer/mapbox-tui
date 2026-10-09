@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -143,6 +144,56 @@ func TestScenePlannedEndpointMarkersFollowStopsAndReverse(t *testing.T) {
 			}
 			checkMarkers(false)
 		})
+	}
+}
+
+func TestSceneRoutedEndpointsStayAtUserLocations(t *testing.T) {
+	var w Workspace
+	ref := routedTestJourney(t, &w)
+	j, _ := w.journey(ref)
+	p := newDirectionsClient("token")
+	p.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		locations := directionsRequestLocations(t, r)
+		for i := range locations {
+			locations[i].Lon += .04
+		}
+		return locationResponse(directionsTestResponse(locations, 12345, 1200)), nil
+	})
+	request, err := w.beginJourneyRoute(t.Context(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.acceptJourneyRoute(request.run(p)) || !j.routeCurrent() {
+		t.Fatal("route did not resolve")
+	}
+	c := w.fitVisible(120, 40, 2)
+	g := renderScene(
+		c,
+		nil,
+		w.sceneItems(),
+		nil,
+	)
+	for _, tc := range []struct {
+		index  int
+		marker rune
+	}{
+		{index: 0, marker: 'A'},
+		{index: len(j.Stops) - 1, marker: 'B'},
+	} {
+		location := j.Stops[tc.index].Location
+		point := c.screen(project(location.Lon, location.Lat))
+		x, y := int(math.Floor(point.X/2)), int(math.Floor(point.Y/4))
+		insideX, insideY := x >= 0 && x < g.Width, y >= 0 && y < g.Height
+		if !insideX || !insideY {
+			t.Fatal("fit-visible cropped a user-selected endpoint", tc.marker)
+		}
+		cell := g.Cells[y*g.Width+x]
+		if cell.Text != tc.marker || cell.owner != ref {
+			t.Fatal("routed endpoint marker moved away from the user's location", tc.marker)
+		}
+		if j.Route.Snapped[tc.index].X == location.Lon {
+			t.Fatal("routing overwrote the separate snapped location")
+		}
 	}
 }
 

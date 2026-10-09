@@ -243,6 +243,8 @@ You can also click a location row and then click its point on the map, including
 start, destination and intermediate waypoints. A simple click places the selected
 location; dragging pans without changing it. Planned endpoints use **A** (start)
 and **B** (destination), matching the planner; stop details have space between them.
+All stop markers stay at your chosen coordinates, even when Mapbox snaps the
+route's endpoints to nearby roads or paths.
 With a configured Mapbox token or saved login, address/named-POI search is enabled
 automatically, without a confirmation on each launch. Autocomplete starts after
 three characters and a short pause; **Ctrl-S** retries the current search.

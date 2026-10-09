@@ -191,6 +191,8 @@ waypoint coordinates, automatic recalculation and drag-versus-click separation.
 View checks verify a mile-radius context across latitudes/viewports without cropping
 longer plans. Planned endpoint A/B markers and separated stop-detail sections have
 regression coverage.
+Routed endpoints retain user-selected marker positions after provider snapping,
+and fit-visible keeps both the original stops and the routed geometry on screen.
 
 Opt-in live account check (three Directions requests, using shared credential resolution):
 

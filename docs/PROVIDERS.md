@@ -190,6 +190,8 @@ as proof of Directions access.
   Accepting unchanged locations or the current mode does not invalidate or request
   a route; Ctrl-D remains the explicit refresh/retry action.
 - User locations remain unchanged; snapped locations and route geometry are separate.
+  A/B and waypoint markers stay at the chosen locations, and map fitting includes
+  those markers alongside the routed path.
   The displayed distance/duration come from Directions, with travel time labelled
   estimated. Geometry has no recorded timestamps, playback or elevation.
 - Workspace-owned cancellation and monotonically increasing request/edit identities

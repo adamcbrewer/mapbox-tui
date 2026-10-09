@@ -355,11 +355,13 @@ func (w *Workspace) sceneItems() []sceneItem {
 				Planned: item.Item.Journey != nil,
 			}
 			if j := item.Item.Journey; j != nil {
-				if j.Stops[0].Location != nil {
-					scene.Start = &scene.Track.Points[0].World
+				if location := j.Stops[0].Location; location != nil {
+					start := project(location.Lon, location.Lat)
+					scene.Start = &start
 				}
-				if j.Stops[len(j.Stops)-1].Location != nil {
-					scene.End = &scene.Track.Points[len(scene.Track.Points)-1].World
+				if location := j.Stops[len(j.Stops)-1].Location; location != nil {
+					end := project(location.Lon, location.Lat)
+					scene.End = &end
 				}
 			}
 			items = append(items, scene)

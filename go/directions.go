@@ -215,6 +215,9 @@ func (response directionsResponse) route(mode journeyMode, locations []placeLoca
 	if err := prepareTrackWithNameCleaner(track, cleanPlaceText); err != nil {
 		return nil, fmt.Errorf("Mapbox route cannot be displayed: %w; choose Manual", err)
 	}
+	for _, location := range locations {
+		extendBounds(&track.Bounds, [4]float64{location.Lon, location.Lat, location.Lon, location.Lat})
+	}
 	return &journeyRoute{
 		Track: track, Snapped: snapped, Distance: *route.Distance, Duration: *route.Duration, Mode: mode,
 	}, nil
