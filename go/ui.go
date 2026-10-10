@@ -55,7 +55,10 @@ type uiState struct {
 
 type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
 
-type viewerCommand struct{ title, shortcut, action string }
+type viewerCommand struct {
+	title, shortcut, action string
+	disabled                bool
+}
 
 type searchClipboardResult struct {
 	owner  string
@@ -204,7 +207,7 @@ func (m *viewer) initUI() error {
 	preferences, err := loadAppSettings()
 	if err != nil {
 		preferences = appSettings{}
-		m.authMessage = "Could not load telemetry settings; telemetry is off: " + err.Error()
+		m.authMessage = "Could not load settings; telemetry is off and traffic is off: " + err.Error()
 	}
 	m.preferences = preferences
 	if m.places == nil {
@@ -328,6 +331,7 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
+		m.trafficCommand(),
 		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
 	}...)
 	if m.mapboxConnected() {
@@ -374,6 +378,14 @@ func (m *viewer) commands() []viewerCommand {
 	return filtered
 }
 func (m *viewer) runCommand(action string) tea.Cmd {
+	if action == "traffic" {
+		previous := m.preferences.Traffic
+		command := m.toggleTraffic()
+		if m.preferences.Traffic != previous {
+			m.closeDialog()
+		}
+		return command
+	}
 	m.closeDialog()
 	switch action {
 	case "roam":
@@ -443,6 +455,10 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		case dialogCommands:
 			commands := m.commands()
 			switch pressed {
+			case "space":
+				if len(commands) > 0 && commands[min(m.ui.selected, len(commands)-1)].action == "traffic" {
+					return m.toggleTraffic()
+				}
 			case "down", "ctrl+n":
 				m.ui.selected = min(m.ui.selected+1, max(0, len(commands)-1))
 				return nil
@@ -534,12 +550,15 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 			if i == m.ui.selected {
 				style = s.selected
 			}
+			if command.disabled {
+				style = style.Foreground(lipgloss.Color(m.theme().Dimmed))
+			}
 			rows = append(rows, style.Render(pad(line, width)))
 		}
 		if len(commands) == 0 {
 			rows = append(rows, s.dialogMuted.Render("No matching commands"))
 		}
-		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose   enter run   esc close"
+		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose   space toggle   enter run   esc close"
 	case dialogFiles:
 		m.ui.picker.SetHeight(max(1, height-2))
 		m.ui.picker.Styles.Selected = m.ui.picker.Styles.Selected.Width(max(1, width-1)).MaxWidth(max(1, width-1))
@@ -630,6 +649,9 @@ func (m *viewer) sourceCreditsContent(sources sourceView) string {
 		if source.Loading {
 			status = "Loading · " + status
 		}
+		if source.Stale {
+			status = "Stale · " + status
+		}
 		content.WriteString("\n\n" + s.dialogHeading.Render(source.Name) + "\n" + s.dialogText.Render(status))
 		fmt.Fprintf(
 			&content,
@@ -640,6 +662,12 @@ func (m *viewer) sourceCreditsContent(sources sourceView) string {
 		)
 		if source.RefreshAt != nil {
 			content.WriteString("\nRefresh after " + source.RefreshAt.Local().Format("15:04:05"))
+		}
+		if source.FetchedAt != nil {
+			content.WriteString("\nFetched " + source.FetchedAt.Local().Format("15:04:05"))
+		}
+		if source.Name == "traffic" {
+			content.WriteString("\n" + m.trafficLegend())
 		}
 	}
 	return content.String()

@@ -95,7 +95,8 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 			"",
 			1,
 		),
-		"unknown map role": valid + "traffic = \"#123456\"\n",
+		"missing map section": valid[:strings.Index(valid, "[map]")],
+		"unknown map role":    valid + "traffic = \"#123456\"\n",
 		"invalid colour": strings.Replace(
 			valid,
 			"#1e1e2e",

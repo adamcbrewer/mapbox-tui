@@ -785,7 +785,48 @@ def auth_setup(binary):
     print(f"{binary.name}: dependency-aware setup actions, installation help/recheck, palette login, stdout notice and terminal restoration passed")
 
 
+def traffic_menu(binary):
+    with tempfile.TemporaryDirectory() as folder:
+        folder = Path(folder)
+        for width, height in ((120, 40), (70, 18), (30, 12)):
+            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"SHOE_MAPBOX_CLI={folder / 'missing'}",
+                                  f"XDG_CONFIG_HOME={folder}", "TERM=xterm-256color", "COLORTERM=truecolor",
+                                  "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
+                                  str(ROOT / "fixtures/example.gpx")])
+            tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+            try:
+                wait_for(lambda s: "Point 1" in s and "No basemap" in s)
+                send("\x10traffic")
+                wait_for(lambda s: "Commands" in s and "[ ] Traffic" in s)
+                if width >= 70:
+                    assert "Traffic (20-mile radius)" in capture(), "traffic menu showed the old radius"
+                traffic_row = next(row for row in capture(colors=True).splitlines() if "Traffic" in row)
+                assert "38;2;108;112;134" in traffic_row, "unverified traffic was not greyed out"
+                send(" ")
+                wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
+                send("\r")
+                wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
+                settings = folder / "shoe/settings.json"
+                assert not settings.exists(), "disabled traffic changed the saved preference"
+                send("\x1b")
+                wait_for(lambda s: "Commands" not in s and "Point 1" in s)
+                send("a")
+                wait_for(lambda s: not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+                send("\x10traffic")
+                wait_for(lambda s: "Commands" in s and "[ ] Traffic" in s)
+                send("\x1b")
+                screen = wait_for(lambda s: "Commands" not in s)
+                assert "Point 1" in screen, "traffic controls discarded the imported activity"
+                send("q")
+                wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+            finally:
+                tmux("kill-session", "-t", "poc", check=False)
+    print(f"{binary.name}: main-menu traffic entry, greyed-out unverified access, disabled action, ASCII, compact layouts and preserved imports passed")
+
+
 if __name__ == "__main__":
+    settings = tempfile.TemporaryDirectory()
+    os.environ["XDG_CONFIG_HOME"] = settings.name
     try:
         for name in ("shoe",):
             free_roam(ROOT / "bin" / name, live="--mapbox" in sys.argv)
@@ -801,6 +842,7 @@ if __name__ == "__main__":
                 live_playback(ROOT / "bin" / name)
             else:
                 auth_setup(ROOT / "bin" / name)
+                traffic_menu(ROOT / "bin" / name)
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24)):
@@ -811,3 +853,4 @@ if __name__ == "__main__":
                     journey_controls(ROOT / "bin" / name, width, height)
     finally:
         tmux("kill-server", check=False)
+        settings.cleanup()

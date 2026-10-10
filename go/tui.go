@@ -38,6 +38,8 @@ type viewer struct {
 	sources                   sourceLoader
 	sourceProvider            *Provider
 	sourceKind                string
+	traffic                   *Provider
+	trafficEnabled            bool
 	ctx                       context.Context
 	camera                    Camera
 	width, height             int
@@ -66,6 +68,7 @@ type viewer struct {
 	authID                    uint64
 	authCancel                context.CancelFunc
 	authBusy, authFirstRun    bool
+	authVerified              bool
 	authMessage               string
 	authCLI                   mapboxDependencyStatus
 	preferences               appSettings
@@ -202,6 +205,7 @@ func (m *viewer) configureSources() {
 		m.sourceProvider, m.sourceKind = m.provider, m.provider.Kind
 		m.dirty = true
 	}
+	m.configureTraffic()
 }
 func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 	m.configureSources()
@@ -372,7 +376,18 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sourceResult:
 		m.configureSources()
 		if m.sources.accept(v, m.destination(), time.Now()) {
+			if v.name == "basemap" {
+				snapshot := v.snapshot
+				ready := v.err == nil && !snapshot.Failed && snapshot.Status == ""
+				switch {
+				case snapshot.AccessDenied:
+					m.setMapboxVerified(false)
+				case ready && snapshot.Stats.Requests > 0:
+					m.setMapboxVerified(true)
+				}
+			}
 			m.dirty = true
+			return m, m.fetch()
 		}
 	case pulse:
 		now := time.Time(v)
@@ -1021,8 +1036,14 @@ func (m *viewer) rebuild() {
 		status = playback.status()
 	}
 	sourceStatus := sources.status()
-	if m.provider.token == "" {
+	if m.provider.token == "" && !m.preferences.Traffic {
 		sourceStatus = ""
+	}
+	if m.preferences.Traffic {
+		status = m.trafficLegend() + " | " + status
+		if !m.mapboxVerified() {
+			sourceStatus = "Traffic paused; verify Mapbox in account settings"
+		}
 	}
 	if sourceStatus != "" {
 		status = sourceStatus + " | " + status

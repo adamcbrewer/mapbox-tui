@@ -19,6 +19,11 @@ const (
 	roleCursor
 	roleActiveRoute
 	roleActiveMarker
+	roleTrafficLow
+	roleTrafficModerate
+	roleTrafficHeavy
+	roleTrafficSevere
+	roleTrafficClosed
 )
 
 var mapStyles = [...]struct {
@@ -26,15 +31,20 @@ var mapStyles = [...]struct {
 	ascii    rune
 }{
 	{priority: 0, ascii: ' '},
-	{priority: 1, ascii: '~'},
-	{priority: 2, ascii: '.'},
-	{priority: 3, ascii: ':'},
-	{priority: 4, ascii: '-'},
-	{priority: 5, ascii: '*'},
-	{priority: 6, ascii: 'S'},
-	{priority: 9, ascii: '@'},
-	{priority: 7, ascii: '#'},
-	{priority: 8, ascii: 'S'},
+	{priority: 10, ascii: '~'},
+	{priority: 20, ascii: '.'},
+	{priority: 30, ascii: ':'},
+	{priority: 40, ascii: '-'},
+	{priority: 50, ascii: '*'},
+	{priority: 60, ascii: 'S'},
+	{priority: 90, ascii: '@'},
+	{priority: 70, ascii: '#'},
+	{priority: 80, ascii: 'S'},
+	{priority: 31, ascii: '1'},
+	{priority: 32, ascii: '2'},
+	{priority: 33, ascii: '3'},
+	{priority: 34, ascii: '4'},
+	{priority: 35, ascii: 'X'},
 }
 
 type activityColor uint8
@@ -59,6 +69,7 @@ type Grid struct {
 	Cells         []Cell
 	owner         ItemRef
 	sample        *[2]int
+	camera        *Camera
 }
 
 type sceneItem struct {
@@ -92,6 +103,12 @@ func (g *Grid) dot(x, y int, role mapRole, colors ...activityColor) {
 	outsideHeight := y < 0 || y >= g.Height*4
 	if outsideWidth || outsideHeight {
 		return
+	}
+	if role.traffic() && g.camera != nil {
+		point := g.camera.world(XY{float64(x), float64(y)})
+		if !trafficContains(g.camera.Center, point) {
+			return
+		}
 	}
 	c := g.cell(x/2, y/4)
 	if c == nil || mapStyles[role].priority < mapStyles[c.Role].priority {
@@ -230,6 +247,7 @@ func render(t *Track, c Camera, features []Feature, selected int, ascii bool) Gr
 
 func renderScene(c Camera, features []Feature, items []sceneItem, cursor *XY) Grid {
 	g := newGrid(c.Width, c.Height)
+	g.camera = &c
 	for _, f := range features {
 		parts := make([][]XY, len(f.Parts))
 		for i, part := range f.Parts {
@@ -378,6 +396,9 @@ func (g Grid) glyph(c Cell, ascii bool) rune {
 	}
 	if c.Bits == 0 {
 		return ' '
+	}
+	if c.Role == roleTrafficClosed {
+		return 'X'
 	}
 	if ascii {
 		return mapStyles[c.Role].ascii

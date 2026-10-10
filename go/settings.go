@@ -11,6 +11,7 @@ import (
 
 type appSettings struct {
 	MapboxCLITelemetry bool `json:"mapbox_cli_telemetry"`
+	Traffic            bool `json:"traffic"`
 }
 
 func appSettingsPath() (string, error) {

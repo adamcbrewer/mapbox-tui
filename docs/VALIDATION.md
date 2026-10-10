@@ -86,6 +86,9 @@ replacement and telemetry-off fallback without blocking offline viewing. MCP
 checks cover shared negative credential discovery and cancellation recovery.
 No installed Mapbox CLI or account is needed for `make test`.
 
+Go and terminal interaction tests use isolated config directories so saved viewer traffic/telemetry
+preferences cannot enable extra sources or change expected defaults during checks.
+
 With the optional CLI installed, `make mapbox-check` inspects six released command
 schemas without account/API requests. `python3 scripts/mapbox_auth_check.py` is a
 live saved-login/token/Streets/usage check and makes a tile request. Auth/signup
@@ -249,6 +252,61 @@ With a locally configured token, these checks make billable Mapbox requests:
 python3 scripts/mapbox_check.py
 python3 scripts/interactions.py --mapbox
 ```
+
+## Traffic overlay
+
+Offline regression checks cover MVT congestion/closure decoding, unknown coverage,
+20-mile clipping of crossing roads at multiple latitudes/bearings, current-camera
+clipping with unchanged tile coverage, local bounded requests, deterministic
+severity overlap, preserved route colour/ownership and closure/ASCII glyphs.
+Controlled time/transports verify traffic cache caps, `Age`, stationary refresh,
+stale retention/recovery, redacted access-denial feedback and no repeated denied
+requests. Settings checks cover persistent on/off, delayed credentials, cancellation
+and late-result rejection. Menu checks cover disabled unchecked credentials,
+successful certification, saved-preference gating, revoked verification and
+turning traffic off while disconnected. Terminal interactions exercise the main
+menu's greyed-out entry and disabled activation with imported geometry at 120×40,
+70×18 and 30×12 in Braille/ASCII with credentials disabled.
+
+Opt-in live account check (one Traffic v1 TileJSON request and normally one London
+zoom-14 tile request, using shared credential resolution):
+
+```sh
+SHOE_TRAFFIC_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestTrafficAccountAccess$' -v
+```
+
+On 2026-10-10 this passed with the existing saved-login account: advertised zooms
+6–16, one tile request and 1,043 decoded road features, with approximately 57 seconds
+until refresh. No raw traffic data or Directions request was made. Account tokens
+and raw response bodies are not logged. A separate card-free trial-account check
+remains pending. Ordinary repository and terminal checks stay offline.
+
+A one-off radius comparison on 2026-10-10 reused the same **7,494 London traffic
+features** at zoom 8 for both caps. Three geometry-rendering runs on this machine
+gave these median times:
+
+| Terminal | 10-mile cap | 20-mile cap | Traffic tiles |
+|---|---:|---:|---:|
+| 120×40 | 13.50 ms | 13.55 ms | 4 for either cap |
+| 160×50 | 14.78 ms | 15.11 ms | 4 for either cap |
+
+Allocations were the same for each radius at a given terminal size. A temporary
+Go build overlay varied the radius only for the benchmark; production keeps the
+fixed 20-mile cap. The timed loops reused in-memory data and exclude network,
+tile decoding and ANSI/UI painting. This measures the sampled London scene, not
+all locations/zooms.
+
+To try the viewer, launch at a local focus and enable **Traffic (20-mile radius)**
+directly through Ctrl-P. It is greyed out until the Mapbox connection is verified;
+use account setup / **Check connection** if needed. For example:
+
+```sh
+./bin/shoe --center-lon -0.1276 --center-lat 51.5072 --zoom 8
+```
+
+Pan and rotate, toggle ASCII with `a`, and press `v` for the traffic fetch time,
+refresh deadline, stale status and legend. Turning traffic off removes its snapshot
+without moving the camera or changing loaded routes.
 
 ## Manual smoke check
 

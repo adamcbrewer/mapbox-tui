@@ -46,6 +46,12 @@ Every colour must be a quoted `#RRGGBB` value. `[map]` requires `none`, `water`,
 `active_marker`. An item's activity slot overrides its route, marker and moving
 position colour. A profile's vertical cursor uses the `cursor` role.
 
+Traffic adds optional map colours `traffic_low`, `traffic_moderate`, `traffic_heavy`,
+`traffic_severe` and `traffic_closed`. Built-ins define them; older custom palettes
+receive defaults when these keys are absent. Invalid explicit traffic colours still
+fail validation. Traffic roles control colour, while severity priority and `1`–`4`/
+`X` glyphs stay in the shared renderer.
+
 Unknown fields/roles, missing or invalid colours, incorrect activity palette sizes,
 invalid metadata and duplicate IDs fail at startup with an error. Custom palettes
 must have IDs distinct from built-ins.

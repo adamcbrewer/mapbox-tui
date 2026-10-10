@@ -8,7 +8,7 @@
 - [x] loaded-files / routes UI: show filenames, select items, hide/show and remove
 - [x] theme switching
 - [ ] [plot a route / create directions](https://github.com/adamcbrewer/shell-on-earth/issues/5)
-- [ ] [toggle traffic](https://github.com/adamcbrewer/shell-on-earth/issues/4)
+- [x] [toggle traffic](https://github.com/adamcbrewer/shell-on-earth/issues/4) (20-mile Mapbox Traffic v1 overlay)
 - [ ] [choose the next map data source](https://github.com/adamcbrewer/shell-on-earth/issues/6)
 - [ ] [activity reordering and sequential playback](https://github.com/adamcbrewer/shell-on-earth/issues/3) (deferred)
 - [ ] [local Git checks and automated CI](https://github.com/adamcbrewer/shell-on-earth/issues/8)

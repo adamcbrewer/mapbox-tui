@@ -13,12 +13,15 @@ type sourceCredit struct {
 }
 
 type sourceSnapshot struct {
-	Features  []Feature
-	Stats     Stats
-	Status    string
-	RefreshAt time.Time
-	Credits   []sourceCredit
-	Failed    bool
+	Features     []Feature
+	Stats        Stats
+	Status       string
+	RefreshAt    time.Time
+	Credits      []sourceCredit
+	Failed       bool
+	Unavailable  bool
+	AccessDenied bool
+	FetchedAt    time.Time
 }
 
 type mapSource interface {
@@ -182,7 +185,7 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 			if snapshot.Status == "" {
 				snapshot.Status = "Source request failed"
 			}
-			if snapshot.RefreshAt.IsZero() {
+			if snapshot.RefreshAt.IsZero() && !snapshot.Unavailable {
 				snapshot.RefreshAt = now.Add(10 * time.Second)
 			}
 		}
@@ -190,6 +193,7 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 		if retainPrevious && len(state.snapshot.Features) > 0 {
 			snapshot.Features = state.snapshot.Features
 			snapshot.Credits = state.snapshot.Credits
+			snapshot.FetchedAt = state.snapshot.FetchedAt
 		}
 		if !snapshot.RefreshAt.IsZero() && snapshot.RefreshAt.Before(now.Add(time.Second)) {
 			snapshot.RefreshAt = now.Add(time.Second)
@@ -223,6 +227,8 @@ type sourceInfo struct {
 	Loading   bool       `json:"loading"`
 	RefreshAt *time.Time `json:"refresh_at,omitempty"`
 	Stats     Stats      `json:"tile_stats"`
+	FetchedAt *time.Time `json:"fetched_at,omitempty"`
+	Stale     bool       `json:"stale,omitempty"`
 }
 
 type sourceView struct {
@@ -257,6 +263,11 @@ func (v *sourceView) add(name string, snapshot sourceSnapshot, loading bool) {
 	if !snapshot.RefreshAt.IsZero() {
 		deadline := snapshot.RefreshAt
 		info.RefreshAt = &deadline
+	}
+	if !snapshot.FetchedAt.IsZero() {
+		fetched := snapshot.FetchedAt
+		info.FetchedAt = &fetched
+		info.Stale = snapshot.Failed
 	}
 	v.Sources = append(v.Sources, info)
 }

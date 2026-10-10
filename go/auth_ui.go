@@ -136,6 +136,16 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		m.authCancel = nil
 	}
 	credential := result.credential
+	switch {
+	case credential.token == "":
+		m.setMapboxVerified(false)
+	case result.checked || result.afterLogin:
+		m.setMapboxVerified(result.access.State == "ready")
+	case credential.source == "login":
+		m.setMapboxVerified(true)
+	case credential.token != m.provider.token:
+		m.setMapboxVerified(false)
+	}
 	if credential.dependency.State != "" {
 		m.authCLI = credential.dependency
 	}
@@ -168,6 +178,10 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		}
 	}
 	if result.checked {
+		if m.preferences.Traffic {
+			m.traffic = nil
+			m.configureTraffic()
+		}
 		switch {
 		case credential.token == "":
 			m.authMessage = "Check failed: " + credential.guidance
@@ -250,6 +264,18 @@ func (m *viewer) checkMapboxSetup() tea.Cmd {
 
 func (m *viewer) mapboxConnected() bool {
 	return m.provider != nil && m.provider.token != ""
+}
+
+func (m *viewer) mapboxVerified() bool {
+	return m.mapboxConnected() && m.authVerified
+}
+
+func (m *viewer) setMapboxVerified(verified bool) {
+	m.authVerified = verified
+	if verified && m.ui.notice == trafficAuthGuidance {
+		m.ui.notice = ""
+	}
+	m.dirty = true
 }
 
 func (m *viewer) mapboxActions() []viewerCommand {

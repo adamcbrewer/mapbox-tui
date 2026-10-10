@@ -20,27 +20,30 @@ import (
 
 type Tile struct{ Z, X, Y int }
 type cacheEntry struct {
-	Features []Feature
-	Expires  time.Time
-	Used     uint64
+	Features  []Feature
+	Expires   time.Time
+	FetchedAt time.Time
+	Used      uint64
 }
 type Stats struct {
 	Requests, Hits, Errors uint64
 	Cached                 int
 }
 type Provider struct {
-	Kind     string
-	client   *http.Client
-	token    string
-	guidance string
-	quiet    bool
-	cache    map[Tile]cacheEntry
-	stats    Stats
-	clock    uint64
-	retry    time.Time
-	mu       sync.Mutex
-	batch    chan struct{}
-	now      func() time.Time
+	Kind        string
+	client      *http.Client
+	token       string
+	guidance    string
+	tileset     string
+	unavailable string
+	quiet       bool
+	cache       map[Tile]cacheEntry
+	stats       Stats
+	clock       uint64
+	retry       time.Time
+	mu          sync.Mutex
+	batch       chan struct{}
+	now         func() time.Time
 }
 
 const mapboxTokenMissing = "Mapbox token missing; " + mapboxLoginGuidance + "; or set MAPBOX_ACCESS_TOKEN"
@@ -69,10 +72,11 @@ func newProvider(kind string) *Provider {
 				return http.ErrUseLastResponse
 			},
 		},
-		token: accessToken(),
-		cache: map[Tile]cacheEntry{},
-		batch: make(chan struct{}, 1),
-		now:   time.Now,
+		token:   accessToken(),
+		tileset: "mapbox.mapbox-streets-v8",
+		cache:   map[Tile]cacheEntry{},
+		batch:   make(chan struct{}, 1),
+		now:     time.Now,
 	}
 }
 func accessToken() string {
@@ -102,6 +106,11 @@ func providerGuidance(p *Provider, hasImports bool) string {
 }
 func visible(c Camera) []Tile {
 	z := int(math.Max(0, math.Min(14, math.Floor(c.Zoom))))
+	a, b := visibleBounds(c)
+	return tilesForBounds(a, b, z)
+}
+
+func visibleBounds(c Camera) (XY, XY) {
 	a, b := XY{math.Inf(1), math.Inf(1)}, XY{math.Inf(-1), math.Inf(-1)}
 	for _, s := range []XY{{0, 0}, {float64(c.Width * 2), 0}, {0, float64(c.Height * 4)}, {float64(c.Width * 2), float64(c.Height * 4)}} {
 		p := c.world(s)
@@ -109,6 +118,13 @@ func visible(c Camera) []Tile {
 		a.Y = math.Min(a.Y, p.Y)
 		b.X = math.Max(b.X, p.X)
 		b.Y = math.Max(b.Y, p.Y)
+	}
+	return a, b
+}
+
+func tilesForBounds(a, b XY, z int) []Tile {
+	if a.X > b.X || a.Y > b.Y {
+		return nil
 	}
 	for {
 		n := 1 << z
@@ -135,7 +151,14 @@ func (p *Provider) sameRequest(a, b Camera) bool {
 	if !usesTiles {
 		return true
 	}
-	return slices.Equal(visible(a), visible(b))
+	return slices.Equal(p.requestTiles(a), p.requestTiles(b))
+}
+
+func (p *Provider) requestTiles(c Camera) []Tile {
+	if p.tileset == trafficTileset {
+		return trafficTiles(c)
+	}
+	return visible(c)
 }
 func ttl(header string) time.Duration {
 	age := 0
@@ -177,6 +200,11 @@ func decodeTile(data []byte, t Tile) ([]Feature, error) {
 				label, _ = f.Properties["name_en"].(string)
 				if label == "" {
 					label, _ = f.Properties["name"].(string)
+				}
+			case "traffic":
+				role = trafficFeatureRole(f.Properties)
+				if role == roleNone {
+					continue
 				}
 			default:
 				continue
@@ -229,9 +257,21 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 	}
 	if p.token == "" {
 		snapshot.Status = mapboxTokenMissing
+		if p.tileset == trafficTileset {
+			snapshot.Status = "Traffic unavailable; connect Mapbox in settings"
+			snapshot.Credits = nil
+			return snapshot, nil
+		}
 		if p.guidance != "" {
 			snapshot.Status = p.guidance
 		}
+		return snapshot, nil
+	}
+	p.mu.Lock()
+	unavailable := p.unavailable
+	p.mu.Unlock()
+	if unavailable != "" {
+		snapshot.Status, snapshot.Failed, snapshot.Unavailable = unavailable, true, true
 		return snapshot, nil
 	}
 	select {
@@ -241,7 +281,7 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 		return snapshot, ctx.Err()
 	}
 	var retryAt time.Time
-	for _, tile := range visible(c) {
+	for _, tile := range p.requestTiles(c) {
 		if err := ctx.Err(); err != nil {
 			return snapshot, err
 		}
@@ -256,6 +296,7 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 			p.mu.Unlock()
 			snapshot.Features = append(snapshot.Features, entry.Features...)
 			snapshot.RefreshAt = earlier(snapshot.RefreshAt, entry.Expires)
+			snapshot.FetchedAt = earlier(snapshot.FetchedAt, entry.FetchedAt)
 			continue
 		}
 		delete(p.cache, tile)
@@ -269,7 +310,8 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 		}
 		p.mu.Unlock()
 		u := fmt.Sprintf(
-			"https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/%d/%d/%d.mvt?access_token=%s",
+			"https://api.mapbox.com/v4/%s/%d/%d/%d.mvt?access_token=%s",
+			p.tileset,
 			tile.Z,
 			tile.X,
 			tile.Y,
@@ -301,7 +343,20 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 		received := p.now()
 		if res.StatusCode != 200 {
 			res.Body.Close()
+			snapshot.AccessDenied = res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden
 			snapshot.Status = fmt.Sprintf("Mapbox HTTP %d; basemap unavailable", res.StatusCode)
+			if p.tileset == trafficTileset {
+				snapshot.Status = fmt.Sprintf("Mapbox Traffic HTTP %d; check account access or turn traffic off", res.StatusCode)
+				if snapshot.AccessDenied {
+					snapshot.Status += "; toggle traffic to retry"
+					p.mu.Lock()
+					p.unavailable = snapshot.Status
+					p.stats.Errors++
+					p.mu.Unlock()
+					snapshot.Failed, snapshot.Unavailable = true, true
+					break
+				}
+			}
 			delay := 10
 			if res.StatusCode == 429 {
 				delay = 60
@@ -332,12 +387,22 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 			continue
 		}
 		snapshot.Features = append(snapshot.Features, fs...)
+		if p.tileset == trafficTileset {
+			snapshot.FetchedAt = earlier(snapshot.FetchedAt, received)
+		}
 		age := ttl(res.Header.Get("Cache-Control"))
+		if p.tileset == trafficTileset {
+			age = min(age, trafficRefreshInterval)
+		}
 		if elapsed, e := strconv.Atoi(res.Header.Get("Age")); e == nil && elapsed > 0 {
 			age -= time.Duration(elapsed) * time.Second
 		}
 		if age <= 0 {
-			snapshot.RefreshAt = earlier(snapshot.RefreshAt, received.Add(time.Minute))
+			fallback := time.Minute
+			if p.tileset == trafficTileset {
+				fallback = trafficRefreshInterval
+			}
+			snapshot.RefreshAt = earlier(snapshot.RefreshAt, received.Add(fallback))
 			continue
 		}
 		expires := received.Add(age)
@@ -357,12 +422,22 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 			}
 			delete(p.cache, oldest)
 		}
-		p.cache[tile] = cacheEntry{Features: fs, Expires: expires, Used: p.clock}
+		fetchedAt := time.Time{}
+		if p.tileset == trafficTileset {
+			fetchedAt = received
+		}
+		p.cache[tile] = cacheEntry{Features: fs, Expires: expires, FetchedAt: fetchedAt, Used: p.clock}
 		p.mu.Unlock()
 	}
 	if !retryAt.IsZero() {
 		snapshot.RefreshAt = retryAt
 		snapshot.Failed = true
+	}
+	if snapshot.Unavailable {
+		snapshot.RefreshAt = time.Time{}
+	}
+	if p.tileset == trafficTileset && snapshot.Status == "" && len(snapshot.Features) == 0 {
+		snapshot.Status = "No traffic data in this 20-mile view"
 	}
 	if !snapshot.RefreshAt.IsZero() && snapshot.RefreshAt.Before(p.now().Add(time.Second)) {
 		snapshot.RefreshAt = p.now().Add(time.Second)

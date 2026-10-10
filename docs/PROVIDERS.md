@@ -45,7 +45,8 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 - There are no persistent tile files, offline-region downloads or bundled Mapbox tiles.
 - Each source owns its request state, usable snapshot and refresh deadline. A slow
   or failed source does not block other sources or imported geometry. Mapbox
-  Streets is currently the only external source; traffic is not implemented.
+  Streets and the optional viewer Traffic v1 overlay have separate snapshots,
+  caches, statistics and request state.
 - Changes to source request inputs cancel obsolete work and are debounced for 100 ms.
   For Mapbox, relevance follows the visible tile set: movement within the same
   coverage lets an in-flight batch finish and retains fresh snapshots. Continuously
@@ -82,6 +83,71 @@ after eight seconds, and tile bodies are limited to 8 MiB.
   refresh loops. Their `scene.sources` metadata includes each source's status,
   tile statistics and optional `refresh_at` deadline.
 - Imported geometry remains usable when the provider fails.
+
+## Traffic v1 overlay
+
+The viewer's main Ctrl-P menu includes **Traffic (20-mile radius)**, an
+off-by-default toggle saved alongside the telemetry preference. It uses
+`mapbox.mapbox-traffic-v1` through the same bounded Vector Tiles transport and
+selected environment/saved-login credential as Streets, with an independent
+provider/cache/source. It does not use the separately licensed raw Traffic Data
+product or change journey routing modes.
+
+The main-menu entry is greyed out until authenticated saved-login token retrieval,
+a successful Streets request or an explicit connection check verifies the selected
+connection. An unchecked environment token is not enough. Verification resets for
+replacement credentials and access-denied Streets responses. Saved Traffic-on
+preferences wait for verification, and disabling Traffic remains available after
+lost verification. A verified account does not itself prove Traffic v1 entitlement;
+traffic requests still report product-specific access failures separately.
+
+- The focus is the **current map centre**, not the selected route point or the last
+  clicked coordinate. Traffic follows panning, camera follow and rotation. Visible
+  tile requests intersect the viewport with the radius's geographic bounding box;
+  tile zoom is clamped to 6–14 and the existing 64-tile budget still applies.
+- Rendering clips traffic dots to a geodesic **20 statute mile (32,186.88 m)**
+  radius. Roads crossing the circle remain visible inside it even when their
+  endpoints lie outside. Clipping happens against the displayed camera, so a warm
+  snapshot cannot keep the old focus radius after movement within the same tiles.
+- The `traffic` layer's `congestion` values map to low/moderate/heavy/severe roles.
+  `closed=yes` takes precedence; missing/unrecognised congestion is not drawn as
+  low traffic. The documented tileset does not expose detailed incident records
+  or numeric speed measurements.
+- Worst severity wins when road directions or nearby roads share a terminal cell.
+  Place labels, imported/planned routes, markers and the cursor remain above the
+  overlay. This does not claim lane/direction separation or recolour a route from
+  nearby road traffic. ASCII symbols are `1`–`4`; closures use `X` in both modes.
+  The map footer and credits contain a themed legend.
+- Traffic cache freshness follows response headers and `Age`, capped at five
+  minutes. Uncacheable responses are not reused and schedule another fetch after
+  five minutes. Mapbox documents congestion updates approximately every eight
+  minutes; a refresh does not guarantee a new observation. The existing-account
+  check returned a roughly one-minute cache deadline.
+- Traffic snapshots expose `fetched_at` and `stale` through shared source metadata.
+  Fetch time is not a provider observation timestamp. Failed refreshes retain the
+  last usable snapshot/fetch time and show stale status in credits. Normal network
+  failures and rate limiting use the existing backoff policy.
+- HTTP 401/403 stops traffic retries until explicit off/on, a connection recheck
+  or credential replacement. A denied traffic source does not repeatedly make
+  requests while panning and never replaces the Streets source or imported data.
+- `--no-provider` disables only the basemap; an explicitly enabled viewer traffic
+  toggle can still use connected credentials. An explicitly empty
+  `MAPBOX_ACCESS_TOKEN` disables credential discovery and traffic requests.
+  CLI/MCP render calls do not load the viewer's traffic preference or start a
+  traffic refresh loop; shared rendering/source rules remain the same.
+
+The live check on **10 October 2026** confirmed Traffic v1 access with the existing
+saved-login account: TileJSON advertised zooms **6–16**, and one London zoom-14
+tile decoded **1,043 road features**. This proves access for that account, not all
+account types; card-free trial access has not been tested. See
+[validation](VALIDATION.md#traffic-overlay) for the opt-in check.
+
+Traffic calls are additional Vector Tiles requests, including stationary refresh.
+See current [pricing](https://www.mapbox.com/pricing#vector-tiles-api),
+[trial limits](https://docs.mapbox.com/accounts/guides/signup/), and the
+[Traffic v1 schema](https://docs.mapbox.com/data/tilesets/reference/mapbox-traffic-v1/).
+The raw Traffic Data licence requirements alone do not establish Traffic v1 tile
+entitlements. Traffic-aware Directions and route incident details remain separate.
 
 ## Authentication and account reporting
 

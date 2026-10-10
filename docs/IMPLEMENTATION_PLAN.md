@@ -57,8 +57,9 @@ own cancellable requests, generation checks, snapshot and refresh deadline.
 Stationary refresh honours cache freshness and backoff; uncacheable responses
 use a 60-second fallback. The viewer, CLI and MCP consume source snapshots and
 combine their credits. Controlled-clock/provider tests, race checks, the full
-repository checks and offline terminal interactions pass. Mapbox remains the only
-external source; this does not add traffic data.
+repository checks and offline terminal interactions pass. Mapbox remains the
+external provider; Streets and the optional Traffic v1 overlay use independent
+source state.
 
 Centralised theme ownership is complete. The viewer selects a data-only TOML
 palette and restyles open widgets in place. Workspace activities and renderer cells
@@ -299,10 +300,19 @@ Search Box and the first slice's controls are confirmed and verified.
 
 Tracked in [issue #4](https://github.com/adamcbrewer/shell-on-earth/issues/4).
 
-- [ ] Choose congestion, incidents or both, and the source providing that data.
-- [ ] Define refresh/staleness expectations and the terminal display vocabulary.
-- [ ] Add traffic as an independently toggleable overlay, with its own status and
+- [x] Use Mapbox Traffic v1 congestion and road closures for this slice. Raw speed
+  data, route recolouring and detailed incident feeds are separate.
+- [x] Clip traffic to 20 miles around the displayed map centre, preserving route/
+  marker priority and selecting worst congestion when directions share a cell.
+- [x] Follow traffic cache headers with a five-minute cap, independent freshness,
+  stale retention and explicit recovery from account/token access denial.
+- [x] Add traffic as an independently toggleable main-menu entry, greyed out until
+  the selected Mapbox connection is verified, with its own status and
   attribution, without replacing the basemap or imported items.
+
+Existing-account Traffic v1 metadata/tile access is verified; card-free trial
+access remains unverified. [Provider notes](PROVIDERS.md#traffic-v1-overlay) and
+[validation](VALIDATION.md#traffic-overlay) record the behaviour and live check.
 
 ### Other sources
 

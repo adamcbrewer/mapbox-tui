@@ -28,6 +28,11 @@ var mapRoleNames = [...]string{
 	"cursor",
 	"active_route",
 	"active_marker",
+	"traffic_low",
+	"traffic_moderate",
+	"traffic_heavy",
+	"traffic_severe",
+	"traffic_closed",
 }
 var themeIDPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var themeColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -45,6 +50,15 @@ func decodeTheme(r io.Reader) (presentationTheme, error) {
 	}
 	if len(theme.Activities) != activityColorCount {
 		return theme, fmt.Errorf("theme activities must contain exactly %d colours", activityColorCount)
+	}
+	if theme.Map == nil {
+		theme.Map = map[string]string{}
+	}
+	for i, colour := range []string{"#40a02b", "#df8e1d", "#d20f39", "#a3153a", "#d20f39"} {
+		role := mapRoleNames[roleTrafficLow+mapRole(i)]
+		if _, present := theme.Map[role]; !present {
+			theme.Map[role] = colour
+		}
 	}
 	colors := map[string]string{
 		"background":     theme.Background,

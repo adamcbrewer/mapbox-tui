@@ -9,11 +9,12 @@ The executable is `shoe`.
 - Plan an A-to-B journey with editable waypoints, offline plotting and optional Mapbox search/road routing.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
+- Toggle live Mapbox traffic within 20 miles of the map centre.
 - Switch terminal colour themes or load a custom TOML palette.
 - Get structured results through the CLI or a local MCP server.
 
-The bundled GPX fixtures are synthetic. The viewer doesn't provide directions,
-traffic data or live GPS navigation.
+The bundled GPX fixtures are synthetic. The viewer doesn't provide live GPS
+navigation or voice guidance.
 
 ## Quick start
 
@@ -344,6 +345,28 @@ installed CLI and reuse your saved login. Sign-in is offered when the CLI passes
 its system/compatibility check and the viewer is disconnected. Connected settings
 show **Connected** and **Check connection**, instead of asking you to sign in again.
 
+**Traffic (20-mile radius)** in the main Ctrl-P menu toggles the viewer's Traffic v1
+congestion/road-closure layer. It is off by default and follows the current map
+centre as you pan, independently of the basemap. Routes and markers stay above
+traffic rather than changing their colours. The legend uses green/amber/red/dark
+red for low/moderate/heavy/severe congestion; ASCII maps use `1`–`4`, and `X` marks
+closures in both map modes. Press `v` for traffic status, fetch time and refresh
+deadline. Missing coverage is not presented as free-flowing traffic.
+
+The Traffic entry is greyed out until the selected Mapbox connection is verified
+by saved-login account access, a successful Streets request or **Check connection**.
+A token being present alone does not enable it. A saved Traffic-on preference waits
+for verification; turning Traffic off remains available if the connection drops.
+Use Space to toggle the selected Traffic checkbox without closing the menu.
+
+Traffic makes additional tile requests, including when the view is stationary.
+Response cache headers determine refresh, capped at five minutes; the live account
+check observed roughly a one-minute deadline. Access is checked by traffic requests
+separately from Streets. On an account/token denial, toggle traffic off/on or use
+**Check connection** to retry. A failed refresh retains the last usable traffic
+with stale status in credits; imported geometry remains usable. Traffic-aware
+route calculation and detailed incident feeds are separate from this overlay.
+
 **CLI telemetry** in Mapbox settings is an opt-in toggle, off by default. The
 preference is shared by viewer/CLI/MCP calls and saved at
 `~/.config/shoe/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it). It controls
@@ -353,7 +376,7 @@ An explicit `MAPBOX_CLI_NO_TELEMETRY` environment opt-out takes precedence. See
 information it collects. Background map/search API requests are still normal
 Mapbox service requests regardless of this setting.
 
-`settings.json` currently persists only that telemetry preference. Theme/camera/
+`settings.json` persists telemetry and the viewer's traffic toggle. Theme/camera/
 travel-mode choices and workspace plans are session-only. Login credentials are
 owned by Mapbox CLI under `~/.mapbox/` (or `MAPBOX_CONFIG_DIR`); `shoe` doesn't save
 another token copy. Place-search availability is derived from the selected token,
