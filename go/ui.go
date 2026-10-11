@@ -502,7 +502,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			case "space":
 				if len(commands) > 0 {
 					selected := commands[min(m.ui.selected, len(commands)-1)]
-					if selected.toggle && (m.ui.menuNavigated || len(commands) == 1) {
+					if selected.toggle && m.ui.menuNavigated {
 						return m.toggleMenuOption(selected.action)
 					}
 				}

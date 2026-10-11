@@ -418,6 +418,7 @@ func TestTrafficSpaceTogglesWithoutClosingMenu(t *testing.T) {
 	m.openDialog(dialogCommands)
 	m.ui.search.SetValue("traffic")
 	for _, enabled := range []bool{true, false} {
+		m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
 		if m.preferences.Traffic != enabled || m.ui.dialog != dialogCommands || m.ui.search.Value() != "traffic" {
 			t.Fatal("Space failed to toggle traffic in place")
@@ -534,6 +535,22 @@ func TestTrafficCacheCapUsesRemainingResponseFreshness(t *testing.T) {
 	p.load(t.Context(), camera)
 	if p.snapshotStats().Requests != requests {
 		t.Fatal("overlapping fresh traffic tiles were downloaded again")
+	}
+}
+
+func TestTrafficFreshResponseBeyondBasemapCapIsCached(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := newTrafficProvider("synthetic-token")
+	p.now = func() time.Time { return now }
+	p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{
+			"Cache-Control": {"max-age=86400"}, "Age": {"50000"},
+		}, Body: io.NopCloser(bytes.NewReader(trafficTile(t)))}, nil
+	})
+	camera := Camera{Center: project(-.1276, 51.5072), Zoom: 14, Aspect: 2, Width: 1, Height: 1}
+	snapshot, err := p.load(t.Context(), camera)
+	if err != nil || snapshot.Stats.Cached == 0 || !snapshot.RefreshAt.Equal(now.Add(5*time.Minute)) {
+		t.Fatal("fresh response became uncacheable because the basemap cap preceded Age", err)
 	}
 }
 

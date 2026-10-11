@@ -267,7 +267,7 @@ successful certification, saved-preference gating, revoked verification and
 turning traffic off while disconnected. Terminal interactions exercise the main
 menu's greyed-out entry and disabled activation with imported geometry at 120×40,
 70×18 and 30×12 in Braille/ASCII with credentials disabled.
-Review regressions cover multi-word menu search without toggling, cached basemaps
+Review regressions cover complete multi-word/playback menu search without toggling, cached basemaps
 not overriding failed auth checks, `Age` before the cache cap, and complete traffic
 retention after partial-batch 403/503 failures.
 

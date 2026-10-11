@@ -160,7 +160,7 @@ func (p *Provider) requestTiles(c Camera) []Tile {
 	}
 	return visible(c)
 }
-func ttl(header string) time.Duration {
+func ttl(header, ageHeader string) time.Duration {
 	age := 0
 	for _, s := range strings.Split(header, ",") {
 		s = strings.TrimSpace(s)
@@ -170,6 +170,9 @@ func ttl(header string) time.Duration {
 		if strings.HasPrefix(s, "max-age=") {
 			age, _ = strconv.Atoi(strings.TrimPrefix(s, "max-age="))
 		}
+	}
+	if elapsed, err := strconv.Atoi(ageHeader); err == nil && elapsed > 0 {
+		age -= min(age, elapsed)
 	}
 	return time.Duration(max(0, min(age, 43200))) * time.Second
 }
@@ -391,10 +394,7 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 		if p.tileset == trafficTileset {
 			snapshot.FetchedAt = earlier(snapshot.FetchedAt, received)
 		}
-		age := ttl(res.Header.Get("Cache-Control"))
-		if elapsed, e := strconv.Atoi(res.Header.Get("Age")); e == nil && elapsed > 0 {
-			age -= time.Duration(elapsed) * time.Second
-		}
+		age := ttl(res.Header.Get("Cache-Control"), res.Header.Get("Age"))
 		if p.tileset == trafficTileset {
 			age = min(age, trafficRefreshInterval)
 		}

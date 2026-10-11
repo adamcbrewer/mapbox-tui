@@ -358,7 +358,8 @@ by saved-login account access, a successful Streets request or **Check connectio
 A token being present alone does not enable it. A saved Traffic-on preference waits
 for verification; turning Traffic off remains available if the connection drops.
 Enabled toggle options show a tick after their label, such as **Toggle traffic ✓**.
-Use Space to toggle the selected option without closing the menu.
+Use arrows to select an option, then Space to toggle it without closing the menu.
+Spaces entered while typing stay in the search query.
 
 Traffic makes additional tile requests, including when the view is stationary.
 Response cache headers determine refresh, capped at five minutes; the live account

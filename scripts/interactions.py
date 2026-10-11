@@ -802,6 +802,7 @@ def traffic_menu(binary):
                     assert "[ ]" not in capture(), "traffic menu still used a checkbox prefix"
                 traffic_row = next(row for row in capture(colors=True).splitlines() if "Toggle traffic" in row)
                 assert "38;2;108;112;134" in traffic_row, "unverified traffic was not greyed out"
+                tmux("send-keys", "-t", "poc:0.0", "Down")
                 send(" ")
                 wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
                 send("\r")
@@ -828,6 +829,7 @@ if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
     try:
+        tmux("start-server", ";", "set-option", "-g", "exit-empty", "off")
         for name in ("shoe",):
             free_roam(ROOT / "bin" / name, live="--mapbox" in sys.argv)
             if "--mapbox" not in sys.argv:

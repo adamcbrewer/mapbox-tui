@@ -33,6 +33,7 @@ func TestMainMenuLabelsOrderAndToggleTicks(t *testing.T) {
 		m.openDialog(dialogCommands)
 		m.ui.search.SetValue(query)
 		before := m.commands()[0].checked
+		m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
 		command := m.commands()[0]
 		if command.checked == before || strings.HasSuffix(command.label(), " ✓") != command.checked {
@@ -110,5 +111,19 @@ func TestMenuSearchSpacesDoNotToggleOptions(t *testing.T) {
 	}
 	if m.ui.search.Value() != "toggle ascii" || m.preferences.Traffic || m.settings.ASCII {
 		t.Fatal("typing a search changed an option or swallowed its space", m.ui.search.Value())
+	}
+}
+
+func TestMenuPlaybackSearchDoesNotTogglePlayback(t *testing.T) {
+	m := authTestViewer(t)
+	if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
+		t.Fatal(err)
+	}
+	m.openDialog(dialogCommands)
+	for _, character := range "play / pause" {
+		m.Update(tea.KeyPressMsg{Code: character, Text: string(character)})
+	}
+	if m.ui.search.Value() != "play / pause" || m.activePlayback().Playing {
+		t.Fatal("typing a complete playback search changed playback or swallowed its space", m.ui.search.Value())
 	}
 }

@@ -107,7 +107,7 @@ func TestDistanceInspectionAndTilePolicy(t *testing.T) {
 	if _, e := track.inspect(&i, &d); e == nil {
 		t.Fatal("accepted ambiguous selector")
 	}
-	if ttl("public,max-age=43200,s-maxage=300") != 12*time.Hour || ttl("no-store,max-age=100") != 0 {
+	if ttl("public,max-age=43200,s-maxage=300", "") != 12*time.Hour || ttl("no-store,max-age=100", "") != 0 {
 		t.Fatal("cache policy ignored")
 	}
 	c := fit(track, 160, 50, 2)
