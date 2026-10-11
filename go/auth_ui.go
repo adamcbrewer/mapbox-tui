@@ -43,19 +43,6 @@ type viewerMapboxLogin struct {
 	streams authStreams
 }
 
-type viewerConnectionToast struct {
-	message string
-	output  io.Writer
-}
-
-func (t *viewerConnectionToast) SetStdin(io.Reader)    {}
-func (t *viewerConnectionToast) SetStderr(io.Writer)   {}
-func (t *viewerConnectionToast) SetStdout(w io.Writer) { t.output = w }
-func (t *viewerConnectionToast) Run() error {
-	_, err := fmt.Fprintln(t.output, t.message)
-	return err
-}
-
 func (m *viewer) connectionNotice() string {
 	if m.loading || m.authBusy {
 		return ""
@@ -63,14 +50,12 @@ func (m *viewer) connectionNotice() string {
 	return providerConnectionNotice(m.provider)
 }
 
-func (m *viewer) echoConnectionNotice() tea.Cmd {
+func (m *viewer) captureConnectionNotice() {
 	notice := m.connectionNotice()
-	if notice == "" || m.connectionEchoed {
-		return nil
+	if notice == "" || m.connectionEcho != "" {
+		return
 	}
-	m.connectionEchoed = true
-	// Bubble Tea suppresses Println in the alternate screen; Exec preserves the stdout notice.
-	return tea.Exec(&viewerConnectionToast{message: notice}, nil)
+	m.connectionEcho = notice
 }
 
 func (c *viewerMapboxLogin) SetStdin(input io.Reader)   { c.streams.in = input }

@@ -226,7 +226,8 @@ and terminal restoration. Auth checks use a fake external CLI at wide/compact/ti
 sizes, verify terminal streams are inherited, preserve imported files through
 palette login, and exercise file-free setup/offline continuation with a missing
 CLI. Missing-CLI GPX launches display the concise connection notice without a
-prompt, and echo it once to stdout; the same echo is checked at tiny/compact sizes.
+prompt, and print it once to stdout after the viewer exits; the same output is
+checked at tiny/compact sizes.
 Dependency-aware setup checks exercise installation help, all three selectable
 actions and rechecking an executable that appears while the viewer is open.
 Multi-file checks cover startup with two files, the
@@ -249,6 +250,8 @@ planner/mode/feedback contexts, cancelled location edits, stale clipboard reject
 setup actions reordered by credential discovery and theme changes while nested.
 They also preserve map focus when cancelling a location editor and prevent a
 cancelled queued login from launching its CLI process after returning to the menu.
+Route completions refresh a nested planner's saved notice, keeping success/failure
+feedback current when returning through direct or travel-mode feedback dialogs.
 Terminal checks verify returning from speed selection to its filtered menu,
 login to the menu, and routing feedback to the travel-mode picker.
 Popup stacks reveal only dimmed top/left back-frame edges at 120×40, 70×18 and

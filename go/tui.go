@@ -72,7 +72,7 @@ type viewer struct {
 	authMessage               string
 	authCLI                   mapboxDependencyStatus
 	preferences               appSettings
-	connectionEchoed          bool
+	connectionEcho            string
 }
 
 func tick() tea.Cmd {
@@ -296,13 +296,20 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.workspace.acceptJourneyRoute(v) {
 			return m, nil
 		}
-		if m.ui.dialog == dialogJourney && m.planner.ref == v.ref {
+		if m.planner.ref == v.ref {
 			j, _ := m.workspace.journey(v.ref)
-			m.ui.notice = j.Error
-			if revision := m.planner.showRevision; revision != nil && *revision == v.revision {
-				m.planner.showRevision = nil
-				if v.err == nil {
-					return m, m.showJourneyOnMap()
+			for i, frame := range m.ui.parents {
+				if frame.kind == dialogJourney {
+					m.ui.parents[i].notice = j.Error
+				}
+			}
+			if m.ui.dialog == dialogJourney {
+				m.ui.notice = j.Error
+				if revision := m.planner.showRevision; revision != nil && *revision == v.revision {
+					m.planner.showRevision = nil
+					if v.err == nil {
+						return m, m.showJourneyOnMap()
+					}
 				}
 			}
 		}
@@ -404,7 +411,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuild()
 			m.dirty = false
 		}
-		return m, tea.Batch(tick(), command, m.echoConnectionNotice())
+		m.captureConnectionNotice()
+		return m, tea.Batch(tick(), command)
 	case spinner.TickMsg:
 		if m.ui.spinning {
 			var cmd tea.Cmd
@@ -1150,6 +1158,9 @@ func openViewerFiles(paths []string, a Args) error {
 	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	_, e = tea.NewProgram(m).Run()
+	if m.connectionEcho != "" {
+		fmt.Println(m.connectionEcho)
+	}
 	if e != nil {
 		return e
 	}

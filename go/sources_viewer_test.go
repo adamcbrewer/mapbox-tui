@@ -178,6 +178,10 @@ func TestViewerImportShowsConnectionNoticeAfterLoading(t *testing.T) {
 	if strings.Contains(m.content, mapboxDisconnectedNotice) {
 		t.Fatal("connection notice appeared before the local file loaded")
 	}
+	m.captureConnectionNotice()
+	if m.connectionEcho != "" {
+		t.Fatal("connection notice was captured before loading finished")
+	}
 	document, err := loadDocument("../fixtures/example.gpx")
 	if err != nil {
 		t.Fatal(err)
@@ -189,10 +193,15 @@ func TestViewerImportShowsConnectionNoticeAfterLoading(t *testing.T) {
 	if !strings.Contains(m.content, mapboxDisconnectedNotice) {
 		t.Fatal("imported geometry hid the missing Mapbox connection")
 	}
-	if m.echoConnectionNotice() == nil || m.echoConnectionNotice() != nil {
-		t.Fatal("connection notice was not scheduled exactly once")
+	m.captureConnectionNotice()
+	if m.connectionEcho != mapboxDisconnectedNotice {
+		t.Fatal("connection notice was not retained for stdout after terminal teardown")
 	}
 	m.provider.quiet = true
+	m.captureConnectionNotice()
+	if m.connectionEcho != mapboxDisconnectedNotice {
+		t.Fatal("later connection state replaced the once-only stdout notice")
+	}
 	m.rebuild()
 	if strings.Contains(m.content, mapboxDisconnectedNotice) {
 		t.Fatal("deliberate offline viewing showed an account warning")

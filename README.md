@@ -338,8 +338,8 @@ a token is available.
 
 Opening a track file never blocks on an authentication prompt. If Mapbox isn't
 connected, the viewer shows **No basemap · Mapbox not connected** and echoes that
-notice once to stdout. Human CLI renders also print the short notice; structured
-JSON/MCP output carries setup details in its status fields. Explicit
+notice once to stdout after the viewer closes. Human CLI renders also print the
+short notice; structured JSON/MCP output carries setup details in its status fields. Explicit
 `--no-provider` is quiet. Credential
 discovery can run while imports display. A file-free launch without credentials
 offers setup or continuing offline; explicit `--no-provider` and an empty token

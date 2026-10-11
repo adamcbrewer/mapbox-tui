@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -202,6 +203,42 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
 	if m.ui.dialog != dialogNone || *requests != 1 {
 		t.Fatal("explicit Manual did not provide a usable offline Show action")
+	}
+}
+
+func TestJourneyRouteResultUpdatesNestedPlannerNotice(t *testing.T) {
+	for _, nestedMode := range []bool{false, true} {
+		for _, fail := range []bool{false, true} {
+			name := fmt.Sprintf("mode=%v/failure=%v", nestedMode, fail)
+			t.Run(name, func(t *testing.T) {
+				m, _ := routingTestViewer(t)
+				if fail {
+					m.directions.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+						return locationResponse(`{"code":"NoRoute"}`), nil
+					})
+				}
+				_, route := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+				if route == nil || !strings.Contains(m.ui.notice, "Calculating") {
+					t.Fatal("Show did not start routing with feedback")
+				}
+				if nestedMode {
+					m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+				}
+				m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+				m.Update(route())
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				if nestedMode {
+					m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				}
+				j, _ := m.workspace.journey(m.planner.ref)
+				if m.ui.dialog != dialogJourney || j.Busy || m.ui.notice != j.Error {
+					t.Fatal("restored planner displayed obsolete route feedback", m.ui.notice, j.Error)
+				}
+				if fail && m.ui.notice == "" {
+					t.Fatal("restored planner lost the route failure")
+				}
+			})
+		}
 	}
 }
 
