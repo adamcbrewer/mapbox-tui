@@ -461,16 +461,16 @@ def theme_switching(binary, width, height):
         send("\x10")
         wait_for(lambda s: "Commands" in s)
         send("theme")
-        wait_for(lambda s: "Choose colour theme" in s)
+        wait_for(lambda s: "Cycle Theme" in s)
         tmux("send-keys", "-t", "poc:0.0", "Enter")
-        wait_for(lambda s: "Colour theme" in s and "Catppuccin (current)" in s)
-        for name, background, foreground in (("Tokyo Night", "#1a1b26", "#a9b1d6"), ("Catppuccin Latte", "#eff1f5", "#4c4f69"), ("Catppuccin", "#1e1e2e", "#cdd6f4")):
-            send("\x14")
-            wait_for(lambda s: f"{name} (current)" in s)
+        wait_for(lambda s: "Commands" not in s and capture(colors=True) != original_colors)
+        for i, (name, background, foreground) in enumerate((("Tokyo Night", "#1a1b26", "#a9b1d6"), ("Catppuccin Latte", "#eff1f5", "#4c4f69"), ("Catppuccin", "#1e1e2e", "#cdd6f4"))):
+            if i > 0:
+                colors = capture(colors=True)
+                send("\x14")
+                wait_for(lambda s: capture(colors=True) != colors)
             save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{name.lower().replace(' ', '-')}-{width}x{height}.svg", width, height, background, foreground)
-        tmux("send-keys", "-t", "poc:0.0", "Escape")
-        wait_for(lambda s: "Colour theme" not in s)
-        assert settled() == baseline, "theme picker changed geometry, selection or playback"
+        assert settled() == baseline, "theme cycling changed geometry, selection or playback"
         send("\x14")
         wait_for(lambda s: capture(colors=True) != original_colors)
         assert settled() == baseline, "palette change affected map text or layout"
@@ -479,7 +479,7 @@ def theme_switching(binary, width, height):
             wait_for(lambda s: label in s)
             if label == "Commands":
                 send("theme")
-                wait_for(lambda s: "Choose colour theme" in s)
+                wait_for(lambda s: "Cycle Theme" in s)
             before = settled()
             colors = capture(colors=True)
             send("\x14")
@@ -775,7 +775,7 @@ def auth_setup(binary):
                 else:
                     tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
                     wait_for(lambda s: "Mapbox setup" in s and "Check again" in s)
-                tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down", "Enter")
+                tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down", "Down", "Enter")
                 wait_for(lambda s: "Mapbox setup" not in s and "Mapbox not connected" in s)
                 send("q")
                 wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
@@ -797,10 +797,10 @@ def traffic_menu(binary):
             try:
                 wait_for(lambda s: "Point 1" in s and "No basemap" in s)
                 send("\x10traffic")
-                wait_for(lambda s: "Commands" in s and "[ ] Traffic" in s)
+                wait_for(lambda s: "Commands" in s and "Toggle traffic" in s)
                 if width >= 70:
-                    assert "Traffic (20-mile radius)" in capture(), "traffic menu showed the old radius"
-                traffic_row = next(row for row in capture(colors=True).splitlines() if "Traffic" in row)
+                    assert "[ ]" not in capture(), "traffic menu still used a checkbox prefix"
+                traffic_row = next(row for row in capture(colors=True).splitlines() if "Toggle traffic" in row)
                 assert "38;2;108;112;134" in traffic_row, "unverified traffic was not greyed out"
                 send(" ")
                 wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
@@ -813,7 +813,7 @@ def traffic_menu(binary):
                 send("a")
                 wait_for(lambda s: not any(0x2800 <= ord(c) <= 0x28ff for c in s))
                 send("\x10traffic")
-                wait_for(lambda s: "Commands" in s and "[ ] Traffic" in s)
+                wait_for(lambda s: "Commands" in s and "Toggle traffic" in s)
                 send("\x1b")
                 screen = wait_for(lambda s: "Commands" not in s)
                 assert "Point 1" in screen, "traffic controls discarded the imported activity"

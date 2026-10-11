@@ -479,10 +479,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if key == "e" && len(m.workspace.profileItems()) > 0 {
-			m.showProfile = !m.showProfile
-			m.layout()
-			m.dirty = true
-			return m, nil
+			return m, m.toggleMenuOption("profile")
 		}
 		if m.activePlayback() == nil {
 			switch key {
@@ -553,10 +550,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveCamera(target)
 			}
 		case "space":
-			if p := m.activePlayback(); p != nil {
-				p.toggle()
-				m.inspected = nil
-			}
+			return m, m.toggleMenuOption("play")
 		case "s", "S":
 			if p := m.activePlayback(); p != nil {
 				direction := 1
@@ -566,13 +560,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				p.cycle(direction)
 			}
 		case "a":
-			m.settings.ASCII = !m.settings.ASCII
+			return m, m.toggleMenuOption("ascii")
 		case "m":
-			m.settings.NoAnimation = !m.settings.NoAnimation
-			if m.settings.NoAnimation {
-				m.camera = m.destination()
-				m.motion.Active = false
-			}
+			return m, m.toggleMenuOption("motion")
 		default:
 			return m, nil
 		}

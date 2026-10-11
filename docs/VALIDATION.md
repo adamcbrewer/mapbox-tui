@@ -296,7 +296,7 @@ fixed 20-mile cap. The timed loops reused in-memory data and exclude network,
 tile decoding and ANSI/UI painting. This measures the sampled London scene, not
 all locations/zooms.
 
-To try the viewer, launch at a local focus and enable **Traffic (20-mile radius)**
+To try the viewer, launch at a local focus and enable **Toggle traffic**
 directly through Ctrl-P. It is greyed out until the Mapbox connection is verified;
 use account setup / **Check connection** if needed. For example:
 
@@ -349,7 +349,7 @@ without moving the camera or changing loaded routes.
     status and refresh deadline. Pan during a request and check the newer viewport
     wins; keep the camera still through expiry and check the source refreshes.
      These live checks make billable requests; automated lifecycle tests use fakes.
-15. Use Ctrl-P's **Choose colour theme** to select each palette. With help, the
+15. Use Ctrl-P's **Cycle Theme** to cycle through the palettes. With help, the
     file picker or speed dialog open, press Ctrl-T and check all visible colours
     update. Repeat in a narrow terminal and ASCII mode; playback should continue.
     Start with `--theme catppuccin-latte`, then try a custom TOML file with a unique

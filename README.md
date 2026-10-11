@@ -333,9 +333,9 @@ JSON/MCP output carries setup details in its status fields. Explicit
 `--no-provider` is quiet. Credential
 discovery can run while imports display. A file-free launch without credentials
 offers setup or continuing offline; explicit `--no-provider` and an empty token
-environment skip the offer. Ctrl-P lists **Keyboard shortcuts** first, followed
-by **Mapbox account setup** when disconnected. Connected viewers offer **Mapbox
-settings** instead. Login hands the terminal to Mapbox CLI and restores the
+environment skip the offer. Ctrl-P lists **Keyboard shortcuts** first and puts
+**Mapbox account setup** last when disconnected. Connected viewers offer **Mapbox
+settings** there instead. Login hands the terminal to Mapbox CLI and restores the
 viewer afterward, preserving workspace/camera and replacing map/search clients.
 The setup dialog separates actions from information. With a missing CLI, choose
 **Installation help**, **Check again**, or **Continue offline**. Official
@@ -345,7 +345,7 @@ installed CLI and reuse your saved login. Sign-in is offered when the CLI passes
 its system/compatibility check and the viewer is disconnected. Connected settings
 show **Connected** and **Check connection**, instead of asking you to sign in again.
 
-**Traffic (20-mile radius)** in the main Ctrl-P menu toggles the viewer's Traffic v1
+**Toggle traffic** in the main Ctrl-P menu toggles the viewer's Traffic v1
 congestion/road-closure layer. It is off by default and follows the current map
 centre as you pan, independently of the basemap. Routes and markers stay above
 traffic rather than changing their colours. The legend uses green/amber/red/dark
@@ -357,7 +357,8 @@ The Traffic entry is greyed out until the selected Mapbox connection is verified
 by saved-login account access, a successful Streets request or **Check connection**.
 A token being present alone does not enable it. A saved Traffic-on preference waits
 for verification; turning Traffic off remains available if the connection drops.
-Use Space to toggle the selected Traffic checkbox without closing the menu.
+Enabled toggle options show a tick after their label, such as **Toggle traffic ✓**.
+Use Space to toggle the selected option without closing the menu.
 
 Traffic makes additional tile requests, including when the view is stationary.
 Response cache headers determine refresh, capped at five minutes; the live account
@@ -384,8 +385,9 @@ so it needs no separate remembered permission.
 
 Manual journey planning works offline. The location editor greys out unavailable
 Mapbox address/place search and prevents its shortcut from starting a search.
-**Map credits** is shown in the command palette only when external map or place
-data carries attribution; attribution depends on data usage, not CLI login state.
+**Map credits** is inside Mapbox settings, with `v` also opening it directly.
+Attribution depends on data usage, not CLI login state. Esc returns nested credits
+to settings; credits opened directly return to the map.
 Explicit Mapbox renders without credentials get actionable setup guidance; plain
 CLI warns on stderr, while JSON/MCP includes it in `scene.status`. These
 non-interactive operations never open a browser. MCP discovers login lazily when
@@ -488,8 +490,8 @@ Three terminal palettes are bundled, based on Omarchy's theme catalogue:
 - **Catppuccin Latte** (`catppuccin-latte`): light.
 - **Tokyo Night** (`tokyo-night`): dark.
 
-Press **Ctrl-T** to cycle themes, including while a dialog is open. For a picker,
-use Ctrl-P and **Choose colour theme**, then arrows or `j`/`k` and Enter.
+Press **Ctrl-T** to cycle themes, including while a dialog is open, or use Ctrl-P
+and **Cycle Theme** to apply the next palette.
 The map, elevation chart, activity colours, dialogs and playback controls update
 together without re-importing files, fetching tiles or resetting playback.
 Each activity keeps its palette slot; the slot's colour changes with the theme.

@@ -402,7 +402,7 @@ func TestTrafficMainMenuFitsCompactTerminals(t *testing.T) {
 		for _, ascii := range []bool{false, true} {
 			m.settings.ASCII = ascii
 			m.rebuild()
-			if !strings.Contains(ansi.Strip(m.content), "Traffic") {
+			if !strings.Contains(ansi.Strip(m.content), "Toggle traffic") {
 				t.Fatal("main-menu traffic toggle was not visible at compact size", size, ascii)
 			}
 		}

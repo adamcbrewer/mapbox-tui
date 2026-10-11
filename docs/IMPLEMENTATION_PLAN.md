@@ -16,7 +16,7 @@ workspace ownership, then build the remaining TODO features on those foundations
   route estimates and a manual fallback with full feedback.
 - Theme scope is terminal recolouring. Three Omarchy-derived TOML palettes are
   embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-T cycles
-  themes and Ctrl-P opens the picker. [Theme API](THEMES.md) records the format,
+  themes and Ctrl-P's Cycle Theme applies the next palette. [Theme API](THEMES.md) records the format,
   registry and viewer-owned style application.
 - The [confirmed interaction decisions](#confirmed-interaction-decisions) remain
   the baseline. The remaining feature decisions are listed under step 6.

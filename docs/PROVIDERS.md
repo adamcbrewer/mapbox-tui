@@ -86,7 +86,7 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 
 ## Traffic v1 overlay
 
-The viewer's main Ctrl-P menu includes **Traffic (20-mile radius)**, an
+The viewer's main Ctrl-P menu includes **Toggle traffic**, an
 off-by-default toggle saved alongside the telemetry preference. It uses
 `mapbox.mapbox-traffic-v1` through the same bounded Vector Tiles transport and
 selected environment/saved-login credential as Streets, with an independent

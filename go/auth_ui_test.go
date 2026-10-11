@@ -195,6 +195,7 @@ func TestViewerMapboxSetupActionsAndInstallationHelp(t *testing.T) {
 	}
 	m.updateMapboxDialog("down")
 	m.updateMapboxDialog("down")
+	m.updateMapboxDialog("down")
 	m.updateMapboxDialog("enter")
 	if m.ui.dialog != dialogNone {
 		t.Fatal("Continue offline did not close setup")
@@ -329,8 +330,8 @@ func TestViewerCredentialDiscoveryPreservesSelectedSetupAction(t *testing.T) {
 func TestPaletteReflectsOfflineAndConnectedFeatures(t *testing.T) {
 	m := authTestViewer(t)
 	commands := m.commands()
-	if commands[0].action != "help" || commands[1].action != "auth" {
-		t.Fatal("shortcuts and disconnected account setup were not first")
+	if commands[0].action != "help" || commands[len(commands)-1].action != "auth" {
+		t.Fatal("shortcuts were not first or disconnected account setup was not last")
 	}
 	for _, command := range commands {
 		if command.action == "credits" {
@@ -352,7 +353,7 @@ func TestPaletteReflectsOfflineAndConnectedFeatures(t *testing.T) {
 	m.sources.set("basemap", m.provider, true)
 	m.sources.states[0].snapshot.Credits = providerCredits("mapbox")
 	var credits bool
-	for _, command := range m.commands() {
+	for _, command := range m.mapboxActions() {
 		credits = credits || command.action == "credits"
 	}
 	if !credits {

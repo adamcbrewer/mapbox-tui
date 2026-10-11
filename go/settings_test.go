@@ -49,10 +49,13 @@ func TestMapboxTelemetryToggleSavesSelection(t *testing.T) {
 			m.ui.selected = i
 		}
 	}
-	m.updateMapboxDialog("enter")
+	m.updateMapboxDialog("space")
 	settings, err := loadAppSettings()
 	if err != nil || !settings.MapboxCLITelemetry || !strings.Contains(m.authMessage, "Opted in") {
 		t.Fatal("settings action did not persist explicit telemetry consent", err)
+	}
+	if label := m.mapboxActions()[m.ui.selected].label(); label != "CLI telemetry ✓" {
+		t.Fatal("enabled telemetry did not show a trailing tick", label)
 	}
 	m.updateMapboxDialog("enter")
 	settings, err = loadAppSettings()

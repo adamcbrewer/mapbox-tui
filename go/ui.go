@@ -41,6 +41,7 @@ const (
 
 type uiState struct {
 	dialog         dialogKind
+	creditsParent  dialogKind
 	help           help.Model
 	picker         filepicker.Model
 	search         textinput.Model
@@ -56,8 +57,15 @@ type uiState struct {
 type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
 
 type viewerCommand struct {
-	title, shortcut, action string
-	disabled                bool
+	title, shortcut, action   string
+	disabled, toggle, checked bool
+}
+
+func (command viewerCommand) label() string {
+	if command.checked {
+		return command.title + " ✓"
+	}
+	return command.title
 }
 
 type searchClipboardResult struct {
@@ -264,6 +272,7 @@ func (m *viewer) closeDialog() {
 	m.cancelJourneySearch()
 	m.planner.showRevision = nil
 	m.ui.dialog = dialogNone
+	m.ui.creditsParent = dialogNone
 	m.ui.search.Blur()
 	m.ui.inputID = ""
 	m.ui.notice = ""
@@ -277,6 +286,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	m.planner.showRevision = nil
 	m.planner.mapFocused = false
 	m.ui.dialog = kind
+	m.ui.creditsParent = dialogNone
 	m.ui.selected = 0
 	m.ui.notice = ""
 	m.dragging, m.rotating = false, false
@@ -324,32 +334,23 @@ func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
 		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
 	}
-	if !m.mapboxConnected() {
-		commands = append(commands, viewerCommand{title: "Mapbox account setup", action: "auth"})
-	}
 	commands = append(commands, []viewerCommand{
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
 		m.trafficCommand(),
-		{title: "Choose colour theme", shortcut: "ctrl+t cycle", action: "theme"},
+		{title: "Cycle Theme", shortcut: "ctrl+t", action: "theme"},
 	}...)
-	if m.mapboxConnected() {
-		commands = append(commands, viewerCommand{title: "Mapbox settings", action: "auth"})
-	}
-	if len(m.sources.view().Credits) > 0 || m.journeyCredits() != "" {
-		commands = append(commands, viewerCommand{title: "Map credits", shortcut: "v", action: "credits"})
-	}
 	if len(m.workspace.documents) > 0 {
 		commands = append(commands,
 			viewerCommand{title: "Fit all visible routes", shortcut: "f", action: "fit"},
 			viewerCommand{title: "Clear workspace (remove all files)", action: "clear"},
 		)
-	} else {
-		commands = append(commands, viewerCommand{title: "Reset world view", shortcut: "f", action: "fit"})
 	}
 	if len(m.workspace.profileItems()) > 0 {
-		commands = append(commands, viewerCommand{title: "Toggle elevation profiles", shortcut: "e", action: "profile"})
+		commands = append(commands, viewerCommand{
+			title: "Toggle elevation profiles", shortcut: "e", action: "profile", toggle: true, checked: m.showProfile,
+		})
 	}
 	if m.activeTrack() != nil {
 		commands = append(commands, viewerCommand{title: "Free roam (clear selection)", action: "roam"})
@@ -358,16 +359,22 @@ func (m *viewer) commands() []viewerCommand {
 		commands = append(
 			commands,
 			viewerCommand{title: "Center and follow position", shortcut: "c", action: "center"},
-			viewerCommand{title: "Play / pause", shortcut: "space", action: "play"},
+			viewerCommand{title: "Play / pause", shortcut: "space", action: "play", toggle: true,
+				checked: m.activePlayback().Playing},
 			viewerCommand{title: "Playback speed", shortcut: "p", action: "speed"},
 		)
 	}
 	commands = append(
 		commands,
-		viewerCommand{title: "Inspect position", shortcut: "enter", action: "inspect"},
-		viewerCommand{title: "Toggle camera animation", shortcut: "m", action: "motion"},
-		viewerCommand{title: "Toggle ASCII map", shortcut: "a", action: "ascii"},
+		viewerCommand{title: "Toggle animations", shortcut: "m", action: "motion", toggle: true,
+			checked: !m.settings.NoAnimation},
+		viewerCommand{title: "Toggle ascii", shortcut: "a", action: "ascii", toggle: true, checked: m.settings.ASCII},
 	)
+	authTitle := "Mapbox account setup"
+	if m.mapboxConnected() {
+		authTitle = "Mapbox settings"
+	}
+	commands = append(commands, viewerCommand{title: authTitle, action: "auth"})
 	query := strings.ToLower(m.ui.search.Value())
 	filtered := []viewerCommand{}
 	for _, command := range commands {
@@ -405,11 +412,10 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 	case "speed":
 		return m.openDialog(dialogSpeed)
 	case "theme":
-		return m.openDialog(dialogThemes)
+		m.applyTheme((m.settings.Theme + 1) % len(m.themes))
+		return nil
 	case "auth":
 		return m.openMapboxSetup()
-	case "inspect":
-		return m.openDialog(dialogInspect)
 	}
 	keys := map[string]string{
 		"fit":     "f",
@@ -427,6 +433,32 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 	return cmd
 }
 
+func (m *viewer) toggleMenuOption(action string) tea.Cmd {
+	switch action {
+	case "traffic":
+		return m.toggleTraffic()
+	case "ascii":
+		m.settings.ASCII = !m.settings.ASCII
+	case "motion":
+		m.settings.NoAnimation = !m.settings.NoAnimation
+		if m.settings.NoAnimation {
+			m.camera = m.destination()
+			m.motion.Active = false
+		}
+	case "profile":
+		m.showProfile = !m.showProfile
+		m.layout()
+	case "play":
+		m.advancePlayback(time.Now())
+		if playback := m.activePlayback(); playback != nil {
+			playback.toggle()
+			m.inspected = nil
+		}
+	}
+	m.dirty = true
+	return nil
+}
+
 func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
 	if m.ui.dialog >= dialogJourney {
@@ -436,6 +468,16 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		pressed := v.String()
 		if pressed == "esc" && m.ui.dialog == dialogMapboxHelp {
 			return m.openDialog(dialogMapbox)
+		}
+		backToMapbox := m.ui.dialog == dialogCredits && m.ui.creditsParent == dialogMapbox
+		if backToMapbox && (pressed == "esc" || pressed == "v") {
+			command := m.openDialog(dialogMapbox)
+			for i, action := range m.mapboxActions() {
+				if action.action == "credits" {
+					m.ui.selected = i
+				}
+			}
+			return command
 		}
 		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
 		closeHelp := m.ui.dialog == dialogHelp && pressed == "?"
@@ -456,8 +498,11 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			commands := m.commands()
 			switch pressed {
 			case "space":
-				if len(commands) > 0 && commands[min(m.ui.selected, len(commands)-1)].action == "traffic" {
-					return m.toggleTraffic()
+				if len(commands) > 0 {
+					selected := commands[min(m.ui.selected, len(commands)-1)]
+					if selected.toggle {
+						return m.toggleMenuOption(selected.action)
+					}
 				}
 			case "down", "ctrl+n":
 				m.ui.selected = min(m.ui.selected+1, max(0, len(commands)-1))
@@ -545,7 +590,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		start := max(0, m.ui.selected-count+1)
 		for i := start; i < min(len(commands), start+count); i++ {
 			command := commands[i]
-			line := pad(command.title, max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
+			line := pad(command.label(), max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
 			style := s.dialogText
 			if i == m.ui.selected {
 				style = s.selected

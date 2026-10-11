@@ -64,13 +64,13 @@ and [optional helper convention](https://github.com/mapbox/mapbox-cli/blob/v0.3.
 - Logout affects the selected shared profile, not token revocation, environment
   overrides or other processes' in-memory public tokens. Later launches must
   resolve the login again.
-- Palette shortcuts lead the list, disconnected viewers offer account setup,
-  and connected viewers offer settings/checking rather than another sign-in.
+- Palette shortcuts lead the list; account setup/settings is last. Disconnected
+  viewers offer setup, and connected viewers offer settings/checking rather than another sign-in.
   Rechecks report completion and success/failure. Offline planning remains
   enabled; Mapbox place search is dimmed/blocked until credentials are available.
 - Installation guidance links to Mapbox's own documentation rather than copying
-  installer scripts. Map credits appear in the palette when contributing data
-  has attribution, independent of CLI login state.
+  installer scripts. Map credits are available inside Mapbox settings, independent
+  of CLI login state; their attribution reflects contributing data.
 - Mapbox CLI telemetry is off by default, with persistent opt-in under Mapbox
   settings. The preference uses the user's config directory and applies to
   `shoe`-launched CLI children; explicit environment opt-out takes precedence.

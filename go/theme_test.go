@@ -269,7 +269,7 @@ func TestThemePickerAndPaintingAcrossLayoutsAndASCIIMode(t *testing.T) {
 					size[1],
 					ascii,
 				)
-				m.runCommand("theme")
+				m.openDialog(dialogThemes)
 				if m.ui.dialog != dialogThemes || m.ui.selected != m.settings.Theme {
 					t.Fatal("theme command did not open the current palette")
 				}

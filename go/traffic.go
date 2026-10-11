@@ -92,12 +92,9 @@ func (m *viewer) toggleTraffic() tea.Cmd {
 }
 
 func (m *viewer) trafficCommand() viewerCommand {
-	title := "[ ] Traffic (20-mile radius)"
-	if m.preferences.Traffic {
-		title = "[x] Traffic (20-mile radius)"
-	}
 	return viewerCommand{
-		title: title, action: "traffic", disabled: !m.mapboxVerified() && !m.preferences.Traffic,
+		title: "Toggle traffic", action: "traffic", toggle: true, checked: m.preferences.Traffic,
+		disabled: !m.mapboxVerified() && !m.preferences.Traffic,
 	}
 }
 
