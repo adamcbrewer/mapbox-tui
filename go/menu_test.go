@@ -73,3 +73,28 @@ func TestMapCreditsReturnsToMapboxSettings(t *testing.T) {
 		t.Fatal("direct credits shortcut unexpectedly returned to settings")
 	}
 }
+
+func TestMainMenuGroupsTogglesBeforeMapboxSettings(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		m := authTestViewer(t)
+		if imported {
+			if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var reachedToggles bool
+		commands := m.commands()
+		for _, command := range commands[:len(commands)-1] {
+			if command.toggle {
+				reachedToggles = true
+				continue
+			}
+			if reachedToggles {
+				t.Fatal("an action interrupted the toggle group", command.title)
+			}
+		}
+		if !reachedToggles || commands[len(commands)-1].action != "auth" {
+			t.Fatal("toggle group was missing or Mapbox settings was not last")
+		}
+	}
+}

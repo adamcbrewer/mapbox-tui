@@ -338,9 +338,14 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
-		m.trafficCommand(),
 		{title: "Cycle Theme", shortcut: "ctrl+t", action: "theme"},
 	}...)
+	toggles := []viewerCommand{
+		m.trafficCommand(),
+		{title: "Toggle animations", shortcut: "m", action: "motion", toggle: true,
+			checked: !m.settings.NoAnimation},
+		{title: "Toggle ascii", shortcut: "a", action: "ascii", toggle: true, checked: m.settings.ASCII},
+	}
 	if len(m.workspace.documents) > 0 {
 		commands = append(commands,
 			viewerCommand{title: "Fit all visible routes", shortcut: "f", action: "fit"},
@@ -348,7 +353,7 @@ func (m *viewer) commands() []viewerCommand {
 		)
 	}
 	if len(m.workspace.profileItems()) > 0 {
-		commands = append(commands, viewerCommand{
+		toggles = append(toggles, viewerCommand{
 			title: "Toggle elevation profiles", shortcut: "e", action: "profile", toggle: true, checked: m.showProfile,
 		})
 	}
@@ -359,17 +364,14 @@ func (m *viewer) commands() []viewerCommand {
 		commands = append(
 			commands,
 			viewerCommand{title: "Center and follow position", shortcut: "c", action: "center"},
-			viewerCommand{title: "Play / pause", shortcut: "space", action: "play", toggle: true,
-				checked: m.activePlayback().Playing},
 			viewerCommand{title: "Playback speed", shortcut: "p", action: "speed"},
 		)
+		toggles = append(toggles, viewerCommand{
+			title: "Play / pause", shortcut: "space", action: "play", toggle: true,
+			checked: m.activePlayback().Playing,
+		})
 	}
-	commands = append(
-		commands,
-		viewerCommand{title: "Toggle animations", shortcut: "m", action: "motion", toggle: true,
-			checked: !m.settings.NoAnimation},
-		viewerCommand{title: "Toggle ascii", shortcut: "a", action: "ascii", toggle: true, checked: m.settings.ASCII},
-	)
+	commands = append(commands, toggles...)
 	authTitle := "Mapbox account setup"
 	if m.mapboxConnected() {
 		authTitle = "Mapbox settings"
