@@ -610,3 +610,41 @@ func trafficFailedBatchKeepsPreviousSnapshot(t *testing.T, failureStatus int) {
 		t.Fatal("retained traffic received a fresh timestamp")
 	}
 }
+
+func TestTrafficEmptyCompleteSnapshotRetainsFreshnessOnFailure(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := newTrafficProvider("synthetic-token")
+	p.now = func() time.Time { return now }
+	unknown := geojson.NewFeature(orb.LineString{{0, 0}, {4096, 4096}})
+	unknown.Properties["congestion"] = "unknown"
+	data, err := mvt.Marshal(mvt.Layers{&mvt.Layer{
+		Name: "traffic", Extent: 4096, Version: 2, Features: []*geojson.Feature{unknown},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := http.StatusOK
+	p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: status, Header: http.Header{"Cache-Control": {"max-age=60"}},
+			Body: io.NopCloser(bytes.NewReader(data))}, nil
+	})
+	camera := Camera{Center: project(-.1276, 51.5072), Zoom: 14, Aspect: 2, Width: 1, Height: 1}
+	var loader sourceLoader
+	loader.set("traffic", p, true)
+	t.Cleanup(loader.close)
+	first := oneSourceRequest(t, loader.poll(t.Context(), camera, now, false)).run()
+	if !loader.accept(first, camera, now) || len(loader.view().Features) != 0 {
+		t.Fatal("successful unknown traffic did not produce a complete empty snapshot")
+	}
+	fetched := *loader.view().Sources[0].FetchedAt
+	now = now.Add(time.Minute)
+	status = http.StatusServiceUnavailable
+	failed := oneSourceRequest(t, loader.poll(t.Context(), camera, now, false)).run()
+	if !loader.accept(failed, camera, now) {
+		t.Fatal("failed empty-view refresh was not accepted")
+	}
+	info := loader.view().Sources[0]
+	if info.FetchedAt == nil || !info.FetchedAt.Equal(fetched) || !info.Stale {
+		t.Fatal("failed refresh erased a complete empty view's freshness metadata")
+	}
+}

@@ -191,7 +191,8 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 			}
 		}
 		retainPrevious := snapshot.Failed && len(snapshot.Features) == 0
-		if retainPrevious && len(state.snapshot.Features) > 0 {
+		previousComplete := len(state.snapshot.Features) > 0 || !state.snapshot.FetchedAt.IsZero()
+		if retainPrevious && previousComplete {
 			snapshot.Features = state.snapshot.Features
 			snapshot.Credits = state.snapshot.Credits
 			snapshot.FetchedAt = state.snapshot.FetchedAt
