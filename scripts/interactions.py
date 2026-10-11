@@ -413,12 +413,14 @@ def free_roam(binary, live=False):
     command = shlex.join([*env, "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *args])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
     try:
-        initial = wait_for(lambda s: "Map details" in s and "Free roam" in s and "Loading basemap" not in s, timeout=25)
+        footer = "© Mapbox" if live else "Mapbox not connected"
+        initial = wait_for(lambda s: "Map details" in s and "Free roam" in s and
+                           "Loading basemap" not in s and footer in s, timeout=25)
         assert "Route details" not in initial and "Elevation profile" not in initial and "Paused" not in initial
         if live:
             assert "© Mapbox" in initial and re.search(r"\b[1-9]\d* / 0 / 0", initial), initial
         else:
-            assert "No basemap" in initial and "Mapbox not connected" in initial, "empty-canvas startup did not show connection status"
+            assert "No basemap" in initial and "Mapbox not connected" in initial, f"empty-canvas startup did not show connection status:\n{initial}"
         before = settled()
         send("h")
         wait_for(lambda s: (match := re.search(r"Lon (-?[\d.]+)", s)) is not None and
