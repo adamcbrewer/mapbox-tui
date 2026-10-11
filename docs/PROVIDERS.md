@@ -100,6 +100,8 @@ replacement credentials and access-denied Streets responses. Saved Traffic-on
 preferences wait for verification, and disabling Traffic remains available after
 lost verification. A verified account does not itself prove Traffic v1 entitlement;
 traffic requests still report product-specific access failures separately.
+Cache-only Streets loads cannot restore verification after a failed connection
+check; restoring it requires fresh account/network success.
 
 - The focus is the **current map centre**, not the selected route point or the last
   clicked coordinate. Traffic follows panning, camera follow and rotation. Visible
@@ -118,14 +120,16 @@ traffic requests still report product-specific access failures separately.
   overlay. This does not claim lane/direction separation or recolour a route from
   nearby road traffic. ASCII symbols are `1`–`4`; closures use `X` in both modes.
   The map footer and credits contain a themed legend.
-- Traffic cache freshness follows response headers and `Age`, capped at five
+- Traffic cache freshness subtracts `Age` from response freshness first, then caps
+  the remaining lifetime at five
   minutes. Uncacheable responses are not reused and schedule another fetch after
   five minutes. Mapbox documents congestion updates approximately every eight
   minutes; a refresh does not guarantee a new observation. The existing-account
   check returned a roughly one-minute cache deadline.
 - Traffic snapshots expose `fetched_at` and `stale` through shared source metadata.
-  Fetch time is not a provider observation timestamp. Failed refreshes retain the
-  last usable snapshot/fetch time and show stale status in credits. Normal network
+  Fetch time is not a provider observation timestamp. Failed multi-tile batches
+  discard partial geometry and retain the last complete snapshot/fetch time with
+  stale status in credits. Normal network
   failures and rate limiting use the existing backoff policy.
 - HTTP 401/403 stops traffic retries until explicit off/on, a connection recheck
   or credential replacement. A denied traffic source does not repeatedly make

@@ -98,3 +98,17 @@ func TestMainMenuGroupsTogglesBeforeMapboxSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestMenuSearchSpacesDoNotToggleOptions(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := authTestViewer(t)
+	m.args.Provider, m.args.ProviderSet = "none", true
+	m.provider.token, m.authVerified = "pk.checked", true
+	m.openDialog(dialogCommands)
+	for _, character := range "toggle ascii" {
+		m.Update(tea.KeyPressMsg{Code: character, Text: string(character)})
+	}
+	if m.ui.search.Value() != "toggle ascii" || m.preferences.Traffic || m.settings.ASCII {
+		t.Fatal("typing a search changed an option or swallowed its space", m.ui.search.Value())
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -220,7 +221,7 @@ func TestTrafficStationaryRefreshCapsCacheAndRetainsStaleDataOnFailure(t *testin
 	}
 	load()
 	initial := loader.view()
-	if initial.Sources[0].RefreshAt == nil || !initial.Sources[0].RefreshAt.Equal(now.Add(4*time.Minute)) {
+	if initial.Sources[0].RefreshAt == nil || !initial.Sources[0].RefreshAt.Equal(now.Add(5*time.Minute)) {
 		t.Fatal("traffic retained the twelve-hour basemap TTL or ignored Age", initial.Sources)
 	}
 	if initial.Sources[0].FetchedAt == nil || !initial.Sources[0].FetchedAt.Equal(now) {
@@ -229,7 +230,7 @@ func TestTrafficStationaryRefreshCapsCacheAndRetainsStaleDataOnFailure(t *testin
 	if _, err := p.load(t.Context(), c); err != nil || p.snapshotStats().Requests != initial.Stats.Requests {
 		t.Fatal("fresh traffic unnecessarily refetched tiles", err)
 	}
-	now = now.Add(4 * time.Minute)
+	now = now.Add(5 * time.Minute)
 	status = http.StatusServiceUnavailable
 	load()
 	failed := loader.view()
@@ -490,5 +491,105 @@ func TestTrafficUnlocksAfterBasemapSuccessAndRejectsObsoleteProof(t *testing.T) 
 	m.Update(result)
 	if !m.trafficCommand().disabled {
 		t.Fatal("replacement token reused obsolete credential/basemap certification")
+	}
+}
+
+func TestTrafficCacheOnlyBasemapDoesNotRestoreFailedVerification(t *testing.T) {
+	m := authTestViewer(t)
+	m.provider = providerForCredential("mapbox", renderingCredential{token: "pk.checked"})
+	m.provider.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Cache-Control": {"max-age=3600"}},
+			Body: io.NopCloser(bytes.NewReader(lifecycleTile(t)))}, nil
+	})
+	m.Update(captureSourceResult(t, m.fetch()))
+	if !m.mapboxVerified() {
+		t.Fatal("initial network load did not verify access")
+	}
+	m.acceptCredentials(credentialResult{checked: true, access: authSection{State: "unavailable"},
+		credential: renderingCredential{token: "pk.checked", source: "environment"}})
+	requests := m.provider.snapshotStats().Requests
+	m.sources.states[0].snapshot.RefreshAt = time.Now().Add(-time.Second)
+	m.Update(captureSourceResult(t, m.fetch()))
+	if m.provider.snapshotStats().Requests != requests || m.mapboxVerified() {
+		t.Fatal("cached geometry replaced a failed connection check with old proof")
+	}
+}
+
+func TestTrafficCacheCapUsesRemainingResponseFreshness(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := newTrafficProvider("synthetic-token")
+	p.now = func() time.Time { return now }
+	p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{
+			"Cache-Control": {"max-age=600"}, "Age": {"360"},
+		}, Body: io.NopCloser(bytes.NewReader(trafficTile(t)))}, nil
+	})
+	camera := Camera{Center: project(-.1276, 51.5072), Zoom: 14, Aspect: 2, Width: 1, Height: 1}
+	snapshot, err := p.load(t.Context(), camera)
+	if err != nil || snapshot.Stats.Cached == 0 || !snapshot.RefreshAt.Equal(now.Add(4*time.Minute)) {
+		t.Fatal("valid response freshness was discarded before applying the traffic cap", err)
+	}
+	requests := snapshot.Stats.Requests
+	now = now.Add(time.Minute)
+	p.load(t.Context(), camera)
+	if p.snapshotStats().Requests != requests {
+		t.Fatal("overlapping fresh traffic tiles were downloaded again")
+	}
+}
+
+func TestTrafficAccessDeniedRefreshKeepsCompletePreviousSnapshot(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusServiceUnavailable} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			trafficFailedBatchKeepsPreviousSnapshot(t, status)
+		})
+	}
+}
+
+func trafficFailedBatchKeepsPreviousSnapshot(t *testing.T, failureStatus int) {
+	t.Helper()
+	now := time.Unix(1000, 0)
+	p := newTrafficProvider("synthetic-token")
+	p.now = func() time.Time { return now }
+	camera := Camera{Center: project(-.1276, 51.5072), Zoom: 8, Aspect: 2, Width: 88, Height: 34}
+	if len(trafficTiles(camera)) < 2 {
+		t.Fatal("test requires a multi-tile traffic view")
+	}
+	var calls int
+	failing := false
+	p.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		calls++
+		status := http.StatusOK
+		if failing && calls == 2 {
+			status = failureStatus
+		}
+		return &http.Response{StatusCode: status, Header: http.Header{"Cache-Control": {"max-age=60"}},
+			Body: io.NopCloser(bytes.NewReader(trafficTile(t)))}, nil
+	})
+	var loader sourceLoader
+	loader.set("traffic", p, true)
+	t.Cleanup(loader.close)
+	initial := oneSourceRequest(t, loader.poll(t.Context(), camera, now, false)).run()
+	if !loader.accept(initial, camera, now) {
+		t.Fatal("initial traffic was not accepted")
+	}
+	previous := loader.view()
+	now = now.Add(time.Minute)
+	calls, failing = 0, true
+	failed := oneSourceRequest(t, loader.poll(t.Context(), camera, now, false)).run()
+	if !loader.accept(failed, camera, now) || !failed.snapshot.Failed {
+		t.Fatal("failed refresh was not accepted")
+	}
+	current := loader.view()
+	if failureStatus == http.StatusServiceUnavailable && current.Sources[0].RefreshAt == nil {
+		t.Fatal("transient failure did not schedule a retry")
+	}
+	if failureStatus == http.StatusForbidden && current.Sources[0].RefreshAt != nil {
+		t.Fatal("access denial scheduled an automatic retry")
+	}
+	if !reflect.DeepEqual(current.Features, previous.Features) || !current.Sources[0].Stale {
+		t.Fatal("access denial replaced complete traffic with a partial tile batch")
+	}
+	if !current.Sources[0].FetchedAt.Equal(*previous.Sources[0].FetchedAt) {
+		t.Fatal("retained traffic received a fresh timestamp")
 	}
 }

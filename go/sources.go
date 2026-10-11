@@ -13,15 +13,16 @@ type sourceCredit struct {
 }
 
 type sourceSnapshot struct {
-	Features     []Feature
-	Stats        Stats
-	Status       string
-	RefreshAt    time.Time
-	Credits      []sourceCredit
-	Failed       bool
-	Unavailable  bool
-	AccessDenied bool
-	FetchedAt    time.Time
+	Features       []Feature
+	Stats          Stats
+	Status         string
+	RefreshAt      time.Time
+	Credits        []sourceCredit
+	Failed         bool
+	Unavailable    bool
+	AccessDenied   bool
+	AccessVerified bool
+	FetchedAt      time.Time
 }
 
 type mapSource interface {

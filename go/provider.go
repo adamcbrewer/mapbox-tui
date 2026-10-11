@@ -387,15 +387,16 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 			continue
 		}
 		snapshot.Features = append(snapshot.Features, fs...)
+		snapshot.AccessVerified = true
 		if p.tileset == trafficTileset {
 			snapshot.FetchedAt = earlier(snapshot.FetchedAt, received)
 		}
 		age := ttl(res.Header.Get("Cache-Control"))
-		if p.tileset == trafficTileset {
-			age = min(age, trafficRefreshInterval)
-		}
 		if elapsed, e := strconv.Atoi(res.Header.Get("Age")); e == nil && elapsed > 0 {
 			age -= time.Duration(elapsed) * time.Second
+		}
+		if p.tileset == trafficTileset {
+			age = min(age, trafficRefreshInterval)
 		}
 		if age <= 0 {
 			fallback := time.Minute
@@ -432,6 +433,11 @@ func (p *Provider) load(ctx context.Context, c Camera) (sourceSnapshot, error) {
 	if !retryAt.IsZero() {
 		snapshot.RefreshAt = retryAt
 		snapshot.Failed = true
+	}
+	if p.tileset == trafficTileset && snapshot.Failed {
+		snapshot.Features = nil
+		snapshot.FetchedAt = time.Time{}
+		snapshot.AccessVerified = false
 	}
 	if snapshot.Unavailable {
 		snapshot.RefreshAt = time.Time{}

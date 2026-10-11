@@ -267,6 +267,9 @@ successful certification, saved-preference gating, revoked verification and
 turning traffic off while disconnected. Terminal interactions exercise the main
 menu's greyed-out entry and disabled activation with imported geometry at 120×40,
 70×18 and 30×12 in Braille/ASCII with credentials disabled.
+Review regressions cover multi-word menu search without toggling, cached basemaps
+not overriding failed auth checks, `Age` before the cache cap, and complete traffic
+retention after partial-batch 403/503 failures.
 
 Opt-in live account check (one Traffic v1 TileJSON request and normally one London
 zoom-14 tile request, using shared credential resolution):

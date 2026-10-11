@@ -382,7 +382,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch {
 				case snapshot.AccessDenied:
 					m.setMapboxVerified(false)
-				case ready && snapshot.Stats.Requests > 0:
+				case ready && snapshot.AccessVerified:
 					m.setMapboxVerified(true)
 				}
 			}

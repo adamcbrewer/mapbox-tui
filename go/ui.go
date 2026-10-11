@@ -50,6 +50,7 @@ type uiState struct {
 	spinner        spinner.Model
 	spinning       bool
 	selected       int
+	menuNavigated  bool
 	detailsFocused bool
 	notice         string
 }
@@ -288,6 +289,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	m.ui.dialog = kind
 	m.ui.creditsParent = dialogNone
 	m.ui.selected = 0
+	m.ui.menuNavigated = false
 	m.ui.notice = ""
 	m.dragging, m.rotating = false, false
 	m.dirty = true
@@ -333,13 +335,11 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
 		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
-	}
-	commands = append(commands, []viewerCommand{
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
 		{title: "Cycle Theme", shortcut: "ctrl+t", action: "theme"},
-	}...)
+	}
 	toggles := []viewerCommand{
 		m.trafficCommand(),
 		{title: "Toggle animations", shortcut: "m", action: "motion", toggle: true,
@@ -502,15 +502,17 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			case "space":
 				if len(commands) > 0 {
 					selected := commands[min(m.ui.selected, len(commands)-1)]
-					if selected.toggle {
+					if selected.toggle && (m.ui.menuNavigated || len(commands) == 1) {
 						return m.toggleMenuOption(selected.action)
 					}
 				}
 			case "down", "ctrl+n":
 				m.ui.selected = min(m.ui.selected+1, max(0, len(commands)-1))
+				m.ui.menuNavigated = true
 				return nil
 			case "up", "ctrl+p":
 				m.ui.selected = max(0, m.ui.selected-1)
+				m.ui.menuNavigated = true
 				return nil
 			case "enter":
 				if len(commands) > 0 {
@@ -563,6 +565,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		cmd = m.clipboardCommand(msg, cmd)
 		if before != m.ui.search.Value() {
 			m.ui.selected = 0
+			m.ui.menuNavigated = false
 		}
 	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp:
 		m.ui.page, cmd = m.ui.page.Update(msg)

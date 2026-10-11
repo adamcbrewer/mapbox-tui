@@ -279,9 +279,10 @@ func (m *viewer) setMapboxVerified(verified bool) {
 }
 
 func (m *viewer) mapboxActions() []viewerCommand {
+	telemetryDisabled := mapboxTelemetryOptOut()
 	telemetryAction := viewerCommand{
-		title: "CLI telemetry", action: "telemetry", toggle: true, disabled: mapboxTelemetryOptOut(),
-		checked: m.preferences.MapboxCLITelemetry && !mapboxTelemetryOptOut(),
+		title: "CLI telemetry", action: "telemetry", toggle: true, disabled: telemetryDisabled,
+		checked: m.preferences.MapboxCLITelemetry && !telemetryDisabled,
 	}
 	creditsAction := viewerCommand{title: "Map credits", shortcut: "v", action: "credits"}
 	continueAction := viewerCommand{title: "Continue offline", action: "continue"}
