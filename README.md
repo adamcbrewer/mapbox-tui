@@ -640,6 +640,17 @@ Without a file/workspace and token, rendering returns an empty map with setup
 guidance in `scene.status`. `point_index` requires a track. Camera defaults match
 the viewer's free-roam world view.
 
+## Architecture
+
+The viewer, CLI and MCP reuse workspace lifecycle and scene-rendering rules, with
+separate state per process. Bubble Tea, Bubbles and Lip Gloss provide the UI;
+the application owns projection, clipping, Braille/ASCII rasterisation and picking.
+Imported geometry stays usable without Mapbox data or credentials.
+
+See [the architecture notes](docs/ARCHITECTURE.md) for the Go/Charm rationale,
+responsibility boundaries, historical benchmarks and measurable criteria for
+reconsidering Rust + Ratatui.
+
 ## Development and checks
 
 Python 3 is required for the development and validation scripts:
