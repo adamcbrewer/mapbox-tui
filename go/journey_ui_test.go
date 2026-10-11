@@ -101,6 +101,22 @@ func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T)
 	}
 }
 
+func TestJourneyLocationBackRestoresMapFocus(t *testing.T) {
+	m := journeyViewer(t)
+	m.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.ui.dialog != dialogJourneyLocation || m.planner.mapFocused {
+		t.Fatal("location editor did not take keyboard focus")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	row, center := m.planner.row, m.camera.Center
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if !m.planner.mapFocused || m.planner.row != row || m.camera.Center == center {
+		t.Fatal("cancelled location edit did not restore map keyboard focus")
+	}
+}
+
 func TestJourneyViewerAutomaticSearchSessionsAndSupersededResults(t *testing.T) {
 	m := journeyViewer(t)
 	m.places.token = "test-token"
@@ -234,6 +250,30 @@ func TestJourneySearchStartsWhenCredentialsArriveAndCancelsOnDisconnect(t *testi
 	}
 	if m.schedulePlaceSearch() != nil {
 		t.Fatal("search remained enabled without selected credentials")
+	}
+}
+
+func TestJourneyBackCancelsLocationSearchAndRejectsLateResults(t *testing.T) {
+	m := journeyViewer(t)
+	m.places.token = "token"
+	var requestContext context.Context
+	m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+		requestContext = r.Context()
+		return locationResponse(`{"suggestions":[{"mapbox_id":"village","name":"Hinton"}]}`), nil
+	})
+	m.openJourney()
+	m.editJourneyLocation(0)
+	m.ui.search.SetValue("Hinton")
+	m.schedulePlaceSearch()
+	late := m.requestPlaceSearch(m.planner.searchID)()
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if requestContext.Err() == nil || m.ui.dialog != dialogJourney || m.planner.searchBusy {
+		t.Fatal("back did not cancel the location search and restore the planner")
+	}
+	m.editJourneyLocation(0)
+	m.Update(late)
+	if len(m.planner.suggestions) != 0 || m.ui.search.Value() != "" {
+		t.Fatal("cancelled editor's response changed the reopened location editor")
 	}
 }
 

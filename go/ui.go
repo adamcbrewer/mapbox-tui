@@ -41,7 +41,7 @@ const (
 
 type uiState struct {
 	dialog         dialogKind
-	creditsParent  dialogKind
+	parents        []dialogFrame
 	help           help.Model
 	picker         filepicker.Model
 	search         textinput.Model
@@ -50,9 +50,18 @@ type uiState struct {
 	spinner        spinner.Model
 	spinning       bool
 	selected       int
+	themeBefore    int
 	menuNavigated  bool
 	detailsFocused bool
 	notice         string
+}
+
+type dialogFrame struct {
+	kind                        dialogKind
+	selected, searchPosition    int
+	menuNavigated, mapFocused   bool
+	searchValue, notice, action string
+	page                        pager.Model
 }
 
 type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
@@ -165,7 +174,6 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 				binding("ctrl+l", "loaded files"),
 				binding("ctrl+g", "plan journey"),
 				binding("ctrl+p", "command palette"),
-				binding("ctrl+t", "cycle theme"),
 				binding("a", "ASCII map"),
 				binding("v", "credits"),
 				binding("m", "toggle camera animation"),
@@ -202,7 +210,6 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("ctrl+l", "loaded files"),
 			binding("ctrl+g", "plan journey"),
 			binding("ctrl+p", "command palette"),
-			binding("ctrl+t", "cycle theme"),
 			binding("a", "ASCII map"),
 			binding("v", "credits"),
 			binding("m", "toggle camera animation"),
@@ -270,10 +277,11 @@ func (m *viewer) gradient(s string, background color.Color) string {
 }
 func (m *viewer) closeDialog() {
 	wasPlanner := m.journeyPanelOpen()
+	m.restoreThemePreview()
 	m.cancelJourneySearch()
 	m.planner.showRevision = nil
 	m.ui.dialog = dialogNone
-	m.ui.creditsParent = dialogNone
+	m.ui.parents = nil
 	m.ui.search.Blur()
 	m.ui.inputID = ""
 	m.ui.notice = ""
@@ -284,10 +292,16 @@ func (m *viewer) closeDialog() {
 }
 func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	wasPlanner := m.journeyPanelOpen()
+	m.restoreThemePreview()
+	if m.ui.dialog == dialogJourneyLocation {
+		m.cancelJourneySearch()
+	}
 	m.planner.showRevision = nil
 	m.planner.mapFocused = false
 	m.ui.dialog = kind
-	m.ui.creditsParent = dialogNone
+	m.ui.parents = nil
+	m.ui.search.Blur()
+	m.ui.inputID = ""
 	m.ui.selected = 0
 	m.ui.menuNavigated = false
 	m.ui.notice = ""
@@ -316,6 +330,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		m.stylePicker()
 		return picker.Init()
 	case dialogThemes:
+		m.ui.themeBefore = m.settings.Theme
 		m.ui.selected = m.settings.Theme
 	case dialogSpeed:
 		if p := m.activePlayback(); p != nil {
@@ -332,13 +347,73 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	return nil
 }
 
+func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
+	parents := m.ui.parents
+	if m.ui.dialog != dialogNone && m.ui.dialog != kind {
+		frame := dialogFrame{
+			kind: m.ui.dialog, selected: m.ui.selected, menuNavigated: m.ui.menuNavigated,
+			searchValue: m.ui.search.Value(), searchPosition: m.ui.search.Position(),
+			notice: m.ui.notice, page: m.ui.page, mapFocused: m.planner.mapFocused,
+		}
+		if frame.kind == dialogMapbox {
+			actions := m.mapboxActions()
+			frame.action = actions[min(frame.selected, len(actions)-1)].action
+		}
+		parents = append(parents, frame)
+	}
+	command := m.openDialog(kind)
+	m.ui.parents = parents
+	return command
+}
+
+func (m *viewer) backDialog() tea.Cmd {
+	if m.ui.dialog == dialogMapbox {
+		m.cancelAuth()
+	}
+	if len(m.ui.parents) == 0 {
+		m.closeDialog()
+		return nil
+	}
+	last := len(m.ui.parents) - 1
+	frame := m.ui.parents[last]
+	parents := m.ui.parents[:last]
+	command := m.openDialog(frame.kind)
+	m.ui.parents = parents
+	m.ui.selected, m.ui.menuNavigated = frame.selected, frame.menuNavigated
+	m.ui.notice, m.ui.page = frame.notice, frame.page
+	m.ui.page.Style = m.styles.dialogText
+	m.planner.mapFocused = frame.mapFocused
+	if frame.kind == dialogCommands {
+		m.ui.search.SetValue(frame.searchValue)
+		m.ui.search.SetCursor(frame.searchPosition)
+	}
+	if frame.kind == dialogMapbox {
+		for i, action := range m.mapboxActions() {
+			if action.action == frame.action {
+				m.ui.selected = i
+				break
+			}
+		}
+	}
+	m.layout()
+	return command
+}
+
+func (m *viewer) dialogHints(hints string) string {
+	if len(m.ui.parents) == 0 {
+		return hints
+	}
+	before, _, _ := strings.Cut(hints, "esc ")
+	return "esc back / " + strings.TrimRight(before, " /·")
+}
+
 func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
 		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
-		{title: "Cycle Theme", shortcut: "ctrl+t", action: "theme"},
+		{title: "Colour theme", action: "theme"},
 	}
 	toggles := []viewerCommand{
 		m.trafficCommand(),
@@ -395,29 +470,30 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		}
 		return command
 	}
+	switch action {
+	case "workspace":
+		return m.pushDialog(dialogWorkspace)
+	case "journey":
+		return m.openJourney()
+	case "open":
+		return m.pushDialog(dialogFiles)
+	case "help":
+		return m.pushDialog(dialogHelp)
+	case "credits":
+		return m.pushDialog(dialogCredits)
+	case "speed":
+		return m.pushDialog(dialogSpeed)
+	case "theme":
+		return m.pushDialog(dialogThemes)
+	case "auth":
+		return m.openMapboxSetup()
+	}
 	m.closeDialog()
 	switch action {
 	case "roam":
 		return m.freeRoam()
 	case "clear":
 		return m.clearWorkspace()
-	case "workspace":
-		return m.openDialog(dialogWorkspace)
-	case "journey":
-		return m.openJourney()
-	case "open":
-		return m.openDialog(dialogFiles)
-	case "help":
-		return m.openDialog(dialogHelp)
-	case "credits":
-		return m.openDialog(dialogCredits)
-	case "speed":
-		return m.openDialog(dialogSpeed)
-	case "theme":
-		m.applyTheme((m.settings.Theme + 1) % len(m.themes))
-		return nil
-	case "auth":
-		return m.openMapboxSetup()
 	}
 	keys := map[string]string{
 		"fit":     "f",
@@ -468,28 +544,11 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	}
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
-		if pressed == "esc" && m.ui.dialog == dialogMapboxHelp {
-			return m.openDialog(dialogMapbox)
-		}
-		backToMapbox := m.ui.dialog == dialogCredits && m.ui.creditsParent == dialogMapbox
-		if backToMapbox && (pressed == "esc" || pressed == "v") {
-			command := m.openDialog(dialogMapbox)
-			for i, action := range m.mapboxActions() {
-				if action.action == "credits" {
-					m.ui.selected = i
-				}
-			}
-			return command
-		}
 		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
 		closeHelp := m.ui.dialog == dialogHelp && pressed == "?"
 		closeWorkspace := m.ui.dialog == dialogWorkspace && pressed == "ctrl+l"
 		if pressed == "esc" || closeCredits || closeHelp || closeWorkspace {
-			if m.ui.dialog == dialogMapbox {
-				m.cancelAuth()
-			}
-			m.closeDialog()
-			return nil
+			return m.backDialog()
 		}
 		switch m.ui.dialog {
 		case dialogMapbox:
@@ -532,12 +591,17 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 				m.ui.selected = max(0, m.ui.selected-1)
 			case "enter":
 				if m.ui.dialog == dialogThemes {
+					m.ui.themeBefore = m.ui.selected
 					m.applyTheme(m.ui.selected)
 				} else if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
 					p.speed = m.ui.selected
 				}
 				m.closeDialog()
+			}
+			previewChanged := m.ui.dialog == dialogThemes && m.ui.selected != m.settings.Theme
+			if previewChanged {
+				m.applyTheme(m.ui.selected)
 			}
 			return nil
 		}
@@ -633,14 +697,14 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		var rows []string
 		count := height
 		if height > 3 {
-			rows = append(rows, s.dialogMuted.Render(pad("Terminal colours · ctrl+t cycles", width)), "")
+			rows = append(rows, s.dialogMuted.Render(pad("Terminal colours · live preview", width)), "")
 			count -= 2
 		}
 		start := max(0, m.ui.selected-max(1, count)+1)
 		for i := start; i < min(len(m.themes), start+max(1, count)); i++ {
 			theme := m.themes[i]
 			line := "  " + theme.Name
-			if i == m.settings.Theme {
+			if i == m.ui.themeBefore {
 				line += " (current)"
 			}
 			style := s.dialogText
@@ -650,7 +714,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 			}
 			rows = append(rows, style.Render(pad(line, width)))
 		}
-		return "Colour theme", strings.Join(rows, "\n"), "↑/↓ choose   enter apply   esc close"
+		return "Colour theme", strings.Join(rows, "\n"), "↑/↓ preview   enter keep   esc close"
 	}
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
@@ -729,14 +793,15 @@ func (m *viewer) overlay() {
 	if !dialogOpen || !hasRoom || m.journeyPanelOpen() {
 		return
 	}
-	width := min(64, m.width-8)
+	depth := min(len(m.ui.parents), m.width-9, m.height-9)
+	width := min(64, m.width-8-depth)
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
-		width = min(38, m.width-8)
+		width = min(38, m.width-8-depth)
 	}
 	if m.ui.dialog == dialogMapbox {
-		width = min(52, m.width-8)
+		width = min(52, m.width-8-depth)
 	}
-	height := max(1, min(17, m.height-10))
+	height := max(1, min(17, m.height-10, m.height-8-depth))
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
 	}
@@ -748,6 +813,7 @@ func (m *viewer) overlay() {
 		contentHeight--
 	}
 	title, body, hints := m.dialogContent(width, contentHeight)
+	hints = m.dialogHints(hints)
 	t, s := m.theme(), m.styles
 	surface := lipgloss.Color(t.Surface)
 	if m.ui.notice != "" {
@@ -773,34 +839,47 @@ func (m *viewer) overlay() {
 		Border(border).
 		BorderForegroundBlend(lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight)).
 		Render(content)
-	x, y := (m.width-lipgloss.Width(box))/2, (m.height-lipgloss.Height(box))/2
+	boxWidth, boxHeight := lipgloss.Width(box), lipgloss.Height(box)
+	x, y := (m.width-boxWidth-depth)/2, (m.height-boxHeight-depth)/2
 	if m.ui.dialog == dialogSpeed {
-		x, y = max(1, m.camera.Width-lipgloss.Width(box)), max(1, m.height-lipgloss.Height(box)-3)
+		x, y = max(1, m.camera.Width-boxWidth), max(1, m.height-boxHeight-3)
 	}
 	if m.ui.dialog == dialogInspect {
 		if pos := m.position(); pos != nil {
 			point := m.camera.screen(pos.World)
-			x = max(0, min(m.width-lipgloss.Width(box), int(point.X/2)+3))
-			y = max(0, min(m.height-lipgloss.Height(box)-3, int(point.Y/4)+2))
+			x = max(0, min(m.width-boxWidth, int(point.X/2)+3))
+			y = max(0, min(m.height-boxHeight-3, int(point.Y/4)+2))
 		}
 	}
+	x = max(0, min(m.width-boxWidth-depth, x))
+	y = max(0, min(m.height-boxHeight-depth, y))
 	baseStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(t.Dimmed)).
 		Background(lipgloss.Color(t.Background))
 	base := lipgloss.NewLayer(baseStyle.Render(ansi.Strip(m.content)))
-	x, y = max(0, x), max(0, y)
+	layers := []*lipgloss.Layer{base}
+	// Matching the active footprint exposes only back-frame edges, even when parent dialogs differ in size.
+	backFrame := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Dimmed)).
+		Background(surface).Render(ansi.Strip(box))
+	for i := range depth {
+		layers = append(layers, lipgloss.NewLayer(backFrame).X(x+i).Y(y+i).Z(i+1))
+	}
+	layers = append(layers, lipgloss.NewLayer(box).X(x+depth).Y(y+depth).Z(depth+1))
 	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(
-		lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)),
+		lipgloss.NewCompositor(layers...),
 	)
 	// Nested Bubbles views reset some cells to the terminal's default background.
-	for row := y + 1; row < min(m.height, y+lipgloss.Height(box)-1); row++ {
-		for column := x + 1; column < min(m.width, x+lipgloss.Width(box)-1); column++ {
-			if cell := canvas.CellAt(column, row); cell != nil && cell.Style.Bg == nil {
-				cell.Style.Bg = surface
+	for i := range depth + 1 {
+		for row := y + i + 1; row < y+i+boxHeight-1; row++ {
+			for column := x + i + 1; column < x+i+boxWidth-1; column++ {
+				if cell := canvas.CellAt(column, row); cell != nil && cell.Style.Bg == nil {
+					cell.Style.Bg = surface
+				}
 			}
 		}
 	}
 	m.content = canvas.Render()
+	x, y = x+depth, y+depth
 	if m.ui.dialog == dialogCommands || m.ui.dialog == dialogJourneyLocation {
 		if cursor := m.ui.search.Cursor(); cursor != nil {
 			cursor.X += max(0, x) + 3

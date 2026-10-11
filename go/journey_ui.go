@@ -69,7 +69,7 @@ func (m *viewer) openJourney() tea.Cmd {
 		return nil
 	}
 	m.selectionChanged()
-	cmd := m.openDialog(dialogJourney)
+	cmd := m.pushDialog(dialogJourney)
 	j, _ := m.workspace.journey(m.planner.ref)
 	if m.defaultJourneyMode(j) {
 		return tea.Batch(cmd, m.calculateJourneyIfRouted())
@@ -95,13 +95,12 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 	}
 	m.cancelJourneySearch()
 	m.planner.showRevision = nil
-	m.planner.mapFocused = false
 	m.planner.stopID = j.Stops[index].ID
 	m.planner.row = index
 	m.planner.session = rand.Text()
 	m.planner.sessionStarted, m.planner.sessionRequests = time.Time{}, 0
 	m.planner.query = ""
-	m.ui.dialog, m.ui.notice = dialogJourneyLocation, ""
+	m.pushDialog(dialogJourneyLocation)
 	m.ui.inputID = rand.Text()
 	m.ui.search.CharLimit = 256
 	m.ui.search.Placeholder = "Place or latitude, longitude"
@@ -215,9 +214,10 @@ func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
 		m.ui.notice = err.Error()
 		return nil
 	}
-	m.cancelJourneySearch()
-	m.ui.search.Blur()
-	m.ui.dialog, m.ui.notice = dialogJourney, ""
+	if m.ui.dialog == dialogJourneyLocation {
+		m.backDialog()
+	}
+	m.ui.notice = ""
 	m.planner.mapFocused = false
 	m.selectionChanged()
 	if revision == j.revision {
@@ -270,8 +270,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	m.planner.row = max(0, min(last, m.planner.row))
 	switch pressed {
 	case "esc", "ctrl+g":
-		m.closeDialog()
-		return nil
+		return m.backDialog()
 	case "up", "k":
 		m.planner.row = max(0, m.planner.row-1)
 	case "down", "j":
@@ -292,7 +291,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	case "ctrl+d":
 		return m.calculateJourneyRoute()
 	case "ctrl+u":
-		return m.openDialog(dialogJourneyRoutingHelp)
+		return m.pushDialog(dialogJourneyRoutingHelp)
 	case "ctrl+n":
 		err = m.workspace.addJourneyWaypoint(m.planner.ref)
 		m.planner.row = len(j.Stops) - 2
@@ -334,11 +333,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 	switch pressed {
 	case "esc":
-		m.cancelJourneySearch()
-		m.ui.search.Blur()
-		m.ui.dialog, m.ui.notice = dialogJourney, ""
-		m.layout()
-		return nil
+		return m.backDialog()
 	case "ctrl+s":
 		if m.places.token == "" {
 			m.ui.notice = "Place search unavailable · connect Mapbox in settings"

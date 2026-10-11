@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type credentialResult struct {
 
 type mapboxLoginReady struct {
 	id  uint64
+	ctx context.Context
 	cli *mapboxCLI
 	err error
 }
@@ -195,7 +197,12 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	firstRun := m.authFirstRun && m.path == "" && len(m.workspace.documents) == 0 && !m.loading
 	m.authFirstRun = false
 	if result.afterLogin {
-		m.openDialog(dialogMapbox)
+		setupOpen := m.ui.dialog == dialogMapbox || slices.ContainsFunc(m.ui.parents, func(frame dialogFrame) bool {
+			return frame.kind == dialogMapbox
+		})
+		if !setupOpen {
+			m.openDialog(dialogMapbox)
+		}
 		file, err := mapboxCredentialFile()
 		m.authMessage = "Login succeeded; rendering source: " + credential.source
 		if err == nil {
@@ -240,12 +247,12 @@ func (m *viewer) beginMapboxLogin() tea.Cmd {
 	id := m.authID
 	return func() tea.Msg {
 		cli, err := findMapboxCLI(ctx)
-		return mapboxLoginReady{id: id, cli: cli, err: err}
+		return mapboxLoginReady{id: id, ctx: ctx, cli: cli, err: err}
 	}
 }
 
 func (m *viewer) openMapboxSetup() tea.Cmd {
-	m.openDialog(dialogMapbox)
+	m.pushDialog(dialogMapbox)
 	return m.checkMapboxSetup()
 }
 
@@ -331,7 +338,7 @@ func (m *viewer) updateMapboxDialog(key string) tea.Cmd {
 			m.cancelAuth()
 			m.closeDialog()
 		case "install":
-			return m.openDialog(dialogMapboxHelp)
+			return m.pushDialog(dialogMapboxHelp)
 		case "check":
 			return m.checkMapboxSetup()
 		case "login":
@@ -360,9 +367,7 @@ func (m *viewer) updateMapboxDialog(key string) tea.Cmd {
 }
 
 func (m *viewer) openMapboxCredits() tea.Cmd {
-	command := m.openDialog(dialogCredits)
-	m.ui.creditsParent = dialogMapbox
-	return command
+	return m.pushDialog(dialogCredits)
 }
 
 func (m *viewer) mapboxDialogContent(width, height int) (string, string, string) {
@@ -439,5 +444,5 @@ func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(max(1, height))
 	m.ui.page.SetContent(content.String())
-	return "Mapbox installation", m.ui.page.View(), "↑/↓ scroll   esc back"
+	return "Mapbox installation", m.ui.page.View(), "↑/↓ scroll   esc close"
 }

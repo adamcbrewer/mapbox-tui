@@ -142,7 +142,7 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 	}
 }
 
-func TestThemeCyclePreservesPlaybackImportsProfileAndSourceFreshness(t *testing.T) {
+func TestThemeChangePreservesPlaybackImportsProfileAndSourceFreshness(t *testing.T) {
 	m := themeViewer(
 		t,
 		120,
@@ -170,10 +170,9 @@ func TestThemeCyclePreservesPlaybackImportsProfileAndSourceFreshness(t *testing.
 	text := ansi.Strip(m.content)
 	initial := m.settings.Theme
 	for i := 1; i <= len(m.themes); i++ {
-		_, cmd := m.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-		cycleNotApplied := cmd != nil || m.settings.Theme != (initial+i)%len(m.themes) || !m.dirty
-		if cycleNotApplied {
-			t.Fatal("cycling did not update presentation without starting work")
+		m.applyTheme((initial + i) % len(m.themes))
+		if m.settings.Theme != (initial+i)%len(m.themes) || !m.dirty {
+			t.Fatal("theme change did not update presentation")
 		}
 		runLoadCommand(m, m.fetchAt(now.Add(time.Duration(i)*time.Millisecond)))
 		m.rebuild()
@@ -205,7 +204,7 @@ func TestThemeCyclePreservesPlaybackImportsProfileAndSourceFreshness(t *testing.
 	}
 }
 
-func TestThemeCycleRestylesOpenWidgetsWithoutResettingInputOrScrolling(t *testing.T) {
+func TestThemeChangeRestylesOpenWidgetsWithoutResettingInputOrScrolling(t *testing.T) {
 	m := themeViewer(
 		t,
 		120,
@@ -223,9 +222,8 @@ func TestThemeCycleRestylesOpenWidgetsWithoutResettingInputOrScrolling(t *testin
 	m.ui.details.SetHeight(2)
 	m.ui.details.SetContent("one\ntwo\nthree\nfour")
 	m.ui.details.SetYOffset(1)
-	_, cmd := m.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	widgetStateReset := cmd != nil ||
-		m.ui.dialog != dialogCommands ||
+	m.applyTheme((m.settings.Theme + 1) % len(m.themes))
+	widgetStateReset := m.ui.dialog != dialogCommands ||
 		m.ui.search.Value() != "theme" ||
 		m.ui.search.Position() != 2 ||
 		!m.ui.search.Focused() ||
@@ -233,7 +231,7 @@ func TestThemeCycleRestylesOpenWidgetsWithoutResettingInputOrScrolling(t *testin
 		m.ui.page.YOffset() != 1 ||
 		m.ui.details.YOffset() != 1
 	if widgetStateReset {
-		t.Fatal("theme cycling reset an existing widget")
+		t.Fatal("theme change reset an existing widget")
 	}
 	theme := m.theme()
 	for name, style := range map[string]lipgloss.Style{
@@ -269,12 +267,22 @@ func TestThemePickerAndPaintingAcrossLayoutsAndASCIIMode(t *testing.T) {
 					size[1],
 					ascii,
 				)
-				m.openDialog(dialogThemes)
+				m.openDialog(dialogCommands)
+				m.ui.search.SetValue("theme")
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 				if m.ui.dialog != dialogThemes || m.ui.selected != m.settings.Theme {
 					t.Fatal("theme command did not open the current palette")
 				}
 				for i := range m.themes {
-					m.applyTheme(i)
+					for range len(m.themes) {
+						m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+					}
+					for range i {
+						m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+					}
+					if m.settings.Theme != i {
+						t.Fatal("highlighted palette was not previewed")
+					}
 					m.rebuild()
 					text := ansi.Strip(m.content)
 					layoutInvalid := !strings.Contains(text, m.themes[i].Name) ||
@@ -305,12 +313,129 @@ func TestThemePickerAndPaintingAcrossLayoutsAndASCIIMode(t *testing.T) {
 						t.Fatal("painting lost basemap roles, activity colour or plain geometry")
 					}
 				}
-				m.ui.selected = 1
+				m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 				m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 				if m.settings.Theme != 1 || m.ui.dialog != dialogNone {
 					t.Fatal("picker did not apply the selected palette")
 				}
 			})
+		}
+	}
+}
+
+func TestThemePickerPreviewsAndRestoresUnlessConfirmed(t *testing.T) {
+	m := themeViewer(
+		t,
+		120,
+		40,
+		false,
+	)
+	initial := m.settings.Theme
+	m.openDialog(dialogCommands)
+	m.ui.search.SetValue("theme")
+	m.ui.search.SetCursor(2)
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m.rebuild()
+	if m.settings.Theme != initial+1 || m.ui.selected != initial+1 {
+		t.Fatal("highlighted theme was not previewed")
+	}
+	if m.styles.dialogText.GetForeground() != lipgloss.Color(m.themes[initial+1].Text) {
+		t.Fatal("preview did not recolour the modal")
+	}
+	if !strings.Contains(ansi.Strip(m.content), m.themes[initial].Name+" (current)") {
+		t.Fatal("picker lost the current theme indicator")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	inputRestored := m.ui.search.Value() == "theme" && m.ui.search.Position() == 2 && m.ui.search.Focused()
+	if m.settings.Theme != initial || m.ui.dialog != dialogCommands || !inputRestored {
+		t.Fatal("cancelled theme selection changed the theme or lost the parent filter")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.settings.Theme != initial+1 || m.ui.dialog != dialogNone {
+		t.Fatal("confirmed theme selection was not applied")
+	}
+	confirmed := m.settings.Theme
+	m.openDialog(dialogCommands)
+	m.ui.search.SetValue("theme")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.ui.selected != confirmed {
+		t.Fatal("reopening the picker lost the confirmed theme")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if m.settings.Theme != confirmed-1 {
+		t.Fatal("reopened picker did not preview the new highlight")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.settings.Theme != confirmed {
+		t.Fatal("cancelling a later preview restored an obsolete theme")
+	}
+}
+
+func TestThemePreviewRestoredOnDialogDismissal(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		dismiss func(*viewer)
+		kind    dialogKind
+	}{
+		{name: "root escape", dismiss: func(m *viewer) { m.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) }},
+		{name: "close", dismiss: func(m *viewer) { m.closeDialog() }},
+		{name: "replacement", dismiss: func(m *viewer) { m.openDialog(dialogHelp) }, kind: dialogHelp},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := themeViewer(
+				t,
+				120,
+				40,
+				false,
+			)
+			m.applyTheme(0)
+			m.openDialog(dialogThemes)
+			m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+			if m.settings.Theme != 1 {
+				t.Fatal("theme preview did not start")
+			}
+			test.dismiss(m)
+			if m.settings.Theme != 0 || m.ui.dialog != test.kind {
+				t.Fatal("dismissed preview leaked into the next dialog")
+			}
+			if m.ui.search.Styles().Focused.Text.GetBackground() != lipgloss.Color(m.themes[0].Selected) {
+				t.Fatal("dismissed preview left widgets styled with the preview palette")
+			}
+		})
+	}
+}
+
+func TestThemeCyclingShortcutRemoved(t *testing.T) {
+	for name, kind := range map[string]dialogKind{
+		"map": dialogNone, "menu": dialogCommands, "themes": dialogThemes, "help": dialogHelp,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := themeViewer(
+				t,
+				120,
+				40,
+				false,
+			)
+			m.openDialog(kind)
+			initial, selected := m.settings.Theme, m.ui.selected
+			m.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+			if m.settings.Theme != initial || m.ui.dialog != kind || m.ui.selected != selected {
+				t.Fatal("removed Ctrl-T shortcut changed the theme or dialog")
+			}
+		})
+	}
+	for _, freeRoam := range []bool{false, true} {
+		for _, group := range (shortcutMap{freeRoam: freeRoam}).FullHelp() {
+			for _, binding := range group {
+				if slices.Contains(binding.Keys(), "ctrl+t") {
+					t.Fatal("help retained the removed theme shortcut")
+				}
+			}
 		}
 	}
 }

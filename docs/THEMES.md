@@ -7,8 +7,11 @@ source loading and geometry do not own presentation colours.
 ## Use and add a palette
 
 `--theme` accepts a built-in ID or a local TOML path. The default is `catppuccin`.
-Ctrl-T cycles the session's registry, even inside dialogs. Ctrl-P's **Cycle Theme**
-applies the next palette directly.
+Ctrl-P's **Colour theme** opens the session's palette list, with the current theme
+selected and marked. Arrows or `j`/`k` preview the highlighted palette across the
+viewer; Enter keeps it and returns to the map. Esc restores the theme active when
+the picker opened and returns to the command menu. Closing or replacing the
+picker without confirmation also restores that theme.
 
 For a custom palette, copy any file in [`go/themes/`](../go/themes/), change `id`
 and `name`, then edit colours and pass the file to the viewer:

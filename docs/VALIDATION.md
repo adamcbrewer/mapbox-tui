@@ -140,6 +140,9 @@ loading and invalid/incomplete palettes. Switching checks preserve loaded docume
 identity, playback, camera, source freshness and cached elevation geometry while
 restyling existing widgets. They cover open-dialog input/focus/scroll state and
 theme-picker/map painting at 120×40, 70×24, 70×18 and 30×12, including ASCII mode.
+Picker regressions verify live highlighting previews, confirmation, restoration
+on cancellation/closure/replacement, reopening after confirmation, return to the
+filtered menu and removal of the old cycling shortcut from input/help.
 
 Journey checks cover session-only generated item identity, isolation from imports,
 full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps
@@ -231,9 +234,9 @@ Ctrl-L list, visibility, selection, removal and clearing at wide/compact sizes.
 Two-activity checks also exercise ordered profiles, selected-only playback markers,
 pause, switching while playing and hiding the playing activity without losing the
 remaining profile. Colour captures are saved alongside the interaction results.
-Theme interactions cycle all three palettes at wide/compact sizes, recolour open
-help, credits, speed, workspace, file-picker and command dialogs, preserve filtered
-input and map text, and continue playback in ASCII mode.
+Theme interactions select all three palettes through the nested list at wide/compact
+sizes, check live preview/cancellation/filter restoration, recoloured dialogs, unchanged map text
+and continued playback in ASCII mode.
 Journey interactions use offline coordinates to exercise
 start/destination entry, Alt-M map-centre selection, intermediate waypoints,
 full reversal/undo, reorder/removal,
@@ -241,6 +244,15 @@ map fit, ASCII mode and reopening at 120×40, 70×24 and 70×18. They make no lo
 lookup requests; provider behaviour uses fake transports in Go tests.
 They also exercise the routing-mode picker, disconnected-account feedback,
 scrollable usage/limits and explicit Manual fallback without Directions requests.
+Nested-dialog regressions cover menu/filter/cursor restoration, repeated Esc through
+planner/mode/feedback contexts, cancelled location edits, stale clipboard rejection,
+setup actions reordered by credential discovery and theme changes while nested.
+They also preserve map focus when cancelling a location editor and prevent a
+cancelled queued login from launching its CLI process after returning to the menu.
+Terminal checks verify returning from speed selection to its filtered menu,
+login to the menu, and routing feedback to the travel-mode picker.
+Popup stacks reveal only dimmed top/left back-frame edges at 120×40, 70×18 and
+30×12, including different dialog sizes, theme changes and ASCII borders.
 Planner terminal checks keep the map visible beside the panel and exercise Tab
 map/planner focus, mouse zoom, clicking a waypoint row and placing its map point.
 They don't verify physical mouse forwarding or other
@@ -352,8 +364,9 @@ without moving the camera or changing loaded routes.
     status and refresh deadline. Pan during a request and check the newer viewport
     wins; keep the camera still through expiry and check the source refreshes.
      These live checks make billable requests; automated lifecycle tests use fakes.
-15. Use Ctrl-P's **Cycle Theme** to cycle through the palettes. With help, the
-    file picker or speed dialog open, press Ctrl-T and check all visible colours
-    update. Repeat in a narrow terminal and ASCII mode; playback should continue.
+15. Use Ctrl-P's **Colour theme** to preview highlighted palettes and Enter to keep one.
+    Check Esc restores the original theme and returns to the filtered menu, and open
+    help, the file picker or speed dialog to inspect the updated colours.
+    Repeat in a narrow terminal and ASCII mode; playback should continue.
     Start with `--theme catppuccin-latte`, then try a custom TOML file with a unique
     ID. Invalid palettes should fail before entering the viewer.

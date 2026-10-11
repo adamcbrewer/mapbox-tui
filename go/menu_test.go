@@ -11,7 +11,7 @@ func TestMainMenuLabelsOrderAndToggleTicks(t *testing.T) {
 	m := authTestViewer(t)
 	m.provider.token, m.authVerified = "pk.checked", true
 	wanted := map[string]string{
-		"theme": "Cycle Theme", "traffic": "Toggle traffic",
+		"theme": "Colour theme", "traffic": "Toggle traffic",
 		"motion": "Toggle animations ✓", "ascii": "Toggle ascii",
 	}
 	commands := m.commands()
@@ -27,6 +27,9 @@ func TestMainMenuLabelsOrderAndToggleTicks(t *testing.T) {
 		}
 		if strings.Contains(command.label(), "[") {
 			t.Fatal("menu retained a checkbox prefix", command.label())
+		}
+		if command.action == "theme" && command.shortcut != "" {
+			t.Fatal("theme command retained a keyboard shortcut")
 		}
 	}
 	for _, query := range []string{"ascii", "animations"} {
@@ -46,23 +49,27 @@ func TestMainMenuLabelsOrderAndToggleTicks(t *testing.T) {
 	initial := m.settings.Theme
 	m.openDialog(dialogCommands)
 	m.runCommand("theme")
-	if m.settings.Theme != (initial+1)%len(m.themes) || m.ui.dialog != dialogNone {
-		t.Fatal("Cycle Theme did not cycle the palette")
+	if m.settings.Theme != initial || m.ui.dialog != dialogThemes || m.ui.selected != initial {
+		t.Fatal("Colour theme did not open the picker at the current palette")
 	}
 }
 
 func TestMapCreditsReturnsToMapboxSettings(t *testing.T) {
 	m := authTestViewer(t)
 	m.openDialog(dialogMapbox)
+	m.authBusy = true
 	for i, action := range m.mapboxActions() {
 		if action.action == "credits" {
 			m.ui.selected = i
 		}
 	}
 	m.updateMapboxDialog("enter")
-	if m.ui.dialog != dialogCredits || m.ui.creditsParent != dialogMapbox {
+	if m.ui.dialog != dialogCredits {
 		t.Fatal("Mapbox settings did not open its credits")
 	}
+	m.acceptCredentials(credentialResult{credential: renderingCredential{
+		source: "disabled", dependency: mapboxDependencyStatus{State: "ready"},
+	}})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.ui.dialog != dialogMapbox || m.mapboxActions()[m.ui.selected].action != "credits" {
 		t.Fatal("credits did not return to the selected settings action")

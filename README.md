@@ -34,6 +34,14 @@ token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
 file picker, Ctrl-L to manage loaded files and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
 
+Esc returns to the previous dialog when you open a nested menu or help page,
+preserving its selection and command filter. At the top level, Esc closes the
+dialog and returns to the map. Nested dialogs show **esc back**; completing an
+action such as opening a file or applying playback speed returns straight to the map.
+Nested popups show dimmed back frames, each one cell above and left of the active
+dialog. Only their top/left edges peek out; different dialog sizes don't expose
+old content at the bottom-right. The stack stays within the terminal bounds.
+
 ### Build, install and package
 
 `mapbox-tui` is a standalone executable. Builds, installations and release archives
@@ -453,7 +461,7 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 | Manage loaded files/items | Ctrl-L | Wheel scrolls the dialog |
 | Journey planner | Ctrl-G | |
 | Command palette / help | Ctrl-P / `?` | |
-| Cycle colour theme | Ctrl-T (also works in dialogs) | |
+| Choose colour theme | Ctrl-P → Colour theme | |
 | Pan | Arrows or `h j k l` | Left-drag |
 | Zoom | `+` / `-` | Wheel, anchored to pointer |
 | Zoom at 2× speed | | Ctrl / Cmd + wheel |
@@ -496,8 +504,10 @@ Three terminal palettes are bundled, based on Omarchy's theme catalogue:
 - **Catppuccin Latte** (`catppuccin-latte`): light.
 - **Tokyo Night** (`tokyo-night`): dark.
 
-Press **Ctrl-T** to cycle themes, including while a dialog is open, or use Ctrl-P
-and **Cycle Theme** to apply the next palette.
+Use **Ctrl-P → Colour theme** to open the theme list. The current palette is
+marked; arrows or `j`/`k` preview each highlighted palette across the viewer.
+Enter keeps the preview and returns to the map. Esc restores the theme that was
+active when the picker opened and returns to the command menu.
 The map, elevation chart, activity colours, dialogs and playback controls update
 together without re-importing files, fetching tiles or resetting playback.
 Each activity keeps its palette slot; the slot's colour changes with the theme.

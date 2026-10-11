@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -26,6 +28,53 @@ func authTestViewer(t *testing.T) *viewer {
 	t.Cleanup(m.cancelAuth)
 	t.Cleanup(m.sources.close)
 	return m
+}
+
+type loginExecTestModel struct {
+	command tea.Cmd
+	err     error
+}
+
+func (m *loginExecTestModel) Init() tea.Cmd  { return m.command }
+func (m *loginExecTestModel) View() tea.View { return tea.NewView("") }
+func (m *loginExecTestModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if done, ok := msg.(mapboxLoginDone); ok {
+		m.err = done.err
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func TestViewerCancelledQueuedLoginDoesNotLaunchCLI(t *testing.T) {
+	fakeMapbox(t, "good")
+	m := authTestViewer(t)
+	m.openDialog(dialogCommands)
+	m.runCommand("auth")
+	ready := m.beginMapboxLogin()().(mapboxLoginReady)
+	if ready.err != nil {
+		t.Fatal(ready.err)
+	}
+	_, command := m.Update(ready)
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.ui.dialog != dialogCommands || m.authBusy {
+		t.Fatal("Escape did not cancel login preparation and return to the menu")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	execution := &loginExecTestModel{command: command}
+	_, err := tea.NewProgram(execution,
+		tea.WithContext(ctx), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer(),
+	).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failure *mapboxFailure
+	if !errors.As(execution.err, &failure) || failure.code != "cancelled" {
+		t.Fatal("queued login did not inherit authentication cancellation", execution.err)
+	}
+	if _, err := os.Stat(os.Getenv("MAPBOX_TUI_TEST_LOG")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("cancelled queued login launched the CLI", err)
+	}
 }
 
 func TestViewerAuthReplacementPreservesWorkspaceCameraAndRejectsOldWork(t *testing.T) {
@@ -74,6 +123,39 @@ func TestViewerAuthReplacementPreservesWorkspaceCameraAndRejectsOldWork(t *testi
 	m.acceptCredentials(credentialResult{id: 6, credential: renderingCredential{token: "pk.obsolete"}})
 	if m.provider.token != "pk.new" {
 		t.Fatal("late credential discovery replaced the selected token")
+	}
+}
+
+func TestViewerLoginResultPreservesNestedSetupContext(t *testing.T) {
+	for name, kind := range map[string]dialogKind{
+		"installation help": dialogMapboxHelp, "credits": dialogCredits,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := authTestViewer(t)
+			m.openDialog(dialogCommands)
+			m.ui.search.SetValue("Mapbox")
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			key := tea.KeyPressMsg{Code: tea.KeyEnter}
+			if kind == dialogCredits {
+				key = tea.KeyPressMsg{Code: 'v', Text: "v"}
+			}
+			m.Update(key)
+			m.Update(credentialResult{
+				id: m.authID, afterLogin: true,
+				credential: renderingCredential{source: "disabled", dependency: mapboxDependencyStatus{State: "ready"}},
+			})
+			if m.ui.dialog != kind || !strings.Contains(m.authMessage, "Login saved") {
+				t.Fatal("login result discarded the nested setup dialog")
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if m.ui.dialog != dialogMapbox {
+				t.Fatal("nested setup dialog did not return to its parent")
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if m.ui.dialog != dialogCommands || m.ui.search.Value() != "Mapbox" {
+				t.Fatal("login result discarded the filtered command menu")
+			}
+		})
 	}
 }
 

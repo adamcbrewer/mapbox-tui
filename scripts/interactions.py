@@ -375,6 +375,10 @@ def dialogs(binary):
         tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Playback speed multiplier" in s)
         save_svg(folder / f"{binary.name}-speed-120x40.svg", 120, 40)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Commands" in s and "› speed" in s and "Playback speed multiplier" not in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Playback speed multiplier" in s and "esc back" in s)
         send("jj")
         tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Paused 20x" in s and "Playback speed multiplier" not in s)
@@ -458,44 +462,59 @@ def theme_switching(binary, width, height):
         wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
         baseline = settled()
         original_colors = capture(colors=True)
-        send("\x10")
-        wait_for(lambda s: "Commands" in s)
-        send("theme")
-        wait_for(lambda s: "Cycle Theme" in s)
-        tmux("send-keys", "-t", "poc:0.0", "Enter")
-        wait_for(lambda s: "Commands" not in s and capture(colors=True) != original_colors)
-        for i, (name, background, foreground) in enumerate((("Tokyo Night", "#1a1b26", "#a9b1d6"), ("Catppuccin Latte", "#eff1f5", "#4c4f69"), ("Catppuccin", "#1e1e2e", "#cdd6f4"))):
-            if i > 0:
-                colors = capture(colors=True)
-                send("\x14")
-                wait_for(lambda s: capture(colors=True) != colors)
-            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{name.lower().replace(' ', '-')}-{width}x{height}.svg", width, height, background, foreground)
-        assert settled() == baseline, "theme cycling changed geometry, selection or playback"
+        names = ("Catppuccin Latte", "Catppuccin", "Tokyo Night")
+
+        def open_picker():
+            send("\x10")
+            wait_for(lambda s: "Commands" in s)
+            send("theme")
+            wait_for(lambda s: "Colour theme" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            return wait_for(lambda s: "Colour theme" in s and "(current)" in s and "esc back" in s)
+
+        def select_theme(index):
+            open_picker()
+            tmux("send-keys", "-t", "poc:0.0", *(["Up"] * 3 + ["Down"] * index))
+            wait_for(lambda s: f"> {names[index]}" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            wait_for(lambda s: "Colour theme" not in s and "Commands" not in s)
+
+        screen = open_picker()
+        assert all(name in screen for name in names), "theme list omitted a built-in palette"
+        assert screen.count("╭") == 2 and screen.count("╯") == 1, "theme picker did not use the clipped modal stack"
+        save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-picker-{width}x{height}.svg", width, height)
+        picker_colors = capture(colors=True)
+        tmux("send-keys", "-t", "poc:0.0", "Up")
+        wait_for(lambda s: "> Catppuccin Latte" in s and "Catppuccin (current)" in s and capture(colors=True) != picker_colors)
+        save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-preview-{width}x{height}.svg", width, height, "#eff1f5", "#4c4f69")
+        before = settled()
+        colors = capture(colors=True)
         send("\x14")
+        assert settled() == before and capture(colors=True) == colors, "removed theme shortcut still changed the picker"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Commands" in s and "› theme" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Commands" not in s)
+        assert settled() == baseline and capture(colors=True) == original_colors, "cancelled theme selection applied a palette"
+        for index, name, background, foreground in ((2, "Tokyo Night", "#1a1b26", "#a9b1d6"), (0, "Catppuccin Latte", "#eff1f5", "#4c4f69"), (1, "Catppuccin", "#1e1e2e", "#cdd6f4")):
+            select_theme(index)
+            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{name.lower().replace(' ', '-')}-{width}x{height}.svg", width, height, background, foreground)
+        assert settled() == baseline, "theme selection changed geometry, selection or playback"
+        select_theme(0)
         wait_for(lambda s: capture(colors=True) != original_colors)
         assert settled() == baseline, "palette change affected map text or layout"
         for key, label in (("?", "Keyboard shortcuts"), ("v", "Map credits"), ("p", "Playback speed multiplier"), ("\x0c", "Loaded files"), ("\x0f", "Open track file"), ("\x10", "Commands")):
             send(key)
             wait_for(lambda s: label in s)
-            if label == "Commands":
-                send("theme")
-                wait_for(lambda s: "Cycle Theme" in s)
-            before = settled()
-            colors = capture(colors=True)
-            send("\x14")
-            wait_for(lambda s: capture(colors=True) != colors)
-            assert settled() == before, f"theme cycling reset the open {label} dialog"
             tmux("send-keys", "-t", "poc:0.0", "Escape")
             wait_for(lambda s: label not in s)
         send("a ")
         wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
-        send("p\x14")
-        wait_for(lambda s: "Playback speed multiplier" in s and "Playing 1x" in s)
-        tmux("send-keys", "-t", "poc:0.0", "Escape")
-        wait_for(lambda s: "Playback speed multiplier" not in s and "Playing 1x" in s)
+        select_theme(2)
+        wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
         send(" q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name} {width}×{height}: three themes, modal/widget recolouring, unchanged geometry, ASCII playback and terminal restoration passed")
+        print(f"{binary.name} {width}×{height}: live theme preview, three palettes, confirm/cancel restoration, removed shortcut, recoloured dialogs, unchanged geometry, ASCII playback and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
@@ -666,8 +685,8 @@ def journey_controls(binary, width, height):
         tmux("send-keys", "-t", "poc:0.0", "End")
         wait_for(lambda s: "Routes stay in memory" in s)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
-        wait_for(lambda s: "Journey Planner" in s)
-        tmux("send-keys", "-t", "poc:0.0", "C-b", "Home", "Enter")
+        wait_for(lambda s: "Travel mode" in s and "Walking" in s and "Mapbox not connected" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
         wait_for(lambda s: "Journey Planner" in s and "Travel mode: Manual" in s)
         screen = settled().splitlines()
         row = next(index for index, line in enumerate(screen) if "1 Waypoint:" in line)
@@ -731,7 +750,9 @@ def auth_setup(binary):
                 wait_for(lambda s: "Mapbox setup" in s and marker.exists())
                 assert json.loads(marker.read_text()) == [True, True, True], "login did not inherit terminal streams"
                 send("\x1b")
-                wait_for(lambda s: "Mapbox setup" not in s and "Point 1" in s)
+                wait_for(lambda s: "Commands" in s and "Mapbox account" in s and "Mapbox setup" not in s)
+                send("\x1b")
+                wait_for(lambda s: "Commands" not in s and "Point 1" in s)
                 send("\x0c")
                 wait_for(lambda s: "Loaded files" in s and (width == 30 or "example.gpx" in s))
                 send("\x1b")
@@ -825,6 +846,45 @@ def traffic_menu(binary):
     print(f"{binary.name}: main-menu traffic entry, greyed-out unverified access, disabled action, ASCII, compact layouts and preserved imports passed")
 
 
+def nested_modals(binary):
+    with tempfile.TemporaryDirectory() as folder:
+        for width, height in ((120, 40), (70, 18), (30, 12)):
+            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={folder}/missing",
+                                  "TERM=xterm-256color", "COLORTERM=truecolor", "python3",
+                                  str(ROOT / "scripts/terminal_runner.py"), str(binary),
+                                  str(ROOT / "fixtures/example.gpx")])
+            tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+            try:
+                wait_for(lambda s: "Point 1" in s)
+                send("\x10Mapbox\r")
+                wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                send("\r")
+                screen = wait_for(lambda s: "Mapbox installation" in s and "esc back" in s)
+                assert screen.count("╭") == 3 and screen.count("╯") == 1, "stack leaked old modal corners"
+                save_svg(ROOT / "reports/generated" / f"{binary.name}-modal-stack-{width}x{height}.svg", width, height)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Mapbox setup" in s and "Mapbox installation" not in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Commands" in s and "› Mapbox" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Commands" not in s)
+                send("a\x10Mapbox\r")
+                wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                send("\r")
+                wait_for(lambda s: "Mapbox installation" in s and "esc back" in s and "╭" not in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Mapbox setup" in s and "Mapbox installation" not in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Commands" in s and "› Mapbox" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Commands" not in s)
+                send("q")
+                wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+            finally:
+                tmux("kill-session", "-t", "poc", check=False)
+    print(f"{binary.name}: clipped nested modal frames, differing sizes, ASCII, filtered-menu return and compact layouts passed")
+
+
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
@@ -845,6 +905,7 @@ if __name__ == "__main__":
             else:
                 auth_setup(ROOT / "bin" / name)
                 traffic_menu(ROOT / "bin" / name)
+                nested_modals(ROOT / "bin" / name)
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24)):

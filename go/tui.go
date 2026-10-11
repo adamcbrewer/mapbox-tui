@@ -269,8 +269,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.authCLI = mapboxDependencyStatus{State: "ready", Path: v.cli.path}
-		m.closeDialog()
-		command := &viewerMapboxLogin{ctx: m.ctx, cli: v.cli}
+		command := &viewerMapboxLogin{ctx: v.ctx, cli: v.cli}
 		return m, tea.Exec(command, func(err error) tea.Msg { return mapboxLoginDone{id: v.id, err: err} })
 	case mapboxLoginDone:
 		if v.id != m.authID {
@@ -279,8 +278,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.authBusy = false
 		m.lastTick, m.lastMotionTick = time.Time{}, time.Now()
 		if v.err != nil {
-			m.openDialog(dialogMapbox)
 			m.authMessage = v.err.Error()
+			m.dirty = true
 			return m, nil
 		}
 		return m, m.discoverCredentials(true, false)
@@ -421,10 +420,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.workspace.cancelJourneyRoutes()
 			m.cancelAuth()
 			return m, tea.Quit
-		}
-		if key == "ctrl+t" {
-			m.applyTheme((m.settings.Theme + 1) % len(m.themes))
-			return m, nil
 		}
 		if m.ui.dialog == dialogJourney && key == "tab" {
 			m.planner.mapFocused = !m.planner.mapFocused

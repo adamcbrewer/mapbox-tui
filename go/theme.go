@@ -58,6 +58,12 @@ func (m *viewer) theme() *presentationTheme {
 	return &m.themes[m.settings.Theme]
 }
 
+func (m *viewer) restoreThemePreview() {
+	if m.ui.dialog == dialogThemes && m.settings.Theme != m.ui.themeBefore {
+		m.applyTheme(m.ui.themeBefore)
+	}
+}
+
 func (m *viewer) applyTheme(index int) {
 	m.settings.Theme = index
 	if m.ui.dialog == dialogThemes {

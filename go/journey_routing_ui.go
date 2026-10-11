@@ -92,7 +92,7 @@ func (m *viewer) openJourneyRouting() tea.Cmd {
 	if err != nil {
 		return nil
 	}
-	cmd := m.openDialog(dialogJourneyRouting)
+	cmd := m.pushDialog(dialogJourneyRouting)
 	m.ui.selected = max(0, slices.Index(journeyModes, j.Mode))
 	return cmd
 }
@@ -101,7 +101,7 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 	if m.ui.dialog == dialogJourneyRoutingHelp {
 		switch pressed {
 		case "esc":
-			return m.openDialog(dialogJourney)
+			return m.backDialog()
 		case "home":
 			m.ui.page.GotoTop()
 			return nil
@@ -116,7 +116,7 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 	last := len(journeyModes)
 	switch pressed {
 	case "esc":
-		return m.openDialog(dialogJourney)
+		return m.backDialog()
 	case "up", "k":
 		m.ui.selected = max(0, m.ui.selected-1)
 	case "down", "j":
@@ -126,10 +126,10 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 	case "end":
 		m.ui.selected = last
 	case "ctrl+u":
-		return m.openDialog(dialogJourneyRoutingHelp)
+		return m.pushDialog(dialogJourneyRoutingHelp)
 	case "enter":
 		if m.ui.selected == last {
-			return m.openDialog(dialogJourneyRoutingHelp)
+			return m.pushDialog(dialogJourneyRoutingHelp)
 		}
 		mode := journeyModes[m.ui.selected]
 		if mode != journeyManual && m.directions.token == "" {
@@ -146,7 +146,8 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 			m.ui.notice = err.Error()
 			return nil
 		}
-		m.openDialog(dialogJourney)
+		m.backDialog()
+		m.ui.notice = ""
 		m.selectionChanged()
 		if revision == j.revision {
 			return nil
@@ -185,7 +186,7 @@ func (m *viewer) journeyRoutingDialogContent(width, height int) (string, string,
 		m.ui.page.SetWidth(width)
 		m.ui.page.SetHeight(max(1, height))
 		m.ui.page.SetContent(strings.Join(lines, "\n\n"))
-		return "Routing feedback / usage", m.ui.page.View(), "up/down scroll / esc planner"
+		return "Routing feedback / usage", m.ui.page.View(), "up/down scroll / esc close"
 	}
 	labels := []string{
 		"Manual · offline", "Walking · Mapbox", "Cycling · Mapbox", "Driving · Mapbox", "Usage, limits and feedback",

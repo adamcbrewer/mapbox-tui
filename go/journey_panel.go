@@ -67,6 +67,7 @@ func (m *viewer) journeyPanel() string {
 			hints = "arrows pan / tab planner"
 		}
 	}
+	hints = m.dialogHints(hints)
 	rows := []string{m.styles.dialogHeading.Render(pad(title, innerWidth))}
 	if m.ui.notice != "" {
 		rows = append(rows, m.styles.dialogMuted.Render(pad(m.ui.notice, innerWidth)))
