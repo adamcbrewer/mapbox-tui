@@ -252,7 +252,7 @@ func TestViewerDependencyRecheckReusesSavedLogin(t *testing.T) {
 	if m.provider.Kind != "mapbox" || m.provider.token != "pk.synthetic-login-token" || m.ui.dialog != dialogMapbox {
 		t.Fatal("dependency recheck failed to reuse login in the current viewer")
 	}
-	calls, err := os.ReadFile(os.Getenv("SHOE_MAPBOX_TEST_LOG"))
+	calls, err := os.ReadFile(os.Getenv("MAPBOX_TUI_TEST_LOG"))
 	if err != nil || strings.Contains(string(calls), `"auth","login"`) {
 		t.Fatal("dependency recheck started browser login", err)
 	}

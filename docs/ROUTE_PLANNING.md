@@ -1,8 +1,8 @@
 # Route planning
 
 Implementation notes and provider research for
-[issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5) and
-[issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+[issue #5](https://github.com/adamcbrewer/mapbox-tui/issues/5) and
+[issue #12](https://github.com/adamcbrewer/mapbox-tui/issues/12).
 Research checked against provider documentation on 2026-10-09. The confirmed
 journey planner and walking/cycling/driving routing are implemented; other API capabilities below are research
 findings, not additional implemented features.
@@ -37,7 +37,7 @@ must be offered as a user choice, with its setup and cost explained.
   narrow terminals and ASCII mode.
 
 Favorites and persistent/offline geolocation caching are tracked together in
-[issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+[issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
 Do not introduce automatic destination history or a persistent lookup cache
 in this slice. Area/category research and turning research into a trip are excluded
 from this feature.
@@ -68,7 +68,7 @@ Routed geometry and estimated distance/time use Mapbox Directions; Matrix is not
 
 ### Directions: implemented scope
 
-Tracked in [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
+Tracked in [issue #12](https://github.com/adamcbrewer/mapbox-tui/issues/12).
 
 Confirmed on 2026-10-09: walking, cycling and standard driving; recalculate after
 committed edits/reversal/undo, with explicit recalculate/retry; reject provider-limit
@@ -145,7 +145,7 @@ waypoints. Search should remain an independent option.
 
 ### Elevation: useful for outdoor plans, another data request
 
-Tracked in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+Tracked in [issue #13](https://github.com/adamcbrewer/mapbox-tui/issues/13).
 
 Directions does not provide a general elevation profile. The
 [elevation guide](https://docs.mapbox.com/data/tilesets/guides/access-elevation-data/)

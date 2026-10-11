@@ -14,7 +14,7 @@ For a custom palette, copy any file in [`go/themes/`](../go/themes/), change `id
 and `name`, then edit colours and pass the file to the viewer:
 
 ```sh
-./bin/shoe fixtures/example.gpx --theme "/path/to/my-theme.toml"
+./bin/mapbox-tui fixtures/example.gpx --theme "/path/to/my-theme.toml"
 ```
 
 The custom palette joins the three built-ins for that viewer session. It is read

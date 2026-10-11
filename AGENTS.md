@@ -1,6 +1,6 @@
-# Shell on Earth
+# Mapbox TUI
 
-Go/Bubble Tea terminal map viewer (`shoe`) with GPX/FIT/TCX/KML imports, optional
+Go/Bubble Tea terminal map viewer (`mapbox-tui`) with GPX/FIT/TCX/KML imports, optional
 Mapbox basemaps, a CLI and stdio MCP tools.
 
 Keep workspace lifecycle and scene rules shared across viewer, CLI and MCP.

@@ -94,7 +94,7 @@ Multi-activity presentation uses stable per-item colours and consecutive elevati
 sections in file-load/item order, with a summed distance axis and activity-local
 playback. Selection highlights an activity without changing that order. Explicit
 reordering and journey-wide playback are deferred to
-[issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3); they do not change
+[issue #3](https://github.com/adamcbrewer/mapbox-tui/issues/3); they do not change
 the next implementation step.
 
 ## Direction
@@ -250,7 +250,7 @@ all visible presentation consistently.
 
 ### Activity reordering (deferred)
 
-Tracked in [issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3).
+Tracked in [issue #3](https://github.com/adamcbrewer/mapbox-tui/issues/3).
 Keep this separate from the current presentation fixes and theme slice.
 
 - [ ] Decide whether users reorder whole files, contained activities or activities
@@ -264,7 +264,7 @@ Keep this separate from the current presentation fixes and theme slice.
 
 ### Route plotting
 
-Tracked in [issue #5](https://github.com/adamcbrewer/shell-on-earth/issues/5).
+Tracked in [issue #5](https://github.com/adamcbrewer/mapbox-tui/issues/5).
 
 The account-free baseline is manual plotting. Use Google Maps as the interaction
 reference for desktop planning/research, including place search and POIs rather
@@ -273,7 +273,7 @@ user options. This branch delivers A-to-B journey planning with typed locations
 and editable ordered waypoints. Start, destination and waypoints share the same
 search/manual-entry flow; reversal reverses the whole waypoint order.
 Favorites and persistent/offline geolocation caching
-are separate future work in [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+are separate future work in [issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
 Area research and research-to-trip actions are excluded. Prefer
 the existing Mapbox account over another paid service unless there is a substantial
 benefit. [Route-planning research and proposed scope](ROUTE_PLANNING.md) records
@@ -287,18 +287,18 @@ Search Box and the first slice's controls are confirmed and verified.
   sharing geometry and workspace display.
 - [x] Define edit/undo behaviour and recompute or invalidate derived geometry,
   profiles and playback data together.
-- Road/path-following for [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12)
+- Road/path-following for [issue #12](https://github.com/adamcbrewer/mapbox-tui/issues/12)
   uses explicit Mapbox walking/cycling/driving. It preserves stop intent separately
   from snapped locations and routes, rejects provider limits with feedback, cancels
   obsolete requests and invalidates estimates on edit/undo. Visual Streets tiles
   are not a routing graph. Estimated route elevation is
-  separate in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+  separate in [issue #13](https://github.com/adamcbrewer/mapbox-tui/issues/13).
 - [x] Add manually planned routes to the workspace without inventing recorded
   timestamps, elevation or journey-time estimates.
 
 ### Traffic
 
-Tracked in [issue #4](https://github.com/adamcbrewer/shell-on-earth/issues/4).
+Tracked in [issue #4](https://github.com/adamcbrewer/mapbox-tui/issues/4).
 
 - [x] Use Mapbox Traffic v1 congestion and road closures for this slice. Raw speed
   data, route recolouring and detailed incident feeds are separate.
@@ -317,7 +317,7 @@ access remains unverified. [Provider notes](PROVIDERS.md#traffic-v1-overlay) and
 ### Other sources
 
 Dataset/use-case discovery is tracked in
-[issue #6](https://github.com/adamcbrewer/shell-on-earth/issues/6).
+[issue #6](https://github.com/adamcbrewer/mapbox-tui/issues/6).
 
 - [ ] Pick one concrete dataset/display use case before adding more abstractions.
 - [ ] Add only the geometry, properties, freshness and inspection behaviour that

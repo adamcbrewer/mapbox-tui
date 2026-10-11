@@ -13,7 +13,7 @@ ENV = {**os.environ, "MAPBOX_ACCESS_TOKEN": ""}
 
 def main():
     results = []
-    for name in ("shoe",):
+    for name in ("mapbox-tui",):
         binary = ROOT / "bin" / name
         for fixture in ("example.gpx", "dense-10000.gpx", "dense-100000.gpx"):
             for w, h in ((120, 40), (160, 50)):

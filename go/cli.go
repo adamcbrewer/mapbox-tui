@@ -105,7 +105,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	if command.Name == "mcp" {
 		if len(paths) != 0 {
-			return command, fmt.Errorf("mcp takes no file argument; see 'shoe mcp --help'")
+			return command, fmt.Errorf("mcp takes no file argument; see 'mapbox-tui mcp --help'")
 		}
 		return command, nil
 	}
@@ -119,7 +119,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		command.Path = paths[0]
 	}
 	if command.Path == "" && !workspaceCommand {
-		return command, fmt.Errorf("%s requires a track file; see 'shoe %s --help'", command.Name, command.Name)
+		return command, fmt.Errorf("%s requires a track file; see 'mapbox-tui %s --help'", command.Name, command.Name)
 	}
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -198,8 +198,8 @@ func parseOptions(fs *flag.FlagSet, argv []string) ([]string, error) {
 func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	switch name {
 	case "open":
-		fmt.Fprintln(output, "Usage: shoe [FILE...] [OPTIONS]\n"+
-			"       shoe COMMAND [FILE] [OPTIONS]\n\n"+
+		fmt.Fprintln(output, "Usage: mapbox-tui [FILE...] [OPTIONS]\n"+
+			"       mapbox-tui COMMAND [FILE] [OPTIONS]\n\n"+
 			"Browse maps and load GPX, FIT, TCX or KML files into a workspace.\n"+
 			"Ctrl-L lists loaded files and their routes. Opening a file adds it; reopening\n"+
 			"a loaded path selects the existing import. 'open' is an optional alias.\n"+
@@ -212,21 +212,27 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 			"  auth     Mapbox login, logout and status (optional Mapbox CLI)\n"+
 			"  bench    Benchmark synthetic map rendering")
 	case "render":
-		fmt.Fprintln(output, "Usage: shoe render [FILE...] [OPTIONS]\n\n"+
+		fmt.Fprintln(output, "Usage: mapbox-tui render [FILE...] [OPTIONS]\n\n"+
 			"Print a static map with GPX, FIT, TCX or KML overlays. Multiple files fit all\n"+
 			"visible items. Use --json for scene metadata. Item/point selectors require one\n"+
 			"file. Mapbox needs your account's public token, supplied through a saved CLI\n"+
-			"login or MAPBOX_ACCESS_TOKEN. Offline: --no-provider. Setup: shoe auth --help.")
+			"login or MAPBOX_ACCESS_TOKEN. Offline: --no-provider. Setup: mapbox-tui auth --help.")
 	case "summary":
-		fmt.Fprintln(output, "Usage: shoe summary FILE [OPTIONS]\n\n"+
+		fmt.Fprintln(output, "Usage: mapbox-tui summary FILE [OPTIONS]\n\n"+
 			"Print GPX, FIT, TCX or KML statistics as JSON. Use --items to list item IDs,\n"+
 			"or --item-id to summarise one item.")
 	case "inspect":
-		fmt.Fprintln(output, "Usage: shoe inspect FILE [OPTIONS]\n\nPrint a recorded point from a GPX, FIT, TCX or KML file as JSON.\nSelect by index or distance, not both. Defaults to point index 0.")
+		fmt.Fprintln(output, "Usage: mapbox-tui inspect FILE [OPTIONS]\n\n"+
+			"Print a recorded point from a GPX, FIT, TCX or KML file as JSON.\n"+
+			"Select by index or distance, not both. Defaults to point index 0.")
 	case "bench":
-		fmt.Fprintln(output, "Usage: shoe bench FILE [OPTIONS]\n\nBenchmark GPX, FIT, TCX or KML parsing and synthetic map rendering.\nOutput timings as JSON.")
+		fmt.Fprintln(output, "Usage: mapbox-tui bench FILE [OPTIONS]\n\n"+
+			"Benchmark GPX, FIT, TCX or KML parsing and synthetic map rendering.\nOutput timings as JSON.")
 	case "mcp":
-		fmt.Fprintln(output, "Usage: shoe mcp\n\nRun the local MCP server over stdin/stdout. Takes no file argument.\nLocal imports/tools need no account. Mapbox renders use an environment token\nor saved optional-CLI login; browser login never runs here. Setup: shoe auth --help.")
+		fmt.Fprintln(output, "Usage: mapbox-tui mcp\n\n"+
+			"Run the local MCP server over stdin/stdout. Takes no file argument.\n"+
+			"Local imports/tools need no account. Mapbox renders use an environment token\n"+
+			"or saved optional-CLI login; browser login never runs here. Setup: mapbox-tui auth --help.")
 	}
 	fmt.Fprintln(output, "\nOptions:\n  -h, --help\n        show this help")
 	helpFlags := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -243,7 +249,13 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 		fmt.Fprintln(output, "\nOptions may appear before or after FILE. Use -- before filenames that start\nwith '-' or match a command name.")
 	}
 	if name == "open" {
-		fmt.Fprintln(output, "\nExamples:\n  shoe\n  shoe fixtures/example.gpx\n  shoe --zoom 13 fixtures/example.gpx\n\nOffline files/manual journeys need no account. Mapbox maps/search require your\naccount's public token. 'shoe auth login' uses the optional Mapbox CLI to sign\nin or create an account; login credentials live in ~/.mapbox (MAPBOX_CONFIG_DIR\noverrides it). MAPBOX_ACCESS_TOKEN overrides login; empty disables discovery.\nUse 'shoe auth --help' for setup or 'shoe COMMAND --help' for specific options.")
+		fmt.Fprintln(output, "\nExamples:\n  mapbox-tui\n  mapbox-tui fixtures/example.gpx\n"+
+			"  mapbox-tui --zoom 13 fixtures/example.gpx\n\n"+
+			"Offline files/manual journeys need no account. Mapbox maps/search require your\n"+
+			"account's public token. 'mapbox-tui auth login' uses the optional Mapbox CLI to sign\n"+
+			"in or create an account; login credentials live in ~/.mapbox (MAPBOX_CONFIG_DIR\n"+
+			"overrides it). MAPBOX_ACCESS_TOKEN overrides login; empty disables discovery.\n"+
+			"Use 'mapbox-tui auth --help' for setup or 'mapbox-tui COMMAND --help' for specific options.")
 	}
 }
 
@@ -257,7 +269,7 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 	switch command.AuthAction {
 	case "login", "logout", "status":
 	default:
-		return command, fmt.Errorf("choose 'shoe auth login', 'logout' or 'status'; see 'shoe auth --help'")
+		return command, fmt.Errorf("choose 'mapbox-tui auth login', 'logout' or 'status'; see 'mapbox-tui auth --help'")
 	}
 	fs := flag.NewFlagSet("auth "+command.AuthAction, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -271,13 +283,14 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 		return command, err
 	}
 	if err != nil || len(paths) != 0 {
-		return command, fmt.Errorf("invalid auth arguments; see 'shoe auth --help'")
+		return command, fmt.Errorf("invalid auth arguments; see 'mapbox-tui auth --help'")
 	}
 	return command, nil
 }
 
 func printAuthHelp(output io.Writer) {
-	fmt.Fprintln(output, "Usage: shoe auth login\n       shoe auth logout\n       shoe auth status [--json] [--usage]\n\n"+
+	fmt.Fprintln(output, "Usage: mapbox-tui auth login\n       mapbox-tui auth logout\n"+
+		"       mapbox-tui auth status [--json] [--usage]\n\n"+
 		"Login opens Mapbox's browser flow to sign in or create an account. The optional\n"+
 		"Mapbox CLI owns OAuth, saved credentials and refresh. Credentials live in\n"+
 		"~/.mapbox/credentials.json for the shared default profile; MAPBOX_CONFIG_DIR\n"+
@@ -285,14 +298,14 @@ func printAuthHelp(output io.Writer) {
 		"Logout removes that shared login; it doesn't revoke public or environment tokens.\n\n"+
 		"Offline imports, measurements, playback and manual journeys need no account.\n"+
 		"Mapbox maps and place search need your account's public token. A configured\n"+
-		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise shoe retrieves a public\n"+
+		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise mapbox-tui retrieves a public\n"+
 		"token through the saved login. An empty variable disables automatic discovery.\n\n"+
 		"Install the optional Mapbox CLI (tested with v0.3.0): "+mapboxInstallURL+"\n"+
-		"shoe finds mapbox on PATH; SHOE_MAPBOX_CLI can select its executable explicitly.\n"+
+		"mapbox-tui finds mapbox on PATH; MAPBOX_TUI_CLI can select its executable explicitly.\n"+
 		"Create an account/email verification: "+mapboxSignupURL+"\n"+
 		"Current pricing/trial limits: https://www.mapbox.com/pricing/\n\n"+
 		"The official CLI requests general-purpose account permissions, including write\n"+
-		"scopes shoe doesn't use; v0.3.0 cannot narrow them. Status probes Streets with a\n"+
+		"scopes mapbox-tui doesn't use; v0.3.0 cannot narrow them. Status probes Streets with a\n"+
 		"tile request. Usage requires statistics access, may lag 24 hours, and may include\n"+
 		"other apps using your token. --help shows this help.")
 }

@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {**os.environ, "MAPBOX_ACCESS_TOKEN": ""}
-BINS = [ROOT / "bin/shoe"]
+BINS = [ROOT / "bin/mapbox-tui"]
 
 
 def cli(binary, mode, path, *options, success=True):
@@ -144,7 +144,7 @@ def validate_cli(binary):
 
     for argv in (("--help",), ("-h",), *((name, "--help") for name in ("open", "render", "summary", "inspect", "bench", "mcp", "auth"))):
         result = run(*argv)
-        assert "Usage: shoe" in result.stdout and result.stderr == "", (argv, result)
+        assert "Usage: mapbox-tui" in result.stdout and result.stderr == "", (argv, result)
 
     assert "-theme" in run("--help").stdout
     assert "-theme" not in run("render", "--help").stdout
@@ -174,17 +174,17 @@ def validate_cli(binary):
     assert "Mapbox not connected" not in run("render", path, "--no-provider").stdout
     with tempfile.TemporaryDirectory() as folder:
         credentials = Path(folder) / "credentials"
-        env = {**ENV, "SHOE_MAPBOX_CLI": str(Path(folder) / "missing-mapbox"), "MAPBOX_CONFIG_DIR": str(credentials)}
+        env = {**ENV, "MAPBOX_TUI_CLI": str(Path(folder) / "missing-mapbox"), "MAPBOX_CONFIG_DIR": str(credentials)}
         status = run("auth", "status", "--usage", "--json", env=env)
         report = json.loads(status.stdout)
         assert report["cli"]["state"] == "missing" and report["rendering"]["source"] == "disabled"
-        assert report["cli"]["checked"] == "SHOE_MAPBOX_CLI" and "mapbox-cli#install" in report["cli"]["install_url"]
+        assert report["cli"]["checked"] == "MAPBOX_TUI_CLI" and "mapbox-cli#install" in report["cli"]["install_url"]
         assert report["credential_file"] == str(credentials / "credentials.json") and status.stderr == ""
         text = run("auth", "status", env=env).stdout
         assert str(credentials) in text and "official instructions" in text and "\x1b" not in text and "curl " not in text
         failure = run("auth", "login", success=False, env=env)
         assert str(credentials) in failure.stdout and "install" in failure.stderr
-        assert not credentials.exists(), "shoe wrote its own credential copy"
+        assert not credentials.exists(), "mapbox-tui wrote its own credential copy"
     run("auth", "login", "--json", success=False)
 
 

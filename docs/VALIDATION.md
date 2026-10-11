@@ -64,7 +64,7 @@ make interactions
 ```
 
 `make check` combines formatting, `make test` and race checks. `make test` builds
-`bin/shoe`, runs Go tests and `go vet`, then checks the CLI and local
+`bin/mapbox-tui`, runs Go tests and `go vet`, then checks the CLI and local
 stdio MCP server. It covers GPX/FIT/TCX/KML topology and missing measurements,
 camera/picking, playback/profile behaviour, tile decoding and cache policy, token-free provider
 errors, free-roam navigation and route transitions, tool schemas, and CLI/MCP
@@ -200,7 +200,7 @@ and fit-visible keeps both the original stops and the routed geometry on screen.
 Opt-in live account check (three Directions requests, using shared credential resolution):
 
 ```sh
-SHOE_DIRECTIONS_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestDirectionsAccountAccess$' -v
+MAPBOX_TUI_DIRECTIONS_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestDirectionsAccountAccess$' -v
 ```
 
 On 2026-10-09 this passed with the existing saved-login account: walking 1.27 km /
@@ -275,7 +275,7 @@ Opt-in live account check (one Traffic v1 TileJSON request and normally one Lond
 zoom-14 tile request, using shared credential resolution):
 
 ```sh
-SHOE_TRAFFIC_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestTrafficAccountAccess$' -v
+MAPBOX_TUI_TRAFFIC_CHECK=1 mise exec go@1.27.1 -- go test -tags=integration ./go -run '^TestTrafficAccountAccess$' -v
 ```
 
 On 2026-10-10 this passed with the existing saved-login account: advertised zooms
@@ -304,7 +304,7 @@ directly through Ctrl-P. It is greyed out until the Mapbox connection is verifie
 use account setup / **Check connection** if needed. For example:
 
 ```sh
-./bin/shoe --center-lon -0.1276 --center-lat 51.5072 --zoom 8
+./bin/mapbox-tui --center-lon -0.1276 --center-lat 51.5072 --zoom 8
 ```
 
 Pan and rotate, toggle ASCII with `a`, and press `v` for the traffic fetch time,
@@ -313,7 +313,7 @@ without moving the camera or changing loaded routes.
 
 ## Manual smoke check
 
-1. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe fixtures/example.gpx` and check separate
+1. Run `MAPBOX_ACCESS_TOKEN="" ./bin/mapbox-tui fixtures/example.gpx` and check separate
    parts and waypoints on an empty canvas, with no authentication warning.
 2. Pan, zoom, select points and use `f` to fit the geometry.
 3. Play with Space and check the map keeps its view. Use `c` to explicitly center
@@ -321,16 +321,16 @@ without moving the camera or changing loaded routes.
 4. Open help, the command palette and file picker; check Esc closes each dialog.
 5. Resize the terminal and try ASCII mode with `a`.
 6. Quit with `q` or Ctrl-C and check the terminal is restored.
-7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe` without a GPX; check the empty canvas
+7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/mapbox-tui` without a GPX; check the empty canvas
     includes a concise connection notice. Pan, zoom, rotate and click to inspect
    coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear selection)**
     and check its geometry and elevation stay visible without playback or a profile cursor.
-8. With a token configured, run `./bin/shoe` for the world view or
-   `./bin/shoe --center-lon -0.1065 --center-lat 51.505 --zoom 13` for a local
+8. With a token configured, run `./bin/mapbox-tui` for the world view or
+   `./bin/mapbox-tui --center-lon -0.1065 --center-lat 51.505 --zoom 13` for a local
    basemap. Check tiles load while panning and no route/playback/profile is shown.
-9. Try `./bin/shoe --zoom 13 fixtures/example.gpx`, then check
-   `./bin/shoe --help` and `./bin/shoe inspect --help` show the relevant options.
-10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/shoe render fixtures/example.gpx`;
+9. Try `./bin/mapbox-tui --zoom 13 fixtures/example.gpx`, then check
+   `./bin/mapbox-tui --help` and `./bin/mapbox-tui inspect --help` show the relevant options.
+10. Run `MAPBOX_ACCESS_TOKEN="" ./bin/mapbox-tui render fixtures/example.gpx`;
     check the file is rendered and stdout reports **No basemap · Mapbox not connected**.
     Repeat with `--no-provider`; check the intentional offline render is quiet.
 11. Open FIT, TCX and KML files with Ctrl-O. Check their tracks/waypoints, elevation

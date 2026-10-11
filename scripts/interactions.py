@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOCKET = f"shoe-prototype-{os.getpid()}"
+SOCKET = f"mapbox-tui-{os.getpid()}"
 ANSI = re.compile(r"\x1b\[([0-9;]*)m")
 
 
@@ -714,7 +714,7 @@ def auth_setup(binary):
         )
         helper.chmod(0o755)
         for width, height in ((120, 40), (70, 18), (30, 12)):
-            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"SHOE_MAPBOX_CLI={helper}",
+            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={helper}",
                                   f"MAPBOX_CONFIG_DIR={folder / 'credentials'}", f"XDG_CONFIG_HOME={folder / 'settings'}", "TERM=xterm-256color",
                                   "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
                                   str(ROOT / "fixtures/example.gpx")])
@@ -747,7 +747,7 @@ def auth_setup(binary):
         for with_file in (False, True):
             pending = folder / f"pending-mapbox-{with_file}"
             args = [str(ROOT / "fixtures/example.gpx")] if with_file else []
-            command = shlex.join(["env", "-u", "MAPBOX_ACCESS_TOKEN", f"SHOE_MAPBOX_CLI={pending}",
+            command = shlex.join(["env", "-u", "MAPBOX_ACCESS_TOKEN", f"MAPBOX_TUI_CLI={pending}",
                                   "TERM=xterm-256color", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *args])
             tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
             try:
@@ -789,7 +789,7 @@ def traffic_menu(binary):
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         for width, height in ((120, 40), (70, 18), (30, 12)):
-            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"SHOE_MAPBOX_CLI={folder / 'missing'}",
+            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={folder / 'missing'}",
                                   f"XDG_CONFIG_HOME={folder}", "TERM=xterm-256color", "COLORTERM=truecolor",
                                   "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
                                   str(ROOT / "fixtures/example.gpx")])
@@ -807,7 +807,7 @@ def traffic_menu(binary):
                 wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
                 send("\r")
                 wait_for(lambda s: "Commands" in s and "Verify Mapbox" in s)
-                settings = folder / "shoe/settings.json"
+                settings = folder / "mapbox-tui/settings.json"
                 assert not settings.exists(), "disabled traffic changed the saved preference"
                 send("\x1b")
                 wait_for(lambda s: "Commands" not in s and "Point 1" in s)
@@ -830,7 +830,7 @@ if __name__ == "__main__":
     os.environ["XDG_CONFIG_HOME"] = settings.name
     try:
         tmux("start-server", ";", "set-option", "-g", "exit-empty", "off")
-        for name in ("shoe",):
+        for name in ("mapbox-tui",):
             free_roam(ROOT / "bin" / name, live="--mapbox" in sys.argv)
             if "--mapbox" not in sys.argv:
                 tiny_start(ROOT / "bin" / name)

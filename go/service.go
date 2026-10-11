@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"shell-on-earth/shared"
+	"mapbox-tui/shared"
 )
 
 type Args struct {
@@ -267,7 +267,7 @@ func serveMCP() error {
 		"mapbox": newProvider("mapbox"),
 		"none":   newProvider("none"),
 	}}
-	server := mcp.NewServer(&mcp.Implementation{Name: "shoe", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "mapbox-tui", Version: "0.1.0"}, nil)
 	var tools []*mcp.Tool
 	if e := json.Unmarshal(shared.Tools, &tools); e != nil {
 		return e

@@ -109,7 +109,7 @@ func (p *placeClient) getJSON(ctx context.Context, endpoint string, target any) 
 	if err != nil {
 		return fmt.Errorf("cannot create location request")
 	}
-	req.Header.Set("User-Agent", "shoe/1 (https://github.com/adamcbrewer/shell-on-earth)")
+	req.Header.Set("User-Agent", "mapbox-tui/1 (https://github.com/adamcbrewer/mapbox-tui)")
 	resp, err := p.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

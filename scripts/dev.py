@@ -57,13 +57,13 @@ def main():
                 stop(process)
                 process = None
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, before)
-                print("[dev] Building shoe…", flush=True)
+                print("[dev] Building mapbox-tui…", flush=True)
                 result = subprocess.run(["make", "build"], cwd=ROOT)
                 rebuild = False
                 changed = None
                 if result.returncode == 0:
-                    print("[dev] Starting shoe…", flush=True)
-                    process = subprocess.Popen([str(ROOT / "bin/shoe"), *args], cwd=ROOT)
+                    print("[dev] Starting mapbox-tui…", flush=True)
+                    process = subprocess.Popen([str(ROOT / "bin/mapbox-tui"), *args], cwd=ROOT)
                 else:
                     print("[dev] Build failed. Waiting for the next change…", flush=True)
             time.sleep(0.2)

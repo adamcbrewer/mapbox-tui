@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "shoe": {
-      "command": "/absolute/path/to/shell-on-earth/bin/shoe",
+    "mapbox-tui": {
+      "command": "/absolute/path/to/mapbox-tui/bin/mapbox-tui",
       "args": ["mcp"]
     }
   }

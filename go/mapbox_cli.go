@@ -18,9 +18,9 @@ import (
 
 const mapboxInstallURL = "https://github.com/mapbox/mapbox-cli#install-a-released-binary"
 const mapboxSignupURL = "https://docs.mapbox.com/accounts/guides/signup/"
-const mapboxLoginGuidance = "Run 'shoe auth login' to sign in or create a Mapbox account"
+const mapboxLoginGuidance = "Run 'mapbox-tui auth login' to sign in or create a Mapbox account"
 const mapboxCLIUnavailable = "Mapbox CLI not found; install the optional CLI: " + mapboxInstallURL +
-	"; then run 'shoe auth login'. Offline features work without it; MAPBOX_ACCESS_TOKEN can supply a public token"
+	"; then run 'mapbox-tui auth login'. Offline features work without it; MAPBOX_ACCESS_TOKEN can supply a public token"
 
 type mapboxDependencyStatus struct {
 	State      string `json:"state"`
@@ -60,7 +60,7 @@ func (e *mapboxFailure) Error() string {
 	case "cancelled":
 		return "Mapbox operation cancelled"
 	default:
-		return "Mapbox operation failed; try 'shoe auth login' or check the optional CLI installation"
+		return "Mapbox operation failed; try 'mapbox-tui auth login' or check the optional CLI installation"
 	}
 }
 
@@ -111,7 +111,7 @@ func findMapboxCLI(ctx context.Context) (*mapboxCLI, error) {
 
 func checkMapboxCLI(ctx context.Context) (*mapboxCLI, mapboxDependencyStatus) {
 	status := mapboxDependencyStatus{State: "missing", Checked: "PATH", InstallURL: mapboxInstallURL}
-	path := os.Getenv("SHOE_MAPBOX_CLI")
+	path := os.Getenv("MAPBOX_TUI_CLI")
 	if path == "" {
 		var err error
 		path, err = exec.LookPath("mapbox")
@@ -120,18 +120,18 @@ func checkMapboxCLI(ctx context.Context) (*mapboxCLI, mapboxDependencyStatus) {
 			return nil, status
 		}
 	} else {
-		status.Checked = "SHOE_MAPBOX_CLI"
+		status.Checked = "MAPBOX_TUI_CLI"
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
-		status.State, status.Guidance = "unavailable", "Cannot resolve Mapbox CLI; use an absolute SHOE_MAPBOX_CLI path"
+		status.State, status.Guidance = "unavailable", "Cannot resolve Mapbox CLI; use an absolute MAPBOX_TUI_CLI path"
 		return nil, status
 	}
 	status.Path = path
 	if _, err := exec.LookPath(path); err != nil {
-		status.Guidance = "Mapbox CLI executable is missing; fix SHOE_MAPBOX_CLI or install it: " + mapboxInstallURL
+		status.Guidance = "Mapbox CLI executable is missing; fix MAPBOX_TUI_CLI or install it: " + mapboxInstallURL
 		if !errors.Is(err, os.ErrNotExist) {
-			status.State, status.Guidance = "unavailable", "Mapbox CLI is not executable; fix its installation or SHOE_MAPBOX_CLI"
+			status.State, status.Guidance = "unavailable", "Mapbox CLI is not executable; fix its installation or MAPBOX_TUI_CLI"
 		}
 		return nil, status
 	}
@@ -178,7 +178,7 @@ func (c *mapboxCLI) output(ctx context.Context, args []string, token *string) ([
 		return nil, fmt.Errorf("%s", mapboxCLIUnavailable)
 	}
 	if _, ok := errors.AsType[*os.PathError](err); ok {
-		return nil, fmt.Errorf("cannot run Mapbox CLI; check SHOE_MAPBOX_CLI or install it: %s", mapboxInstallURL)
+		return nil, fmt.Errorf("cannot run Mapbox CLI; check MAPBOX_TUI_CLI or install it: %s", mapboxInstallURL)
 	}
 	for _, line := range slices.Backward(strings.Split(stderr.String(), "\n")) {
 		var failure struct {

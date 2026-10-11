@@ -352,7 +352,8 @@ func (s authStatus) text() string {
 		if s.CLI.State != "missing" || s.CLI.Checked != "PATH" {
 			fmt.Fprintln(&out, s.CLI.Guidance)
 		}
-		fmt.Fprintf(&out, "\nInstall Mapbox CLI using the official instructions:\n  %s\n\nThen run 'shoe auth status' to check your saved login.\n\n",
+		fmt.Fprintf(&out, "\nInstall Mapbox CLI using the official instructions:\n  %s\n\n"+
+			"Then run 'mapbox-tui auth status' to check your saved login.\n\n",
 			s.CLI.InstallURL)
 	}
 	fmt.Fprintf(&out, "Profile: %s\nCredentials: %s (owned by Mapbox CLI)\n", s.Profile, s.CredentialFile)

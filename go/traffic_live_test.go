@@ -13,8 +13,8 @@ import (
 )
 
 func TestTrafficAccountAccess(t *testing.T) {
-	if os.Getenv("SHOE_TRAFFIC_CHECK") != "1" {
-		t.Skip("set SHOE_TRAFFIC_CHECK=1 to request Traffic v1 metadata and a London tile")
+	if os.Getenv("MAPBOX_TUI_TRAFFIC_CHECK") != "1" {
+		t.Skip("set MAPBOX_TUI_TRAFFIC_CHECK=1 to request Traffic v1 metadata and a London tile")
 	}
 	credential := resolveCredential(t.Context())
 	if credential.token == "" {

@@ -11,11 +11,11 @@ def main():
     env = dict(os.environ)
     env.pop("MAPBOX_ACCESS_TOKEN", None)
     result = subprocess.run(
-        [str(ROOT / "bin/shoe"), "auth", "status", "--usage", "--json"],
+        [str(ROOT / "bin/mapbox-tui"), "auth", "status", "--usage", "--json"],
         env=env, capture_output=True, text=True, timeout=75,
     )
     if result.returncode != 0:
-        raise ValueError("shoe could not produce an authentication report")
+        raise ValueError("mapbox-tui could not produce an authentication report")
     report = json.loads(result.stdout)
     if any(prefix in result.stdout for prefix in ("pk.", "sk.", "tk.")):
         raise ValueError("authentication report contains a token prefix")

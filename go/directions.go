@@ -95,7 +95,7 @@ func (p *directionsClient) resolve(
 	if err != nil {
 		return nil, fmt.Errorf("cannot create Directions request")
 	}
-	req.Header.Set("User-Agent", "shoe/1 (https://github.com/adamcbrewer/shell-on-earth)")
+	req.Header.Set("User-Agent", "mapbox-tui/1 (https://github.com/adamcbrewer/mapbox-tui)")
 	resp, err := p.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

@@ -1,6 +1,6 @@
 # Map providers
 
-The viewer supports two basemap providers:
+Mapbox is the online map provider. The viewer, CLI and MCP support:
 
 - `mapbox`: Mapbox Streets v8 vector tiles, using your own access token.
 - `none`: imported file geometry on an empty canvas; no authentication or network
@@ -20,8 +20,8 @@ Runtime credentials use `MAPBOX_ACCESS_TOKEN` first, then the default public tok
 retrieved through a saved official Mapbox CLI login. An explicitly empty
 environment variable disables discovery. Repo-local token files aren't read.
 The CLI is an optional, separately installed runtime helper, located on PATH or
-through `SHOE_MAPBOX_CLI`. It owns OAuth/storage/refresh in `~/.mapbox/`, or
-`MAPBOX_CONFIG_DIR`; `shoe` never reads private credential files or saves a second
+through `MAPBOX_TUI_CLI`. It owns OAuth/storage/refresh in `~/.mapbox/`, or
+`MAPBOX_CONFIG_DIR`; `mapbox-tui` never reads private credential files or saves a second
 token copy. Auth commands report the resolved credential path. See the [authentication table](../README.md#which-commands-need-mapbox-authentication)
 for command and service requirements. Synthetic basemap geometry is internal to
 the rendering benchmark.
@@ -155,7 +155,7 @@ entitlements. Traffic-aware Directions and route incident details remain separat
 
 ## Authentication and account reporting
 
-`shoe auth login` delegates browser signup/sign-in to the official CLI with a
+`mapbox-tui auth login` delegates browser signup/sign-in to the official CLI with a
 seven-minute whole-process bound. JSON/account children have a 15-second bound,
 an eight-second API budget and 2 MiB output limits; status has an overall
 one-minute budget. Cancellation also covers credential locks/refresh operations.
@@ -175,12 +175,12 @@ the verdict carried in HTTP 200) and Streets access. Login/status Streets probes
 are actual tile requests. `--usage` uses the logged-in account, validates the
 active public token's account/ID before token-specific statistics, and passes
 matching explicit UTC dates to both unfiltered reports. Vector Tiles is selected
-inside `shoe`; no matching usage is an empty report. Statistics permissions,
+inside `mapbox-tui`; no matching usage is an empty report. Statistics permissions,
 delayed counts and trial-account access are independent of map access.
 
 Logout removes the shared login rather than revoking the account's public token
-or environment overrides. No CLI-derived public token is persisted by `shoe`.
-The CLI's v0.3.0 OAuth scope set is broader than `shoe` needs and cannot be
+or environment overrides. No CLI-derived public token is persisted by `mapbox-tui`.
+The CLI's v0.3.0 OAuth scope set is broader than `mapbox-tui` needs and cannot be
 narrowed through its command interface. Signup/pricing and optional-install links
 are in [auth help and README](../README.md#runtime-configuration).
 
@@ -237,7 +237,7 @@ Search results and plans remain in memory for this session only. The
 [Search Box documentation](https://docs.mapbox.com/api/search/search-box/)
 restricts returned data to temporary use. No disk cache, favorites or export is
 added here. Provider-compatible persistence is tracked in
-[issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
+[issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
 
 ## Journey road/path routing
 
@@ -305,14 +305,16 @@ remain separate work.
 
 ## Attribution
 
-[Mapbox's attribution requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
-include a graphical logo and text credits for maps using its data. The current
-terminal renderer displays text-only `© Mapbox`, `© OpenStreetMap` and an Improve
-this map entry. Credits and links are combined from enabled source snapshots,
-with duplicate entries removed. `none` adds no basemap attribution or links;
-selected Mapbox places still carry their own search credits.
-Press `v` for source status, refresh deadlines and credit links; CLI/MCP render
-results include the same attribution information.
+Mapbox TUI renders text rather than images, so it identifies Mapbox by name instead
+of displaying a graphical logo. Mapbox-powered output includes `© Mapbox`,
+`© OpenStreetMap` and an Improve this map entry. The viewer footer shows text
+credits; press `v` for source status, refresh deadlines and credit links. CLI/MCP
+render results include the same attribution information.
 
-The official graphical logo isn't implemented, and a terminal-specific exception
-hasn't been verified. The text credits alone don't fulfil that published requirement.
+Credits and links are combined from enabled source snapshots, with duplicates
+removed. `none` adds no basemap credits; Mapbox search results and resolved routes
+retain their own attribution even without a basemap.
+
+[Mapbox's published requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
+also specify a graphical logo. Text attribution is the current terminal
+implementation; acceptance of text in place of the logo hasn't been confirmed.

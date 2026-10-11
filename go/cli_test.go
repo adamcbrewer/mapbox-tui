@@ -177,7 +177,7 @@ func TestCLIHelpIsAvailableWithoutInputOrCredentials(t *testing.T) {
 	for _, argv := range [][]string{{"--help"}, {"-h"}, {"open", "--help"}, {"render", "--help"}, {"summary", "--help"}, {"inspect", "--help"}, {"bench", "--help"}, {"mcp", "--help"}} {
 		var output bytes.Buffer
 		command, err := parseCLI(argv, &output)
-		if err != flag.ErrHelp || !strings.Contains(output.String(), "Usage: shoe") {
+		if err != flag.ErrHelp || !strings.Contains(output.String(), "Usage: mapbox-tui") {
 			t.Fatal("help tried to execute the command", argv, err)
 		}
 		help := output.String()
@@ -187,7 +187,7 @@ func TestCLIHelpIsAvailableWithoutInputOrCredentials(t *testing.T) {
 			}
 		}
 		viewerHelpInvalid := command.Name == "open" &&
-			(!strings.Contains(help, "shoe [FILE...]") ||
+			(!strings.Contains(help, "mapbox-tui [FILE...]") ||
 				!strings.Contains(help, "Commands:") ||
 				strings.Contains(help, "-frames") ||
 				strings.Contains(help, "-json") ||

@@ -1,15 +1,15 @@
 # Mapbox CLI authentication (#11)
 
-Tracked in [issue #11](https://github.com/adamcbrewer/shell-on-earth/issues/11).
+Tracked in [issue #11](https://github.com/adamcbrewer/mapbox-tui/issues/11).
 Implementation continues on `feat/11-mapbox-cli-auth` from `3f24917`.
 
 ## Revised decisions
 
 During implementation the user replaced the original bundling requirement with
 an **optional external Mapbox CLI**. Builds/installations/releases ship only
-`shoe`. The CLI is recommended for Mapbox features and required for browser login
+`mapbox-tui`. The CLI is recommended for Mapbox features and required for browser login
 and account statistics; an environment public token can render/search without it.
-Select `mapbox` from PATH or `SHOE_MAPBOX_CLI`. v0.3.0 is live-tested; compatible
+Select `mapbox` from PATH or `MAPBOX_TUI_CLI`. v0.3.0 is live-tested; compatible
 releases must expose the required `--schema`/JSON contract. No automatic downloads
 or private bundled-executable fallback occur at runtime.
 
@@ -31,10 +31,10 @@ and [optional helper convention](https://github.com/mapbox/mapbox-cli/blob/v0.3.
   Auth commands print that resolved path; JSON status includes `credential_file`.
 - Released Unix credential files are 0600 and directories 0700, with atomic writes.
   The CLI stores plain JSON rather than using an OS keychain.
-- `shoe` calls public CLI commands, never reads/writes those private files and
+- `mapbox-tui` calls public CLI commands, never reads/writes those private files and
   never persists another public-token copy. Saved login works outside this repo.
 - The CLI requests fixed general-purpose OAuth scopes, including write scopes
-  `shoe` doesn't need; v0.3.0 has no scope-selection option. Retrieving public
+  `mapbox-tui` doesn't need; v0.3.0 has no scope-selection option. Retrieving public
   tokens needs `tokens:read`; reporting usage needs `statistics:read`. Packaging
   cannot narrow the grant. See [Mapbox scope guidance](https://docs.mapbox.com/accounts/guides/tokens/#scopes).
 - Installation follows versioned/integrity-checked acquisition and reviewed
@@ -42,7 +42,7 @@ and [optional helper convention](https://github.com/mapbox/mapbox-cli/blob/v0.3.
 
 ## Implementation
 
-- `shoe auth login`, `logout`, `status [--json] [--usage]` share one adapter with
+- `mapbox-tui auth login`, `logout`, `status [--json] [--usage]` share one adapter with
   rendering and viewer setup. Login opens the official browser flow and reports
   credential location separately from rendering readiness.
 - JSON children use known fields, bounded output, cancellation and whole-process
@@ -73,7 +73,7 @@ and [optional helper convention](https://github.com/mapbox/mapbox-cli/blob/v0.3.
   of CLI login state; their attribution reflects contributing data.
 - Mapbox CLI telemetry is off by default, with persistent opt-in under Mapbox
   settings. The preference uses the user's config directory and applies to
-  `shoe`-launched CLI children; explicit environment opt-out takes precedence.
+  `mapbox-tui`-launched CLI children; explicit environment opt-out takes precedence.
 
 ## Live verification
 
@@ -101,10 +101,10 @@ Verified for this implementation:
   including fake-CLI terminal handoff/restoration at 120×40, 70×18 and 30×12.
 - `make mapbox-check` against v0.3.0: all six command schemas pass without
   account requests. Standalone staged installation works; the release archive
-  contains only `shoe`.
+  contains only `mapbox-tui`.
 - Live CLI rendering/status and MCP importing/rendering from `/tmp/opencode`
   use the saved login without repo token files. Both render Streets successfully.
-  Early checks selected the verified external CLI with `SHOE_MAPBOX_CLI`. The
+  Early checks selected the verified external CLI with `MAPBOX_TUI_CLI`. The
   user subsequently installed v0.3.0 on PATH and signed into the existing
-  account through `shoe auth login`. Live status confirms usable login, valid
+  account through `mapbox-tui auth login`. Live status confirms usable login, valid
   rendering credentials, ready Streets access and CLI telemetry off.

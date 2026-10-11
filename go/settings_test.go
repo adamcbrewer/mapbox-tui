@@ -27,7 +27,7 @@ func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
 	}
 	t.Setenv("MAPBOX_CLI_NO_TELEMETRY", "1")
 	if env := strings.Join(mapboxEnvironment(nil, settings.MapboxCLITelemetry), "\n"); !strings.Contains(env, "MAPBOX_CLI_NO_TELEMETRY=1") {
-		t.Fatal("shoe overrode an explicit environment opt-out")
+		t.Fatal("mapbox-tui overrode an explicit environment opt-out")
 	}
 	path, err := appSettingsPath()
 	if err != nil {

@@ -928,7 +928,7 @@ func (m *viewer) rebuild() {
 	if len(m.workspace.documents) > 1 {
 		name += fmt.Sprintf(" · %d files", len(m.workspace.documents))
 	}
-	title := m.gradient("shoe", lipgloss.Color(t.Background)) + "  " +
+	title := m.gradient("Mapbox TUI", lipgloss.Color(t.Background)) + "  " +
 		s.heading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
 	rows := []string{pad(title, m.width-lipgloss.Width(provider)-1) + " " + provider}
 	border := lipgloss.NormalBorder()

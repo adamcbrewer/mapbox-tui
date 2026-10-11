@@ -19,7 +19,7 @@ func TestMCPUnavailableCredentialsAreDiscoveredOnlyOnce(t *testing.T) {
 	if _, err := s.render(t.Context(), Args{Provider: "none"}); err != nil {
 		t.Fatal(err)
 	}
-	log := os.Getenv("SHOE_MAPBOX_TEST_LOG")
+	log := os.Getenv("MAPBOX_TUI_TEST_LOG")
 	if _, err := os.Stat(log); !os.IsNotExist(err) {
 		t.Fatal("explicit offline render discovered credentials")
 	}
@@ -70,7 +70,7 @@ func TestMCPCancelledDiscoveryCanBeRetried(t *testing.T) {
 	if _, err := s.render(t.Context(), Args{}); err != nil {
 		t.Fatal("cancelled discovery poisoned subsequent renders", err)
 	}
-	if _, err := os.Stat(os.Getenv("SHOE_MAPBOX_TEST_LOG")); err != nil {
+	if _, err := os.Stat(os.Getenv("MAPBOX_TUI_TEST_LOG")); err != nil {
 		t.Fatal("credentials were not retried after cancellation", err)
 	}
 }

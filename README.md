@@ -1,8 +1,10 @@
-# Shell on Earth
+# Mapbox TUI
 
-A personal proof of concept for browsing maps and viewing GPX, FIT, TCX and KML
-files in a terminal. Built with Go, Bubble Tea, Bubbles and Lip Gloss.
-The executable is `shoe`.
+A community-built terminal map explorer and journey planner powered by Mapbox,
+written in Go.
+
+Built with Bubble Tea, Bubbles and Lip Gloss. Imports GPX, FIT, TCX and KML files.
+The executable is `mapbox-tui`.
 
 - Pan, zoom and inspect multiple tracks, routes and waypoint collections.
 - Free roam around the map without loading a file.
@@ -23,30 +25,30 @@ Run from the repository root:
 
 ```sh
 make build
-./bin/shoe fixtures/example.gpx
+./bin/mapbox-tui fixtures/example.gpx
 ```
 
 File viewing needs no account or token. A configured Mapbox token adds a real
-basemap automatically. Run `./bin/shoe` without a file to free roam; without a
+basemap automatically. Run `./bin/mapbox-tui` without a file to free roam; without a
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
 file picker, Ctrl-L to manage loaded files and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
 
 ### Build, install and package
 
-`shoe` is a standalone executable. Builds, installations and release archives
+`mapbox-tui` is a standalone executable. Builds, installations and release archives
 don't download or bundle Mapbox CLI. Install that optional tool separately for
 browser login, automatic rendering-token retrieval and account usage reports.
 
 ```sh
-make install                              # ~/.local/bin/shoe
+make install                              # ~/.local/bin/mapbox-tui
 make install PREFIX=/your/install/prefix
-make package                              # dist/shoe-linux-amd64.tar.gz
+make package                              # dist/mapbox-tui-linux-amd64.tar.gz
 make mapbox-check                         # optional installed CLI's offline schemas
 ```
 
 `DESTDIR` supports staged installs. `make package` produces an archive containing
-only `shoe` for the build target. Linux x86-64 is verified in this environment.
+only `mapbox-tui` for the build target. Linux x86-64 is verified in this environment.
 Use the [official Mapbox release instructions](https://github.com/mapbox/mapbox-cli#install-a-released-binary)
 for the optional CLI; v0.3.0 is tested. The official installer checks the archive's
 SHA-256 and supports `MAPBOX_CLI_VERSION` for versioned installation. Follow
@@ -56,15 +58,15 @@ versioned acquisition and reviewed-update principles from the
 Install Mapbox CLI by following the
 [official installation documentation](https://github.com/mapbox/mapbox-cli#install-a-released-binary).
 The separate **Mapbox Tilesets CLI** offered by its installer is for publishing
-datasets; `shoe` doesn't require it. After installation:
+datasets; `mapbox-tui` doesn't require it. After installation:
 
 ```sh
 mapbox --version
-./bin/shoe auth status
+./bin/mapbox-tui auth status
 ```
 
 If status reports a saved usable login, it is ready to use; otherwise run
-`./bin/shoe auth login` and sign into your existing account. Installation doesn't
+`./bin/mapbox-tui auth login` and sign into your existing account. Installation doesn't
 remove the login already stored by Mapbox CLI.
 
 Braille rendering works best in a Unicode terminal. Use `--ascii` for a text
@@ -81,8 +83,8 @@ The viewer, CLI commands and MCP `load_track` share the same import support:
 | TCX | Activity tracks/laps, courses and course-point waypoints, with elevation and timestamps |
 | KML | Placemarks, line strings, polygon outlines, nested multi-geometries and Google `gx:Track` / `gx:MultiTrack` timestamps |
 
-Open these files in the usual way, for example `./bin/shoe ride.fit`,
-`./bin/shoe summary ride.tcx` or `./bin/shoe render map.kml --json`.
+Open these files in the usual way, for example `./bin/mapbox-tui ride.fit`,
+`./bin/mapbox-tui summary ride.tcx` or `./bin/mapbox-tui render map.kml --json`.
 XML formats are detected by their root element; FIT is detected by its binary
 header. The picker accepts lowercase and uppercase extensions.
 
@@ -120,9 +122,9 @@ account. Install the CLI from the link above, make `mapbox` available on `PATH`,
 then run:
 
 ```sh
-./bin/shoe auth login
-./bin/shoe auth status
-./bin/shoe auth status --usage --json
+./bin/mapbox-tui auth login
+./bin/mapbox-tui auth status
+./bin/mapbox-tui auth status --usage --json
 ```
 
 Login opens Mapbox's browser flow to sign in **or create an account**. Signup,
@@ -136,20 +138,20 @@ Mapbox CLI owns the persistent OAuth login and refresh. The shared `default`
 profile lives at `~/.mapbox/credentials.json`; `MAPBOX_CONFIG_DIR` relocates its
 store. **Login, logout and status print the resolved path on your machine**;
 JSON status includes `credential_file`. The CLI uses owner-only Unix credential
-files and plain JSON rather than an OS keychain. `shoe` uses the CLI's documented
+files and plain JSON rather than an OS keychain. `mapbox-tui` uses the CLI's documented
 JSON interface, retrieves the default public rendering token and holds it in
 memory. It neither reads the CLI's private files nor saves another token copy.
 The saved login works from any directory, without files or auth keys in this repo.
 
-`SHOE_MAPBOX_CLI=/absolute/path/to/mapbox` selects an executable outside `PATH`.
+`MAPBOX_TUI_CLI=/absolute/path/to/mapbox` selects an executable outside `PATH`.
 The adapter checks its JSON/schema contract and gives install/update guidance if
 the CLI is missing or incompatible. v0.3.0 requests general-purpose account
-permissions, including write scopes `shoe` doesn't use; that release has no
+permissions, including write scopes `mapbox-tui` doesn't use; that release has no
 scope-selection option. Account token retrieval needs `tokens:read`; usage
 needs `statistics:read` and account access to the Statistics API.
 
-`shoe auth status` starts with a system check of `PATH` or the explicit
-`SHOE_MAPBOX_CLI` selection. It reports the executable used, validates its version
+`mapbox-tui auth status` starts with a system check of `PATH` or the explicit
+`MAPBOX_TUI_CLI` selection. It reports the executable used, validates its version
 and command schema, and links official installation instructions when missing/unusable.
 JSON includes `cli.checked`, `cli.path` and `cli.install_url`. A missing CLI
 means the saved login couldn't be inspected, rather than that you are logged out.
@@ -162,11 +164,11 @@ aren't loaded. Restart an existing viewer/MCP process to rediscover credentials,
 or use the viewer's **Mapbox account setup** action.
 
 ```sh
-MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/shoe
-MAPBOX_ACCESS_TOKEN='' ./bin/shoe           # deliberately offline
-./bin/shoe
-./bin/shoe --center-lon -0.1065 --center-lat 51.505 --zoom 13
-./bin/shoe fixtures/example.gpx --no-provider
+MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/mapbox-tui
+MAPBOX_ACCESS_TOKEN='' ./bin/mapbox-tui     # deliberately offline
+./bin/mapbox-tui
+./bin/mapbox-tui --center-lon -0.1065 --center-lat 51.505 --zoom 13
+./bin/mapbox-tui fixtures/example.gpx --no-provider
 ```
 
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
@@ -221,7 +223,7 @@ wins, with later-loaded items winning equal-distance picking ties. Selection mar
 take priority over route geometry and map labels.
 
 Activity reordering and journey-wide playback are tracked separately in
-[issue #3](https://github.com/adamcbrewer/shell-on-earth/issues/3).
+[issue #3](https://github.com/adamcbrewer/mapbox-tui/issues/3).
 
 ### Journey planner
 
@@ -315,9 +317,9 @@ and colour, and shares the scene renderer. Ctrl-G reopens the selected or most
 recent plan; removing it or clearing the workspace discards it.
 
 Plans and search results are **session-only**. Favorites and persistent/offline
-geolocation caching are tracked in [issue #10](https://github.com/adamcbrewer/shell-on-earth/issues/10).
-Road/path routing is implemented for [issue #12](https://github.com/adamcbrewer/shell-on-earth/issues/12).
-Estimated route elevation remains in [issue #13](https://github.com/adamcbrewer/shell-on-earth/issues/13).
+geolocation caching are tracked in [issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
+Road/path routing is implemented for [issue #12](https://github.com/adamcbrewer/mapbox-tui/issues/12).
+Estimated route elevation remains in [issue #13](https://github.com/adamcbrewer/mapbox-tui/issues/13).
 See [provider notes](docs/PROVIDERS.md#journey-location-lookups) for request and
 storage policies and [route-planning notes](docs/ROUTE_PLANNING.md) for API research.
 
@@ -371,8 +373,8 @@ route calculation and detailed incident feeds are separate from this overlay.
 
 **CLI telemetry** in Mapbox settings is an opt-in toggle, off by default. The
 preference is shared by viewer/CLI/MCP calls and saved at
-`~/.config/shoe/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it). It controls
-only Mapbox CLI processes launched by `shoe`, not standalone `mapbox` commands.
+`~/.config/mapbox-tui/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it). It controls
+only Mapbox CLI processes launched by `mapbox-tui`, not standalone `mapbox` commands.
 An explicit `MAPBOX_CLI_NO_TELEMETRY` environment opt-out takes precedence. See
 [Mapbox CLI privacy](https://github.com/mapbox/mapbox-cli#privacy) for the usage
 information it collects. Background map/search API requests are still normal
@@ -380,9 +382,12 @@ Mapbox service requests regardless of this setting.
 
 `settings.json` persists telemetry and the viewer's traffic toggle. Theme/camera/
 travel-mode choices and workspace plans are session-only. Login credentials are
-owned by Mapbox CLI under `~/.mapbox/` (or `MAPBOX_CONFIG_DIR`); `shoe` doesn't save
+owned by Mapbox CLI under `~/.mapbox/` (or `MAPBOX_CONFIG_DIR`); `mapbox-tui` doesn't save
 another token copy. Place-search availability is derived from the selected token,
 so it needs no separate remembered permission.
+
+To carry over viewer preferences from an earlier installation, move its
+`settings.json` into the new `mapbox-tui` config directory before launching.
 
 Manual journey planning works offline. The location editor greys out unavailable
 Mapbox address/place search and prevents its shortcut from starting a search.
@@ -394,7 +399,7 @@ CLI warns on stderr, while JSON/MCP includes it in `scene.status`. These
 non-interactive operations never open a browser. MCP discovers login lazily when
 a render needs maps, rather than when importing/inspecting local files.
 
-`shoe auth status` separates stored login, active rendering-token source/account,
+`mapbox-tui auth status` separates stored login, active rendering-token source/account,
 token validity and actual Streets access. Login and status probe Streets with a
 tile request. `--usage` adds account and eligible active-public-token Vector Tiles
 reports, with matching inclusive UTC dates and generation timestamps. A rendering
@@ -404,7 +409,7 @@ empty report. Counts can lag 24 hours, include other applications and aren't an
 invoice or exact remaining allowance. Completed status reports exit zero even
 when sections are logged out/unavailable.
 
-`shoe auth logout` removes the selected shared CLI profile. It doesn't revoke the
+`mapbox-tui auth logout` removes the selected shared CLI profile. It doesn't revoke the
 account's public token, unset environment overrides, or erase tokens already held
 by other running apps. A subsequent launch must resolve credentials again.
 
@@ -430,10 +435,10 @@ ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are trac
 | Real basemaps in viewer, `render` or MCP | Yes | Recommended for saved login; unnecessary with an environment token | Imported geometry/empty canvas |
 | Journey address/named-POI search | Yes; automatic when connected | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
 | Journey walking/cycling/driving routes | Yes, with Directions access; Driving defaults when connected | Recommended for saved login; unnecessary with an environment token | Manual straight-line plotting |
-| `shoe auth login` / `logout` | Login signs in or creates one | Required | Offline features remain available |
-| `shoe auth status` | No to report status | Needed to inspect the saved login and token metadata | Reports unavailable sections |
-| `shoe auth status --usage` | Yes, with statistics access | Required for usage queries | Maps/local features still work without statistics |
-| `shoe summary`, `inspect`, `bench`, local MCP tools | No | No | Fully available |
+| `mapbox-tui auth login` / `logout` | Login signs in or creates one | Required | Offline features remain available |
+| `mapbox-tui auth status` | No to report status | Needed to inspect the saved login and token metadata | Reports unavailable sections |
+| `mapbox-tui auth status --usage` | Yes, with statistics access | Required for usage queries | Maps/local features still work without statistics |
+| `mapbox-tui summary`, `inspect`, `bench`, local MCP tools | No | No | Fully available |
 
 Mapbox is the default external basemap; `--no-provider` disables it. Camera and display
 options (`--center-lon`, `--center-lat`, `--zoom`, `--bearing`, `--ascii`,
@@ -498,9 +503,9 @@ together without re-importing files, fetching tiles or resetting playback.
 Each activity keeps its palette slot; the slot's colour changes with the theme.
 
 ```sh
-./bin/shoe fixtures/example.gpx --theme catppuccin-latte
-./bin/shoe --theme tokyo-night
-./bin/shoe fixtures/example.gpx --theme "/path/to/my-theme.toml"
+./bin/mapbox-tui fixtures/example.gpx --theme catppuccin-latte
+./bin/mapbox-tui --theme tokyo-night
+./bin/mapbox-tui fixtures/example.gpx --theme "/path/to/my-theme.toml"
 ```
 
 Built-ins are embedded in the binary. Custom palettes are read at startup and
@@ -517,15 +522,15 @@ to add tracks, routes and waypoints; no file starts free roam. `open` is
 an optional alias.
 
 ```sh
-./bin/shoe
-./bin/shoe fixtures/example.gpx
-./bin/shoe ride.gpx course.tcx
-./bin/shoe --zoom 13 fixtures/example.gpx
-./bin/shoe --help
+./bin/mapbox-tui
+./bin/mapbox-tui fixtures/example.gpx
+./bin/mapbox-tui ride.gpx course.tcx
+./bin/mapbox-tui --zoom 13 fixtures/example.gpx
+./bin/mapbox-tui --help
 ```
 
 Options may appear before or after the file. Use `--` before filenames that start
-with `-` or match a command name, such as `./bin/shoe -- render`.
+with `-` or match a command name, such as `./bin/mapbox-tui -- render`.
 
 Subcommands select a different operation:
 
@@ -539,16 +544,16 @@ Subcommands select a different operation:
 | `auth login`, `logout`, `status` | None | Mapbox browser login, shared-profile logout, text/JSON status and optional usage |
 
 ```sh
-./bin/shoe render --center-lon -0.1065 --center-lat 51.505 --zoom 13 --json
-./bin/shoe summary fixtures/example.gpx
-./bin/shoe inspect fixtures/example.gpx --point-index 3
-./bin/shoe inspect fixtures/example.gpx --distance-m 1000
-./bin/shoe render fixtures/example.gpx --width 120 --height 40
-./bin/shoe render fixtures/example.gpx --json
-./bin/shoe render ride.gpx course.tcx --json
-./bin/shoe summary fixtures/example.gpx --items
-./bin/shoe inspect fixtures/example.gpx --item-id 4 --point-index 0
-./bin/shoe render --help
+./bin/mapbox-tui render --center-lon -0.1065 --center-lat 51.505 --zoom 13 --json
+./bin/mapbox-tui summary fixtures/example.gpx
+./bin/mapbox-tui inspect fixtures/example.gpx --point-index 3
+./bin/mapbox-tui inspect fixtures/example.gpx --distance-m 1000
+./bin/mapbox-tui render fixtures/example.gpx --width 120 --height 40
+./bin/mapbox-tui render fixtures/example.gpx --json
+./bin/mapbox-tui render ride.gpx course.tcx --json
+./bin/mapbox-tui summary fixtures/example.gpx --items
+./bin/mapbox-tui inspect fixtures/example.gpx --item-id 4 --point-index 0
+./bin/mapbox-tui render --help
 ```
 
 `summary` and `inspect` return JSON. `render` returns map text with attribution;
@@ -582,13 +587,13 @@ small terminal; file-free browsing still starts at zoom 0. `--width` (10-300) an
 `--height` (5-100) size static maps and
 benchmarks; the viewer uses the terminal size. `--json` belongs to `render`,
 `--distance-m` to `inspect`, and `--frames` to `bench`. Benchmarks use internal
-synthetic geometry, independent of credentials. Run `shoe COMMAND --help` for
+synthetic geometry, independent of credentials. Run `mapbox-tui COMMAND --help` for
 that command's options.
 
 ## MCP
 
 ```sh
-./bin/shoe mcp
+./bin/mapbox-tui mcp
 ```
 
 The local stdio server exposes nine tools:

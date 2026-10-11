@@ -28,16 +28,16 @@ func fakeMapbox(t *testing.T, scenario string) string {
 	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SHOE_MAPBOX_TEST", scenario)
+	t.Setenv("MAPBOX_TUI_TEST", scenario)
 	// Each fake CLI call exits a race-instrumented process; avoid its default one-second exit delay.
 	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
-	t.Setenv("SHOE_MAPBOX_TEST_LOG", filepath.Join(directory, "calls.jsonl"))
-	t.Setenv("SHOE_MAPBOX_CLI", path)
+	t.Setenv("MAPBOX_TUI_TEST_LOG", filepath.Join(directory, "calls.jsonl"))
+	t.Setenv("MAPBOX_TUI_CLI", path)
 	return path
 }
 
 func TestMapboxCLIProcess(t *testing.T) {
-	scenario := os.Getenv("SHOE_MAPBOX_TEST")
+	scenario := os.Getenv("MAPBOX_TUI_TEST")
 	if scenario == "" {
 		return
 	}
@@ -62,7 +62,7 @@ func TestMapboxCLIProcess(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	log, err := os.OpenFile(os.Getenv("SHOE_MAPBOX_TEST_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	log, err := os.OpenFile(os.Getenv("MAPBOX_TUI_TEST_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		os.Exit(2)
 	}
@@ -177,7 +177,7 @@ func TestMapboxCLIContractAndSafeFailures(t *testing.T) {
 				if err != nil || credential.source != "login" || credential.token != "pk.synthetic-login-token" {
 					t.Fatal("public login token was not retrieved", err)
 				}
-				data, err := os.ReadFile(os.Getenv("SHOE_MAPBOX_TEST_LOG"))
+				data, err := os.ReadFile(os.Getenv("MAPBOX_TUI_TEST_LOG"))
 				if err != nil || strings.Contains(string(data), "wrong-account") || strings.Contains(string(data), "\"debug\":\"true\"") {
 					t.Fatal("child inherited account/debug overrides", err)
 				}
@@ -191,7 +191,7 @@ func TestMapboxCLIContractAndSafeFailures(t *testing.T) {
 }
 
 func TestCredentialOptOutAndEnvironmentSkipCLI(t *testing.T) {
-	t.Setenv("SHOE_MAPBOX_CLI", "/missing/mapbox")
+	t.Setenv("MAPBOX_TUI_CLI", "/missing/mapbox")
 	for _, token := range []string{"", "pk.explicit"} {
 		t.Run("token="+token, func(t *testing.T) {
 			t.Setenv("MAPBOX_ACCESS_TOKEN", token)
@@ -211,25 +211,25 @@ func TestCredentialOptOutAndEnvironmentSkipCLI(t *testing.T) {
 }
 
 func TestMapboxSystemCheckUsesPATHAndExplicitOverride(t *testing.T) {
-	t.Setenv("SHOE_MAPBOX_CLI", "")
+	t.Setenv("MAPBOX_TUI_CLI", "")
 	t.Setenv("PATH", t.TempDir())
 	cli, status := checkMapboxCLI(t.Context())
 	if cli != nil || status.State != "missing" || status.Checked != "PATH" || status.InstallURL != mapboxInstallURL {
 		t.Fatal("system check did not report missing PATH dependency")
 	}
 	path := fakeMapbox(t, "good")
-	t.Setenv("SHOE_MAPBOX_CLI", "")
+	t.Setenv("MAPBOX_TUI_CLI", "")
 	t.Setenv("PATH", filepath.Dir(path))
 	cli, status = checkMapboxCLI(t.Context())
 	if cli == nil || status.State != "ready" || status.Path != path || status.Checked != "PATH" {
 		t.Fatal("system check did not find and validate the PATH executable")
 	}
-	if _, err := os.Stat(os.Getenv("SHOE_MAPBOX_TEST_LOG")); !os.IsNotExist(err) {
+	if _, err := os.Stat(os.Getenv("MAPBOX_TUI_TEST_LOG")); !os.IsNotExist(err) {
 		t.Fatal("dependency check made an account request")
 	}
-	t.Setenv("SHOE_MAPBOX_CLI", filepath.Join(t.TempDir(), "missing"))
+	t.Setenv("MAPBOX_TUI_CLI", filepath.Join(t.TempDir(), "missing"))
 	cli, status = checkMapboxCLI(t.Context())
-	if cli != nil || status.State != "missing" || status.Checked != "SHOE_MAPBOX_CLI" {
+	if cli != nil || status.State != "missing" || status.Checked != "MAPBOX_TUI_CLI" {
 		t.Fatal("system check ignored a broken explicit executable selection")
 	}
 }
@@ -248,7 +248,7 @@ func TestAuthCommandReportsCredentialLocation(t *testing.T) {
 		t.Fatal("auth command omitted the credential location", err)
 	}
 	if _, err := os.Stat(directory); !os.IsNotExist(err) {
-		t.Fatal("shoe created or read a credential store")
+		t.Fatal("mapbox-tui created or read a credential store")
 	}
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	output.Reset()

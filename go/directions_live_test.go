@@ -8,8 +8,8 @@ import (
 )
 
 func TestDirectionsAccountAccess(t *testing.T) {
-	if os.Getenv("SHOE_DIRECTIONS_CHECK") != "1" {
-		t.Skip("set SHOE_DIRECTIONS_CHECK=1 to make three live Mapbox Directions requests")
+	if os.Getenv("MAPBOX_TUI_DIRECTIONS_CHECK") != "1" {
+		t.Skip("set MAPBOX_TUI_DIRECTIONS_CHECK=1 to make three live Mapbox Directions requests")
 	}
 	credential := resolveCredential(t.Context())
 	if credential.token == "" {

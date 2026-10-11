@@ -17,9 +17,9 @@ type appSettings struct {
 func appSettingsPath() (string, error) {
 	directory, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("locate shoe settings: %w", err)
+		return "", fmt.Errorf("locate mapbox-tui settings: %w", err)
 	}
-	return filepath.Join(directory, "shoe", "settings.json"), nil
+	return filepath.Join(directory, "mapbox-tui", "settings.json"), nil
 }
 
 func loadAppSettings() (appSettings, error) {
@@ -33,18 +33,18 @@ func loadAppSettings() (appSettings, error) {
 		return settings, nil
 	}
 	if err != nil {
-		return settings, fmt.Errorf("read shoe settings: %w", err)
+		return settings, fmt.Errorf("read mapbox-tui settings: %w", err)
 	}
 	data, readErr := io.ReadAll(io.LimitReader(file, 65537))
 	closeErr := file.Close()
 	if readErr != nil {
-		return settings, fmt.Errorf("read shoe settings: %w", readErr)
+		return settings, fmt.Errorf("read mapbox-tui settings: %w", readErr)
 	}
 	if closeErr != nil {
-		return settings, fmt.Errorf("close shoe settings: %w", closeErr)
+		return settings, fmt.Errorf("close mapbox-tui settings: %w", closeErr)
 	}
 	if len(data) > 65536 || json.Unmarshal(data, &settings) != nil {
-		return settings, fmt.Errorf("invalid shoe settings at %q", path)
+		return settings, fmt.Errorf("invalid mapbox-tui settings at %q", path)
 	}
 	return settings, nil
 }
@@ -56,26 +56,26 @@ func saveAppSettings(settings appSettings) error {
 	}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode shoe settings: %w", err)
+		return fmt.Errorf("encode mapbox-tui settings: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create shoe settings directory: %w", err)
+		return fmt.Errorf("create mapbox-tui settings directory: %w", err)
 	}
 	file, err := os.CreateTemp(filepath.Dir(path), ".settings-*.json")
 	if err != nil {
-		return fmt.Errorf("create shoe settings file: %w", err)
+		return fmt.Errorf("create mapbox-tui settings file: %w", err)
 	}
 	defer os.Remove(file.Name())
 	_, writeErr := file.Write(append(data, '\n'))
 	closeErr := file.Close()
 	if writeErr != nil {
-		return fmt.Errorf("save shoe settings: %w", writeErr)
+		return fmt.Errorf("save mapbox-tui settings: %w", writeErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close shoe settings: %w", closeErr)
+		return fmt.Errorf("close mapbox-tui settings: %w", closeErr)
 	}
 	if err := os.Rename(file.Name(), path); err != nil {
-		return fmt.Errorf("replace shoe settings: %w", err)
+		return fmt.Errorf("replace mapbox-tui settings: %w", err)
 	}
 	return nil
 }

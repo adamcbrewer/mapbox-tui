@@ -7,7 +7,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	directory, err := os.MkdirTemp("", "shoe-test-settings-")
+	directory, err := os.MkdirTemp("", "mapbox-tui-test-settings-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Cannot create test settings:", err)
 		os.Exit(1)

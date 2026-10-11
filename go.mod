@@ -1,4 +1,4 @@
-module shell-on-earth
+module mapbox-tui
 
 go 1.27.1
 

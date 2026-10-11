@@ -52,7 +52,7 @@ if __name__ == "__main__":
     parser.add_argument("executable", type=Path, nargs="?")
     args = parser.parse_args()
     try:
-        executable = args.executable or os.environ.get("SHOE_MAPBOX_CLI") or shutil.which("mapbox")
+        executable = args.executable or os.environ.get("MAPBOX_TUI_CLI") or shutil.which("mapbox")
         if not executable:
             raise ValueError("install Mapbox CLI from https://github.com/mapbox/mapbox-cli#install-a-released-binary")
         check(Path(executable).resolve())

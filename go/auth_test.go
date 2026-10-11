@@ -49,7 +49,7 @@ func TestAuthStatusSeparatesLoginRenderingAndUsage(t *testing.T) {
 				if status.Usage.Token.State != "unavailable" {
 					t.Fatal("unverified/foreign token received logged-in account statistics")
 				}
-				calls, err := os.ReadFile(os.Getenv("SHOE_MAPBOX_TEST_LOG"))
+				calls, err := os.ReadFile(os.Getenv("MAPBOX_TUI_TEST_LOG"))
 				if err != nil || strings.Contains(string(calls), "\"--token-id\"") {
 					t.Fatal("ineligible token usage was requested", err)
 				}
@@ -80,12 +80,12 @@ func TestAuthStatusLoggedOutAndMissingCLIStillReports(t *testing.T) {
 	if err != nil || status.Login.State != "logged_out" || status.Rendering.Present {
 		t.Fatal("logged-out report failed", err)
 	}
-	t.Setenv("SHOE_MAPBOX_CLI", "/missing/mapbox")
+	t.Setenv("MAPBOX_TUI_CLI", "/missing/mapbox")
 	status, err = collectAuthStatusWith(t.Context(), true, probe)
 	if err != nil || status.CLI.State != "missing" || status.Usage.Account.State != "unavailable" {
 		t.Fatal("missing optional dependency prevented status reporting", err)
 	}
-	if status.CLI.Checked != "SHOE_MAPBOX_CLI" || status.CLI.InstallURL != mapboxInstallURL {
+	if status.CLI.Checked != "MAPBOX_TUI_CLI" || status.CLI.InstallURL != mapboxInstallURL {
 		t.Fatal("missing CLI report omitted the system check or installation documentation")
 	}
 	text := status.text()

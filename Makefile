@@ -3,15 +3,15 @@ ARGS ?= fixtures/example.gpx
 PREFIX ?= $(HOME)/.local
 build:
 	mkdir -p bin
-	cd go && go build -trimpath -o ../bin/shoe .
+	cd go && go build -trimpath -o ../bin/mapbox-tui .
 mapbox-check:
 	python3 scripts/check_mapbox_contract.py
 install: build
 	install -d "$(DESTDIR)$(PREFIX)/bin"
-	install -m 755 bin/shoe "$(DESTDIR)$(PREFIX)/bin/shoe"
+	install -m 755 bin/mapbox-tui "$(DESTDIR)$(PREFIX)/bin/mapbox-tui"
 package: build
 	mkdir -p dist
-	tar -czf "dist/shoe-$$(go env GOOS)-$$(go env GOARCH).tar.gz" -C bin shoe
+	tar -czf "dist/mapbox-tui-$$(go env GOOS)-$$(go env GOARCH).tar.gz" -C bin mapbox-tui
 dev:
 	python3 scripts/dev.py $(ARGS)
 pre-commit:

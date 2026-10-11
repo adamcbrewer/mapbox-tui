@@ -422,12 +422,12 @@ func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
 	var content strings.Builder
 	content.WriteString("Follow Mapbox's official installation instructions:\n\n")
 	content.WriteString(mapboxInstallURL + "\n\n")
-	content.WriteString("The separate Tilesets CLI is not needed for shoe.\n")
+	content.WriteString("The separate Tilesets CLI is not needed for mapbox-tui.\n")
 	content.WriteString("After installation, return and choose Check again.\n\n")
-	content.WriteString("Check: shoe auth status\nSign in: shoe auth login\n\n")
-	content.WriteString("Executable lookup: PATH or SHOE_MAPBOX_CLI.\n")
+	content.WriteString("Check: mapbox-tui auth status\nSign in: mapbox-tui auth login\n\n")
+	content.WriteString("Executable lookup: PATH or MAPBOX_TUI_CLI.\n")
 	content.WriteString("Installing the CLI preserves any saved Mapbox login.\n\n")
-	content.WriteString("CLI telemetry is off by default in shoe. Toggle it in Mapbox settings.\n")
+	content.WriteString("CLI telemetry is off by default in mapbox-tui. Toggle it in Mapbox settings.\n")
 	content.WriteString("Opt-in sends CLI usage information to Mapbox: https://github.com/mapbox/mapbox-cli#privacy\n\n")
 	file, err := mapboxCredentialFile()
 	if err == nil {
