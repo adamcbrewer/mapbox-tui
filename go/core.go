@@ -331,11 +331,35 @@ func fitBounds(bounds [4]float64, w, h int, aspect float64) Camera {
 
 func localView(location XY, viewport Camera) Camera {
 	viewport.Center = project(location.X, location.Y)
+	viewport.clampCenter()
+	point := viewport.Center
 	latitude := unproject(viewport.Center).Y * math.Pi / 180
 	worldRadius := localViewRadiusM / (2 * math.Pi * 6371000 * math.Cos(latitude))
 	span := math.Min(float64(viewport.Width), float64(viewport.Height)*viewport.Aspect)
 	scale := span * 0.8 / worldRadius
 	viewport.Zoom = math.Max(minZoom, math.Min(20, math.Log2(scale/256)))
+	viewport = containedView(viewport)
+	screen := viewport.screen(point)
+	outsideX := screen.X < 0 || screen.X > float64(viewport.Width*2)
+	outsideY := screen.Y < 0 || screen.Y > float64(viewport.Height*4)
+	if outsideX || outsideY {
+		viewport.Bearing = 0
+		viewport.Center = point
+		viewport = containedView(viewport)
+	}
+	return viewport
+}
+
+func containedView(viewport Camera) Camera {
+	a, b := visibleBounds(viewport)
+	span := math.Max(b.X-a.X, b.Y-a.Y)
+	if span > 1 {
+		viewport.Zoom = math.Min(20, viewport.Zoom+math.Log2(span))
+		a, b = visibleBounds(viewport)
+	}
+	half := XY{(b.X - a.X) / 2, (b.Y - a.Y) / 2}
+	viewport.Center.X = math.Max(half.X, math.Min(1-half.X, viewport.Center.X))
+	viewport.Center.Y = math.Max(half.Y, math.Min(1-half.Y, viewport.Center.Y))
 	return viewport
 }
 

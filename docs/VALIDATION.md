@@ -157,6 +157,11 @@ with ASCII mode and the real text cursor.
 Quick-search framing checks cover one-mile local context across latitudes,
 bearings, initial zoom levels and narrow viewports, including the dateline and
 Mercator latitude limit.
+World-edge regressions verify actual visible tile bounds and on-screen result
+visibility. A playback-pulse regression keeps the accepted search inspection while
+the activity advances, with explicit follow returning inspection to the activity.
+Compact-search regressions clear stale early-Enter notices when results arrive,
+keeping the selected match visible and selectable at 30×12 in both display modes.
 
 Journey checks cover session-only generated item identity, isolation from imports,
 full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps

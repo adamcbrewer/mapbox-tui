@@ -63,6 +63,7 @@ type viewer struct {
 	motion                    cameraMotion
 	lastMotionTick            time.Time
 	planner                   journeyUI
+	searchPosition            *XY
 	searchCredit              string
 	places                    *placeClient
 	directions                *directionsClient
@@ -550,6 +551,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inspected = nil
 		case "c":
 			if pos := m.position(); pos != nil {
+				if m.inspected == m.searchPosition {
+					m.inspected = nil
+				}
 				target := m.destination()
 				target.Center = pos.World
 				m.following = true
@@ -707,7 +711,7 @@ func (m *viewer) advancePlayback(now time.Time) {
 		return
 	}
 	if !m.lastTick.IsZero() && p.advance(t, now.Sub(m.lastTick).Seconds()) {
-		m.inspected = nil
+		m.clearTransientInspection()
 		m.dirty = true
 		if pos := m.position(); pos != nil && m.following {
 			target := m.destination()

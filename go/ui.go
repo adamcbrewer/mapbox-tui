@@ -559,7 +559,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		m.advancePlayback(time.Now())
 		if playback := m.activePlayback(); playback != nil {
 			playback.toggle()
-			m.inspected = nil
+			m.clearTransientInspection()
 		}
 	}
 	m.dirty = true

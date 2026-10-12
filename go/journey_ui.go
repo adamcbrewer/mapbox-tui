@@ -188,6 +188,7 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 		m.ui.notice = result.err.Error()
 		return nil
 	}
+	m.ui.notice = ""
 	if result.location != nil {
 		return m.applyPlaceLocation(*result.location)
 	}

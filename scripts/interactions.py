@@ -650,6 +650,12 @@ def quick_search(binary, width, height):
             wait_for(lambda s: "Quick search" not in s and "Riverside" in s and latitude in s)
             screen = settled()
             assert "Planned journey" not in screen, "quick search created or selected a journey"
+            send(" ")
+            wait_for(lambda s: "Playing 1x" in s)
+            until = time.monotonic() + .2
+            wait_for(lambda s: time.monotonic() >= until and latitude in s)
+            send(" ")
+            wait_for(lambda s: "Paused 1x" in s and latitude in s)
             if ascii_mode:
                 assert not any(0x2800 <= ord(c) <= 0x28ff for c in screen), "quick search reset ASCII mode"
             send("\x0bsearch")

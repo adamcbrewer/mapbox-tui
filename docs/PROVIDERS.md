@@ -225,6 +225,9 @@ Quick search retains the last accepted place's credits for the map view until th
 next accepted search result or manual coordinate entry replaces them. It frames
 about a one-mile radius around the location without editing any journey or calling
 Directions.
+The quick-search viewport stays inside the renderable Mercator world rather than
+wrapping tiles or geometry. Near world edges it shifts inward, resetting north-up
+only if needed to keep the accepted location visible.
 Active autocomplete suggestions retain their returned attribution and show it in
 the location editor and footer until the suggestions are cleared or replaced by
 retrieved location data. The map footer joins distinct credits on one line;

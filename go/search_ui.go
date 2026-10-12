@@ -10,13 +10,21 @@ func (m *viewer) placeSearchOpen() bool {
 	return m.ui.dialog == dialogSearch || m.ui.dialog == dialogJourneyLocation
 }
 
+func (m *viewer) clearTransientInspection() {
+	// Search owns its inspection while playback continues in the background.
+	if m.inspected != m.searchPosition {
+		m.inspected = nil
+	}
+}
+
 func (m *viewer) applyPlaceLocation(location placeLocation) tea.Cmd {
 	if m.ui.dialog != dialogSearch {
 		return m.applyJourneyLocation(location)
 	}
 	m.closeDialog()
 	m.following = false
-	m.inspected = &XY{location.Lon, location.Lat}
+	m.searchPosition = &XY{location.Lon, location.Lat}
+	m.inspected = m.searchPosition
 	m.searchCredit = location.Attribution
 	m.moveCamera(localView(XY{location.Lon, location.Lat}, m.destination()))
 	return m.fetch()

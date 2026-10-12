@@ -244,10 +244,13 @@ place name with Mapbox connected, or enter **latitude, longitude** offline.
 Autocomplete starts after three characters and a short pause; Up/Down chooses a
 result, Enter frames roughly a one-mile radius around the place, and Esc cancels.
 **Ctrl-S** retries a connected lookup.
+At projection edges, the frame shifts inward to avoid blank map areas. It resets
+north-up only when the current bearing would otherwise hide the chosen place.
 
 Quick search keeps the selected activity, playback and every journey intact.
 Accepting a location disables camera follow so the view stays at the chosen place;
-playback continues. Use **Ctrl-J** to create or edit a journey instead.
+playback continues and the searched coordinates remain in the details. Press `c`
+to return to the activity's position. Use **Ctrl-J** to create or edit a journey instead.
 
 ### Journey planner
 
