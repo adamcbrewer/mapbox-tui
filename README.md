@@ -919,11 +919,12 @@ CI runs on pull requests and pushes to `main` with these check names:
 GitHub branch protection enforces these rules on `main`:
 
 - Changes must go through a pull request.
-- All three checks above must pass, with the branch up to date with `main`.
-  Required checks must come from GitHub Actions.
+- All three checks above must pass and come from GitHub Actions. Resolve any
+  merge conflicts; branches don't need to be up to date with `main`.
 - Review conversations must be resolved before merging.
-- No approving review is required initially, so a solo maintainer can merge a
-  passing PR without a second maintainer's approval.
+- Seek a second developer's review whenever possible. Approving reviews aren't
+  mandatory initially, so a solo maintainer can merge a passing PR without a
+  second maintainer's approval.
 - Direct pushes, force pushes and deletion of `main` are blocked. The same rules
   apply to maintainers and admins, with no pull-request bypass allowances.
 
