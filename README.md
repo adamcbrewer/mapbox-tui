@@ -734,7 +734,8 @@ your previous value.
 ### Optional live provider checks
 
 These use your saved login or token, make Mapbox requests and may incur charges.
-Ordinary tests remain offline. After building:
+The authentication script requires a saved CLI login and ignores
+`MAPBOX_ACCESS_TOKEN`. Ordinary tests remain offline. After building:
 
 ```sh
 make mapbox-check                         # CLI schemas only; no account requests
