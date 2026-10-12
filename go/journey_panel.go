@@ -163,8 +163,7 @@ func (m *viewer) fitPlannerJourney(ref ItemRef) {
 
 func journeyView(j *Journey, track *Track, viewport Camera) Camera {
 	bounds := track.Bounds
-	const radiusM = 1609.344
-	latitudeRadius := radiusM / 6371000 * 180 / math.Pi
+	latitudeRadius := localViewRadiusM / 6371000 * 180 / math.Pi
 	for _, stop := range j.Stops {
 		if stop.Location == nil {
 			continue

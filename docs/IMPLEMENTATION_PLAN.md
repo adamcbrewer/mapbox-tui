@@ -15,7 +15,7 @@ workspace ownership, then build the remaining TODO features on those foundations
   connected Driving default, a docked planner/live map, committed-edit recalculation,
   route estimates and a manual fallback with full feedback.
 - Theme scope is terminal recolouring. Three Omarchy-derived TOML palettes are
-  embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-P's Colour
+  embedded; `--theme` selects a built-in ID or custom palette file. Ctrl-K's Colour
   theme opens the palette list with live preview; Enter keeps it and Esc restores
   the original theme and returns to the menu. [Theme API](THEMES.md) records the format,
   registry and viewer-owned style application.
@@ -73,7 +73,7 @@ interactions pass at wide/compact sizes, including open dialogs and ASCII playba
 
 The first **step 6 journey-planning slice** is complete: shared editable planned
 geometry, stable workspace identity, ordered waypoints, full reversal/undo and
-keyboard editing. Ctrl-G opens the planner; Mapbox Search Box is automatic with
+keyboard editing. Ctrl-J opens the planner; Mapbox Search Box is automatic with
 selected credentials for any location field, with Ctrl-S available to retry.
 Coordinates/map-centre input works offline. Planned geometry has no recorded
 playback/elevation; unresolved locations leave gaps. Search requests cancel
@@ -335,6 +335,9 @@ Dataset/use-case discovery is tracked in
 
 ## Confirmed interaction decisions
 
+- `/` opens quick place search. Accepting a location frames a one-mile radius and
+  disables camera follow without editing journeys, changing selection or stopping
+  playback. Esc cancels; Ctrl-J remains the Journey Planner entry point.
 - Opening another file adds it to the workspace, makes the newly loaded item
   active and fits the camera to it. Replacing all loaded data is explicit.
 - `f` fits all visible routes, rather than only the active item.

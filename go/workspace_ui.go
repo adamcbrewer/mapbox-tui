@@ -69,9 +69,9 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 	var err error
 	switch key {
 	case "up", "k":
-		m.ui.selected = max(0, m.ui.selected-1)
+		m.ui.selected = menuStep(m.ui.selected, -1, len(rows))
 	case "down", "j":
-		m.ui.selected = min(len(rows)-1, m.ui.selected+1)
+		m.ui.selected = menuStep(m.ui.selected, 1, len(rows))
 	case "home":
 		m.ui.selected = 0
 	case "end":

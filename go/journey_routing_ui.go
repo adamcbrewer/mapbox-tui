@@ -118,9 +118,9 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 	case "esc":
 		return m.backDialog()
 	case "up", "k":
-		m.ui.selected = max(0, m.ui.selected-1)
+		m.ui.selected = menuStep(m.ui.selected, -1, last+1)
 	case "down", "j":
-		m.ui.selected = min(last, m.ui.selected+1)
+		m.ui.selected = menuStep(m.ui.selected, 1, last+1)
 	case "home":
 		m.ui.selected = 0
 	case "end":

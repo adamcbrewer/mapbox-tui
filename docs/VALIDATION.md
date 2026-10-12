@@ -144,6 +144,20 @@ Picker regressions verify live highlighting previews, confirmation, restoration
 on cancellation/closure/replacement, reopening after confirmation, return to the
 filtered menu and removal of the old cycling shortcut from input/help.
 
+Menu checks cover circular Up/Down navigation in Commands (including filtered,
+single-result and empty searches), themes, speed, loaded files, Mapbox settings,
+Journey Planner, travel modes, location suggestions and the file picker.
+
+Quick-search checks cover `/` entry, offline coordinates, Mapbox suggest/retrieve,
+debounce, circular results, selected-place credits and late credential discovery.
+Acceptance/cancellation preserve imported geometry, journey stops, workspace
+selection and playback; obsolete retrievals and clipboard results cannot change
+a newer dialog or journey editor. Layout checks include 120×40, 70×18 and 30×12,
+with ASCII mode and the real text cursor.
+Quick-search framing checks cover one-mile local context across latitudes,
+bearings, initial zoom levels and narrow viewports, including the dateline and
+Mercator latitude limit.
+
 Journey checks cover session-only generated item identity, isolation from imports,
 full waypoint reversal/undo, unknown measurements, empty/unresolved location gaps
 and geometry recalculation. Tests verify opening/reopening makes no location
@@ -315,7 +329,7 @@ tile decoding and ANSI/UI painting. This measures the sampled London scene, not
 all locations/zooms.
 
 To try the viewer, launch at a local focus and enable **Toggle traffic**
-directly through Ctrl-P. It is greyed out until the Mapbox connection is verified;
+directly through Ctrl-K. It is greyed out until the Mapbox connection is verified;
 use account setup / **Check connection** if needed. For example:
 
 ```sh
@@ -338,7 +352,7 @@ without moving the camera or changing loaded routes.
 6. Quit with `q` or Ctrl-C and check the terminal is restored.
 7. Run `MAPBOX_ACCESS_TOKEN="" ./bin/mapbox-tui` without a GPX; check the empty canvas
     includes a concise connection notice. Pan, zoom, rotate and click to inspect
-   coordinates. Open a GPX with Ctrl-O, then use Ctrl-P's **Free roam (clear selection)**
+   coordinates. Open a GPX with Ctrl-O, then use Ctrl-K's **Free roam (clear selection)**
     and check its geometry and elevation stay visible without playback or a profile cursor.
 8. With a token configured, run `./bin/mapbox-tui` for the world view or
    `./bin/mapbox-tui --center-lon -0.1065 --center-lat 51.505 --zoom 13` for a local
@@ -367,7 +381,7 @@ without moving the camera or changing loaded routes.
     status and refresh deadline. Pan during a request and check the newer viewport
     wins; keep the camera still through expiry and check the source refreshes.
      These live checks make billable requests; automated lifecycle tests use fakes.
-15. Use Ctrl-P's **Colour theme** to preview highlighted palettes and Enter to keep one.
+15. Use Ctrl-K's **Colour theme** to preview highlighted palettes and Enter to keep one.
     Check Esc restores the original theme and returns to the filtered menu, and open
     help, the file picker or speed dialog to inspect the updated colours.
     Repeat in a narrow terminal and ASCII mode; playback should continue.

@@ -274,7 +274,7 @@ func TestThemePickerAndPaintingAcrossLayoutsAndASCIIMode(t *testing.T) {
 					t.Fatal("theme command did not open the current palette")
 				}
 				for i := range m.themes {
-					for range len(m.themes) {
+					for range m.ui.selected {
 						m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 					}
 					for range i {

@@ -47,12 +47,13 @@ directions. Distance describes the plotted geometry, not a promise of a navigabl
 route. Unknown elevation stays unknown; manual routes have no recorded timestamps.
 
 Confirmed search provider: Mapbox Search Box, automatically using the selected
-token whenever connected. Ctrl-G opens the planner; its location editor searches
+token whenever connected. Ctrl-J opens the planner; its location editor searches
 after three typed characters and a short pause. Ctrl-S retries; coordinates/Alt-M
 work offline. No repeated confirmation or separate saved permission is needed. Ctrl-N adds a waypoint,
-Ctrl-R reverses, Ctrl-Z undoes, Alt-Up/Down reorders, Delete clears/removes and
-Ctrl-F shows/fits the plan. The same actions are available as selectable rows
-where applicable. See the [controls](../README.md#journey-planner).
+Ctrl-R reverses, Ctrl-Z undoes, Alt-Up/Down reorders and Delete clears/removes.
+Select **Show journey on map** and press Enter to show/fit the plan; it has no
+keyboard shortcut. The other actions are available as selectable rows where
+applicable. See the [controls](../README.md#journey-planner).
 
 Journey Planner defaults to Driving with a connected Mapbox token and Manual
 without one. Ctrl-B's Travel mode row displays the current choice and offers Manual,

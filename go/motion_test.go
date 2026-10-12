@@ -88,7 +88,7 @@ func TestDialogsCaptureNavigationAndStayInsideTerminal(t *testing.T) {
 	}
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		for _, kind := range []dialogKind{
-			dialogHelp, dialogCredits, dialogFiles, dialogCommands, dialogSpeed, dialogInspect, dialogWorkspace,
+			dialogHelp, dialogCredits, dialogFiles, dialogCommands, dialogSearch, dialogSpeed, dialogInspect, dialogWorkspace,
 		} {
 			m := &viewer{
 				workspace: testWorkspace(track),

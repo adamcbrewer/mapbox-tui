@@ -112,7 +112,7 @@ func TestJourneyConnectedDefaultsToDrivingAndRoutesAutomatically(t *testing.T) {
 	}
 	result := cmd().(journeyRouteResult)
 	camera := m.camera
-	_, show := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	show := showJourneyFromMenu(m)
 	if show != nil || m.ui.dialog != dialogJourney || m.camera != camera || requests != 1 {
 		t.Fatal("show action fitted straight lines or duplicated the pending request")
 	}
@@ -137,7 +137,7 @@ func TestJourneyConnectedDefaultsToDrivingAndRoutesAutomatically(t *testing.T) {
 	if !j.routeCurrent() || len(j.Route.Snapped) != 3 || requests != 2 {
 		t.Fatal("waypoint route did not complete automatically")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	showJourneyFromMenu(m)
 	if requests != 2 || m.ui.dialog != dialogNone {
 		t.Fatal("showing a resolved route requested it again")
 	}
@@ -185,7 +185,7 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 		return locationResponse(`{"code":"NoRoute"}`), nil
 	})
 	camera := m.camera
-	_, cmd := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	cmd := showJourneyFromMenu(m)
 	if cmd == nil || m.ui.dialog != dialogJourney {
 		t.Fatal("Show did not calculate a missing route")
 	}
@@ -200,7 +200,7 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 	if !strings.Contains(ansi.Strip(content), "Travel mode: Manual") {
 		t.Fatal("explicit manual choice was not reflected in the main menu")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	showJourneyFromMenu(m)
 	if m.ui.dialog != dialogNone || *requests != 1 {
 		t.Fatal("explicit Manual did not provide a usable offline Show action")
 	}
@@ -217,7 +217,7 @@ func TestJourneyRouteResultUpdatesNestedPlannerNotice(t *testing.T) {
 						return locationResponse(`{"code":"NoRoute"}`), nil
 					})
 				}
-				_, route := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+				route := showJourneyFromMenu(m)
 				if route == nil || !strings.Contains(m.ui.notice, "Calculating") {
 					t.Fatal("Show did not start routing with feedback")
 				}
@@ -266,7 +266,7 @@ func TestJourneyFailedRecalculationUsesManualPreview(t *testing.T) {
 	if !strings.Contains(m.ui.notice, "no Walking route") {
 		t.Fatal("failed retry lost its feedback")
 	}
-	_, show := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	show := showJourneyFromMenu(m)
 	if show == nil || m.ui.dialog != dialogJourney {
 		t.Fatal("Show accepted the failed route instead of requesting current directions")
 	}
@@ -296,7 +296,7 @@ func TestJourneyShowWaitsForCurrentRouteRecalculation(t *testing.T) {
 			_, retry := m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 			result := retry()
 			camera := m.camera
-			_, show := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+			show := showJourneyFromMenu(m)
 			if show != nil || m.ui.dialog != dialogJourney || m.camera != camera {
 				t.Fatal("Show closed the planner, fitted the old route or duplicated the pending request")
 			}
@@ -354,7 +354,7 @@ func TestJourneyPendingShowDoesNotMoveCameraAfterDismissalOrEdit(t *testing.T) {
 	for _, edit := range []bool{false, true} {
 		t.Run(map[bool]string{false: "dismissed", true: "edited"}[edit], func(t *testing.T) {
 			m, _ := routingTestViewer(t)
-			_, cmd := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+			cmd := showJourneyFromMenu(m)
 			late := cmd()
 			if edit {
 				m.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})

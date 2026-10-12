@@ -86,7 +86,7 @@ after eight seconds, and tile bodies are limited to 8 MiB.
 
 ## Traffic v1 overlay
 
-The viewer's main Ctrl-P menu includes **Toggle traffic**, an
+The viewer's main Ctrl-K menu includes **Toggle traffic**, an
 off-by-default toggle saved alongside the telemetry preference. It uses
 `mapbox.mapbox-traffic-v1` through the same bounded Vector Tiles transport and
 selected environment/saved-login credential as Streets, with an independent
@@ -186,13 +186,13 @@ are in [auth help and README](../README.md#runtime-configuration).
 
 ## Journey location lookups
 
-The journey planner uses user-triggered location lookups:
+Quick search (`/`) and the journey planner share user-triggered location lookups:
 
 - **Mapbox Search Box** supplies address/place/named-POI autocomplete and selected
-  coordinates. It is automatically available in location editors when the shared
-  runtime token is present, including saved-login discovery; no separate permission
-  or confirmation is stored. Typing three characters schedules a debounced lookup;
-  Ctrl-S retries. An empty editor and credential discovery without a query make no
+  coordinates. It is automatically available in quick search and location editors
+  when the shared runtime token is present, including saved-login discovery; no
+  separate permission or confirmation is stored. Typing three characters schedules
+  a debounced lookup; Ctrl-S retries. An empty editor and credential discovery without a query make no
   search calls. If credentials arrive while a query is being edited, lookup starts
   after the usual pause. `--no-provider` disables only the basemap; search availability
   still follows the selected token. An explicitly empty environment token disables
@@ -210,17 +210,21 @@ adds no SDK dependencies, following the dependency-minimisation principle in the
 
 Search waits for three characters and a 350 ms pause, cancelling superseded
 requests and rejecting late results. The suggest/retrieve pair shares a unique
-session token; new editors, ended sessions and long-running searches get fresh
-tokens. Each local session uses at most 49 suggest requests before rotating and
-rotates before the documented 180-second endpoint session deadline. Camera motion
-does not trigger location lookups. Closing the planner or editing the query cancels
-work and rejects stale suggestions/retrievals. Opening or reopening the planner
+session token; new search dialogs/editors, ended sessions and long-running searches
+get fresh tokens. Each local session uses at most 49 suggest requests before rotating
+and rotates before the documented 180-second endpoint session deadline. Camera motion
+does not trigger location lookups. Closing search/the planner or editing the query
+cancels work and rejects stale suggestions/retrievals. Opening or reopening the planner
 does not automatically look up a starting point.
 
 Errors leave chosen locations and imported geometry intact, with manual entry
 available. There are no automatic network retry/refresh loops for location lookup.
 Credits returned for selected Mapbox places remain with the session's locations,
 appear in provider credits and contribute to the map footer for visible plans.
+Quick search retains the last accepted place's credits for the map view until the
+next accepted search result or manual coordinate entry replaces them. It frames
+about a one-mile radius around the location without editing any journey or calling
+Directions.
 Active autocomplete suggestions retain their returned attribution and show it in
 the location editor and footer until the suggestions are cleared or replaced by
 retrieved location data. The map footer joins distinct credits on one line;

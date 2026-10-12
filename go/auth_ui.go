@@ -141,7 +141,7 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		kind = defaultProvider(credential.token)
 	}
 	if credential.token != m.provider.token || kind != m.provider.Kind {
-		m.cancelJourneySearch()
+		m.cancelPlaceSearch()
 		if credential.token != m.directions.token {
 			m.workspace.invalidateJourneyRoutes()
 			m.directions = newDirectionsClient(credential.token)
@@ -206,7 +206,7 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	} else if firstRun && credential.token == "" && m.ui.dialog == dialogNone {
 		m.openDialog(dialogMapbox)
 		m.authMessage = credential.guidance
-	} else if m.ui.dialog == dialogJourneyLocation {
+	} else if m.placeSearchOpen() {
 		m.ui.notice = credential.guidance
 		if credential.token != "" {
 			m.ui.notice = "Mapbox ready; place search is automatic"
@@ -217,14 +217,14 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		routing = m.calculateJourneyIfRouted()
 	}
 	var search tea.Cmd
-	if m.ui.dialog == dialogJourneyLocation && m.places.token != "" {
+	if m.placeSearchOpen() && m.places.token != "" {
 		search = m.schedulePlaceSearch()
 	}
 	return tea.Batch(m.fetch(), routing, search)
 }
 
 func (m *viewer) beginMapboxLogin() tea.Cmd {
-	m.cancelJourneySearch()
+	m.cancelPlaceSearch()
 	m.cancelAuth()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.authCancel, m.authBusy = cancel, true
@@ -309,9 +309,9 @@ func (m *viewer) updateMapboxDialog(key string) tea.Cmd {
 	case "v":
 		return m.openMapboxCredits()
 	case "up", "k":
-		m.ui.selected = max(0, m.ui.selected-1)
+		m.ui.selected = menuStep(m.ui.selected, -1, len(actions))
 	case "down", "j":
-		m.ui.selected = min(len(actions)-1, m.ui.selected+1)
+		m.ui.selected = menuStep(m.ui.selected, 1, len(actions))
 	case "tab":
 		m.ui.selected = (m.ui.selected + 1) % len(actions)
 	case "space", "enter":

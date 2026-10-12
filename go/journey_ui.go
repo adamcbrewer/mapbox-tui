@@ -40,26 +40,26 @@ type placeSearchResult struct {
 	err         error
 }
 
-var journeyActions = [...]struct{ title, key string }{
-	{title: "Travel mode", key: "ctrl+b"},
-	{title: "Add waypoint", key: "ctrl+n"},
-	{title: "Reverse journey", key: "ctrl+r"},
-	{title: "Undo edit", key: "ctrl+z"},
-	{title: "Recalculate route", key: "ctrl+d"},
-	{title: "Routing feedback / usage", key: "ctrl+u"},
-	{title: "Show journey on map", key: "ctrl+f"},
+var journeyActions = [...]struct{ title, key, action string }{
+	{title: "Travel mode", key: "ctrl+b", action: "mode"},
+	{title: "Add waypoint", key: "ctrl+n", action: "waypoint"},
+	{title: "Reverse journey", key: "ctrl+r", action: "reverse"},
+	{title: "Undo edit", key: "ctrl+z", action: "undo"},
+	{title: "Recalculate route", key: "ctrl+d", action: "calculate"},
+	{title: "Routing feedback / usage", key: "ctrl+u", action: "feedback"},
+	{title: "Show journey on map", action: "show"},
 }
 
 func (m *viewer) openJourney() tea.Cmd {
 	if m.workspace.selection != nil {
 		ref := m.workspace.selection.ref
 		if _, err := m.workspace.journey(ref); err == nil && ref != m.planner.ref {
-			m.cancelJourneySearch()
+			m.cancelPlaceSearch()
 			m.planner = journeyUI{ref: ref, searchID: m.planner.searchID}
 		}
 	}
 	if _, err := m.workspace.journey(m.planner.ref); err != nil {
-		m.cancelJourneySearch()
+		m.cancelPlaceSearch()
 		m.planner = journeyUI{
 			ref: m.workspace.newJourney(), searchID: m.planner.searchID,
 		}
@@ -77,7 +77,7 @@ func (m *viewer) openJourney() tea.Cmd {
 	return cmd
 }
 
-func (m *viewer) cancelJourneySearch() {
+func (m *viewer) cancelPlaceSearch() {
 	if m.planner.searchCancel != nil {
 		m.planner.searchCancel()
 		m.planner.searchCancel = nil
@@ -93,7 +93,7 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 	if err != nil || index < 0 || index >= len(j.Stops) {
 		return nil
 	}
-	m.cancelJourneySearch()
+	m.cancelPlaceSearch()
 	m.planner.showRevision = nil
 	m.planner.stopID = j.Stops[index].ID
 	m.planner.row = index
@@ -116,7 +116,7 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 }
 
 func (m *viewer) schedulePlaceSearch() tea.Cmd {
-	m.cancelJourneySearch()
+	m.cancelPlaceSearch()
 	m.planner.query = strings.TrimSpace(m.ui.search.Value())
 	m.ui.notice = ""
 	_, coordinate, _ := coordinateLocation(m.planner.query)
@@ -129,7 +129,7 @@ func (m *viewer) schedulePlaceSearch() tea.Cmd {
 }
 
 func (m *viewer) requestPlaceSearch(id uint64) tea.Cmd {
-	current := id == m.planner.searchID && m.ui.dialog == dialogJourneyLocation && m.places.token != ""
+	current := id == m.planner.searchID && m.placeSearchOpen() && m.places.token != ""
 	if !current || m.planner.searchBusy {
 		return nil
 	}
@@ -155,12 +155,12 @@ func (m *viewer) requestPlaceSearch(id uint64) tea.Cmd {
 	}
 }
 
-func (m *viewer) retrieveJourneyLocation() tea.Cmd {
+func (m *viewer) retrievePlaceLocation() tea.Cmd {
 	if time.Since(m.planner.sessionStarted) >= 170*time.Second {
 		return m.schedulePlaceSearch()
 	}
 	suggestion := m.planner.suggestions[m.planner.result]
-	m.cancelJourneySearch()
+	m.cancelPlaceSearch()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.planner.searchCancel, m.planner.searchBusy = cancel, true
 	id, ref, stopID, session := m.planner.searchID, m.planner.ref, m.planner.stopID, m.planner.session
@@ -175,7 +175,7 @@ func (m *viewer) retrieveJourneyLocation() tea.Cmd {
 
 func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 	current := result.id == m.planner.searchID && result.ref == m.planner.ref && result.stopID == m.planner.stopID
-	if !current || m.ui.dialog != dialogJourneyLocation {
+	if !current || !m.placeSearchOpen() {
 		return nil
 	}
 	if m.planner.searchCancel != nil {
@@ -189,7 +189,7 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 		return nil
 	}
 	if result.location != nil {
-		return m.applyJourneyLocation(*result.location)
+		return m.applyPlaceLocation(*result.location)
 	}
 	m.planner.suggestions = result.suggestions
 	m.planner.result = 0
@@ -243,7 +243,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 			}
 		}
 		if m.ui.dialog == dialogJourneyLocation {
-			return m.updateJourneySearchInput(msg)
+			return m.updatePlaceSearchInput(msg)
 		}
 		if m.ui.dialog == dialogJourneyRoutingHelp {
 			var cmd tea.Cmd
@@ -257,7 +257,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		return m.updateJourneyRoutingDialog(pressed, msg)
 	}
 	if m.ui.dialog == dialogJourneyLocation {
-		return m.updateJourneyLocation(pressed, msg)
+		return m.updatePlaceLocation(pressed, msg)
 	}
 	j, err := m.workspace.journey(m.planner.ref)
 	if err != nil {
@@ -269,12 +269,12 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	last := count + len(journeyActions) - 1
 	m.planner.row = max(0, min(last, m.planner.row))
 	switch pressed {
-	case "esc", "ctrl+g":
+	case "esc", "ctrl+j":
 		return m.backDialog()
 	case "up", "k":
-		m.planner.row = max(0, m.planner.row-1)
+		m.planner.row = menuStep(m.planner.row, -1, last+1)
 	case "down", "j":
-		m.planner.row = min(last, m.planner.row+1)
+		m.planner.row = menuStep(m.planner.row, 1, last+1)
 	case "home":
 		m.planner.row = 0
 	case "end":
@@ -283,22 +283,22 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		if m.planner.row < count {
 			return m.editJourneyLocation(m.planner.row)
 		}
-		pressed = journeyActions[m.planner.row-count].key
+		pressed = journeyActions[m.planner.row-count].action
 	}
 	switch pressed {
-	case "ctrl+b":
+	case "ctrl+b", "mode":
 		return m.openJourneyRouting()
-	case "ctrl+d":
+	case "ctrl+d", "calculate":
 		return m.calculateJourneyRoute()
-	case "ctrl+u":
+	case "ctrl+u", "feedback":
 		return m.pushDialog(dialogJourneyRoutingHelp)
-	case "ctrl+n":
+	case "ctrl+n", "waypoint":
 		err = m.workspace.addJourneyWaypoint(m.planner.ref)
 		m.planner.row = len(j.Stops) - 2
-	case "ctrl+r":
+	case "ctrl+r", "reverse":
 		err = m.workspace.reverseJourney(m.planner.ref)
 		m.planner.row = 0
-	case "ctrl+z":
+	case "ctrl+z", "undo":
 		err = m.workspace.undoJourney(m.planner.ref)
 	case "delete", "backspace":
 		if m.planner.row < count {
@@ -314,7 +314,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		if err == nil {
 			m.planner.row += direction
 		}
-	case "ctrl+f":
+	case "show":
 		return m.showJourneyOnMap()
 	}
 	if err != nil {
@@ -330,7 +330,7 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
+func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 	switch pressed {
 	case "esc":
 		return m.backDialog()
@@ -342,7 +342,7 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 		return m.schedulePlaceSearch()
 	case "alt+m":
 		geo := unproject(m.camera.Center)
-		return m.applyJourneyLocation(placeLocation{
+		return m.applyPlaceLocation(placeLocation{
 			Name: fmt.Sprintf("%.6f, %.6f", geo.Y, geo.X), Lon: geo.X, Lat: geo.Y, Source: "map centre",
 		})
 	case "up", "down":
@@ -351,7 +351,7 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 			if pressed == "up" {
 				delta = -1
 			}
-			m.planner.result = max(0, min(len(m.planner.suggestions)-1, m.planner.result+delta))
+			m.planner.result = menuStep(m.planner.result, delta, len(m.planner.suggestions))
 		}
 		return nil
 	case "enter":
@@ -361,10 +361,10 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		if matched {
-			return m.applyJourneyLocation(location)
+			return m.applyPlaceLocation(location)
 		}
 		if len(m.planner.suggestions) > 0 && !m.planner.searchBusy {
-			return m.retrieveJourneyLocation()
+			return m.retrievePlaceLocation()
 		}
 		m.ui.notice = "Enter latitude, longitude"
 		if m.places.token != "" {
@@ -372,10 +372,10 @@ func (m *viewer) updateJourneyLocation(pressed string, msg tea.Msg) tea.Cmd {
 		}
 		return nil
 	}
-	return m.updateJourneySearchInput(msg)
+	return m.updatePlaceSearchInput(msg)
 }
 
-func (m *viewer) updateJourneySearchInput(msg tea.Msg) tea.Cmd {
+func (m *viewer) updatePlaceSearchInput(msg tea.Msg) tea.Cmd {
 	before := m.ui.search.Value()
 	var cmd tea.Cmd
 	m.ui.search, cmd = m.ui.search.Update(msg)
@@ -396,44 +396,8 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 		return "Journey Planner", err.Error(), "esc close"
 	}
 	if m.ui.dialog == dialogJourneyLocation {
-		m.ui.search.SetWidth(max(1, width-2))
-		rows := []string{m.ui.search.View()}
-		credit := ""
-		if len(m.planner.suggestions) > 0 {
-			credit = m.planner.suggestions[0].Attribution
-		}
-		hints := "enter choose / click map / esc"
-		if m.places.token == "" {
-			hints = "enter coordinates / click map"
-		}
-		if height <= 2 && credit != "" {
-			hints = credit
-		}
-		if height > 2 {
-			status := "Mapbox search · type a place"
-			style := s.dialogAccent
-			if m.places.token == "" {
-				status = "Mapbox search [disabled: not connected]"
-				style = s.dialogMuted
-			}
-			if credit != "" {
-				status = credit
-			}
-			if m.planner.searchBusy {
-				status = "Looking up location..."
-			}
-			rows = append(rows, style.Render(pad(status, width)))
-		}
-		count := max(1, height-len(rows))
-		start := max(0, m.planner.result-count+1)
-		for i := start; i < min(len(m.planner.suggestions), start+count); i++ {
-			style := s.dialogText
-			if i == m.planner.result {
-				style = s.selected
-			}
-			rows = append(rows, style.Render(pad(m.planner.suggestions[i].Label, width)))
-		}
-		return journeyStopLabel(m.planner.row, len(j.Stops)), strings.Join(rows, "\n"), hints
+		body, hints := m.placeSearchContent(width, height)
+		return journeyStopLabel(m.planner.row, len(j.Stops)), body, hints
 	}
 	labels := []string{}
 	for i, stop := range j.Stops {
@@ -448,7 +412,10 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 		if action.key == "ctrl+b" {
 			title += ": " + j.Mode.label()
 		}
-		labels = append(labels, title+" ("+action.key+")")
+		if action.key != "" {
+			title += " (" + action.key + ")"
+		}
+		labels = append(labels, title)
 	}
 	m.planner.row = max(0, min(len(labels)-1, m.planner.row))
 	rows := []string{}
@@ -487,14 +454,14 @@ func (m *viewer) journeyDetails() []string {
 	}
 	lines := []string{
 		"Journey plan", "", journeyRoutingStatus(j, m.activeTrack()),
-		"ctrl+g to edit", "",
+		"ctrl+j to edit", "",
 	}
 	if j.routeCurrent() {
 		lines = []string{
 			"Journey plan", "", "Mapbox " + j.Mode.label() + " roads/paths",
 			fmt.Sprintf("%.2f km routed", j.Route.Distance/1000),
 			"Estimated travel time", journeyDuration(j.Route.Duration),
-			"No recorded timestamps", "ctrl+g to edit", "",
+			"No recorded timestamps", "ctrl+j to edit", "",
 		}
 		if j.Busy {
 			lines = append(lines, "Recalculating route...", "")
@@ -542,7 +509,8 @@ func (m *viewer) journeyCredits(existing ...sourceCredit) string {
 		}
 		credits = append(credits, credit)
 	}
-	if m.ui.dialog == dialogJourneyLocation {
+	addCredit(m.searchCredit)
+	if m.placeSearchOpen() {
 		for _, suggestion := range m.planner.suggestions {
 			addCredit(suggestion.Attribution)
 		}

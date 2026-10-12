@@ -8,6 +8,7 @@ The executable is `mapbox-tui`.
 
 - Pan, zoom and inspect multiple tracks, routes and waypoint collections.
 - Free roam around the map without loading a file.
+- Find a place with `/` quick search without changing a journey or selected activity.
 - Plan an A-to-B journey with editable waypoints, offline plotting and optional Mapbox search/road routing.
 - Show an elevation profile and replay recorded positions at adjustable speeds.
 - View imported geometry on an empty canvas, or add Mapbox Streets vector tiles.
@@ -33,6 +34,9 @@ basemap automatically. Run `./bin/mapbox-tui` without a file to free roam; witho
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
 file picker, Ctrl-L to manage loaded files and `q` to quit.
 If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
+
+Menus and pickers wrap: Up on the first item selects the last, and Down on the
+last selects the first. This includes filtered Commands and location-search results.
 
 Esc returns to the previous dialog when you open a nested menu or help page,
 preserving its selection and command filter. At the top level, Esc closes the
@@ -183,7 +187,7 @@ Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags an
 `--zoom` to start somewhere specific. Pan, zoom, rotate and click to inspect
 coordinates. Route playback applies to the active item; elevation shows all visible
 activities consecutively on a shared chart.
-Use **Free roam (clear selection)** in the Ctrl-P command palette to stop playback
+Use **Free roam (clear selection)** in the Ctrl-K command palette to stop playback
 and keep browsing with loaded geometry still visible. **Clear workspace (remove
 all files)** removes the imports while preserving the current camera view.
 
@@ -233,9 +237,21 @@ take priority over route geometry and map labels.
 Activity reordering and journey-wide playback are tracked separately in
 [issue #3](https://github.com/adamcbrewer/mapbox-tui/issues/3).
 
+### Quick place search
+
+Press **`/`** from the map, or choose **Quick place search** in Commands. Type a
+place name with Mapbox connected, or enter **latitude, longitude** offline.
+Autocomplete starts after three characters and a short pause; Up/Down chooses a
+result, Enter frames roughly a one-mile radius around the place, and Esc cancels.
+**Ctrl-S** retries a connected lookup.
+
+Quick search keeps the selected activity, playback and every journey intact.
+Accepting a location disables camera follow so the view stays at the chosen place;
+playback continues. Use **Ctrl-J** to create or edit a journey instead.
+
 ### Journey planner
 
-Press **Ctrl-G** or choose **Journey Planner** in the command palette. The planner
+Press **Ctrl-J** or choose **Journey Planner** in the command palette. The planner
 docks beside the live map at 70 columns or wider, and uses a compact strip above
 the map on smaller terminals. Locations, travel modes and feedback stay in that
 panel. Added locations and resolved routes automatically fit the map, leaving
@@ -273,9 +289,9 @@ setting, and may incur account charges. No new provider account or SDK is requir
 | Choose Manual, Walking, Cycling or Driving; see the current choice in the list | Ctrl-B or Travel mode |
 | Recalculate or retry a routed plan | Ctrl-D or Recalculate route |
 | Read full routing feedback, account usage and limits | Ctrl-U or Routing feedback / usage |
-| Show and fit the journey on the map | Ctrl-F or Show journey on map |
+| Show and fit the journey on the map | Select Show journey on map, then Enter |
 | Switch keyboard focus between the map and planner | Tab in the main planner |
-| Return from a location editor / close the planner | Esc |
+| Return from a location editor / close the planner | Esc; Ctrl-J also closes the main planner |
 
 Reversal changes `A → W1 → W2 → B` to `B → W2 → W1 → A`; one undo restores the
 whole order. Locations remain editable, and stale lookup results cannot overwrite
@@ -321,7 +337,7 @@ plotting. Imported items remain usable through routing failures.
 
 Planned geometry has no invented timestamps/elevation and is separate from recorded playback and
 elevation profiles. It appears in Ctrl-L alongside imports with stable identity
-and colour, and shares the scene renderer. Ctrl-G reopens the selected or most
+and colour, and shares the scene renderer. Ctrl-J reopens the selected or most
 recent plan; removing it or clearing the workspace discards it.
 
 Plans and search results are **session-only**. Favorites and persistent/offline
@@ -343,7 +359,7 @@ short notice; structured JSON/MCP output carries setup details in its status fie
 `--no-provider` is quiet. Credential
 discovery can run while imports display. A file-free launch without credentials
 offers setup or continuing offline; explicit `--no-provider` and an empty token
-environment skip the offer. Ctrl-P lists **Keyboard shortcuts** first and puts
+environment skip the offer. Ctrl-K lists **Keyboard shortcuts** first and puts
 **Mapbox account setup** last when disconnected. Connected viewers offer **Mapbox
 settings** there instead. Login hands the terminal to Mapbox CLI and restores the
 viewer afterward, preserving workspace/camera and replacing map/search clients.
@@ -355,7 +371,7 @@ installed CLI and reuse your saved login. Sign-in is offered when the CLI passes
 its system/compatibility check and the viewer is disconnected. Connected settings
 show **Connected** and **Check connection**, instead of asking you to sign in again.
 
-**Toggle traffic** in the main Ctrl-P menu toggles the viewer's Traffic v1
+**Toggle traffic** in the main Ctrl-K menu toggles the viewer's Traffic v1
 congestion/road-closure layer. It is off by default and follows the current map
 centre as you pan, independently of the basemap. Routes and markers stay above
 traffic rather than changing their colours. The legend uses green/amber/red/dark
@@ -441,7 +457,7 @@ ignored by Git. Only the four explicitly allowed synthetic GPX fixtures are trac
 | Imported files, inspection, elevation and playback | No | No | Fully available |
 | Manual journey coordinates, editing and reversal | No | No | Fully available |
 | Real basemaps in viewer, `render` or MCP | Yes | Recommended for saved login; unnecessary with an environment token | Imported geometry/empty canvas |
-| Journey address/named-POI search | Yes; automatic when connected | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
+| Quick and journey address/named-POI search | Yes; automatic when connected | Recommended for saved login; unnecessary with an environment token | Coordinates/map centre |
 | Journey walking/cycling/driving routes | Yes, with Directions access; Driving defaults when connected | Recommended for saved login; unnecessary with an environment token | Manual straight-line plotting |
 | `mapbox-tui auth login` / `logout` | Login signs in or creates one | Required | Offline features remain available |
 | `mapbox-tui auth status` | No to report status | Needed to inspect the saved login and token metadata | Reports unavailable sections |
@@ -459,9 +475,10 @@ The [MCP tool table](#mcp) lists the same distinction for each service operation
 |---|---|---|
 | Add another track file | Ctrl-O or `o` | |
 | Manage loaded files/items | Ctrl-L | Wheel scrolls the dialog |
-| Journey planner | Ctrl-G | |
-| Command palette / help | Ctrl-P / `?` | |
-| Choose colour theme | Ctrl-P → Colour theme | |
+| Quick place search (without editing a journey) | `/` | |
+| Journey planner | Ctrl-J | |
+| Command palette / help | Ctrl-K / `?` | |
+| Choose colour theme | Ctrl-K → Colour theme | |
 | Pan | Arrows or `h j k l` | Left-drag |
 | Zoom | `+` / `-` | Wheel, anchored to pointer |
 | Zoom at 2× speed | | Ctrl / Cmd + wheel |
@@ -504,7 +521,7 @@ Three terminal palettes are bundled, based on Omarchy's theme catalogue:
 - **Catppuccin Latte** (`catppuccin-latte`): light.
 - **Tokyo Night** (`tokyo-night`): dark.
 
-Use **Ctrl-P → Colour theme** to open the theme list. The current palette is
+Use **Ctrl-K → Colour theme** to open the theme list. The current palette is
 marked; arrows or `j`/`k` preview each highlighted palette across the viewer.
 Enter keeps the preview and returns to the map. Esc restores the theme that was
 active when the picker opened and returns to the command menu.

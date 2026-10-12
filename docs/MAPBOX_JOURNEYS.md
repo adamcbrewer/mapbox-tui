@@ -106,7 +106,7 @@ This journey applies when the app was launched normally, rather than with
 
 1. Load a GPX while disconnected.
 2. Install Mapbox CLI if needed.
-3. Press Ctrl-P, filter for **Mapbox account setup**, then Enter. Missing CLI?
+3. Press Ctrl-K, filter for **Mapbox account setup**, then Enter. Missing CLI?
    Choose **Installation help** for Mapbox's documentation, then **Check again**
    after installation. A saved usable login can connect without another sign-in.
 4. Once the CLI is ready, choose **Sign in to Mapbox** if needed and use your
@@ -119,7 +119,9 @@ Once connected, the palette offers **Mapbox settings** rather than account setup
 and its first action is **Check connection** instead of sign-in. The login operation reports the saved
 credential location before returning to the viewer.
 
-For place search, Ctrl-G opens a journey; edit a location and type a place name.
+For quick place search, press `/`; choosing a result centres the map without
+changing a journey. Ctrl-J opens the Journey Planner; edit a location there to
+search for a start, destination or waypoint.
 Mapbox search is automatic when connected, after three characters and a short pause.
 Ctrl-S retries the query. Unavailable search is greyed out; manual
 coordinates/map-centre input, editing and reversal work without an account.

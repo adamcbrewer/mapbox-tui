@@ -41,6 +41,12 @@ func enterJourneyCoordinate(m *viewer, index int, text string) {
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 }
 
+func showJourneyFromMenu(m *viewer) tea.Cmd {
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	return cmd
+}
+
 func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	m := journeyViewer(t)
 	var requests int
@@ -50,6 +56,10 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 		return nil, nil
 	})
 	m.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	if m.ui.dialog != dialogNone {
+		t.Fatal("removed Journey Planner shortcut still opened a dialog")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	if m.ui.dialog != dialogJourney || requests != 0 {
 		t.Fatal("planner did not open directly without a location request")
 	}
@@ -69,15 +79,28 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	if !slices.Equal(j.Stops, before) {
 		t.Fatal("viewer undo did not restore reversal")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	camera := m.camera
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	if cmd != nil || m.ui.dialog != dialogJourney || m.camera != camera {
+		t.Fatal("removed Show shortcut still ran the action")
+	}
+	_, content, _ := m.journeyDialogContent(70, 17)
+	if !strings.Contains(content, "Show journey on map") || strings.Contains(content, "Show journey on map (") {
+		t.Fatal("menu-only Show action was missing or advertised a shortcut")
+	}
+	showJourneyFromMenu(m)
 	m.rebuild()
 	if !strings.Contains(ansi.Strip(m.content), "Journey plan") || m.activePlayback() != nil || m.profileHeight != 0 {
 		t.Fatal("manual journey became a recorded activity or elevation profile")
 	}
 	ref := m.planner.ref
-	m.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	if m.ui.dialog != dialogJourney || m.planner.ref != ref || requests != 0 {
 		t.Fatal("reopening created a new journey or made a location request")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	if m.ui.dialog != dialogNone || m.planner.ref != ref || requests != 0 {
+		t.Fatal("Journey Planner shortcut did not close the planner without changing the journey")
 	}
 }
 
@@ -103,7 +126,7 @@ func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T)
 
 func TestJourneyLocationBackRestoresMapFocus(t *testing.T) {
 	m := journeyViewer(t)
-	m.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.ui.dialog != dialogJourneyLocation || m.planner.mapFocused {
@@ -544,7 +567,9 @@ func TestJourneyClipboardKeepsEditorOwnership(t *testing.T) {
 			t.Fatal("owned clipboard result did not insert and invalidate suggestions")
 		}
 	})
-	for _, scenario := range []string{"different stop", "same stop reopened", "command palette", "palette to journey"} {
+	for _, scenario := range []string{
+		"different stop", "same stop reopened", "command palette", "palette to journey", "quick search",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			m := journeyViewer(t)
 			m.openJourney()
@@ -562,6 +587,8 @@ func TestJourneyClipboardKeepsEditorOwnership(t *testing.T) {
 				m.editJourneyLocation(0)
 			case "command palette":
 				m.openDialog(dialogCommands)
+			case "quick search":
+				m.openDialog(dialogSearch)
 			}
 			m.ui.search.SetValue("new input")
 			m.ui.notice = "existing notice"
@@ -640,7 +667,7 @@ func TestJourneyCoordinateInspectionAndPlaybackCommands(t *testing.T) {
 	m.openJourney()
 	enterJourneyCoordinate(m, 0, "51.5, -0.1")
 	enterJourneyCoordinate(m, 1, "51.6, -0.2")
-	m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	showJourneyFromMenu(m)
 	type clickTarget struct {
 		name string
 		x, y int

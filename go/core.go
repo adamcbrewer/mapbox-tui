@@ -271,7 +271,10 @@ type Camera struct {
 	Width, Height         int
 }
 
-const minZoom = -8.0
+const (
+	minZoom          = -8.0
+	localViewRadiusM = 1609.344
+)
 
 func (c Camera) scale() float64 { return 256 * math.Exp2(c.Zoom) }
 func (c Camera) screen(p XY) XY {
@@ -325,6 +328,17 @@ func fitBounds(bounds [4]float64, w, h int, aspect float64) Camera {
 		Height: h,
 	}
 }
+
+func localView(location XY, viewport Camera) Camera {
+	viewport.Center = project(location.X, location.Y)
+	latitude := unproject(viewport.Center).Y * math.Pi / 180
+	worldRadius := localViewRadiusM / (2 * math.Pi * 6371000 * math.Cos(latitude))
+	span := math.Min(float64(viewport.Width), float64(viewport.Height)*viewport.Aspect)
+	scale := span * 0.8 / worldRadius
+	viewport.Zoom = math.Max(minZoom, math.Min(20, math.Log2(scale/256)))
+	return viewport
+}
+
 func pointSegment(p, a, b XY) (float64, float64) {
 	dx, dy := b.X-a.X, b.Y-a.Y
 	u := 0.0

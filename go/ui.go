@@ -33,6 +33,7 @@ const (
 	dialogThemes
 	dialogMapbox
 	dialogMapboxHelp
+	dialogSearch
 	dialogJourney
 	dialogJourneyLocation
 	dialogJourneyRouting
@@ -96,8 +97,20 @@ func (m *viewer) clipboardCommand(msg tea.Msg, cmd tea.Cmd) tea.Cmd {
 }
 
 func binding(keys, description string) key.Binding {
-	return key.NewBinding(key.WithKeys(strings.Split(keys, "/")...), key.WithHelp(keys, description))
+	aliases := []string{keys}
+	if keys != "/" {
+		aliases = strings.Split(keys, "/")
+	}
+	return key.NewBinding(key.WithKeys(aliases...), key.WithHelp(keys, description))
 }
+
+func menuStep(selected, direction, count int) int {
+	if count == 0 {
+		return 0
+	}
+	return (selected + direction + count) % count
+}
+
 func (k shortcutMap) ShortHelp() []key.Binding {
 	focus := "details"
 	if k.detailsFocused {
@@ -107,6 +120,7 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 		if k.compact {
 			return []key.Binding{
 				binding("?", "help"),
+				binding("/", "search"),
 				binding("q", "quit"),
 				binding("ctrl+o", "open"),
 				binding("ctrl+l", "files"),
@@ -114,9 +128,10 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 		}
 		return []key.Binding{
 			binding("?", "help"),
+			binding("/", "search"),
 			binding("ctrl+o", "open"),
 			binding("ctrl+l", "files"),
-			binding("ctrl+p", "commands"),
+			binding("ctrl+k", "commands"),
 			binding("tab", focus),
 			binding("q", "quit"),
 		}
@@ -128,6 +143,7 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 	if k.compact {
 		return []key.Binding{
 			binding("?", "help"),
+			binding("/", "search"),
 			binding("q", "quit"),
 			binding("ctrl+o", "open"),
 			binding("ctrl+l", "files"),
@@ -136,13 +152,14 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 	}
 	keys := []key.Binding{
 		binding("?", "help"),
+		binding("/", "search"),
 		binding("ctrl+o", "open"),
 		binding("ctrl+l", "files"),
 		binding("space", play),
 	}
 	keys = append(
 		keys,
-		binding("ctrl+p", "commands"),
+		binding("ctrl+k", "commands"),
 		binding("p", "speed"),
 		binding("tab", focus),
 	)
@@ -170,10 +187,11 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			},
 			elevation,
 			{
+				binding("/", "quick place search"),
 				binding("ctrl+o", "add file"),
 				binding("ctrl+l", "loaded files"),
-				binding("ctrl+g", "plan journey"),
-				binding("ctrl+p", "command palette"),
+				binding("ctrl+j", "plan journey"),
+				binding("ctrl+k", "command palette"),
 				binding("a", "ASCII map"),
 				binding("v", "credits"),
 				binding("m", "toggle camera animation"),
@@ -206,10 +224,11 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("e", "visible elevation profiles"),
 		},
 		{
+			binding("/", "quick place search"),
 			binding("ctrl+o", "add file"),
 			binding("ctrl+l", "loaded files"),
-			binding("ctrl+g", "plan journey"),
-			binding("ctrl+p", "command palette"),
+			binding("ctrl+j", "plan journey"),
+			binding("ctrl+k", "command palette"),
 			binding("a", "ASCII map"),
 			binding("v", "credits"),
 			binding("m", "toggle camera animation"),
@@ -278,7 +297,7 @@ func (m *viewer) gradient(s string, background color.Color) string {
 func (m *viewer) closeDialog() {
 	wasPlanner := m.journeyPanelOpen()
 	m.restoreThemePreview()
-	m.cancelJourneySearch()
+	m.cancelPlaceSearch()
 	m.planner.showRevision = nil
 	m.ui.dialog = dialogNone
 	m.ui.parents = nil
@@ -293,8 +312,8 @@ func (m *viewer) closeDialog() {
 func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	wasPlanner := m.journeyPanelOpen()
 	m.restoreThemePreview()
-	if m.ui.dialog == dialogJourneyLocation {
-		m.cancelJourneySearch()
+	if m.placeSearchOpen() || kind == dialogSearch {
+		m.cancelPlaceSearch()
 	}
 	m.planner.showRevision = nil
 	m.planner.mapFocused = false
@@ -312,10 +331,17 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		m.layout()
 	}
 	switch kind {
-	case dialogCommands:
+	case dialogCommands, dialogSearch:
 		m.ui.inputID = rand.Text()
 		m.ui.search.CharLimit = 80
 		m.ui.search.Placeholder = "Type a command…"
+		if kind == dialogSearch {
+			m.planner.session = rand.Text()
+			m.planner.sessionStarted, m.planner.sessionRequests = time.Time{}, 0
+			m.planner.query = ""
+			m.ui.search.CharLimit = 256
+			m.ui.search.Placeholder = "Place or latitude, longitude"
+		}
 		m.ui.search.SetValue("")
 		return m.ui.search.Focus()
 	case dialogFiles:
@@ -410,9 +436,10 @@ func (m *viewer) dialogHints(hints string) string {
 func (m *viewer) commands() []viewerCommand {
 	commands := []viewerCommand{
 		{title: "Keyboard shortcuts", shortcut: "?", action: "help"},
+		{title: "Quick place search", shortcut: "/", action: "search"},
 		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
-		{title: "Journey Planner", shortcut: "ctrl+g", action: "journey"},
+		{title: "Journey Planner", shortcut: "ctrl+j", action: "journey"},
 		{title: "Colour theme", action: "theme"},
 	}
 	toggles := []viewerCommand{
@@ -471,6 +498,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return command
 	}
 	switch action {
+	case "search":
+		return m.pushDialog(dialogSearch)
 	case "workspace":
 		return m.pushDialog(dialogWorkspace)
 	case "journey":
@@ -539,6 +568,12 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 
 func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
+	if m.ui.dialog == dialogSearch {
+		if pressed, ok := msg.(tea.KeyPressMsg); ok {
+			return m.updatePlaceLocation(pressed.String(), msg)
+		}
+		return m.updatePlaceSearchInput(msg)
+	}
 	if m.ui.dialog >= dialogJourney {
 		return m.updateJourneyDialog(msg)
 	}
@@ -566,11 +601,11 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 					}
 				}
 			case "down", "ctrl+n":
-				m.ui.selected = min(m.ui.selected+1, max(0, len(commands)-1))
+				m.ui.selected = menuStep(m.ui.selected, 1, len(commands))
 				m.ui.menuNavigated = true
 				return nil
 			case "up", "ctrl+p":
-				m.ui.selected = max(0, m.ui.selected-1)
+				m.ui.selected = menuStep(m.ui.selected, -1, len(commands))
 				m.ui.menuNavigated = true
 				return nil
 			case "enter":
@@ -586,9 +621,9 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			}
 			switch pressed {
 			case "down", "j":
-				m.ui.selected = min(last, m.ui.selected+1)
+				m.ui.selected = menuStep(m.ui.selected, 1, last+1)
 			case "up", "k":
-				m.ui.selected = max(0, m.ui.selected-1)
+				m.ui.selected = menuStep(m.ui.selected, -1, last+1)
 			case "enter":
 				if m.ui.dialog == dialogThemes {
 					m.ui.themeBefore = m.ui.selected
@@ -618,7 +653,17 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			}
 		}
 	case dialogFiles:
+		highlighted := m.ui.picker.HighlightedPath()
 		m.ui.picker, cmd = m.ui.picker.Update(msg)
+		atEdge := highlighted != "" && highlighted == m.ui.picker.HighlightedPath()
+		if pressed, ok := msg.(tea.KeyPressMsg); ok && atEdge {
+			switch {
+			case key.Matches(pressed, m.ui.picker.KeyMap.Up):
+				m.ui.picker, _ = m.ui.picker.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+			case key.Matches(pressed, m.ui.picker.KeyMap.Down):
+				m.ui.picker, _ = m.ui.picker.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+			}
+		}
 		if selected, path := m.ui.picker.DidSelectFile(msg); selected {
 			m.closeDialog()
 			return m.load(path)
@@ -640,6 +685,9 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	switch m.ui.dialog {
+	case dialogSearch:
+		body, hints := m.placeSearchContent(width, height)
+		return "Quick search", body, hints
 	case dialogMapbox:
 		return m.mapboxDialogContent(width, height)
 	case dialogMapboxHelp:
@@ -738,7 +786,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		sources := m.sources.view()
 		content = m.sourceCreditsContent(sources)
 		if credits := m.journeyCredits(sources.Credits...); credits != "" {
-			content += "\n\n" + s.dialogHeading.Render("Journey providers") + "\n" + s.dialogText.Render(credits)
+			content += "\n\n" + s.dialogHeading.Render("Search and routing credits") + "\n" + s.dialogText.Render(credits)
 		}
 	case dialogInspect:
 		title = "Selected position"
@@ -880,7 +928,7 @@ func (m *viewer) overlay() {
 	}
 	m.content = canvas.Render()
 	x, y = x+depth, y+depth
-	if m.ui.dialog == dialogCommands || m.ui.dialog == dialogJourneyLocation {
+	if m.ui.dialog == dialogCommands || m.placeSearchOpen() {
 		if cursor := m.ui.search.Cursor(); cursor != nil {
 			cursor.X += max(0, x) + 3
 			cursor.Y += max(0, y) + 4

@@ -63,6 +63,7 @@ type viewer struct {
 	motion                    cameraMotion
 	lastMotionTick            time.Time
 	planner                   journeyUI
+	searchCredit              string
 	places                    *placeClient
 	directions                *directionsClient
 	authID                    uint64
@@ -422,9 +423,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
-		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.ui.dialog == dialogJourneyLocation
+		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.placeSearchOpen()
 		if key == "ctrl+c" || (key == "q" && !enteringText) {
-			m.cancelJourneySearch()
+			m.cancelPlaceSearch()
 			m.workspace.cancelJourneyRoutes()
 			m.cancelAuth()
 			return m, tea.Quit
@@ -441,13 +442,15 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q":
 			return m, tea.Quit
+		case "/":
+			return m, m.pushDialog(dialogSearch)
 		case "ctrl+o", "o":
 			return m, m.openDialog(dialogFiles)
-		case "ctrl+p":
+		case "ctrl+k":
 			return m, m.openDialog(dialogCommands)
 		case "ctrl+l":
 			return m, m.openDialog(dialogWorkspace)
-		case "ctrl+g":
+		case "ctrl+j":
 			return m, m.openJourney()
 		case "?":
 			return m, m.openDialog(dialogHelp)
@@ -993,7 +996,7 @@ func (m *viewer) rebuild() {
 			if m.activePlayback() == nil {
 				j, _ := m.workspace.journey(m.workspace.selection.ref)
 				line = journeyRoutingStatus(j, t)
-				hint = "ctrl+g edit journey · enter details"
+				hint = "ctrl+j edit journey · enter details"
 			}
 			rows = append(
 				rows,
@@ -1098,7 +1101,7 @@ func (m *viewer) rebuild() {
 	if m.journeyStripHeight() == 0 {
 		help := m.ui.help.View(keys)
 		if m.journeyPanelOpen() {
-			help = s.muted.Render("ctrl+g planner · mouse pan/zoom · esc back/close")
+			help = s.muted.Render("ctrl+j planner · mouse pan/zoom · esc back/close")
 		}
 		rows = append(rows, pad(status, m.width), pad(help, m.width))
 	}
@@ -1154,7 +1157,7 @@ func openViewerFiles(paths []string, a Args) error {
 	}
 	m.layout()
 	defer m.sources.close()
-	defer m.cancelJourneySearch()
+	defer m.cancelPlaceSearch()
 	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	_, e = tea.NewProgram(m).Run()
