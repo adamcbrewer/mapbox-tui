@@ -916,8 +916,19 @@ CI runs on pull requests and pushes to `main` with these check names:
 | Race checks | `make race` |
 | Terminal interactions | `make interactions` |
 
-Merge enforcement is a separate repository setting. CI reads the Go version
-from `go.mod`; local Git hooks also need `go` and `gofmt` on PATH.
+GitHub branch protection enforces these rules on `main`:
+
+- Changes must go through a pull request.
+- All three checks above must pass, with the branch up to date with `main`.
+  Required checks must come from GitHub Actions.
+- Review conversations must be resolved before merging.
+- No approving review is required initially, so a solo maintainer can merge a
+  passing PR without a second maintainer's approval.
+- Direct pushes, force pushes and deletion of `main` are blocked. The same rules
+  apply to maintainers and admins, with no pull-request bypass allowances.
+
+CI reads the Go version from `go.mod`; local Git hooks also need `go` and `gofmt`
+on PATH.
 Inspect `git config --get core.hooksPath` before enabling the bundled hooks with
 `git config --local core.hooksPath .githooks`. If you already have hooks, add the
 Make commands to that setup instead of replacing it. Pre-commit runs
