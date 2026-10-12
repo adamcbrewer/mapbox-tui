@@ -78,16 +78,3 @@ their roles/slots; colours are resolved when painting. The cached elevation grid
 can therefore be recoloured without rebuilding geometry. Drawing priority and
 ASCII glyphs stay in `mapStyles`, independent of theme choice. CLI/MCP plain maps
 continue to use the same geometry without ANSI styling.
-
-## Palette sources
-
-The three bundled palettes use colours from Omarchy's catalogue, mapped onto this
-app's UI and map roles:
-
-- [Catppuccin](https://github.com/basecamp/omarchy/blob/master/themes/catppuccin/colors.toml)
-- [Catppuccin Latte](https://github.com/basecamp/omarchy/blob/master/themes/catppuccin-latte/colors.toml)
-- [Tokyo Night](https://github.com/basecamp/omarchy/blob/master/themes/tokyo-night/colors.toml)
-
-TOML parsing uses `github.com/pelletier/go-toml/v2`, pinned in `go.mod` with checksums
-in `go.sum`, following the dependency-minimisation and deterministic-resolution
-principles in the project's [supply-chain reference](https://github.com/lirantal/npm-security-best-practices).

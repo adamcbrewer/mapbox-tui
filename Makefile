@@ -11,7 +11,7 @@ install: build
 	install -m 755 bin/mapbox-tui "$(DESTDIR)$(PREFIX)/bin/mapbox-tui"
 package: build
 	mkdir -p dist
-	tar -czf "dist/mapbox-tui-$$(go env GOOS)-$$(go env GOARCH).tar.gz" -C bin mapbox-tui
+	tar -czf "dist/mapbox-tui-$$(go env GOOS)-$$(go env GOARCH).tar.gz" LICENSE THIRD_PARTY_NOTICES.txt -C bin mapbox-tui
 dev:
 	python3 scripts/dev.py $(ARGS)
 pre-commit:

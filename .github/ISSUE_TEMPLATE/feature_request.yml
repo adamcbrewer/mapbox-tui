@@ -1,0 +1,22 @@
+name: Feature request
+description: Explain a problem you'd like Mapbox TUI to solve.
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: See our [contribution guide](https://github.com/adamcbrewer/mapbox-tui/blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples or alternatives (optional)
+      description: Remove credentials and personal location data from examples and uploads.

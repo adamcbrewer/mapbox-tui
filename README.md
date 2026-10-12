@@ -75,7 +75,8 @@ make mapbox-check                         # optional installed CLI's offline sch
 ```
 
 `DESTDIR` supports staged installs. `make package` produces an archive containing
-only `mapbox-tui` for the build target. Linux x86-64 is verified in this environment.
+`mapbox-tui`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` for the build target.
+Linux x86-64 is verified in this environment.
 Public release downloads and package-manager distribution aren't available yet.
 
 Install Mapbox CLI by following the
@@ -99,9 +100,16 @@ fallback. The minimum terminal size is 30 columns by 12 rows.
 
 Use [runtime configuration](#runtime-configuration), [controls](#controls),
 [CLI](#cli) and [MCP](#mcp) below for setup and usage.
-Contributors can start with [development and checks](#development-and-checks),
+Contributors can start with [Contributing](CONTRIBUTING.md),
+[development and checks](#development-and-checks),
 [architecture](docs/ARCHITECTURE.md), [provider policies](docs/PROVIDERS.md),
 [Go style](docs/GO_STYLE.md) and [theme guidance](docs/THEMES.md).
+
+## Licence
+
+Project-owned code, documentation and synthetic fixtures use the [MIT licence](LICENSE).
+Third-party components retain their [own licences](THIRD_PARTY_NOTICES.txt).
+Mapbox services and data retain their own terms; see [provider policies](docs/PROVIDERS.md).
 
 ## Supported file formats
 
@@ -534,7 +542,7 @@ are prefixed with `~`; missing elevations and timestamps remain unavailable.
 
 ## Colour themes
 
-Three terminal palettes are bundled, based on Omarchy's theme catalogue:
+Three terminal palettes are bundled:
 
 - **Catppuccin** (`catppuccin`): dark, the default.
 - **Catppuccin Latte** (`catppuccin-latte`): light.
