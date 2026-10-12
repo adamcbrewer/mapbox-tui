@@ -74,9 +74,9 @@ make package                              # dist/mapbox-tui-linux-amd64.tar.gz
 make mapbox-check                         # optional installed CLI's offline schemas
 ```
 
-`DESTDIR` supports staged installs. `make package` produces an archive containing
-`mapbox-tui`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` for the build target.
-Linux x86-64 is verified in this environment.
+`DESTDIR` supports staged installs; licence files go under `PREFIX/share/licenses/mapbox-tui`.
+`make package` supports the audited Linux x86-64 target and produces an archive
+containing `mapbox-tui`, `LICENSE` and `THIRD_PARTY_NOTICES.txt`.
 Public release downloads and package-manager distribution aren't available yet.
 
 Install Mapbox CLI by following the
