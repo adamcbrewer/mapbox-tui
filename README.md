@@ -741,6 +741,29 @@ Without a file/workspace and token, rendering returns an empty map with setup
 guidance in `scene.status`. `point_index` requires a track. Camera defaults match
 the viewer's free-roam world view.
 
+### Prompt ideas
+
+These broader workflows use the assistant's terminal-control, screenshot and
+image-display tools alongside MCP. Journey planning and traffic run in the
+interactive viewer; road/path routes with estimated times and live traffic need
+Mapbox access. Screenshots and displaying images in a compatible terminal use
+the assistant's tools; MCP itself returns text maps and structured data.
+
+- **Plan a trip and compare options:**
+  > Use mapbox-tui in the terminal to plan a trip from King's Cross to Greenwich,
+  > London. Compare cycling and walking distances and estimated travel times,
+  > then show the cycling route on the map and capture it for me.
+
+- **Get a map and traffic snapshot:**
+  > Open mapbox-tui around central London, enable live traffic and capture a
+  > screenshot of the area. Display it in the terminal and summarise the visible
+  > congestion and closures, including the traffic data's fetch time and status.
+
+- **Capture a route to share:**
+  > Open /path/to/ride.gpx in mapbox-tui, select its recorded track and fit it to
+  > the map. Capture a screenshot, display it in the terminal and give me a short
+  > caption with the track's distance and recorded time span where available.
+
 ### Try it with the bundled fixtures
 
 These examples use synthetic files and work without a Mapbox account. Replace
