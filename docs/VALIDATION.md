@@ -160,6 +160,8 @@ Mercator latitude limit.
 World-edge regressions verify actual visible tile bounds and on-screen result
 visibility. A playback-pulse regression keeps the accepted search inspection while
 the activity advances, with explicit follow returning inspection to the activity.
+Exact longitude/pole boundary cases also draw the searched point through the real
+raster, checking exclusive screen bounds rather than inclusive camera coordinates.
 Compact-search regressions clear stale early-Enter notices when results arrive,
 keeping the selected match visible and selectable at 30×12 in both display modes.
 

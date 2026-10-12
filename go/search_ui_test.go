@@ -106,7 +106,10 @@ func TestQuickSearchPreservesWorkspace(t *testing.T) {
 }
 
 func TestQuickSearchFrameStaysRenderable(t *testing.T) {
-	for _, location := range []XY{{179.999, 0}, {-179.999, 0}, {0, 85.05}, {0, -85.05}, {179.999, 90}} {
+	for _, location := range []XY{
+		{179.999, 0}, {-179.999, 0}, {0, 85.05}, {0, -85.05}, {179.999, 90},
+		{180, 0}, {-180, 0}, {0, -90}, {180, -90}, {-180, 90},
+	} {
 		for _, size := range [][2]int{{88, 34}, {28, 3}} {
 			for _, bearing := range []float64{0, 45, 120} {
 				name := fmt.Sprintf(
@@ -126,10 +129,15 @@ func TestQuickSearchFrameStaysRenderable(t *testing.T) {
 						t.Fatal("quick-search frame exceeded renderable tile coverage", a, b)
 					}
 					point := camera.screen(project(location.X, location.Y))
-					outsideX = point.X < -1e-6 || point.X > float64(camera.Width*2)+1e-6
-					outsideY = point.Y < -1e-6 || point.Y > float64(camera.Height*4)+1e-6
+					outsideX = point.X < 0 || point.X >= float64(camera.Width*2)
+					outsideY = point.Y < 0 || point.Y >= float64(camera.Height*4)
 					if outsideX || outsideY {
 						t.Fatal("world-edge framing lost the search point", point)
+					}
+					grid := newGrid(camera.Width, camera.Height)
+					grid.label(point, "@", roleCursor, false)
+					if !strings.Contains(grid.plain(false), "@") {
+						t.Fatal("exact-edge search point did not reach a rendered cell")
 					}
 				})
 			}

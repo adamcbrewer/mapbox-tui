@@ -48,7 +48,15 @@ func clean(s string) string {
 }
 func project(lon, lat float64) XY {
 	lat = math.Max(-85.05112878, math.Min(85.05112878, lat))
-	return XY{(lon + 180) / 360, (1 - math.Asinh(math.Tan(lat*math.Pi/180))/math.Pi) / 2}
+	x := (lon + 180) / 360
+	y := (1 - math.Asinh(math.Tan(lat*math.Pi/180))/math.Pi) / 2
+	// Keep valid boundary coordinates inside the raster's half-open world.
+	const inset = 1e-9
+	if lon >= -180 && lon <= 180 {
+		x = math.Max(inset, math.Min(1-inset, x))
+	}
+	y = math.Max(inset, math.Min(1-inset, y))
+	return XY{x, y}
 }
 func unproject(p XY) XY {
 	return XY{p.X*360 - 180, math.Atan(math.Sinh(math.Pi*(1-2*p.Y))) * 180 / math.Pi}
@@ -340,8 +348,8 @@ func localView(location XY, viewport Camera) Camera {
 	viewport.Zoom = math.Max(minZoom, math.Min(20, math.Log2(scale/256)))
 	viewport = containedView(viewport)
 	screen := viewport.screen(point)
-	outsideX := screen.X < 0 || screen.X > float64(viewport.Width*2)
-	outsideY := screen.Y < 0 || screen.Y > float64(viewport.Height*4)
+	outsideX := screen.X < 0 || screen.X >= float64(viewport.Width*2)
+	outsideY := screen.Y < 0 || screen.Y >= float64(viewport.Height*4)
 	if outsideX || outsideY {
 		viewport.Bearing = 0
 		viewport.Center = point
