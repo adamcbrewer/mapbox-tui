@@ -638,20 +638,21 @@ that command's options.
 
 ## MCP
 
-Use MCP to ask an AI assistant to inspect activities, compare imports and build
-focused maps. The assistant gets structured results and can reuse loaded files,
-selection and visibility across follow-up requests in the same server process.
-See the [follow-along examples](#try-it-with-the-bundled-fixtures) below.
+Connect an MCP-capable agent, such as Claude, Codex or OpenCode, and ask it to
+check an activity, compare files or put together a map. It gets structured data
+back and keeps the loaded files, selection and visibility for follow-up questions
+while the server is running. The [examples below](#try-it-with-the-bundled-fixtures)
+give you something to try with the bundled files.
 
-Your MCP client launches the server with:
+Your agent starts the server with:
 
 ```sh
 ./bin/mapbox-tui mcp
 ```
 
-Running this command in a terminal waits for MCP protocol messages over
-stdin/stdout. It doesn't open an interactive prompt. `mcp --help` describes the
-launcher; clients discover the tools through MCP.
+If you run it yourself, it'll sit waiting for MCP messages over stdin/stdout.
+That's expected: the conversation happens in your agent. Use `mcp --help` for
+the command's help; your agent discovers the available tools when it connects.
 
 The local stdio server exposes nine tools:
 
@@ -667,19 +668,19 @@ The local stdio server exposes nine tools:
 | `remove_item` | `track_id`, `item_id` | Removes one item; unloads the file if it was its last item | No |
 | `render_map` | Optional `track_id`/`item_id`, or `workspace: true`, plus viewport/provider options | Plain map text and scene metadata | Optional; required for real basemap tiles |
 
-### Connect an AI client
+### Connect your agent
 
-Build from the repository root using the Go version in `go.mod`, then print the
-repository's absolute path:
+From the repository root, build with the Go version in `go.mod` and check the
+full path to this directory:
 
 ```sh
 make build
 pwd
 ```
 
-Replace `/absolute/path/to/mapbox-tui` in the examples with that directory.
-For MCP clients that use `mcpServers`, merge this server entry into the client's
-existing configuration:
+Replace `/absolute/path/to/mapbox-tui` below with the path printed by `pwd`.
+If your agent's MCP settings use `mcpServers`, add this entry to its existing
+configuration:
 
 ```json
 {
@@ -692,34 +693,14 @@ existing configuration:
 }
 ```
 
-The client starts the stdio server; `mapbox-tui` doesn't read this configuration
-itself. Other clients may use a different configuration format. For
-[OpenCode](https://opencode.ai/docs/mcp-servers/#local), merge this into your
-project's `opencode.json` instead:
+This configuration belongs to your agent, which starts the server for you. If
+it uses a different format, follow its instructions for adding a local stdio
+server: use the full path to `bin/mapbox-tui` as the command and `mcp` as its
+argument.
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "mapbox-tui": {
-      "type": "local",
-      "command": ["/absolute/path/to/mapbox-tui/bin/mapbox-tui", "mcp"],
-      "enabled": true
-    }
-  }
-}
-```
-
-Reload your client after changing its configuration. In OpenCode, check the
-connection and start a conversation from the directory containing `opencode.json`:
-
-```sh
-opencode mcp list
-opencode
-```
-
-Look for a connected `mapbox-tui` server. Both configurations launch the built
-local executable directly, with no additional server package to install
+Reload your agent, check that `mapbox-tui` is connected in its MCP settings and
+that it can see the nine tools listed above. You're running the binary you just
+built, so there's no extra server package to install
 ([setup principles](https://github.com/lirantal/npm-security-best-practices#8-harden-npx-execution)).
 
 Full schemas are in [shared/tools.json](shared/tools.json). Track IDs and tile
@@ -743,53 +724,54 @@ the viewer's free-roam world view.
 
 ### Prompt ideas
 
-These broader workflows use the assistant's terminal-control, screenshot and
-image-display tools alongside MCP. Journey planning and traffic run in the
-interactive viewer; road/path routes with estimated times and live traffic need
-Mapbox access. Screenshots and displaying images in a compatible terminal use
-the assistant's tools; MCP itself returns text maps and structured data.
+Your agent can also work with the terminal viewer if it has tools to control
+the terminal, take screenshots and display images. That's how it can use the
+journey planner and traffic overlay, while MCP gives it text maps and structured
+data. You'll need Mapbox access for road/path routes with estimated times and
+live traffic, and a compatible terminal to display the screenshots.
 
-- **Plan a trip and compare options:**
-  > Use mapbox-tui in the terminal to plan a trip from King's Cross to Greenwich,
-  > London. Compare cycling and walking distances and estimated travel times,
-  > then show the cycling route on the map and capture it for me.
+- **Plan a trip:**
+  > Use mapbox-tui in the terminal to plan a trip from King's Cross to Greenwich
+  > in London. How far is it by bike or on foot, and how long would each take?
+  > Use the route estimates, then show me a screenshot of the cycling route.
 
-- **Get a map and traffic snapshot:**
-  > Open mapbox-tui around central London, enable live traffic and capture a
-  > screenshot of the area. Display it in the terminal and summarise the visible
-  > congestion and closures, including the traffic data's fetch time and status.
+- **Check an area's traffic:**
+  > Open central London in mapbox-tui and turn on live traffic. Take a screenshot
+  > and show it in the terminal. What congestion or closures can you see, and
+  > when was the traffic data fetched? Include its status too.
 
-- **Capture a route to share:**
-  > Open /path/to/ride.gpx in mapbox-tui, select its recorded track and fit it to
-  > the map. Capture a screenshot, display it in the terminal and give me a short
-  > caption with the track's distance and recorded time span where available.
+- **Get a screenshot of a route:**
+  > Open /path/to/ride.gpx in mapbox-tui, select the recorded track and fit it to
+  > the map. Take a screenshot and show it in the terminal, with a short caption
+  > giving the distance and recorded time span if the file has timestamps.
 
 ### Try it with the bundled fixtures
 
-These examples use synthetic files and work without a Mapbox account. Replace
-`/absolute/path/to/mapbox-tui` with your repository path, and paste the prompts
-into your connected AI client. Keep the same connection for the follow-ups.
+The bundled files are synthetic, and you can try these examples without a
+Mapbox account. Replace `/absolute/path/to/mapbox-tui` with your repository path and
+paste the prompts into your connected agent. Keep that connection open for the
+follow-up requests.
 
-The JSON arrays show sequences of `tools/call` parameter objects for clients or
-developers inspecting the requests; they aren't terminal commands. They assume
-a fresh server where the two files receive `track-1` and `track-2`. Use the actual
-`track_id` and `item_id` values returned by `load_track` or `list_tracks` in an
-existing session. The client handles MCP initialisation and tool calls.
+The JSON snippets show the parameters passed to `tools/call`, with the calls
+listed in order. Your agent handles the MCP connection and sends these requests
+for you. With a fresh server, the files get `track-1` and `track-2`; in an existing
+session, use the `track_id` and `item_id` values returned by `load_track` or
+`list_tracks`.
 
-#### 1. Audit a recorded activity
+#### 1. Check a recorded activity
 
-Useful when an export mixes a recording, planned routes and waypoints, or has
-incomplete measurements:
+An export can contain a recording, planned routes and waypoints in the same
+file. If you're checking how far you travelled, start with the recorded track:
 
 ```text
-Use the mapbox-tui MCP tools to load
-/absolute/path/to/mapbox-tui/fixtures/example.gpx and show its items.
-Summarise only the recorded track, excluding the Optional spur route.
-Report distance, elevation coverage and timestamp coverage. Find the recorded
-point nearest 1 km, then show an offline ASCII map of that track at 60 by 20 cells.
+Use mapbox-tui's MCP tools to open
+/absolute/path/to/mapbox-tui/fixtures/example.gpx and show me what's in it.
+How far did the recorded track go, leaving out Optional spur? How many points
+have elevations and timestamps? Find the recorded point nearest 1 km, then
+show me an offline ASCII map of that track at 60 by 20 cells.
 ```
 
-Expected tool calls:
+The agent's calls look like this:
 
 ```json
 [
@@ -802,25 +784,25 @@ Expected tool calls:
 ]
 ```
 
-The recorded track is item 3: about **2.50 km**, with 10 points across two
-segments, elevations on 9/10 points and timestamps on 10/10 points. Its elevation
-range is 7-14 m. The nearest recorded point to 1 km is at about 966 m, latitude
-51.505 and longitude -0.112; the tool doesn't interpolate a new point.
+You should get about **2.50 km** for the recorded track (item 3). It has 10 points
+across two segments, with elevations on nine points and timestamps on all ten.
+The elevations range from 7 to 14 m. The recorded point nearest 1 km is actually
+at about 966 m, latitude 51.505 and longitude -0.112. The tool picks an existing
+point rather than making one up between recordings.
 
-The whole-file summary is about 2.97 km because it also includes item 4, the
-465.82 m planned spur. That total isn't the recorded activity distance.
+The whole-file summary gives about 2.97 km because it includes the separate
+465.82 m planned spur (item 4). That's useful for checking all the geometry in
+the file, but it isn't how far the recorded activity went.
 
-#### 2. Compare imports before using them
+#### 2. Compare two imports
 
-Useful when deciding which export contains an activity and which contains only
-places or planning data. Continue the same conversation:
+Next, check what another file adds. Carry on in the same conversation:
 
 ```text
-Use mapbox-tui to also load
-/absolute/path/to/mapbox-tui/fixtures/waypoints.gpx.
-Compare the loaded files in a table: recorded tracks, planned routes, waypoints,
-geometry distance and timestamp coverage. Distinguish whole-file geometry
-distance from recorded activity distance. Explain what each file can tell me.
+Also open /absolute/path/to/mapbox-tui/fixtures/waypoints.gpx using mapbox-tui.
+Compare the files in a table: recorded tracks, planned routes, waypoints,
+geometry distance and how many points have timestamps. Keep recorded activity
+distance separate from the whole-file total. What can each file tell me?
 ```
 
 ```json
@@ -832,20 +814,19 @@ distance from recorded activity distance. Explain what each file can tell me.
 ]
 ```
 
-`example.gpx` contains one recorded track, one planned route and two waypoints;
-10 of its 12 geometry points have timestamps. `waypoints.gpx` contains one
-waypoint, no recorded points and no timestamps. Its zero distance describes a
-waypoint-only file, rather than a recorded zero-length activity.
+`example.gpx` has one recorded track, one planned route and two waypoints.
+Ten of its 12 geometry points have timestamps. `waypoints.gpx` just has one
+waypoint, with no recorded points or timestamps. Its distance is zero because
+it's a place, not a recording of a trip.
 
-#### 3. Build a focused map, then revise it
+#### 3. Make a map, then change it
 
-Useful for turning a mixed workspace into a map of just the items you want to
-discuss. Continue with both files loaded:
+With both files loaded, ask for a map of the bits you want to see:
 
 ```text
-Using mapbox-tui, hide Optional spur and the entire waypoints.gpx file.
-Keep Lookout and Coffee visible, select the Riverside exploration track,
-and render all visible items as an offline ASCII map at 60 by 20 cells.
+In mapbox-tui, hide Optional spur and the whole waypoints.gpx file.
+Keep Lookout and Coffee visible, and select the Riverside exploration track.
+Show everything still visible on an offline ASCII map at 60 by 20 cells.
 ```
 
 ```json
@@ -859,12 +840,12 @@ and render all visible items as an offline ASCII map at 60 by 20 cells.
 ]
 ```
 
-The scene contains the recording and its two named waypoints, with the recording
-active. Use `workspace: true` so the render respects workspace visibility.
-Then ask:
+You'll see the recording and its two named waypoints, with the recording
+selected. `workspace: true` makes the render use the visibility settings you
+just changed. Then ask:
 
 ```text
-Show Optional spur again and render the workspace with the same settings.
+Show Optional spur again and redraw the map with the same settings.
 ```
 
 ```json
@@ -876,10 +857,10 @@ Show Optional spur again and render the workspace with the same settings.
 ]
 ```
 
-The assistant can reuse the loaded files and selection while changing the map.
-These changes belong to the MCP server's workspace, independently of the viewer.
-The current tools cover imports, inspection and rendering; place search, journey
-planning and playback are viewer features rather than MCP tools.
+The files are already loaded, so your agent can keep changing the map without
+opening them again. The MCP server has its own workspace; these changes don't
+control an open viewer. For place search, journey planning and playback, your
+agent needs to operate the terminal viewer as described in the prompt ideas.
 
 ## Architecture
 
