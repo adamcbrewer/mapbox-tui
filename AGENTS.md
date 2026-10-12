@@ -9,16 +9,17 @@ Plain CLI/MCP rendering stays ANSI-free; imported geometry remains usable offlin
 ## Checks
 
 Use the Go version in `go.mod`. Run checks from the repository root:
-- `MAPBOX_ACCESS_TOKEN='' make test` builds, tests, vets and checks CLI/MCP parity.
+- `make test` builds, tests, vets and checks CLI/MCP parity; it disables Mapbox credentials internally.
 - For viewer changes, run `python3 scripts/interactions.py` after building.
 
-In this environment, prefix Go/Make commands with `mise exec go@1.27.1 --`.
+For this agent environment only, prefix Go/Make commands with `mise exec go@1.27.1 --`.
+Public documentation examples use plain `go` and `make` commands with version requirements stated in prose.
 
 ## Read when relevant
 
 - Go changes: [code-style skill and project exceptions](docs/GO_STYLE.md).
 - Workspace lifecycle, selection, playback and scene changes: [architecture](docs/ARCHITECTURE.md#shared-model-and-rendering).
-- Verification commands and terminal requirements: [development and checks](README.md#development-and-checks).
+- Verification commands and terminal requirements: [development notes](docs/DEVELOPMENT.md).
 - Provider changes: [loading, caching and attribution policies](docs/PROVIDERS.md).
 - Theme changes: [palette format and API](docs/THEMES.md).
-- CLI/MCP contract changes: [README](README.md) and [tool schemas](shared/tools.json).
+- CLI/MCP contract changes: [usage](docs/USAGE.md), [MCP notes](docs/MCP.md) and [tool schemas](shared/tools.json).

@@ -22,9 +22,42 @@ environment variable disables discovery. Repo-local token files aren't read.
 The CLI is an optional, separately installed runtime helper, located on PATH or
 through `MAPBOX_TUI_CLI`. It owns OAuth/storage/refresh in `~/.mapbox/`, or
 `MAPBOX_CONFIG_DIR`; `mapbox-tui` never reads private credential files or saves a second
-token copy. Auth commands report the resolved credential path. See the [authentication table](../README.md#which-commands-need-mapbox-authentication)
-for command and service requirements. Synthetic basemap geometry is internal to
+token copy. Auth commands report the resolved credential path. See
+[runtime configuration](#runtime-configuration) for setup and overrides. Synthetic basemap geometry is internal to
 the rendering benchmark.
+
+## Runtime configuration
+
+The [README](../README.md#mapbox) covers the usual saved-login setup.
+Mapbox CLI owns the shared `default` profile at `~/.mapbox/credentials.json`;
+`MAPBOX_CONFIG_DIR` relocates it. `MAPBOX_TUI_CLI` selects a CLI executable
+outside `PATH`. Credentials are owner-only JSON files, rather than an OS keychain.
+
+For scripts, a public token can override the saved login:
+
+```sh
+MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/mapbox-tui
+./bin/mapbox-tui auth status --usage --json
+```
+
+An explicitly empty `MAPBOX_ACCESS_TOKEN` disables credential discovery and
+first-run setup. `.env` and repo-local token files aren't loaded. Tokens stay
+runtime-only. Restart a viewer or MCP process to rediscover credentials, or
+use the viewer's Mapbox account setup action.
+
+`--no-provider` (MCP: `provider: "none"`) disables the basemap. Search and
+routing still use available credentials independently of basemap visibility.
+Imports, inspection, playback and manual journey coordinates work offline.
+
+`auth status` reports login, rendering-token source, validity and Streets
+access; `--usage` adds eligible account/token statistics. Completed reports exit
+zero even when sections are unavailable. `auth logout` removes the shared CLI
+profile without revoking public tokens or clearing other running processes.
+
+The viewer saves traffic and CLI-telemetry preferences in
+`~/.config/mapbox-tui/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it).
+Theme, camera, workspace and travel-mode choices last for the session. CLI
+telemetry is opt-in and an explicit environment opt-out takes precedence.
 
 ## Mapbox requests
 
@@ -144,7 +177,7 @@ The live check on **10 October 2026** confirmed Traffic v1 access with the exist
 saved-login account: TileJSON advertised zooms **6–16**, and one London zoom-14
 tile decoded **1,043 road features**. This proves access for that account, not all
 account types; card-free trial access has not been tested. See
-[live provider checks](../README.md#optional-live-provider-checks) for the opt-in check.
+[live provider checks](DEVELOPMENT.md#optional-live-provider-checks) for the opt-in check.
 
 Traffic calls are additional Vector Tiles requests, including stationary refresh.
 See current [pricing](https://www.mapbox.com/pricing#vector-tiles-api),
@@ -181,8 +214,8 @@ delayed counts and trial-account access are independent of map access.
 Logout removes the shared login rather than revoking the account's public token
 or environment overrides. No CLI-derived public token is persisted by `mapbox-tui`.
 The CLI's v0.3.0 OAuth scope set is broader than `mapbox-tui` needs and cannot be
-narrowed through its command interface. Signup/pricing and optional-install links
-are in [auth help and README](../README.md#runtime-configuration).
+narrowed through its command interface. See the [README](../README.md#mapbox)
+for CLI installation and auth help for signup and pricing links.
 
 ## Journey location lookups
 
@@ -306,7 +339,7 @@ allowances, not app-enforced spending caps. Follow current
 [signup/trial limits](https://docs.mapbox.com/accounts/guides/signup/) rather than
 assuming the same allowance or capability for every account. The three profiles
 can be checked independently using the opt-in
-[live provider checks](../README.md#optional-live-provider-checks).
+[live provider checks](DEVELOPMENT.md#optional-live-provider-checks).
 Traffic-aware routing, alternatives, instructions, elevation and persistent caching
 remain separate work.
 

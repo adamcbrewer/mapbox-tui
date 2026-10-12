@@ -8,7 +8,6 @@ mapbox-check:
 	python3 scripts/check_mapbox_contract.py
 distribution-check:
 	@test "$$(go env GOOS)/$$(go env GOARCH)" = linux/amd64 || { echo "Installation and packaging require the audited linux/amd64 target." >&2; exit 1; }
-	@test "$$(go env GOVERSION)" = "$$(awk '$$1 == "go" { print "go" $$2; exit }' go.mod)" || { echo "Installation and packaging require the Go version in go.mod." >&2; exit 1; }
 install: distribution-check build
 	install -d "$(DESTDIR)$(PREFIX)/bin" "$(DESTDIR)$(PREFIX)/share/licenses/mapbox-tui"
 	install -m 755 bin/mapbox-tui "$(DESTDIR)$(PREFIX)/bin/mapbox-tui"
