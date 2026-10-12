@@ -144,7 +144,7 @@ The live check on **10 October 2026** confirmed Traffic v1 access with the exist
 saved-login account: TileJSON advertised zooms **6–16**, and one London zoom-14
 tile decoded **1,043 road features**. This proves access for that account, not all
 account types; card-free trial access has not been tested. See
-[validation](VALIDATION.md#traffic-overlay) for the opt-in check.
+[live provider checks](../README.md#optional-live-provider-checks) for the opt-in check.
 
 Traffic calls are additional Vector Tiles requests, including stationary refresh.
 See current [pricing](https://www.mapbox.com/pricing#vector-tiles-api),
@@ -243,8 +243,7 @@ and Europe.
 Search results and plans remain in memory for this session only. The
 [Search Box documentation](https://docs.mapbox.com/api/search/search-box/)
 restricts returned data to temporary use. No disk cache, favorites or export is
-added here. Provider-compatible persistence is tracked in
-[issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
+added here. Provider-compatible persistence isn't implemented.
 
 ## Journey road/path routing
 
@@ -306,7 +305,8 @@ allowances, not app-enforced spending caps. Follow current
 [pricing](https://www.mapbox.com/pricing#directions-api) and
 [signup/trial limits](https://docs.mapbox.com/accounts/guides/signup/) rather than
 assuming the same allowance or capability for every account. The three profiles
-can be checked independently using the opt-in live check in [validation](VALIDATION.md).
+can be checked independently using the opt-in
+[live provider checks](../README.md#optional-live-provider-checks).
 Traffic-aware routing, alternatives, instructions, elevation and persistent caching
 remain separate work.
 
@@ -325,6 +325,3 @@ retain their own attribution even without a basemap.
 [Mapbox's published requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
 also specify a graphical logo. Text attribution is the current terminal
 implementation; acceptance of text in place of the logo hasn't been confirmed.
-The accepted terminal approach is tracked in
-[issue #36](https://github.com/adamcbrewer/mapbox-tui/issues/36), separately from
-project licensing.

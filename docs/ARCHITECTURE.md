@@ -47,6 +47,19 @@ The main rules:
   can't select a later import.
 - **Selection isn't visibility:** selecting reveals an item. Hiding/removing the
   active item clears selection and stops playback. Showing it doesn't select it.
+- **Imports preserve ownership:** duplicate imports compare normalised absolute
+  paths and reuse the existing document without rereading it. Failed imports
+  preserve the workspace; clearing or removing active data preserves the camera.
+  Disconnected parts and gaps never become connecting paths.
+- **Playback and profiles:** switching items starts paused; reselecting the active
+  item preserves its position. Only the active recorded item plays. Visible
+  elevation sections use file-load/item order and cumulative distance offsets,
+  while measurements remain item-local.
+- **Planned intent stays separate:** session-only journeys share workspace identity
+  and rendering, with no invented recorded timestamps or elevation. User stops,
+  snapped coordinates and routed geometry remain distinct. Edit/undo invalidates
+  estimates, cancels obsolete work and checks revisions before accepting results.
+  Manual coordinates remain usable after provider failure.
 - **Our renderer draws the map:** prepare projected coordinates, bounds and
   distances; transform through the camera; thin and clip geometry; rasterise into
   2×4 Braille dots per cell (or ASCII); apply layer/label priorities. Charm handles
@@ -87,10 +100,9 @@ different stages, so we can't add them together to estimate a full UI frame.
 
 ### Workspace scenes
 
-Source: [implementation-plan progress](IMPLEMENTATION_PLAN.md#progress) and
-[`BenchmarkWorkspaceScene`](../go/scene_bench_test.go). The first retained record
-on main is
-[`9d14334`](https://github.com/adamcbrewer/mapbox-tui/blob/9d1433466c00feaa0b100ae5e715b19d660553ea/docs/IMPLEMENTATION_PLAN.md#progress),
+Source: [`BenchmarkWorkspaceScene`](../go/scene_bench_test.go) and the original
+[implementation-plan record at `9d14334`](https://github.com/adamcbrewer/mapbox-tui/blob/9d1433466c00feaa0b100ae5e715b19d660553ea/docs/IMPLEMENTATION_PLAN.md#progress),
+the first retained record on main,
 dated 8 October 2026. The measurement date wasn't recorded.
 
 | Workload | Terminal cells | Recorded scene time |
@@ -105,8 +117,8 @@ painting, terminal output and input latency.
 
 ### Traffic geometry
 
-Source: [traffic-overlay validation](VALIDATION.md#traffic-overlay), retained in
-[`337e744`](https://github.com/adamcbrewer/mapbox-tui/blob/337e744fbd1936a805a2862224721b8dcc3d4c78/docs/VALIDATION.md#traffic-overlay).
+Source: the original
+[traffic-overlay record at `337e744`](https://github.com/adamcbrewer/mapbox-tui/blob/337e744fbd1936a805a2862224721b8dcc3d4c78/docs/VALIDATION.md#traffic-overlay).
 Measured on **10 October 2026** using the same **7,494 London traffic features at
 zoom 8**. Values are medians of three geometry-rendering runs.
 

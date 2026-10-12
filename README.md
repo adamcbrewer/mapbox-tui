@@ -21,22 +21,34 @@ navigation or voice guidance.
 
 ## Quick start
 
-Building requires Go **1.27.1** and Make. Development checks use Python 3.
-Run from the repository root:
+Building requires the Go version declared in [go.mod](go.mod) and Make.
+Development checks use Python 3. Clone the repository and build:
 
 ```sh
 git clone https://github.com/adamcbrewer/mapbox-tui.git
 cd mapbox-tui
 make build
-MAPBOX_ACCESS_TOKEN='' ./bin/mapbox-tui fixtures/example.gpx
 ```
 
-The example explicitly disables credential discovery and network features.
-File viewing needs no account or token. A configured Mapbox token adds a real
-basemap automatically. Run `./bin/mapbox-tui` without a file to free roam; without a
-token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
-file picker, Ctrl-L to manage loaded files and `q` to quit.
-If you manage Go with mise, prefix Make commands with `mise exec go@1.27.1 --`.
+For Mapbox maps, place search and road routing, install the optional
+[official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install-a-released-binary),
+then sign in and open the bundled synthetic activity:
+
+```sh
+./bin/mapbox-tui auth login
+./bin/mapbox-tui fixtures/example.gpx
+```
+
+Login opens Mapbox's browser flow and saves the login for later launches.
+An existing saved login is reused automatically. Run `./bin/mapbox-tui` without
+a file to free roam. See [runtime configuration](#runtime-configuration) for
+connection checks, account usage and the token override for scripts.
+
+File viewing needs no account or token. To view the synthetic activity without
+a basemap or first-run setup, run `./bin/mapbox-tui fixtures/example.gpx --no-provider`.
+Use Ctrl-O to open another file, Ctrl-L to manage loaded items and `q` to quit.
+If you manage Go with mise, select the version declared in `go.mod` before
+running Make commands.
 
 Menus and pickers wrap: Up on the first item selects the last, and Down on the
 last selects the first. This includes filtered Commands and location-search results.
@@ -65,14 +77,11 @@ make mapbox-check                         # optional installed CLI's offline sch
 `DESTDIR` supports staged installs. `make package` produces an archive containing
 only `mapbox-tui` for the build target. Linux x86-64 is verified in this environment.
 Public release downloads and package-manager distribution aren't available yet.
-The package-manager proposal in [issue #25](https://github.com/adamcbrewer/mapbox-tui/issues/25)
-was closed as not planned.
 
 Install Mapbox CLI by following the
 [official installation documentation](https://github.com/mapbox/mapbox-cli#install-a-released-binary).
 The separate **Mapbox Tilesets CLI** offered by its installer is for publishing
-datasets; `mapbox-tui` doesn't require it. Mapbox CLI v0.3.0 is the tested helper
-version. After installation:
+datasets; `mapbox-tui` doesn't require it. After installation:
 
 ```sh
 mapbox --version
@@ -88,20 +97,11 @@ fallback. The minimum terminal size is 30 columns by 12 rows.
 
 ## Documentation
 
-Start with [Mapbox setup and connection checks](docs/MAPBOX_JOURNEYS.md) for the
-optional online features, or the [controls](#controls), [CLI](#cli) and [MCP](#mcp)
-sections below for offline use.
-
-The [documentation index](docs/README.md) links current technical guidance,
-historical notes and outstanding work. Contributors can start with
-[development and checks](#development-and-checks),
-[architecture](docs/ARCHITECTURE.md), [workspace rules](docs/WORKSPACE.md),
-[Go style](docs/GO_STYLE.md) and [validation](docs/VALIDATION.md).
-Licence and contribution setup is tracked in
-[issue #20](https://github.com/adamcbrewer/mapbox-tui/issues/20); those files haven't
-been added yet. The worked example and demo remain in
-[issue #27](https://github.com/adamcbrewer/mapbox-tui/issues/27) and
-[issue #29](https://github.com/adamcbrewer/mapbox-tui/issues/29).
+Use [runtime configuration](#runtime-configuration), [controls](#controls),
+[CLI](#cli) and [MCP](#mcp) below for setup and usage.
+Contributors can start with [development and checks](#development-and-checks),
+[architecture](docs/ARCHITECTURE.md), [provider policies](docs/PROVIDERS.md),
+[Go style](docs/GO_STYLE.md) and [theme guidance](docs/THEMES.md).
 
 ## Supported file formats
 
@@ -139,12 +139,9 @@ applies to the format. TCX and KML use Go's built-in XML parser.
 
 ## Mapbox basemap
 
-Real basemap tiles and optional journey place search use a Mapbox account and
-public access token. Imported geometry, measurements, playback and manual journey
-coordinates work without Mapbox authentication.
-
-See the [existing-account journey walkthrough](docs/MAPBOX_JOURNEYS.md) for
-standalone-binary and local-development setup, login, viewing, usage and logout.
+Real basemap tiles and optional place search use your saved Mapbox login to
+retrieve a public access token. Imported geometry, measurements, playback and
+manual journey coordinates work without Mapbox authentication.
 
 ### Runtime configuration
 
@@ -176,8 +173,8 @@ The saved login works from any directory, without files or auth keys in this rep
 
 `MAPBOX_TUI_CLI=/absolute/path/to/mapbox` selects an executable outside `PATH`.
 The adapter checks its JSON/schema contract and gives install/update guidance if
-the CLI is missing or incompatible. v0.3.0 requests general-purpose account
-permissions, including write scopes `mapbox-tui` doesn't use; that release has no
+the CLI is missing or incompatible. Compatibility note: CLI v0.3.0 requests
+general-purpose account permissions, including write scopes `mapbox-tui` doesn't use; that release has no
 scope-selection option. Account token retrieval needs `tokens:read`; usage
 needs `statistics:read` and account access to the Statistics API.
 
@@ -186,6 +183,12 @@ needs `statistics:read` and account access to the Statistics API.
 and command schema, and links official installation instructions when missing/unusable.
 JSON includes `cli.checked`, `cli.path` and `cli.install_url`. A missing CLI
 means the saved login couldn't be inspected, rather than that you are logged out.
+
+```sh
+./bin/mapbox-tui
+./bin/mapbox-tui --center-lon -0.1065 --center-lat 51.505 --zoom 13
+./bin/mapbox-tui fixtures/example.gpx --no-provider
+```
 
 For scripts/CI, `MAPBOX_ACCESS_TOKEN` can directly supply a public token without
 Mapbox CLI. It overrides the saved login; an explicitly empty value disables all
@@ -197,9 +200,6 @@ or use the viewer's **Mapbox account setup** action.
 ```sh
 MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/mapbox-tui
 MAPBOX_ACCESS_TOKEN='' ./bin/mapbox-tui     # deliberately offline
-./bin/mapbox-tui
-./bin/mapbox-tui --center-lon -0.1065 --center-lat 51.505 --zoom 13
-./bin/mapbox-tui fixtures/example.gpx --no-provider
 ```
 
 Free roam starts at longitude/latitude 0 and zoom 0. Supply both center flags and
@@ -253,8 +253,7 @@ clicking an occupied cell selects its displayed item. Elsewhere, nearest geometr
 wins, with later-loaded items winning equal-distance picking ties. Selection markers
 take priority over route geometry and map labels.
 
-Activity reordering and journey-wide playback are tracked separately in
-[issue #3](https://github.com/adamcbrewer/mapbox-tui/issues/3).
+Explicit activity reordering and journey-wide playback aren't available.
 
 ### Quick place search
 
@@ -362,12 +361,10 @@ elevation profiles. It appears in Ctrl-L alongside imports with stable identity
 and colour, and shares the scene renderer. Ctrl-J reopens the selected or most
 recent plan; removing it or clearing the workspace discards it.
 
-Plans and search results are **session-only**. Favorites and persistent/offline
-geolocation caching are tracked in [issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10).
-Road/path routing is implemented for [issue #12](https://github.com/adamcbrewer/mapbox-tui/issues/12).
-Estimated route elevation remains in [issue #13](https://github.com/adamcbrewer/mapbox-tui/issues/13).
+Plans and search results are **session-only**. Favourites, persistent/offline
+location caching and estimated route elevation aren't available.
 See [provider notes](docs/PROVIDERS.md#journey-location-lookups) for request and
-storage policies and [route-planning notes](docs/ROUTE_PLANNING.md) for API research.
+storage policies.
 
 The viewer, CLI `render` and MCP `render_map` use Mapbox automatically when a
 token is configured. Otherwise they display only imported geometry on an empty
@@ -709,14 +706,51 @@ state resets on restart.
 
 `make check` checks Go formatting, builds, runs tests and vet, checks CLI/MCP
 consistency, and runs the race detector. `make test` runs just the build/test/vet
-and CLI/MCP suite. These checks disable Mapbox credentials explicitly.
+and CLI/MCP suite. These checks disable Mapbox credentials explicitly and use
+fake providers; no Mapbox account or installed CLI is needed.
 `make interactions` also checks the terminal viewer; it needs tmux and
-`rsvg-convert`. CI runs all three required checks on pull requests and pushes to
-main. Benchmarks and captures are generated under ignored `reports/`.
+`rsvg-convert` and DejaVu fonts. Run it after viewer changes; it uses headless
+Linux pseudo-terminals and doesn't verify physical mouse forwarding or other
+operating systems. Benchmarks and captures are generated under ignored `reports/`.
 
-Enable the bundled pre-commit and pre-push hooks with
-`git config --local core.hooksPath .githooks`. See [validation notes](docs/VALIDATION.md)
-for the hook split, existing-hook setup, required CI checks and live provider checks.
+CI runs on pull requests and pushes to `main` with these check names:
+
+| Check | Local command |
+|---|---|
+| Go checks | `make format-check test` |
+| Race checks | `make race` |
+| Terminal interactions | `make interactions` |
+
+Merge enforcement is a separate repository setting. CI reads the Go version
+from `go.mod`; local Git hooks also need `go` and `gofmt` on PATH.
+Inspect `git config --get core.hooksPath` before enabling the bundled hooks with
+`git config --local core.hooksPath .githooks`. If you already have hooks, add the
+Make commands to that setup instead of replacing it. Pre-commit runs
+`make pre-commit` against staged whitespace and Go formatting without rewriting
+or staging files. Pre-push runs `make check`; terminal interactions stay separate.
+Use `git config --local --unset core.hooksPath` to disable this setup, or restore
+your previous value.
+
+### Optional live provider checks
+
+These use your saved login or token, make Mapbox requests and may incur charges.
+Ordinary tests remain offline. After building:
+
+```sh
+make mapbox-check                         # CLI schemas only; no account requests
+python3 scripts/mapbox_auth_check.py      # saved login, token, Streets and usage
+python3 scripts/mapbox_check.py           # basemap requests
+python3 scripts/interactions.py --mapbox
+MAPBOX_TUI_DIRECTIONS_CHECK=1 go test -tags=integration ./go -run '^TestDirectionsAccountAccess$' -v
+MAPBOX_TUI_TRAFFIC_CHECK=1 go test -tags=integration ./go -run '^TestTrafficAccountAccess$' -v
+```
+
+Directions checks make three requests, one per profile. Traffic normally requests
+TileJSON and one tile. Existing-account checks don't establish card-free trial
+access, which remains unverified. Record the source revision, tool versions,
+date, account type and token-free outcomes when running a live check.
+See [architecture](docs/ARCHITECTURE.md#historical-go-benchmarks) for benchmark
+commands, recorded results and their measurement limits.
 
 Dependencies are pinned in `go.mod` with checksums in `go.sum`. Setup follows the
 dependency-minimisation and deterministic-install principles in this
