@@ -325,6 +325,3 @@ retain their own attribution even without a basemap.
 [Mapbox's published requirements](https://docs.mapbox.com/help/dive-deeper/attribution/)
 also specify a graphical logo. Text attribution is the current terminal
 implementation; acceptance of text in place of the logo hasn't been confirmed.
-The accepted terminal approach is tracked in
-[issue #36](https://github.com/adamcbrewer/mapbox-tui/issues/36), separately from
-project licensing.
