@@ -638,9 +638,20 @@ that command's options.
 
 ## MCP
 
+Use MCP to ask an AI assistant to inspect activities, compare imports and build
+focused maps. The assistant gets structured results and can reuse loaded files,
+selection and visibility across follow-up requests in the same server process.
+See the [follow-along examples](#try-it-with-the-bundled-fixtures) below.
+
+Your MCP client launches the server with:
+
 ```sh
 ./bin/mapbox-tui mcp
 ```
+
+Running this command in a terminal waits for MCP protocol messages over
+stdin/stdout. It doesn't open an interactive prompt. `mcp --help` describes the
+launcher; clients discover the tools through MCP.
 
 The local stdio server exposes nine tools:
 
@@ -656,8 +667,19 @@ The local stdio server exposes nine tools:
 | `remove_item` | `track_id`, `item_id` | Removes one item; unloads the file if it was its last item | No |
 | `render_map` | Optional `track_id`/`item_id`, or `workspace: true`, plus viewport/provider options | Plain map text and scene metadata | Optional; required for real basemap tiles |
 
-For MCP clients that use `mcpServers`, add this to the client's configuration,
-replacing `command` with the absolute path to your built binary:
+### Connect an AI client
+
+Build from the repository root using the Go version in `go.mod`, then print the
+repository's absolute path:
+
+```sh
+make build
+pwd
+```
+
+Replace `/absolute/path/to/mapbox-tui` in the examples with that directory.
+For MCP clients that use `mcpServers`, merge this server entry into the client's
+existing configuration:
 
 ```json
 {
@@ -671,7 +693,34 @@ replacing `command` with the absolute path to your built binary:
 ```
 
 The client starts the stdio server; `mapbox-tui` doesn't read this configuration
-itself. Other clients may use a different configuration format.
+itself. Other clients may use a different configuration format. For
+[OpenCode](https://opencode.ai/docs/mcp-servers/#local), merge this into your
+project's `opencode.json` instead:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mapbox-tui": {
+      "type": "local",
+      "command": ["/absolute/path/to/mapbox-tui/bin/mapbox-tui", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Reload your client after changing its configuration. In OpenCode, check the
+connection and start a conversation from the directory containing `opencode.json`:
+
+```sh
+opencode mcp list
+opencode
+```
+
+Look for a connected `mapbox-tui` server. Both configurations launch the built
+local executable directly, with no additional server package to install
+([setup principles](https://github.com/lirantal/npm-security-best-practices#8-harden-npx-execution)).
 
 Full schemas are in [shared/tools.json](shared/tools.json). Track IDs and tile
 caches last only for that server process. MCP runs independently of the viewer.
@@ -691,6 +740,123 @@ that file directly, preserving the existing single-file behaviour.
 Without a file/workspace and token, rendering returns an empty map with setup
 guidance in `scene.status`. `point_index` requires a track. Camera defaults match
 the viewer's free-roam world view.
+
+### Try it with the bundled fixtures
+
+These examples use synthetic files and work without a Mapbox account. Replace
+`/absolute/path/to/mapbox-tui` with your repository path, and paste the prompts
+into your connected AI client. Keep the same connection for the follow-ups.
+
+The JSON arrays show sequences of `tools/call` parameter objects for clients or
+developers inspecting the requests; they aren't terminal commands. They assume
+a fresh server where the two files receive `track-1` and `track-2`. Use the actual
+`track_id` and `item_id` values returned by `load_track` or `list_tracks` in an
+existing session. The client handles MCP initialisation and tool calls.
+
+#### 1. Audit a recorded activity
+
+Useful when an export mixes a recording, planned routes and waypoints, or has
+incomplete measurements:
+
+```text
+Use the mapbox-tui MCP tools to load
+/absolute/path/to/mapbox-tui/fixtures/example.gpx and show its items.
+Summarise only the recorded track, excluding the Optional spur route.
+Report distance, elevation coverage and timestamp coverage. Find the recorded
+point nearest 1 km, then show an offline ASCII map of that track at 60 by 20 cells.
+```
+
+Expected tool calls:
+
+```json
+[
+  {"name": "load_track", "arguments": {"path": "/absolute/path/to/mapbox-tui/fixtures/example.gpx"}},
+  {"name": "summarize_track", "arguments": {"track_id": "track-1", "item_id": 3}},
+  {"name": "inspect_track", "arguments": {"track_id": "track-1", "item_id": 3, "distance_m": 1000}},
+  {"name": "render_map", "arguments": {
+    "track_id": "track-1", "item_id": 3, "provider": "none", "ascii": true, "width": 60, "height": 20
+  }}
+]
+```
+
+The recorded track is item 3: about **2.50 km**, with 10 points across two
+segments, elevations on 9/10 points and timestamps on 10/10 points. Its elevation
+range is 7-14 m. The nearest recorded point to 1 km is at about 966 m, latitude
+51.505 and longitude -0.112; the tool doesn't interpolate a new point.
+
+The whole-file summary is about 2.97 km because it also includes item 4, the
+465.82 m planned spur. That total isn't the recorded activity distance.
+
+#### 2. Compare imports before using them
+
+Useful when deciding which export contains an activity and which contains only
+places or planning data. Continue the same conversation:
+
+```text
+Use mapbox-tui to also load
+/absolute/path/to/mapbox-tui/fixtures/waypoints.gpx.
+Compare the loaded files in a table: recorded tracks, planned routes, waypoints,
+geometry distance and timestamp coverage. Distinguish whole-file geometry
+distance from recorded activity distance. Explain what each file can tell me.
+```
+
+```json
+[
+  {"name": "load_track", "arguments": {"path": "/absolute/path/to/mapbox-tui/fixtures/waypoints.gpx"}},
+  {"name": "list_tracks", "arguments": {}},
+  {"name": "summarize_track", "arguments": {"track_id": "track-1"}},
+  {"name": "summarize_track", "arguments": {"track_id": "track-2"}}
+]
+```
+
+`example.gpx` contains one recorded track, one planned route and two waypoints;
+10 of its 12 geometry points have timestamps. `waypoints.gpx` contains one
+waypoint, no recorded points and no timestamps. Its zero distance describes a
+waypoint-only file, rather than a recorded zero-length activity.
+
+#### 3. Build a focused map, then revise it
+
+Useful for turning a mixed workspace into a map of just the items you want to
+discuss. Continue with both files loaded:
+
+```text
+Using mapbox-tui, hide Optional spur and the entire waypoints.gpx file.
+Keep Lookout and Coffee visible, select the Riverside exploration track,
+and render all visible items as an offline ASCII map at 60 by 20 cells.
+```
+
+```json
+[
+  {"name": "set_item_visibility", "arguments": {"track_id": "track-1", "item_id": 4, "visible": false}},
+  {"name": "set_item_visibility", "arguments": {"track_id": "track-2", "visible": false}},
+  {"name": "select_item", "arguments": {"track_id": "track-1", "item_id": 3}},
+  {"name": "render_map", "arguments": {
+    "workspace": true, "provider": "none", "ascii": true, "width": 60, "height": 20
+  }}
+]
+```
+
+The scene contains the recording and its two named waypoints, with the recording
+active. Use `workspace: true` so the render respects workspace visibility.
+Then ask:
+
+```text
+Show Optional spur again and render the workspace with the same settings.
+```
+
+```json
+[
+  {"name": "set_item_visibility", "arguments": {"track_id": "track-1", "item_id": 4, "visible": true}},
+  {"name": "render_map", "arguments": {
+    "workspace": true, "provider": "none", "ascii": true, "width": 60, "height": 20
+  }}
+]
+```
+
+The assistant can reuse the loaded files and selection while changing the map.
+These changes belong to the MCP server's workspace, independently of the viewer.
+The current tools cover imports, inspection and rendering; place search, journey
+planning and playback are viewer features rather than MCP tools.
 
 ## Architecture
 
