@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "mapbox-tui": {
-      "command": "/absolute/path/to/mapbox-tui/bin/mapbox-tui",
-      "args": ["mcp"]
-    }
-  }
-}

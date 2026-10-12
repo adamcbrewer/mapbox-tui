@@ -656,7 +656,23 @@ The local stdio server exposes nine tools:
 | `remove_item` | `track_id`, `item_id` | Removes one item; unloads the file if it was its last item | No |
 | `render_map` | Optional `track_id`/`item_id`, or `workspace: true`, plus viewport/provider options | Plain map text and scene metadata | Optional; required for real basemap tiles |
 
-Use [mcp.example.json](mcp.example.json) with the absolute path to your binary.
+For MCP clients that use `mcpServers`, add this to the client's configuration,
+replacing `command` with the absolute path to your built binary:
+
+```json
+{
+  "mcpServers": {
+    "mapbox-tui": {
+      "command": "/absolute/path/to/mapbox-tui/bin/mapbox-tui",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The client starts the stdio server; `mapbox-tui` doesn't read this configuration
+itself. Other clients may use a different configuration format.
+
 Full schemas are in [shared/tools.json](shared/tools.json). Track IDs and tile
 caches last only for that server process. MCP runs independently of the viewer.
 Its render default is Mapbox when the server has a configured token, and `none`
