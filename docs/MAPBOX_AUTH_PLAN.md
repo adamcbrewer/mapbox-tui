@@ -1,3 +1,10 @@
+> **Historical implementation record for completed issue #11.** The branch
+> handover and verification below describe the October 2026 implementation,
+> rather than current setup instructions. Use [Mapbox setup](MAPBOX_JOURNEYS.md),
+> [provider policies](PROVIDERS.md#authentication-and-account-reporting) and
+> [validation](VALIDATION.md) for current guidance. Deferred card-free account
+> checks are tracked in [issue #37](https://github.com/adamcbrewer/mapbox-tui/issues/37).
+
 # Mapbox CLI authentication (#11)
 
 Tracked in [issue #11](https://github.com/adamcbrewer/mapbox-tui/issues/11).

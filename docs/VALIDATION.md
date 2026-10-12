@@ -92,8 +92,9 @@ preferences cannot enable extra sources or change expected defaults during check
 With the optional CLI installed, `make mapbox-check` inspects six released command
 schemas without account/API requests. `python3 scripts/mapbox_auth_check.py` is a
 live saved-login/token/Streets/usage check and makes a tile request. Auth/signup
-verification and deferred trial-account checks are recorded in
-[the auth notes](MAPBOX_AUTH_PLAN.md).
+verification is recorded in [the historical auth notes](MAPBOX_AUTH_PLAN.md).
+Deferred card-free login, usage, Directions and Traffic checks are tracked in
+[issue #37](https://github.com/adamcbrewer/mapbox-tui/issues/37).
 
 Import regressions cover Garmin KML coordinate spacing and FIT header checksum
 variants, including Zwift-style omitted header checksums. Edge cases include

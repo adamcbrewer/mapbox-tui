@@ -1,3 +1,13 @@
+> **Historical implementation notes and provider research (8–9 October 2026).**
+> Issues #5 and #12 are complete. API capabilities, prices, quotas and alternative
+> providers below are dated research, not current product promises or an active
+> roadmap. Recheck upstream documentation before using those findings.
+> Current controls are in the [README](../README.md#journey-planner); current
+> behaviour and lifecycle rules are in [provider policies](PROVIDERS.md#journey-roadpath-routing)
+> and [workspace rules](WORKSPACE.md). Favourites/caching and estimated elevation
+> remain in [issue #10](https://github.com/adamcbrewer/mapbox-tui/issues/10) and
+> [issue #13](https://github.com/adamcbrewer/mapbox-tui/issues/13).
+
 # Route planning
 
 Implementation notes and provider research for

@@ -1,3 +1,15 @@
+> **Historical implementation record.** This plan describes the workspace and
+> journey-planning slices as they were developed. Branch handovers, "next" steps,
+> shortcuts, unchecked boxes and verification claims below are snapshots, not
+> current instructions. Use [workspace rules](WORKSPACE.md),
+> [architecture](ARCHITECTURE.md), [provider policies](PROVIDERS.md) and
+> [validation](VALIDATION.md) for current guidance. Outstanding work is linked
+> from the [documentation index](README.md#outstanding-work).
+>
+> Manual planning (#5), routing (#12), traffic (#4) and CI (#8) are implemented.
+> Other-source discovery (#6) was closed as not planned. Benchmark evidence and
+> its measurement limits are preserved in [architecture](ARCHITECTURE.md#historical-go-benchmarks).
+
 # Map workspace redesign
 
 Implement in small, independently verified steps. Start with route identity and

@@ -24,10 +24,13 @@ Building requires Go **1.27.1** and Make. Development checks use Python 3.
 Run from the repository root:
 
 ```sh
+git clone https://github.com/adamcbrewer/mapbox-tui.git
+cd mapbox-tui
 make build
-./bin/mapbox-tui fixtures/example.gpx
+MAPBOX_ACCESS_TOKEN='' ./bin/mapbox-tui fixtures/example.gpx
 ```
 
+The example explicitly disables credential discovery and network features.
 File viewing needs no account or token. A configured Mapbox token adds a real
 basemap automatically. Run `./bin/mapbox-tui` without a file to free roam; without a
 token, this starts an empty canvas with setup guidance. Use Ctrl-O to open the
@@ -44,7 +47,7 @@ old content at the bottom-right. The stack stays within the terminal bounds.
 
 ### Build, install and package
 
-`mapbox-tui` is a standalone executable. Builds, installations and release archives
+`mapbox-tui` is a standalone executable. Builds, installations and local archives
 don't download or bundle Mapbox CLI. Install that optional tool separately for
 browser login, automatic rendering-token retrieval and account usage reports.
 
@@ -57,16 +60,15 @@ make mapbox-check                         # optional installed CLI's offline sch
 
 `DESTDIR` supports staged installs. `make package` produces an archive containing
 only `mapbox-tui` for the build target. Linux x86-64 is verified in this environment.
-Use the [official Mapbox release instructions](https://github.com/mapbox/mapbox-cli#install-a-released-binary)
-for the optional CLI; v0.3.0 is tested. The official installer checks the archive's
-SHA-256 and supports `MAPBOX_CLI_VERSION` for versioned installation. Follow
-versioned acquisition and reviewed-update principles from the
-[supply-chain reference](https://github.com/lirantal/npm-security-best-practices).
+Public release downloads and package-manager distribution aren't available yet.
+The package-manager proposal in [issue #25](https://github.com/adamcbrewer/mapbox-tui/issues/25)
+was closed as not planned.
 
 Install Mapbox CLI by following the
 [official installation documentation](https://github.com/mapbox/mapbox-cli#install-a-released-binary).
 The separate **Mapbox Tilesets CLI** offered by its installer is for publishing
-datasets; `mapbox-tui` doesn't require it. After installation:
+datasets; `mapbox-tui` doesn't require it. Mapbox CLI v0.3.0 is the tested helper
+version. After installation:
 
 ```sh
 mapbox --version
@@ -79,6 +81,23 @@ remove the login already stored by Mapbox CLI.
 
 Braille rendering works best in a Unicode terminal. Use `--ascii` for a text
 fallback. The minimum terminal size is 30 columns by 12 rows.
+
+## Documentation
+
+Start with [Mapbox setup and connection checks](docs/MAPBOX_JOURNEYS.md) for the
+optional online features, or the [controls](#controls), [CLI](#cli) and [MCP](#mcp)
+sections below for offline use.
+
+The [documentation index](docs/README.md) links current technical guidance,
+historical notes and outstanding work. Contributors can start with
+[development and checks](#development-and-checks),
+[architecture](docs/ARCHITECTURE.md), [workspace rules](docs/WORKSPACE.md),
+[Go style](docs/GO_STYLE.md) and [validation](docs/VALIDATION.md).
+Licence and contribution setup is tracked in
+[issue #20](https://github.com/adamcbrewer/mapbox-tui/issues/20); those files haven't
+been added yet. The worked example and demo remain in
+[issue #27](https://github.com/adamcbrewer/mapbox-tui/issues/27) and
+[issue #29](https://github.com/adamcbrewer/mapbox-tui/issues/29).
 
 ## Supported file formats
 

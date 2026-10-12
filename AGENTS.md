@@ -17,7 +17,7 @@ In this environment, prefix Go/Make commands with `mise exec go@1.27.1 --`.
 ## Read when relevant
 
 - Go changes: [code-style skill and project exceptions](docs/GO_STYLE.md).
-- Feature scope and workspace interactions: [implementation plan](docs/IMPLEMENTATION_PLAN.md).
+- Workspace lifecycle, selection, playback and scene changes: [workspace rules](docs/WORKSPACE.md).
 - Verification commands and terminal requirements: [validation](docs/VALIDATION.md).
 - Provider changes: [loading, caching and attribution policies](docs/PROVIDERS.md).
 - Theme changes: [palette format and API](docs/THEMES.md).
