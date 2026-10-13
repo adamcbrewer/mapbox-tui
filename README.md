@@ -20,6 +20,18 @@ That opens a synthetic activity without any account setup. Swap in your own
 file, or run `./bin/mapbox-tui` to explore without one. Press `?` for controls
 and `q` to quit.
 
+For a longer, real-world example, open the bundled [Country ride](fixtures/country-ride.gpx):
+
+```sh
+./bin/mapbox-tui fixtures/country-ride.gpx
+```
+
+This recorded ride retains 181.09 km, 29,005 points and elevation data. Geometry
+within 2 km of either original endpoint has been removed, along with timestamps
+and identifying metadata. The remaining route still shows the area travelled.
+Playback uses estimated timing. It works offline, or uses your connected Mapbox
+account for the basemap; add `--no-provider` to stay offline.
+
 On Linux x86-64, `make install` puts the binary in `~/.local/bin`.
 For basemaps, place search and road routing, [connect Mapbox](#mapbox).
 
@@ -57,9 +69,13 @@ Once connected, give your agent the absolute path to the repo and try:
 > Also load fixtures/waypoints.gpx. Hide Optional spur, keep the waypoints
 > visible and render the workspace. Then show the spur again and redraw it.
 
-The fixtures are synthetic, so you can try all of this offline. MCP has its
-own workspace, separate from an open viewer. An agent with terminal control
-can also use the viewer's journey planner, playback and live traffic.
+Those examples use synthetic fixtures and work offline. For a recorded ride, try:
+
+> Open fixtures/country-ride.gpx. Summarise its distance and elevation, inspect
+> the point nearest 90 km, then render an offline map of the whole ride.
+
+MCP has its own workspace, separate from an open viewer. An agent with terminal
+control can also use the viewer's journey planner, playback and live traffic.
 
 See [MCP notes](docs/MCP.md) for workspace rendering and measurement details.
 The [tool schemas](shared/tools.json) describe the available calls.
@@ -72,6 +88,8 @@ The [tool schemas](shared/tools.json) describe the available calls.
 ./bin/mapbox-tui inspect fixtures/example.gpx --point-index 3
 ./bin/mapbox-tui render fixtures/example.gpx --no-provider --json
 ```
+
+Use `fixtures/country-ride.gpx` in the same CLI commands to try the longer ride.
 
 In the viewer, Ctrl-O opens files, Ctrl-L manages loaded items, `/` searches
 for places and Ctrl-J opens the journey planner. Ctrl-K opens the command

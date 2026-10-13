@@ -20,6 +20,9 @@ and `name`, then edit colours and pass the file to the viewer:
 ./bin/mapbox-tui fixtures/example.gpx --theme "/path/to/my-theme.toml"
 ```
 
+Swap in `fixtures/country-ride.gpx` to preview the palette on a longer recorded
+ride with elevation data.
+
 The custom palette joins the three built-ins for that viewer session. It is read
 once at startup. To bundle another theme, place its TOML file in `go/themes/` and
 rebuild. The embed pattern discovers it automatically; no registry entry, renderer

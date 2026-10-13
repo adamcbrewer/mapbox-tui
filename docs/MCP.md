@@ -24,6 +24,13 @@ The bundled `example.gpx` is a useful check: its recorded track is about 2.50 km
 while the file total is about 2.97 km because it also contains Optional spur.
 The separate `waypoints.gpx` contains a place, with no recorded distance.
 
+For a longer, real-world example, load `fixtures/country-ride.gpx` using its
+absolute path. It contains one recorded track with 29,005 points over about
+181.09 km, with elevation but no timestamps, planned routes or waypoints.
+Geometry within 2 km of either original endpoint and identifying metadata have
+been removed; the remaining route still reveals the area travelled. Try
+`inspect_track` with `distance_m: 90000`, or render the whole ride offline.
+
 ## Rendering a workspace
 
 After loading files and adjusting visibility, call `render_map` with:

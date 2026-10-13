@@ -9,6 +9,14 @@ explore the map, or open several files together:
 
 Use `--help` for command options and `?` in the viewer for shortcuts.
 
+From the repository root, try `./bin/mapbox-tui fixtures/example.gpx` for a small
+synthetic activity with a planned route and waypoints, or
+`./bin/mapbox-tui fixtures/country-ride.gpx` for a recorded 181.09 km ride.
+The latter retains elevation, with the original endpoint areas and identifying
+metadata removed. It has no timestamps, so playback uses estimated timing.
+Both work offline; a configured Mapbox account adds the basemap. Add
+`--no-provider` to disable it.
+
 ## Controls
 
 | Action | Keyboard | Mouse |

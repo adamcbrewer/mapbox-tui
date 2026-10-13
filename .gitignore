@@ -4,6 +4,7 @@
 /reports/
 *.[gG][pP][xX]
 !/fixtures/example.gpx
+!/fixtures/country-ride.gpx
 !/fixtures/waypoints.gpx
 !/fixtures/empty.gpx
 !/fixtures/invalid.gpx
