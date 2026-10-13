@@ -14,25 +14,26 @@ import (
 )
 
 type Args struct {
-	Path        string   `json:"path"`
-	TrackID     string   `json:"track_id"`
-	ItemID      *int     `json:"item_id"`
-	Workspace   bool     `json:"workspace"`
-	Visible     *bool    `json:"visible"`
-	PointIndex  *int     `json:"point_index"`
-	Distance    *float64 `json:"distance_m"`
-	Width       *int     `json:"width"`
-	Height      *int     `json:"height"`
-	Lon         *float64 `json:"center_lon"`
-	Lat         *float64 `json:"center_lat"`
-	Zoom        *float64 `json:"zoom"`
-	Bearing     *float64 `json:"bearing"`
-	Aspect      *float64 `json:"cell_aspect"`
-	ASCII       bool     `json:"ascii"`
-	Provider    string   `json:"provider"`
-	ProviderSet bool     `json:"-"`
-	NoAnimation bool     `json:"-"`
-	Theme       string   `json:"-"`
+	Journey     *startupJourney `json:"-"`
+	Path        string          `json:"path"`
+	TrackID     string          `json:"track_id"`
+	ItemID      *int            `json:"item_id"`
+	Workspace   bool            `json:"workspace"`
+	Visible     *bool           `json:"visible"`
+	PointIndex  *int            `json:"point_index"`
+	Distance    *float64        `json:"distance_m"`
+	Width       *int            `json:"width"`
+	Height      *int            `json:"height"`
+	Lon         *float64        `json:"center_lon"`
+	Lat         *float64        `json:"center_lat"`
+	Zoom        *float64        `json:"zoom"`
+	Bearing     *float64        `json:"bearing"`
+	Aspect      *float64        `json:"cell_aspect"`
+	ASCII       bool            `json:"ascii"`
+	Provider    string          `json:"provider"`
+	ProviderSet bool            `json:"-"`
+	NoAnimation bool            `json:"-"`
+	Theme       string          `json:"-"`
 }
 
 type Service struct {

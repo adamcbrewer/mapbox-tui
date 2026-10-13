@@ -20,9 +20,16 @@ type workspaceRow struct {
 func (m *viewer) workspaceRows() []workspaceRow {
 	var rows []workspaceRow
 	for _, entry := range m.workspace.documents {
-		var visible bool
+		var visible, listed bool
 		for _, item := range entry.document.Items {
+			if item.Journey != nil && !item.Journey.hasCompleteLocations() {
+				continue
+			}
+			listed = true
 			visible = visible || !entry.hidden[item.ID]
+		}
+		if !listed {
+			continue
 		}
 		rows = append(rows, workspaceRow{
 			ref:     ItemRef{DocumentID: entry.id},
@@ -31,6 +38,9 @@ func (m *viewer) workspaceRows() []workspaceRow {
 			visible: visible,
 		})
 		for _, item := range entry.document.Items {
+			if item.Journey != nil && !item.Journey.hasCompleteLocations() {
+				continue
+			}
 			ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
 			active, shown := " ", "x"
 			if m.workspace.selection != nil && m.workspace.selection.ref == ref {
@@ -88,6 +98,7 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 			err = m.workspace.selectItem(row.ref)
 		}
 		m.closeDialog()
+		m.ui.detailsOpen = true
 	case "space":
 		if row.ref.ItemID == 0 {
 			err = m.workspace.setDocumentVisible(row.ref.DocumentID, !row.visible)

@@ -142,20 +142,26 @@ def active_modal(screen, title):
 
 def context_text():
     """Read scrollable context, then return focus to the unchanged map."""
-    tmux("send-keys", "-t", "poc:0.0", "Tab", "Home")
-    wait_for(lambda screen: "tab close" in screen)
+    if "ctrl+b hide" not in capture():
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+    tmux("send-keys", "-t", "poc:0.0", "Home")
+    wait_for(lambda screen: "ctrl+b hide" in screen)
     pages = []
     previous = None
-    for _ in range(20):
+    unchanged = 0
+    tiny = len(capture().splitlines()) < 18
+    for _ in range(60 if tiny else 20):
         time.sleep(.05)
         page = capture()
-        if page == previous:
+        unchanged = unchanged + 1 if page == previous else 0
+        # A one-line viewport can show consecutive blank lines before the end.
+        if unchanged >= (3 if tiny else 1):
             break
         pages.append(page)
         previous = page
         tmux("send-keys", "-t", "poc:0.0", "PageDown")
-    tmux("send-keys", "-t", "poc:0.0", "Tab")
-    wait_for(lambda screen: "tab details" in screen)
+    tmux("send-keys", "-t", "poc:0.0", "C-b")
+    wait_for(lambda screen: "ctrl+b sidebar" in screen)
     return "\n".join(pages)
 
 
@@ -172,7 +178,7 @@ def scenario(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
-        wait_for(lambda s: "Paused 1x" in s and "tab details" in s)
+        wait_for(lambda s: "Paused 1x" in s and "ctrl+b sidebar" in s)
         assert "Elevation profile" not in capture(), "profile should be opt-in"
         settled()
         send("f")
@@ -180,26 +186,26 @@ def scenario(binary, width, height):
         folder = ROOT / "reports/generated"
         folder.mkdir(exist_ok=True, parents=True)
         save_svg(folder / f"{binary.name}-{width}x{height}.svg", width, height)
-        tmux("send-keys", "-t", "poc:0.0", "Tab", "Home")
-        wait_for(lambda s: "tab close" in s and "Selected position" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b", "Home")
+        wait_for(lambda s: "ctrl+b hide" in s and "Selected position" in s)
         save_svg(folder / f"{binary.name}-context-{width}x{height}.svg", width, height)
-        tmux("send-keys", "-t", "poc:0.0", "Tab")
-        wait_for(lambda s: "tab details" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         restored = settled()
         assert restored == initial, "context drawer changed the map:\n" + "\n".join(difflib.unified_diff(initial.splitlines(), restored.splitlines()))
         assert "No basemap" in initial and "token missing" not in initial, "token-free GPX viewing did not use a quiet empty canvas"
-        tmux("send-keys", "-t", "poc:0.0", "Tab")
-        before = wait_for(lambda s: "tab close" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        before = wait_for(lambda s: "ctrl+b hide" in s)
         tmux("send-keys", "-t", "poc:0.0", "Right")
-        wait_for(lambda s: s != before and "tab close" in s)
+        wait_for(lambda s: s != before and "ctrl+b hide" in s)
         before = settled()
         sgr(0, 20, 6); sgr(32, 25, 6); sgr(0, 25, 6, release=True)
-        wait_for(lambda s: s != before and "tab close" in s)
+        wait_for(lambda s: s != before and "ctrl+b hide" in s)
         before = settled()
         sgr(64, 20, 6)
-        wait_for(lambda s: s != before and "tab close" in s)
-        tmux("send-keys", "-t", "poc:0.0", "Tab")
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: s != before and "ctrl+b hide" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         send("f")
         settled()
         zoom = re.search(r"Zoom ([\d.]+)", context_text()).group(1)
@@ -235,6 +241,8 @@ def scenario(binary, width, height):
         send("v")
         wait_for(lambda s: "Map credits" in s)
         send("v")
+        assert "Map credits" in settled(), "repeated shortcut closed credits"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Map credits" not in s)
         horizontal = context_text()
         assert re.search(r"Zoom ([\d.]+)", horizontal).group(1) == re.search(r"Zoom ([\d.]+)", before_horizontal).group(1), "horizontal wheel zoomed the map"
@@ -259,9 +267,9 @@ def scenario(binary, width, height):
         wait_for(lambda s: not any(0x2800 <= ord(c) <= 0x28ff for c in s))
         send("v")
         wait_for(lambda s: "Map credits" in s and "No basemap" in s)
-        send("v")
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
         tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
-        wait_for(lambda s: "tab details" in s and "/ search" in s and "? help" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s and "/ search" in s and "? help" in s)
         tmux("resize-window", "-t", "poc:0", "-x", "25", "-y", "10")
         wait_for(lambda s: "Enlarge terminal" in s)
         send("q")
@@ -275,7 +283,7 @@ def live_capture(binary, width, height):
     command = shlex.join(["env", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), "--center-lon", "-0.1065", "--center-lat", "51.505", "--zoom", "13", "--point-index", "3"])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         screen = wait_context(lambda s: "Route details" in s and "© Mapbox" in s and "Loading basemap" not in s and re.search(r"\b[1-9]\d* / 0 / 0", s), timeout=25)
         folder = ROOT / "reports/generated"
         folder.mkdir(exist_ok=True, parents=True)
@@ -310,7 +318,7 @@ def profile_playback(binary, width, height):
     command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","COLORTERM=truecolor","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),str(ROOT / "fixtures/example.gpx")])
     tmux("new-session","-d","-s","poc","-x",str(width),"-y",str(height),command)
     try:
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         send("e")
         wait_for(lambda s:"Elevation profile" in s and "Loading basemap" not in s)
         wait_for(lambda s:"Elevation profile" in s and "@ 0.00 km" in s)
@@ -344,7 +352,7 @@ def profile_playback(binary, width, height):
         send(" ")
         wait_for(lambda s:"Paused 60x" in s)
         tmux("resize-window","-t","poc:0","-x","70","-y","24")
-        wait_for(lambda s:"Elevation profile" in s and "tab details" in s)
+        wait_for(lambda s:"Elevation profile" in s and "ctrl+b sidebar" in s)
         tmux("resize-window","-t","poc:0","-x","70","-y","18")
         wait_for(lambda s:"Elevation profile" in s and "Paused 60x" in s)
         send("a")
@@ -362,7 +370,7 @@ def live_playback(binary):
     command=shlex.join(["env","TERM=xterm-256color","COLORTERM=truecolor","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(ROOT / "fixtures/example.gpx"),"--zoom","14","--point-index","3"])
     tmux("new-session","-d","-s","poc","-x","120","-y","40",command)
     try:
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         wait_context(lambda s:"Route details" in s and "Loading basemap" not in s and re.search(r"\b[1-9]\d* / 0 / 0",s),timeout=25)
         send("e")
         before=wait_context(lambda s:"Elevation profile" in s)
@@ -394,7 +402,7 @@ def dense_profile(binary):
     command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(path)])
     tmux("new-session","-d","-s","poc","-x","120","-y","40",command)
     try:
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         send("e")
         wait_context(lambda s:"100000 points" in s)
         wait_for(lambda s:"Elevation profile" in s)
@@ -413,7 +421,7 @@ def dialogs(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
     try:
-        wait_for(lambda s: "Free roam" in s and "tab details" in s)
+        wait_for(lambda s: "Free roam" in s and "ctrl+b sidebar" in s)
         send("\x0f")
         wait_for(lambda s: "Open track file" in s)
 
@@ -531,7 +539,7 @@ def free_roam(binary, live=False):
         settled()
         save_svg(folder / f"{binary.name}-free-roam{'-mapbox' if live else ''}-120x40.svg", 120, 40)
         tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
-        wait_for(lambda s: "tab details" in s and "/ search" in s and "? help" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s and "/ search" in s and "? help" in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
         print(f"{binary.name}: {'live Mapbox' if live else 'offline'} free roam, keyboard/mouse navigation, coordinate inspection, help, compact resize and terminal restoration passed")
@@ -543,7 +551,7 @@ def theme_switching(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), "--theme", "catppuccin"])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
-        wait_for(lambda s: "tab details" in s)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
         send("e")
         wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
         baseline = settled()
@@ -618,7 +626,7 @@ def workspace_controls(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), str(ROOT / "fixtures/waypoints.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
     try:
-        wait_for(lambda s: "Only a waypoint" in s and "tab details" in s and "Loading track file" not in s)
+        wait_for(lambda s: "Only a waypoint" in s and "ctrl+b sidebar" in s and "Loading track file" not in s)
         send("\x0c")
         wait_for(lambda s: "Loaded files" in s and "example.gpx" in s and "waypoints.gpx" in s)
         save_svg(ROOT / "reports/generated" / f"{binary.name}-workspace-120x40.svg", 120, 40)
@@ -668,7 +676,7 @@ def workspace_profiles(binary, width, height):
         command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *paths])
         tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
         try:
-            wait_for(lambda s: "tab details" in s)
+            wait_for(lambda s: "ctrl+b sidebar" in s)
             send("e")
             initial = wait_for(lambda s: "Elevation profiles" in s and "Short loop" in s and "Long ride" in s and "Loading track file" not in s)
             start_distance = float(re.search(r"@ ([\d.]+) km", initial).group(1))
@@ -762,24 +770,27 @@ def journey_controls(binary, width, height):
     try:
         wait_for(lambda s: "Free roam" in s)
         send("\x07")
-        assert "Journey Planner" not in settled(), "removed Journey Planner shortcut still opened the planner"
+        assert "Context · Files · Journey" not in settled(), "removed Journey Planner shortcut still opened the planner"
         send("\x0a")
-        wait_for(lambda s: "Journey Planner" in s and "A Start" in s and "Travel mode: Manual" in s)
+        wait_for(lambda s: "Journey · Manual" in s and "A Start" in s)
         send("\x0a")
-        wait_for(lambda s: "Journey Planner" not in s)
+        assert "Context · Files · Journey" in settled(), "repeated shortcut closed planner"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Context · Files · Journey" not in s)
         send("\x0a")
-        wait_for(lambda s: "Journey Planner" in s and "A Start" in s)
+        wait_for(lambda s: "Context · Files · Journey" in s and "A Start" in s)
         tmux("send-keys", "-t", "poc:0.0", "Up")
-        wait_for(lambda s: "> Show journey on map" in s)
+        wait_for(lambda s: "> Copy journey to clipboard" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down")
         wait_for(lambda s: "> A Start" in s)
         tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "A Start" in s and "Place or latitude" in s)
         tmux("send-keys", "-t", "poc:0.0", "M-m")
-        wait_for(lambda s: "Journey Planner" in s and "A Start: 0.000000, 0.000000" in s)
+        wait_for(lambda s: "Context · Files · Journey" in s and "A Start: 0.000000, 0.000000" in s)
 
-        def location(title, coordinates):
-            tmux("send-keys", "-t", "poc:0.0", "Enter")
+        def location(title, coordinates, editing=False):
+            if not editing:
+                tmux("send-keys", "-t", "poc:0.0", "Enter")
             wait_for(lambda s: title in s and "enter coordinates" in s)
             tmux("send-keys", "-t", "poc:0.0", "C-u")
             if title == "B Destination":
@@ -787,19 +798,39 @@ def journey_controls(binary, width, height):
             else:
                 send(coordinates)
             tmux("send-keys", "-t", "poc:0.0", "Enter")
-            wait_for(lambda s: "Journey Planner" in s and coordinates.split(",")[0] in s)
+            wait_for(lambda s: "Context · Files · Journey" in s and coordinates.split(",")[0] in s)
 
+        tmux("send-keys", "-t", "poc:0.0", "BTab")
+        wait_for(lambda s: "Loaded files" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Tab")
+        wait_for(lambda s: "> A Start" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-n")
+        wait_for(lambda s: "Place or latitude" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "No waypoints" in s and "Place or latitude" not in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home")
+        wait_for(lambda s: "> A Start" in s and "No waypoints" in s)
         location("A Start", "51.5, -0.1")
-        tmux("send-keys", "-t", "poc:0.0", "Down")
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down")
         location("B Destination", "51.6, -0.2")
-        send("\x0e")
-        location("1 Waypoint", "51.55, -0.15")
-        send("\x0e")
-        location("2 Waypoint", "51.56, -0.16")
+        tmux("send-keys", "-t", "poc:0.0", "Up")
+        wait_for(lambda s: "> No waypoints" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        location("1 Waypoint", "51.55, -0.15", editing=True)
+        tmux("send-keys", "-t", "poc:0.0", "Down")
+        wait_for(lambda s: "> Add another waypoint" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        location("2 Waypoint", "51.56, -0.16", editing=True)
         send("\x12")
-        wait_for(lambda s: "A Start: 51.600000" in s and "1 Waypoint: 51.560000" in s and "2 Waypoint: 51.550000" in s and "B Destination: 51.500000" in s)
+        wait_for(lambda s: "A Start: 51.600000" in s and "1 Waypoint: 51.560000" in s and "2 Waypoint: 51.550000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down", "Down")
+        wait_for(lambda s: "> B Destination: 51.500000" in s)
         send("\x1a")
-        wait_for(lambda s: "A Start: 51.500000" in s and "1 Waypoint: 51.550000" in s and "B Destination: 51.600000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home")
+        wait_for(lambda s: "A Start: 51.500000" in s and "1 Waypoint: 51.550000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down", "Down")
+        wait_for(lambda s: "> B Destination: 51.600000" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home")
         tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "M-Up")
         wait_for(lambda s: "1 Waypoint: 51.560000" in s and "2 Waypoint: 51.550000" in s)
         tmux("send-keys", "-t", "poc:0.0", "Delete")
@@ -807,55 +838,64 @@ def journey_controls(binary, width, height):
         folder = ROOT / "reports/generated"
         folder.mkdir(exist_ok=True, parents=True)
         screen = settled()
-        assert "Journey Planner" in screen and "Travel mode: Manual" in screen and "A" in screen and "B" in screen, "planner hid the live map or current travel mode"
+        assert "Journey · Manual" in screen and "A" in screen and "B" in screen, "planner hid the live map or current travel mode"
         save_svg(folder / f"{binary.name}-journey-sidebar-{width}x{height}.svg", width, height)
-        tmux("send-keys", "-t", "poc:0.0", "Tab")
-        wait_for(lambda s: "tab planner" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        wait_for(lambda s: "ctrl+b planner" in s)
         before = settled()
         tmux("send-keys", "-t", "poc:0.0", "Right")
-        wait_for(lambda s: s != before and "Journey Planner" in s)
-        tmux("send-keys", "-t", "poc:0.0", "Tab")
-        wait_for(lambda s: "tab map" in s)
+        wait_for(lambda s: s != before and "ctrl+b planner" in s and "Context · Files · Journey" not in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        wait_for(lambda s: "ctrl+b hide" in s)
         before = settled()
         sgr(64, 10, 6)
-        wait_for(lambda s: s != before and "Journey Planner" in s)
+        wait_for(lambda s: s != before and "Context · Files · Journey" in s)
         send("\x06")
-        assert "Journey Planner" in settled(), "removed Show shortcut still closed the planner"
-        tmux("send-keys", "-t", "poc:0.0", "End")
-        screen = wait_for(lambda s: "> Show journey on map" in s)
-        assert "Show journey on map (" not in screen, "menu-only Show action advertised a shortcut"
-        tmux("send-keys", "-t", "poc:0.0", "Enter")
-        wait_for(lambda s: "Journey Planner" not in s and "Planned journey" in s)
+        assert "Context · Files · Journey" in settled(), "removed Show shortcut still closed the planner"
+        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        wait_for(lambda s: "Context · Files · Journey" not in s and "Planned journey" in s)
         screen = settled()
         assert "Playing" not in screen and "estimated 6 m/s" not in screen and "Elevation profile" not in screen, "planned journey became recorded playback"
         save_svg(folder / f"{binary.name}-journey-{width}x{height}.svg", width, height)
         send("a\x0a")
-        wait_for(lambda s: "Journey Planner" in s)
+        wait_for(lambda s: "Context · Files · Journey" in s)
         tmux("send-keys", "-t", "poc:0.0", "Home")
-        wait_for(lambda s: "Journey Planner" in s and "A Start" in s)
+        wait_for(lambda s: "Context · Files · Journey" in s and "A Start" in s)
         assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "ASCII journey rendered Braille"
-        tmux("send-keys", "-t", "poc:0.0", "C-b")
+        tmux("send-keys", "-t", "poc:0.0", "End", "Up", "Up", "Up", "Up", "Enter")
         wait_for(lambda s: "Travel mode" in s and "Manual" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
         wait_for(lambda s: "Mapbox not connected" in s)
         tmux("send-keys", "-t", "poc:0.0", "C-u")
-        wait_for(lambda s: "Routing feedback" in s and "Manual plots straight" in s)
+        wait_for(lambda s: "Routing details" in s and "Ctrl-D retries" in s)
         settled()
         tmux("send-keys", "-t", "poc:0.0", "End")
-        wait_for(lambda s: "Routes stay in memory" in s)
+        wait_for(lambda s: "docs/MAPBOX.md" in s)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Travel mode" in s and "Walking" in s and "Mapbox not connected" in s)
         tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
-        wait_for(lambda s: "Journey Planner" in s and "Travel mode: Manual" in s)
+        wait_for(lambda s: "Journey · Manual" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home")
+        wait_for(lambda s: "1 Waypoint:" in s)
         screen = settled().splitlines()
         row = next(index for index, line in enumerate(screen) if "1 Waypoint:" in line)
         column = screen[row].index("1 Waypoint:")
         sgr(0, column + 1, row + 1)
         sgr(0, column + 1, row + 1, release=True)
         wait_for(lambda s: "1 Waypoint" in s and "enter coordinates" in s)
+        tmux("send-keys", "-t", "poc:0.0", "C-p")
+        wait_for(lambda s: "Pick 1 Waypoint" in s)
         sgr(0, 8, 6)
         sgr(0, 8, 6, release=True)
-        wait_for(lambda s: "Journey Planner" in s and "1 Waypoint:" in s and "1 Waypoint: 51.550000" not in s)
+        wait_for(lambda s: "Context · Files · Journey" in s and "1 Waypoint:" in s and "1 Waypoint: 51.550000" not in s)
+        tmux("set-option", "-g", "set-clipboard", "on")
+        tmux("send-keys", "-t", "poc:0.0", "End", "Enter")
+        wait_for(lambda s: "Journey command sent to clipboard" in s)
+        command = shlex.split(tmux("show-buffer"))
+        assert command[0] == "mapbox-tui", command
+        assert "--mode=manual" in command and not any(arg.startswith("--file=") for arg in command), command
+        assert any(value.startswith("--waypoint=") for value in command), command
+        assert "--start=51.5,-0.1" in command and "--end=51.6,-0.2" in command, command
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
         print(f"{binary.name} {width}×{height}: docked planner/live map, keyboard focus, mouse zoom/point placement, waypoints, reversal/undo, ASCII, visible travel mode, routing feedback, manual fallback and terminal restoration passed")

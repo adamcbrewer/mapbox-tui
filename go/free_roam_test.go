@@ -98,7 +98,7 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		if m.inspected == nil || m.selectedPoint() != -1 {
 			t.Fatal("clicking without a route did not select map coordinates")
 		}
-		for _, code := range []rune{'[', ']', 'c', 'e', ' ', 's', 'S', 'p', tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown} {
+		for _, code := range []rune{'[', ']', 'e', ' ', 's', 'S', 'p', tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown} {
 			m.Update(tea.KeyPressMsg{Code: code})
 		}
 		routeControlsChangedState := m.ui.dialog != dialogNone ||
@@ -236,5 +236,53 @@ func TestFreeRoamCameraStaysWithinMercatorBounds(t *testing.T) {
 		if c.Center.X < 0 || c.Center.X > 1 || c.Center.Y < 0 || c.Center.Y > 1 || len(visible(c)) == 0 {
 			t.Fatal("free roam moved beyond the map's valid tile coverage")
 		}
+	}
+}
+
+func TestCenterSelectedLocationWithoutGeometry(t *testing.T) {
+	for _, animate := range []bool{false, true} {
+		name := "instant"
+		if animate {
+			name = "animated"
+		}
+		t.Run(name, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.settings.NoAnimation = !animate
+			before := m.camera
+			m.Update(tea.KeyPressMsg{Code: 'c'})
+			if m.camera != before || m.motion.Active {
+				t.Fatal("centering without a selection moved the camera")
+			}
+			m.Update(tea.MouseClickMsg{X: 10, Y: 3, Button: tea.MouseLeft})
+			m.Update(tea.MouseReleaseMsg{X: 10, Y: 3, Button: tea.MouseLeft})
+			if m.inspected == nil {
+				t.Fatal("map click did not select a location")
+			}
+			selected := *m.inspected
+			m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+			m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+			before = m.destination()
+			m.Update(tea.KeyPressMsg{Code: 'c'})
+			want := before
+			want.Center = project(selected.X, selected.Y)
+			if m.destination() != want || m.following {
+				t.Fatal("centering failed to preserve zoom, bearing and viewport without following")
+			}
+			if m.inspected == nil || *m.inspected != selected || !m.ui.detailsOpen {
+				t.Fatal("centering discarded the selected location or closed its context")
+			}
+			found := false
+			for _, command := range m.commands() {
+				found = found || command.action == "center"
+			}
+			if !found {
+				t.Fatal("selected location has no center command")
+			}
+			m.Update(tea.KeyPressMsg{Code: 'f'})
+			want = m.workspace.fitVisible(m.camera.Width, m.camera.Height, m.camera.Aspect)
+			if m.destination() != want {
+				t.Fatal("fit no longer returns to the world view without geometry")
+			}
+		})
 	}
 }

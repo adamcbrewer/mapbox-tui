@@ -41,26 +41,29 @@ const (
 )
 
 type uiState struct {
-	dialog        dialogKind
-	parents       []dialogFrame
-	help          help.Model
-	picker        filepicker.Model
-	search        textinput.Model
-	inputID       string
-	page, details pager.Model
-	spinner       spinner.Model
-	spinning      bool
-	selected      int
-	themeBefore   int
-	menuNavigated bool
-	detailsOpen   bool
-	notice        string
+	dialog         dialogKind
+	parents        []dialogFrame
+	help           help.Model
+	picker         filepicker.Model
+	search         textinput.Model
+	inputID        string
+	page, details  pager.Model
+	spinner        spinner.Model
+	spinning       bool
+	selected       int
+	themeBefore    int
+	menuNavigated  bool
+	detailsOpen    bool
+	filesCollapsed bool
+	filesSelected  int
+	filesVisited   bool
+	notice         string
 }
 
 type dialogFrame struct {
 	kind                        dialogKind
 	selected, searchPosition    int
-	menuNavigated, mapFocused   bool
+	menuNavigated, collapsed    bool
 	searchValue, notice, action string
 	page                        pager.Model
 }
@@ -132,7 +135,7 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 			binding("ctrl+o", "open"),
 			binding("ctrl+l", "files"),
 			binding("ctrl+k", "commands"),
-			binding("tab", focus),
+			binding("ctrl+b", focus),
 			binding("q", "quit"),
 		}
 	}
@@ -161,7 +164,7 @@ func (k shortcutMap) ShortHelp() []key.Binding {
 		keys,
 		binding("ctrl+k", "commands"),
 		binding("p", "speed"),
-		binding("tab", focus),
+		binding("ctrl+b", focus),
 	)
 	return append(keys, binding("q", "quit"))
 }
@@ -177,13 +180,15 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 				binding("+/-", "zoom"),
 				binding("ctrl/cmd+wheel", "2x zoom speed"),
 				binding("f/r", "fit all visible"),
+				binding("c", "center selected location"),
 				binding(",/.", "rotate"),
 				binding("n", "north-up"),
 			},
 			{
 				binding("click", "select coordinates"),
 				binding("enter", "inspect location"),
-				binding("tab", "open/close context"),
+				binding("ctrl+b", "show/hide sidebar"),
+				binding("tab", "next sidebar tab"),
 			},
 			elevation,
 			{
@@ -195,7 +200,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 				binding("a", "ASCII map"),
 				binding("v", "credits"),
 				binding("m", "toggle camera animation"),
-				binding("esc", "close panel"),
+				binding("esc", "close panel / clear location"),
 				binding("q", "quit"),
 			},
 		}
@@ -206,7 +211,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("+/-", "zoom"),
 			binding("ctrl/cmd+wheel", "2x zoom speed"),
 			binding("f/r", "fit all visible"),
-			binding("c", "center and follow"),
+			binding("c", "center selection / follow track"),
 			binding(",/.", "rotate"),
 			binding("n", "north-up"),
 		},
@@ -215,7 +220,8 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("pgup/pgdown", "seek 100 points"),
 			binding("home/end", "first/last point"),
 			binding("enter", "inspect position"),
-			binding("tab", "open/close context"),
+			binding("ctrl+b", "show/hide sidebar"),
+			binding("tab", "next sidebar tab"),
 		},
 		{
 			binding("space", "play/pause selected activity"),
@@ -232,7 +238,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("a", "ASCII map"),
 			binding("v", "credits"),
 			binding("m", "toggle camera animation"),
-			binding("esc", "close panel"),
+			binding("esc", "close panel / clear location"),
 			binding("q", "quit"),
 		},
 	}
@@ -296,14 +302,19 @@ func (m *viewer) gradient(s string, background color.Color) string {
 }
 func (m *viewer) closeDialog() {
 	wasPlanner := m.journeyPanelOpen()
+	if m.ui.dialog == dialogWorkspace {
+		m.ui.filesSelected = m.ui.selected
+	}
 	m.restoreThemePreview()
 	m.cancelPlaceSearch()
 	m.planner.showRevision = nil
+	m.planner.pickingStop = false
 	m.ui.dialog = dialogNone
 	m.ui.parents = nil
 	m.ui.search.Blur()
 	m.ui.inputID = ""
 	m.ui.notice = ""
+
 	if wasPlanner {
 		m.layout()
 	}
@@ -311,13 +322,19 @@ func (m *viewer) closeDialog() {
 }
 func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 	wasPlanner := m.journeyPanelOpen()
+	if m.ui.dialog == dialogWorkspace {
+		m.ui.filesSelected = m.ui.selected
+	}
 	m.restoreThemePreview()
 	if m.placeSearchOpen() || kind == dialogSearch {
 		m.cancelPlaceSearch()
 	}
 	m.planner.showRevision = nil
-	m.planner.mapFocused = false
+	m.planner.collapsed = false
 	m.ui.dialog = kind
+	if kind == dialogJourney {
+		m.planner.addingWaypoint = false
+	}
 	m.ui.parents = nil
 	m.ui.search.Blur()
 	m.ui.inputID = ""
@@ -363,6 +380,12 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 			m.ui.selected = p.speed
 		}
 	case dialogWorkspace:
+		m.ui.filesCollapsed = false
+		if m.ui.filesVisited {
+			m.ui.selected = m.ui.filesSelected
+			break
+		}
+		m.ui.filesVisited = true
 		for i, row := range m.workspaceRows() {
 			if m.workspace.selection != nil && row.ref == m.workspace.selection.ref {
 				m.ui.selected = i
@@ -379,7 +402,7 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 		frame := dialogFrame{
 			kind: m.ui.dialog, selected: m.ui.selected, menuNavigated: m.ui.menuNavigated,
 			searchValue: m.ui.search.Value(), searchPosition: m.ui.search.Position(),
-			notice: m.ui.notice, page: m.ui.page, mapFocused: m.planner.mapFocused,
+			notice: m.ui.notice, page: m.ui.page, collapsed: m.planner.collapsed,
 		}
 		if frame.kind == dialogMapbox {
 			actions := m.mapboxActions()
@@ -408,10 +431,18 @@ func (m *viewer) backDialog() tea.Cmd {
 	m.ui.selected, m.ui.menuNavigated = frame.selected, frame.menuNavigated
 	m.ui.notice, m.ui.page = frame.notice, frame.page
 	m.ui.page.Style = m.styles.dialogText
-	m.planner.mapFocused = frame.mapFocused
+	m.planner.collapsed = frame.collapsed
 	if frame.kind == dialogCommands {
 		m.ui.search.SetValue(frame.searchValue)
 		m.ui.search.SetCursor(frame.searchPosition)
+	}
+	if frame.kind == dialogJourneyLocation {
+		m.ui.inputID = rand.Text()
+		m.ui.search.SetValue(frame.searchValue)
+		m.ui.search.SetCursor(frame.searchPosition)
+		if !m.planner.collapsed {
+			command = tea.Batch(command, m.ui.search.Focus())
+		}
 	}
 	if frame.kind == dialogMapbox {
 		for i, action := range m.mapboxActions() {
@@ -462,10 +493,16 @@ func (m *viewer) commands() []viewerCommand {
 	if m.activeTrack() != nil {
 		commands = append(commands, viewerCommand{title: "Free roam (clear selection)", action: "roam"})
 	}
+	if m.inspected != nil || m.activePlayback() != nil {
+		title := "Center and follow position"
+		if m.inspected != nil {
+			title = "Center selected location"
+		}
+		commands = append(commands, viewerCommand{title: title, shortcut: "c", action: "center"})
+	}
 	if m.activePlayback() != nil {
 		commands = append(
 			commands,
-			viewerCommand{title: "Center and follow position", shortcut: "c", action: "center"},
 			viewerCommand{title: "Playback speed", shortcut: "p", action: "speed"},
 		)
 		toggles = append(toggles, viewerCommand{
@@ -579,10 +616,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	}
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
-		closeCredits := m.ui.dialog == dialogCredits && pressed == "v"
-		closeHelp := m.ui.dialog == dialogHelp && pressed == "?"
-		closeWorkspace := m.ui.dialog == dialogWorkspace && pressed == "ctrl+l"
-		if pressed == "esc" || closeCredits || closeHelp || closeWorkspace {
+		if pressed == "esc" {
 			return m.backDialog()
 		}
 		switch m.ui.dialog {
@@ -838,7 +872,7 @@ func (m *viewer) sourceCreditsContent(sources sourceView) string {
 func (m *viewer) overlay() {
 	dialogOpen := m.ui.dialog != dialogNone
 	hasRoom := m.width >= 30 && m.height >= 12
-	if !dialogOpen || !hasRoom || m.journeyPanelOpen() {
+	if !dialogOpen || !hasRoom || m.journeyPanelOpen() || m.ui.dialog == dialogWorkspace {
 		return
 	}
 	width := min(64, m.width-8)

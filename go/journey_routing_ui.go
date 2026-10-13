@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var journeyModes = []journeyMode{journeyManual, journeyWalking, journeyCycling, journeyDriving}
@@ -74,14 +75,15 @@ func (m *viewer) showJourneyOnMap() tea.Cmd {
 		m.dirty = true
 		return cmd
 	}
-	if err := m.workspace.selectItem(m.planner.ref); err != nil {
+	entry, index, err := m.workspace.lookup(m.planner.ref)
+	if err != nil {
 		m.ui.notice = err.Error()
 		return nil
 	}
 	m.closeDialog()
-	m.selectionChanged()
-	track := m.activeTrack()
+	track := entry.document.Items[index].Track
 	if len(track.Points) > 0 {
+		m.following = false
 		m.moveCamera(journeyView(j, track, m.camera))
 	}
 	return m.fetch()
@@ -148,7 +150,7 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 		}
 		m.backDialog()
 		m.ui.notice = ""
-		m.selectionChanged()
+		m.dirty = true
 		if revision == j.revision {
 			return nil
 		}
@@ -167,40 +169,27 @@ func (m *viewer) journeyRoutingDialogContent(width, height int) (string, string,
 				lines = append(lines, "Routing feedback:", j.Error, "")
 			}
 		}
-		lines = append(lines,
-			"Manual plots straight lines offline, without journey-time estimates.",
-			"Driving is the default when Mapbox is connected. Walking, Cycling and Driving follow roads/paths using your selected token.",
-			"Mapbox receives all ordered stop coordinates. Each calculation is one account request; usage may be billable.",
-			"Routes recalculate after committed edits, reversal and undo. Typing and camera movement do not request routes.",
-			"Standard and card-free trial accounts have different allowances/rate limits; map access does not prove Directions access.",
-			"Current account limits: https://docs.mapbox.com/accounts/guides/signup/",
-			"Current pricing: https://www.mapbox.com/pricing#directions-api",
-			"Directions: https://docs.mapbox.com/api/navigation/directions/",
-			"Limits: 2–25 locations; walking 1,000 km, cycling 1,500 km, driving 10,000 km between stops.",
-			"Over-limit plans are rejected with every stop intact; they are never split or truncated.",
-			"Rate limiting pauses further requests. Use Recalculate route after the wait; there are no automatic retries.",
-			"Failed or stale routes use a manual preview. Choose Manual at any time; imported data stays usable.",
-			"Estimated travel time is not a recorded timestamp. No live navigation or elevation is added.",
-			"Routes stay in memory for this session only.",
-		)
+		lines = append(lines, "Ctrl-D retries routing. Your stops remain intact.",
+			"Routing behaviour, usage and limits:\ndocs/MAPBOX.md")
+		if j, err := m.workspace.journey(m.planner.ref); err == nil && j.routeCurrent() {
+			for i := range j.Stops {
+				snapped := j.Route.Snapped[i]
+				lines = append(lines, fmt.Sprintf("%s road/path: %.6f, %.6f",
+					journeyStopLabel(i, len(j.Stops)), snapped.Y, snapped.X))
+			}
+		}
 		m.ui.page.SetWidth(width)
 		m.ui.page.SetHeight(max(1, height))
-		m.ui.page.SetContent(strings.Join(lines, "\n\n"))
-		return "Routing feedback / usage", m.ui.page.View(), "up/down scroll / esc close"
+		m.ui.page.SetContent(ansi.Wrap(strings.Join(lines, "\n\n"), width, ""))
+		return "Routing details", m.ui.page.View(), "up/down scroll / esc close"
 	}
 	labels := []string{
-		"Manual · offline", "Walking · Mapbox", "Cycling · Mapbox", "Driving · Mapbox", "Usage, limits and feedback",
+		"Manual · offline", "Walking · Mapbox", "Cycling · Mapbox", "Driving · Mapbox", "Routing details",
 	}
 	if j, err := m.workspace.journey(m.planner.ref); err == nil {
 		labels[slices.Index(journeyModes, j.Mode)] += " (current)"
 	}
 	var rows []string
-	if height > len(labels)+2 {
-		rows = append(rows,
-			m.styles.dialogMuted.Render(pad("Mapbox receives stops; account usage may be billable", width)),
-			m.styles.dialogMuted.Render(pad("Recalculates after edits · Manual works offline", width)),
-		)
-	}
 	count := max(1, height-len(rows))
 	start := max(0, m.ui.selected-count+1)
 	m.planner.menuDialog = dialogJourneyRouting
@@ -213,7 +202,7 @@ func (m *viewer) journeyRoutingDialogContent(width, height int) (string, string,
 		}
 		rows = append(rows, style.Render(pad(prefix+labels[i], width)))
 	}
-	return "Travel mode", strings.Join(rows, "\n"), "enter choose / ctrl+u usage / esc back"
+	return "Travel mode", strings.Join(rows, "\n"), "enter choose / ctrl+u details / esc back"
 }
 
 func journeyRoutingStatus(j *Journey, track *Track) string {

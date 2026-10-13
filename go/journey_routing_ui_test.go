@@ -70,7 +70,7 @@ func TestJourneyRoutingOnlyRequestsCommittedChanges(t *testing.T) {
 		t.Fatal("committed edit did not resolve exactly once")
 	}
 	_, cmd = m.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
-	if cmd != nil || j.Error != "" || j.routeCurrent() {
+	if m.ui.dialog != dialogJourneyLocation || j.Error != "" || !j.routeCurrent() {
 		t.Fatal("empty waypoint did not wait for its location without requesting HTTP")
 	}
 }
@@ -90,7 +90,7 @@ func TestJourneyConnectedDefaultsToDrivingAndRoutesAutomatically(t *testing.T) {
 	m.openJourney()
 	j, _ := m.workspace.journey(m.planner.ref)
 	_, content, _ := m.journeyDialogContent(64, 17)
-	if j.Mode != journeyDriving || !strings.Contains(ansi.Strip(content), "Travel mode: Driving (ctrl+b)") {
+	if j.Mode != journeyDriving || !strings.Contains(ansi.Strip(content), "Travel mode: Driving") {
 		t.Fatal("default travel mode was not visible in the planner")
 	}
 	for _, command := range m.commands() {
@@ -127,7 +127,6 @@ func TestJourneyConnectedDefaultsToDrivingAndRoutesAutomatically(t *testing.T) {
 		t.Fatal("recalculate action kept the old name")
 	}
 	m.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
-	m.editJourneyLocation(1)
 	m.ui.search.SetValue("51.55, -0.15")
 	_, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
@@ -193,7 +192,7 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 	if m.ui.dialog != dialogJourney || m.camera != camera || !strings.Contains(m.ui.notice, "no Walking route") {
 		t.Fatal("failed Show silently presented straight lines")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.openJourneyRouting()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_, content, _ := m.journeyDialogContent(64, 17)
@@ -222,7 +221,7 @@ func TestJourneyRouteResultUpdatesNestedPlannerNotice(t *testing.T) {
 					t.Fatal("Show did not start routing with feedback")
 				}
 				if nestedMode {
-					m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+					m.openJourneyRouting()
 				}
 				m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 				m.Update(route())
@@ -327,7 +326,7 @@ func TestJourneyUnchangedLocationAndModeKeepResolvedRoute(t *testing.T) {
 	if cmd != nil || *requests != 1 || !j.routeCurrent() || j.Route != previous || m.activeTrack() != previous.Track {
 		t.Fatal("accepting unchanged coordinates invalidated or recalculated the route")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.openJourneyRouting()
 	_, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil || *requests != 1 || !j.routeCurrent() || j.Route != previous {
 		t.Fatal("choosing the current travel mode requested the route again")
@@ -376,7 +375,7 @@ func TestJourneyRoutingModeSelectionAndOfflineFallback(t *testing.T) {
 	enterJourneyCoordinate(m, 0, "51.5, -0.1")
 	enterJourneyCoordinate(m, 1, "51.6, -0.2")
 	j, _ := m.workspace.journey(m.planner.ref)
-	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.openJourneyRouting()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil || j.Mode != journeyManual || !strings.Contains(m.ui.notice, "not connected") {
@@ -391,7 +390,7 @@ func TestJourneyRoutingModeSelectionAndOfflineFallback(t *testing.T) {
 		t.Fatal("choosing walking did not explicitly enable routing")
 	}
 	late := cmd()
-	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.openJourneyRouting()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	_, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(late)
@@ -407,6 +406,7 @@ func TestJourneyNestedFeedbackReturnsThroughTravelModeAndMenu(t *testing.T) {
 	m.ui.search.SetValue("journey")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	row, camera := m.planner.row, m.camera
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(tea.PasteMsg{Content: "51.6, -0.2"})
@@ -415,7 +415,7 @@ func TestJourneyNestedFeedbackReturnsThroughTravelModeAndMenu(t *testing.T) {
 	if m.ui.dialog != dialogJourney || m.planner.row != row || m.camera != camera || j.Stops[1].Location != nil {
 		t.Fatal("cancelled location changed the plan, selection or compact panel layout")
 	}
-	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m.openJourneyRouting()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	notice := m.ui.notice
@@ -512,12 +512,12 @@ func TestJourneyRoutingFeedbackAndLayouts(t *testing.T) {
 			}
 			m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 			m.journeyRoutingDialogContent(22, 4)
-			page := m.ui.page.GetContent()
+			page := strings.Join(strings.Fields(m.ui.page.GetContent()), " ")
 			if !strings.Contains(page, j.Error) || !strings.Contains(page, "remove stops or choose Manual") {
 				t.Fatal("full error and cause not available in scrollable feedback")
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
-			if !strings.Contains(ansi.Strip(m.ui.page.View()), "session only") {
+			if !strings.Contains(ansi.Strip(m.ui.page.View()), "docs/MAPBOX.md") {
 				t.Fatal("End did not reach the bottom of feedback")
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyHome})

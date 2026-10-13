@@ -33,6 +33,7 @@ type viewer struct {
 	workspace                 Workspace
 	pendingPaths              []string
 	startupCameraPending      bool
+	startupJourneyRouting     bool
 	initialised               bool
 	provider                  *Provider
 	sources                   sourceLoader
@@ -88,7 +89,8 @@ func (m *viewer) Init() tea.Cmd {
 		credentials = m.discoverCredentials(false, false)
 	}
 	if m.path == "" {
-		return tea.Batch(tick(), m.freeRoam(), credentials)
+		navigation := m.freeRoam()
+		return tea.Batch(tick(), navigation, credentials, m.startJourneyFromArgs())
 	}
 	return tea.Batch(tick(), m.load(m.path), credentials)
 }
@@ -385,7 +387,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingPaths = m.pendingPaths[1:]
 			return m, m.load(path)
 		}
-		return m, m.fetch()
+		return m, tea.Batch(m.fetch(), m.startJourneyFromArgs())
 	case sourceResult:
 		m.configureSources()
 		if m.sources.accept(v, m.destination(), time.Now()) {
@@ -430,18 +432,89 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := v.String()
 		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.placeSearchOpen()
+		if m.journeyPanelOpen() && (m.planner.collapsed || m.planner.pickingStop) {
+			enteringText = false
+		}
 		if key == "ctrl+c" || (key == "q" && !enteringText) {
 			m.cancelPlaceSearch()
 			m.workspace.cancelJourneyRoutes()
 			m.cancelAuth()
 			return m, tea.Quit
 		}
-		if m.ui.dialog == dialogJourney && key == "tab" {
-			m.planner.mapFocused = !m.planner.mapFocused
-			m.dirty = true
+		if key == "esc" && !m.planner.pickingStop && len(m.ui.parents) == 0 &&
+			(m.ui.dialog == dialogWorkspace || m.ui.dialog == dialogJourney) {
+			m.ui.detailsOpen = false
+			m.closeDialog()
 			return m, nil
 		}
-		mapKey := m.ui.dialog == dialogJourney && m.planner.mapFocused && journeyMapKey(key)
+		panelInput := m.ui.dialog == dialogNone || m.ui.dialog == dialogWorkspace || m.journeyPanelOpen()
+		if panelInput {
+			switch key {
+			case "ctrl+b":
+				return m, m.togglePanel()
+			case "tab":
+				return m, m.cyclePanel()
+			case "shift+tab":
+				return m, m.cyclePanelDirection(-1)
+			case "ctrl+l":
+				return m, m.switchPanel(dialogWorkspace)
+			case "ctrl+j":
+				return m, m.switchPanel(dialogJourney)
+			}
+		}
+		if m.ui.dialog == dialogWorkspace {
+			switch key {
+			case "/":
+				return m, m.pushDialog(dialogSearch)
+			case "?":
+				return m, m.pushDialog(dialogHelp)
+			case "ctrl+o", "o":
+				return m, m.openDialog(dialogFiles)
+			}
+		}
+		if m.journeyPanelOpen() && m.planner.pickingStop {
+			switch key {
+			case "esc":
+				m.planner.pickingStop = false
+				m.dirty = true
+				if m.ui.dialog == dialogJourneyLocation {
+					return m, m.ui.search.Focus()
+				}
+				return m, nil
+			case "enter":
+				cmd, _ := m.pickJourneyLocation(unproject(m.camera.Center))
+				return m, cmd
+			}
+		}
+		if m.journeyPanelOpen() && m.planner.pickingStop && !journeyMapKey(key) {
+			return m, nil
+		}
+		if m.journeyPanelOpen() && (!m.placeSearchOpen() || m.planner.collapsed) {
+			switch key {
+			case "/":
+				return m, m.pushDialog(dialogSearch)
+			case "?":
+				return m, m.pushDialog(dialogHelp)
+			case "ctrl+l":
+				return m, m.pushDialog(dialogWorkspace)
+			}
+		}
+
+		mapInput := m.journeyPanelOpen() && (m.planner.collapsed || m.planner.pickingStop)
+		mapKey := (mapInput || (m.ui.dialog == dialogWorkspace && m.ui.filesCollapsed)) && journeyMapKey(key)
+		if m.journeyPanelOpen() && m.planner.collapsed && key == "enter" {
+			return m, m.pushDialog(dialogInspect)
+		}
+		if m.journeyPanelOpen() && m.planner.collapsed {
+			if key == "esc" {
+				m.closeDialog()
+				return m, nil
+			}
+			// Hidden editors must not consume map input or change unseen fields.
+			if !mapKey {
+				return m, nil
+			}
+		}
 		if m.ui.dialog != dialogNone && !mapKey {
 			return m, m.updateDialog(msg)
 		}
@@ -469,13 +542,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			return m, m.openDialog(dialogInspect)
-		case "tab":
-			m.ui.detailsOpen = !m.ui.detailsOpen
-			m.dragging, m.rotating = false, false
-			m.dirty = true
-			return m, nil
+
 		}
-		if m.ui.detailsOpen {
+		if m.ui.detailsOpen && m.ui.dialog == dialogNone {
 			switch key {
 			case "home":
 				m.ui.details.GotoTop()
@@ -496,12 +565,19 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if key == "esc" {
+			m.inspected, m.searchPosition = nil, nil
+			m.searchName = ""
+			m.ui.details.GotoTop()
+			m.dirty = true
+			return m, nil
+		}
 		if key == "e" && len(m.workspace.profileItems()) > 0 {
 			return m, m.toggleMenuOption("profile")
 		}
 		if m.activePlayback() == nil {
 			switch key {
-			case "[", "]", "pgup", "pgdown", "home", "end", "c", "space", "s", "S":
+			case "[", "]", "pgup", "pgdown", "home", "end", "space", "s", "S":
 				return m, nil
 			}
 		}
@@ -561,10 +637,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selected = len(m.activeTrack().Points) - 1
 			m.inspected = nil
 		case "c":
-			if pos := m.position(); pos != nil {
-				if m.inspected == m.searchPosition {
-					m.inspected = nil
-				}
+			if m.inspected != nil {
+				target := m.destination()
+				target.Center = project(m.inspected.X, m.inspected.Y)
+				m.following = false
+				m.moveCamera(target)
+			} else if pos := m.position(); pos != nil {
 				target := m.destination()
 				target.Center = pos.World
 				m.following = true
@@ -597,15 +675,45 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		mouse := v.Mouse()
 		m.advancePlayback(time.Now())
 		x, y := mouse.X, mouse.Y
+		if click, ok := v.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+			panelInput := m.ui.dialog == dialogNone || m.ui.dialog == dialogWorkspace || m.journeyPanelOpen()
+			if panelInput {
+				if cmd, handled := m.clickPanelTab(x, y); handled {
+					return m, cmd
+				}
+			}
+			if y == m.height-2 && m.hasJourneyContext() {
+				if m.journeyPanelOpen() {
+					m.closeDialog()
+					return m, nil
+				}
+				if m.ui.dialog == dialogNone || m.ui.dialog == dialogWorkspace {
+					return m, m.openJourney()
+				}
+			}
+		}
 		insideMapX := x >= 1 && x < m.camera.Width+1
 		originY := m.mapOriginY()
 		insideMapY := y >= originY && y < m.camera.Height+originY
 		inside := insideMapX && insideMapY
-		overDetails := m.ui.detailsOpen && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
+		drawerVisible := m.ui.dialog == dialogNone && m.ui.detailsOpen
+		drawerX := x >= m.journeyPanelX() && x < m.width-1
+		overDetails := drawerVisible && drawerX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
-		outsidePlannerMap := !m.journeyPanelOpen() || (!inside && !mapGesture)
-		if m.ui.dialog != dialogNone && outsidePlannerMap {
+		plannerX := x >= m.journeyPanelX() && x < m.width-1
+		overPlanner := m.journeyPanelVisible() && plannerX && y >= m.journeyPanelY() && y < m.camera.Height+1
+		if overPlanner && !mapGesture {
 			return m, m.updateDialog(msg)
+		}
+		if m.ui.dialog == dialogWorkspace {
+			if !m.ui.filesCollapsed && plannerX && y >= 1 && y < m.camera.Height+1 && !mapGesture {
+				return m, m.updateFilesPanelMouse(msg)
+			}
+		} else if m.ui.dialog != dialogNone && !m.journeyPanelOpen() {
+			return m, m.updateDialog(msg)
+		}
+		if m.journeyPanelOpen() && !inside && !mapGesture {
+			return m, nil
 		}
 		if overDetails && !mapGesture && !m.journeyPanelOpen() {
 			var cmd tea.Cmd
@@ -684,24 +792,15 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *viewer) layout() {
 	w, h := mapSize(m.width, m.height)
-	if m.journeySidebar() {
-		w, h = m.width-m.journeyPanelWidth()-4, m.height-6
-	} else if m.journeyPanelOpen() {
-		w, h = m.width-2, m.height-m.journeyStripHeight()-4
+	if m.hasJourneyContext() {
+		h--
 	}
-	if len(m.workspace.items()) > 1 && (m.showProfile || m.journeyPanelOpen()) {
+	if len(m.workspace.items()) > 1 && m.showProfile {
 		h--
 	}
 	m.profileHeight = profileRows(h, m.showProfile && len(m.workspace.profileItems()) > 0)
-	sidebarInput := m.journeySidebar() && m.ui.dialog == dialogJourneyLocation
-	if sidebarInput && h-m.profileHeight < 4 {
-		m.profileHeight = 0
-	}
 	m.camera.Width, m.camera.Height = max(1, w), max(1, h-m.profileHeight)
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
-	if m.journeyPanelOpen() {
-		m.ui.detailsOpen = false
-	}
 }
 func (m *viewer) pausePlayback() {
 	if p := m.activePlayback(); p != nil {
@@ -942,19 +1041,6 @@ func (m *viewer) rebuild() {
 	}
 	t, s := m.theme(), m.styles
 	var rows []string
-	if m.journeyPanelOpen() {
-		provider := s.accent.Background(lipgloss.Color(t.Selected)).Padding(0, 1).Render(m.provider.Kind)
-		name := "Free roam"
-		if track := m.activeTrack(); track != nil {
-			name = track.Name
-		}
-		if len(m.workspace.documents) > 1 {
-			name += fmt.Sprintf(" · %d files", len(m.workspace.documents))
-		}
-		title := m.gradient("Mapbox TUI", lipgloss.Color(t.Background)) + "  " +
-			s.heading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
-		rows = append(rows, pad(title, m.width-lipgloss.Width(provider)-1)+" "+provider)
-	}
 	border := m.boxBorder()
 	mapRows := []string{}
 	for y := 0; y < c.Height; y++ {
@@ -964,16 +1050,9 @@ func (m *viewer) rebuild() {
 		Border(border).
 		BorderForeground(lipgloss.Color(t.Border)).
 		Render(strings.Join(mapRows, "\n"))
-	if m.journeySidebar() {
-		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+
-			strings.ReplaceAll(m.journeyPanel(), "\n", "\n  "))
-	}
-	if m.journeyStripHeight() > 0 {
-		rows = append(rows, m.journeyPanel())
-	}
 	rows = append(rows, frame)
 	profile := m.visibleProfile()
-	if len(m.workspace.items()) > 1 && (m.showProfile || m.journeyPanelOpen()) {
+	if len(m.workspace.items()) > 1 && m.showProfile {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
 	}
 
@@ -1042,12 +1121,6 @@ func (m *viewer) rebuild() {
 		status = m.progress.ViewAs(playback.ratio()) + "  " + m.paint(status, roleActiveRoute, m.activeSwatch())
 	}
 	m.ui.help.SetWidth(m.width)
-	keys := shortcutMap{
-		compact:     m.width < 90,
-		playing:     playback != nil && playback.Playing,
-		detailsOpen: m.ui.detailsOpen,
-		freeRoam:    m.activePlayback() == nil,
-	}
 	credits, _ := sources.attribution()
 	journeyCredits := strings.ReplaceAll(m.journeyCredits(sources.Credits...), "\n", " ")
 	notice := m.connectionNotice()
@@ -1061,20 +1134,14 @@ func (m *viewer) rebuild() {
 			credits += " " + journeyCredits
 		}
 	}
-	if !m.journeyPanelOpen() {
-		rows = append(rows, m.contextFooter()...)
-	} else if m.journeyStripHeight() == 0 {
-		help := m.ui.help.View(keys)
-		if m.journeyPanelOpen() {
-			help = s.muted.Render("ctrl+j planner · mouse pan/zoom · esc back/close")
-		}
-		rows = append(rows, pad(status, m.width), pad(help, m.width))
-	}
+	rows = append(rows, m.contextFooter()...)
 	rows = append(rows, s.muted.Render(pad(credits, m.width)))
 	m.content = s.text.Background(lipgloss.Color(t.Background)).Width(m.width).Render(strings.Join(rows, "\n"))
-	if m.ui.detailsOpen && !m.journeyPanelOpen() {
+	if m.ui.detailsOpen && !m.journeyPanelOpen() && m.ui.dialog != dialogWorkspace {
 		m.contextDrawer(contextStatus)
 	}
+	m.overlayFilesPanel()
+	m.overlayJourneyPanel()
 	m.overlay()
 }
 func (m *viewer) View() tea.View {

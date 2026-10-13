@@ -312,7 +312,8 @@ as proof of Directions access.
   the camera on completion.
 - Edits retain the previous result as stale but display a current manual preview
   without its obsolete estimates. Failures preserve stop intent and manual geometry;
-  full cause/remedy is available through Ctrl-U's scrollable routing feedback.
+  full cause/remedy is available through Ctrl-U's scrollable routing details.
+  Static usage explanations live here rather than in the planner action list.
   A failed recalculation also marks a previously current result stale and restores
   the manual preview, even when the stops and mode have not changed.
 - Validate 2–25 locations and total geodesic distance between stops before HTTP:

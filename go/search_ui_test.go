@@ -176,8 +176,8 @@ func TestQuickSearchInspectionSurvivesPlaybackPulse(t *testing.T) {
 		}
 	}
 	m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	if m.inspected != nil || !m.following {
-		t.Fatal("explicit follow did not return inspection to the activity")
+	if m.inspected == nil || m.following || m.destination().Center != project(-0.25, 51.62) {
+		t.Fatal("centering did not retain the selected search location")
 	}
 }
 

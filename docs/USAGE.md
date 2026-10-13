@@ -22,7 +22,7 @@ Both work offline; a configured Mapbox account adds the basemap. Add
 | Action | Keyboard | Mouse |
 |---|---|---|
 | Open a file | Ctrl-O or `o` | |
-| Manage loaded files and items | Ctrl-L | Wheel scrolls the dialog |
+| Manage loaded files and items | Ctrl-L | Wheel scrolls the Files panel |
 | Quick place search | `/` | |
 | Journey planner | Ctrl-J | |
 | Command palette / help | Ctrl-K / `?` | |
@@ -35,31 +35,51 @@ Both work offline; a configured Mapbox account adds the basemap. Add
 | Inspect selected position | Enter | |
 | Play / pause | Space | |
 | Change playback speed | `p` picker, `s` / `S` cycle | |
-| Centre and follow | `c` | |
+| Centre selected `*` location; otherwise centre and follow the track | `c` | |
 | Toggle elevation profiles | `e` | |
-| Open / close context drawer | Tab, Esc closes | Wheel over drawer scrolls |
+| Show / hide the sidebar | Ctrl-B, Esc closes | Wheel over panel scrolls |
+| Cycle Context / Files / Journey | Tab / Shift-Tab | Click a panel header tab |
 | Rotate / north-up | `,` / `.` / `n` | Right-drag |
 | Toggle ASCII / camera animation | `a` / `m` | |
 | Map credits | `v` | |
-| Back / quit | Esc / `q` or Ctrl-C | |
+| Back / close panel / deselect `*` location | Esc | |
+| Quit | `q` or Ctrl-C | |
 
 The map starts with a compact context line: the active route or place, two facts,
-and hints for Tab, `/` search and `?` help. Tab opens a scrollable context drawer
-without resizing the map or moving the camera. The drawer stays open while you
-pan, zoom, or select positions on the map. Arrow keys and H/J/K/L navigate the map;
-Page Up/Down and Home/End scroll the drawer, as does the wheel over it.
-Tab or Esc closes the drawer. A `*` on the map marks the selected coordinates
-shown in the context line, including search results.
+and hints for Ctrl-B, `/` search and `?` help. Ctrl-B opens a scrollable Context panel
+on the right without resizing the map or moving the camera. Context, Files and
+Journey share that same panel, inset below the map’s outer border. The tabs form
+the panel header; Journey shows its travel mode in the menu without a repeated
+inner title. Click a header tab or use
+Tab to cycle forwards or Shift-Tab backwards; Ctrl-L and Ctrl-J remain direct shortcuts.
+Ctrl-L and Ctrl-J open or focus their view; pressing them again keeps it open.
+Esc closes the whole sidebar from any top-level tab, without stepping through
+previous tabs. Within a nested editor or dialog, Esc goes back. Ctrl-B toggles sidebar visibility.
+
+The panel stays open while you pan, zoom, or inspect positions on the exposed map.
+In Context, arrows and H/J/K/L navigate the map, while Page Up/Down and Home/End
+scroll the details. In Files and Journey, arrows navigate the list; Ctrl-B hides
+the panel for keyboard map navigation. Narrow terminals use a full-width vertical
+overlay with one column of inset on each side. Collapsing it exposes the map.
+
+A `*` on the map marks the selected coordinates shown in the context line,
+including search results. Selecting a loaded file opens its Context view in the
+same panel. Switching views preserves the file selection, context scroll position
+and journey plan.
 Elevation profiles are opt-in with `e`. Attribution stays in the footer.
 
 Menus wrap. Rounded modal borders contain the current title and a breadcrumb
 for nested dialogs. Esc goes back in nested dialogs and closes the top-level dialog.
+On the map, Esc clears the selected `*` location without moving the camera or
+unloading files or journeys. If a panel is open, the first Esc closes it; press
+Esc again to clear the location.
 Use `--ascii` if your terminal doesn't render Braille well. The minimum viewer
 size is 30 columns by 12 rows.
 
 ## Loaded files and playback
 
-Ctrl-L lists files and their items. Enter selects, Space toggles visibility,
+Ctrl-L lists files and their items. Incomplete planner drafts stay out of this list
+until Start, Destination and every added waypoint are set; opening the planner preserves the selected file. Enter selects, Space toggles visibility,
 Delete removes the selected row and `D` removes its whole file.
 Reopening a loaded path reuses the import; remove it first to reread a changed file.
 
@@ -70,7 +90,10 @@ distance axis.
 Playback uses recorded timing when a part has complete, increasing timestamps.
 Otherwise it uses a labelled 6 m/s estimate. Gaps stay separate; interpolated
 values have a `~` prefix. Pan and zoom keep playback running. Selecting a point
-pauses it, and manual pan disables camera follow. Press `c` to restore follow.
+pauses it, and manual pan disables camera follow. Press `c` to centre the selected
+`*` location without changing zoom, including when no file or journey is loaded.
+When no `*` location is selected, `c` restores track follow. Use `[` or `]` to
+return selection to a recorded point before restoring follow.
 
 `S` and `E` mark part endpoints, `W` marks waypoints and `@` marks the selected
 or interpolated position.
@@ -80,19 +103,49 @@ or interpolated position.
 `/` searches for a place without changing your activity or journey. Ctrl-J
 opens the journey planner. Both accept **latitude, longitude** offline;
 Mapbox enables named-place search and walking, cycling or driving routes.
+For names or addresses, type at least three characters, choose a suggested match
+with Up/Down, then press Enter.
+
+Copy journey to clipboard copies a command for the globally installed `mapbox-tui`.
+It recreates the resolved start, destination, waypoints, travel mode and loaded
+files directly in the viewer; routes are recalculated and place labels are
+replaced by coordinates. All stops must be set first. The terminal must support
+OSC 52 clipboard writes (and allow them through any terminal multiplexer).
 
 | Planner action | Control |
 |---|---|
-| Add a waypoint | Ctrl-N |
+| Add a waypoint | Select No waypoints / Add another waypoint, then Enter; Ctrl-N also opens waypoint entry |
 | Reverse the journey | Ctrl-R |
 | Undo an edit | Ctrl-Z |
 | Clear an endpoint / remove a waypoint | Delete or Backspace |
 | Reorder waypoints | Alt-Up / Alt-Down |
-| Choose travel mode | Ctrl-B |
+| Choose travel mode | Select Travel mode, then Enter |
+| Copy a journey command | Select Copy journey to clipboard, then Enter |
 | Recalculate a route | Ctrl-D |
-| Routing feedback and usage | Ctrl-U |
-| Switch map / planner focus | Tab |
-| Close the planner | Esc or Ctrl-J |
+| Routing error details and snapped positions | Ctrl-U |
+| Show / hide the planner | Ctrl-B |
+| Pick the selected stop on the map | Ctrl-P, then click or Enter for map centre |
+| Cancel map picking | Esc |
+| Close the sidebar | Esc |
+
+Files, inspected places and journey plans coexist. Opening or editing a journey
+preserves the selected file, playback and inspected place. The context bar keeps
+that context visible alongside a Journey entry; click that entry or use Ctrl-J to
+open the planner and return to the previous context view, including its scroll position.
+
+The Journey view uses the same right-hand panel as Context and Files. Ctrl-B hides it without losing the plan or moving the camera.
+The map remains interactive where visible. Ordinary map clicks inspect positions;
+they change a stop while its location input is open, or after Ctrl-P on a stop row.
+Selecting a stop opens a focused input: type immediately or click the map. New
+waypoints are added only once a location is chosen; Esc cancels without changing
+the existing journey.
+Picking temporarily hides the planner. Click to choose a position, press Enter to
+use the map centre, or Esc to return without changing the stop. Route geometry
+remains visible after the planner is hidden or closed.
+
+Each stop shows coordinates once. Ctrl-U contains current routing diagnostics and
+snapped road/path coordinates; usage and request behaviour are documented in
+[Mapbox routing notes](MAPBOX.md#journey-roadpath-routing).
 
 Manual mode plots straight lines between resolved locations. Connected plans
 default to Driving and recalculate after location or mode edits. Routed distance
@@ -128,3 +181,17 @@ ASCII-only, and basemap detail stops at tile zoom 14.
 
 The viewer doesn't provide live GPS navigation or voice guidance. Terminal
 integration checks cover headless Linux/tmux; other environments aren't verified.
+
+To open a journey directly (coordinates use latitude,longitude):
+
+```sh
+mapbox-tui --file fixtures/country-ride.gpx --mode cycling \
+  --start '51.309174,-2.583389' --end '51.297454,-2.532641'
+```
+
+Repeat `--waypoint LAT,LON` in travel order and `--file PATH` for additional files.
+Omit files for a journey-only session. Both endpoints are required; `--mode`
+defaults to `driving`, with `manual`, `walking` and `cycling` also supported.
+These are interactive viewer options; manual geometry works offline, while routed
+modes use your normal Mapbox connection. Named-place search remains available
+inside the planner; startup arguments accept resolved coordinates.

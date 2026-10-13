@@ -25,9 +25,12 @@ type journeyUI struct {
 	searchCancel                context.CancelFunc
 	searchBusy                  bool
 	showRevision                *uint64
-	mapFocused                  bool
+	collapsed                   bool
+	pickingStop                 bool
+	addingWaypoint              bool
 	menuStart, menuY, menuCount int
 	menuDialog                  dialogKind
+	menuIndices                 []int
 }
 
 type placeSearchReady struct{ id uint64 }
@@ -41,13 +44,11 @@ type placeSearchResult struct {
 }
 
 var journeyActions = [...]struct{ title, key, action string }{
-	{title: "Travel mode", key: "ctrl+b", action: "mode"},
-	{title: "Add waypoint", key: "ctrl+n", action: "waypoint"},
+	{title: "Travel mode", action: "mode"},
 	{title: "Reverse journey", key: "ctrl+r", action: "reverse"},
 	{title: "Undo edit", key: "ctrl+z", action: "undo"},
 	{title: "Recalculate route", key: "ctrl+d", action: "calculate"},
-	{title: "Routing feedback / usage", key: "ctrl+u", action: "feedback"},
-	{title: "Show journey on map", action: "show"},
+	{title: "Copy journey to clipboard", action: "copy"},
 }
 
 func (m *viewer) openJourney() tea.Cmd {
@@ -60,16 +61,25 @@ func (m *viewer) openJourney() tea.Cmd {
 	}
 	if _, err := m.workspace.journey(m.planner.ref); err != nil {
 		m.cancelPlaceSearch()
-		m.planner = journeyUI{
-			ref: m.workspace.newJourney(), searchID: m.planner.searchID,
-		}
+		// Creating a workspace item normally activates it. Keep the inspected
+		// activity (including its playback) independent of the planner target.
+		selection := m.workspace.selection
+		m.workspace.selection = nil
+		ref := m.workspace.newJourney()
+		m.workspace.selection = selection
+		m.planner = journeyUI{ref: ref, searchID: m.planner.searchID}
 	}
-	if err := m.workspace.selectItem(m.planner.ref); err != nil {
+	if err := m.workspace.setVisible(m.planner.ref, true); err != nil {
 		m.ui.notice = err.Error()
 		return nil
 	}
-	m.selectionChanged()
-	cmd := m.pushDialog(dialogJourney)
+	m.planner.collapsed, m.planner.pickingStop = false, false
+	var cmd tea.Cmd
+	if m.ui.dialog == dialogWorkspace {
+		cmd = m.openDialog(dialogJourney)
+	} else {
+		cmd = m.pushDialog(dialogJourney)
+	}
 	j, _ := m.workspace.journey(m.planner.ref)
 	if m.defaultJourneyMode(j) {
 		return tea.Batch(cmd, m.calculateJourneyIfRouted())
@@ -94,6 +104,7 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 		return nil
 	}
 	m.cancelPlaceSearch()
+	m.planner.addingWaypoint = false
 	m.planner.showRevision = nil
 	m.planner.stopID = j.Stops[index].ID
 	m.planner.row = index
@@ -113,6 +124,19 @@ func (m *viewer) editJourneyLocation(index int) tea.Cmd {
 	m.layout()
 	m.dirty = true
 	return m.ui.search.Focus()
+}
+
+func (m *viewer) editNewWaypoint() tea.Cmd {
+	j, err := m.workspace.journey(m.planner.ref)
+	if err != nil {
+		m.ui.notice = err.Error()
+		return nil
+	}
+	cmd := m.editJourneyLocation(len(j.Stops) - 1)
+	m.planner.addingWaypoint = true
+	m.planner.stopID = 0
+	m.ui.search.SetValue("")
+	return cmd
 }
 
 func (m *viewer) schedulePlaceSearch() tea.Cmd {
@@ -207,20 +231,29 @@ func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
 		return nil
 	}
 	revision := j.revision
-	if err := m.workspace.setJourneyLocation(m.planner.ref, m.planner.stopID, location); err != nil {
+	if m.planner.addingWaypoint {
+		j.nextID++
+		stops := slices.Insert(slices.Clone(j.Stops), len(j.Stops)-1, journeyStop{ID: j.nextID, Location: &location})
+		err = m.workspace.editJourney(m.planner.ref, stops)
+	} else {
+		err = m.workspace.setJourneyLocation(m.planner.ref, m.planner.stopID, location)
+	}
+	if err != nil {
 		m.ui.notice = err.Error()
 		return nil
 	}
-	if err := m.workspace.selectItem(m.planner.ref); err != nil {
-		m.ui.notice = err.Error()
-		return nil
+	if m.workspace.selection == nil && j.hasCompleteLocations() {
+		_ = m.workspace.selectItem(m.planner.ref)
 	}
+	m.planner.addingWaypoint = false
+	m.planner.pickingStop = false
 	if m.ui.dialog == dialogJourneyLocation {
 		m.backDialog()
 	}
 	m.ui.notice = ""
-	m.planner.mapFocused = false
-	m.selectionChanged()
+	m.planner.collapsed = false
+	m.layout()
+	m.dirty = true
 	if revision == j.revision {
 		return nil
 	}
@@ -268,34 +301,40 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	count := len(j.Stops)
 	revision := j.revision
 	last := count + len(journeyActions) - 1
-	m.planner.row = max(0, min(last, m.planner.row))
+	addRow := last + 1
+	order := journeyMenuOrder(count)
+	m.planner.row = max(0, min(addRow, m.planner.row))
 	switch pressed {
-	case "esc", "ctrl+j":
+	case "esc":
 		return m.backDialog()
 	case "up", "k":
-		m.planner.row = menuStep(m.planner.row, -1, last+1)
+		m.planner.row = order[menuStep(slices.Index(order, m.planner.row), -1, len(order))]
 	case "down", "j":
-		m.planner.row = menuStep(m.planner.row, 1, last+1)
+		m.planner.row = order[menuStep(slices.Index(order, m.planner.row), 1, len(order))]
 	case "home":
 		m.planner.row = 0
 	case "end":
 		m.planner.row = last
 	case "enter":
+		if m.planner.row == addRow {
+			return m.editNewWaypoint()
+		}
 		if m.planner.row < count {
 			return m.editJourneyLocation(m.planner.row)
 		}
 		pressed = journeyActions[m.planner.row-count].action
 	}
 	switch pressed {
-	case "ctrl+b", "mode":
+	case "ctrl+p":
+		return m.startJourneyPick()
+	case "mode":
 		return m.openJourneyRouting()
 	case "ctrl+d", "calculate":
 		return m.calculateJourneyRoute()
 	case "ctrl+u", "feedback":
 		return m.pushDialog(dialogJourneyRoutingHelp)
 	case "ctrl+n", "waypoint":
-		err = m.workspace.addJourneyWaypoint(m.planner.ref)
-		m.planner.row = len(j.Stops) - 2
+		return m.editNewWaypoint()
 	case "ctrl+r", "reverse":
 		err = m.workspace.reverseJourney(m.planner.ref)
 		m.planner.row = 0
@@ -315,8 +354,8 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		if err == nil {
 			m.planner.row += direction
 		}
-	case "show":
-		return m.showJourneyOnMap()
+	case "copy":
+		return m.copyJourney()
 	}
 	if err != nil {
 		m.ui.notice = err.Error()
@@ -324,7 +363,10 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		m.ui.notice = ""
 	}
 	if err == nil && revision != j.revision {
-		m.selectionChanged()
+		if !j.hasCompleteLocations() && m.workspace.selection != nil && m.workspace.selection.ref == m.planner.ref {
+			m.workspace.clearSelection()
+		}
+		m.dirty = true
 		m.fitPlannerJourney(m.planner.ref)
 		return m.calculateJourneyIfRouted()
 	}
@@ -341,6 +383,8 @@ func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return m.schedulePlaceSearch()
+	case "ctrl+p":
+		return m.startJourneyPick()
 	case "alt+m":
 		geo := unproject(m.camera.Center)
 		return m.applyPlaceLocation(placeLocation{
@@ -398,7 +442,11 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 	}
 	if m.ui.dialog == dialogJourneyLocation {
 		body, hints := m.placeSearchContent(width, height)
-		return journeyStopLabel(m.planner.row, len(j.Stops)), body, hints
+		count := len(j.Stops)
+		if m.planner.addingWaypoint {
+			count++
+		}
+		return journeyStopLabel(m.planner.row, count), body, hints
 	}
 	labels := []string{}
 	for i, stop := range j.Stops {
@@ -410,7 +458,7 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 	}
 	for _, action := range journeyActions {
 		title := action.title
-		if action.key == "ctrl+b" {
+		if action.action == "mode" {
 			title += ": " + j.Mode.label()
 		}
 		if action.key != "" {
@@ -418,34 +466,51 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 		}
 		labels = append(labels, title)
 	}
+	addLabel := "Add another waypoint"
+	if len(j.Stops) == 2 {
+		addLabel = "No waypoints"
+	}
+	labels = append(labels, addLabel)
 	m.planner.row = max(0, min(len(labels)-1, m.planner.row))
 	rows := []string{}
-	if height > 3 {
-		entry, i, _ := m.workspace.lookup(m.planner.ref)
-		status := journeyRoutingStatus(j, entry.document.Items[i].Track)
-		if j.routeCurrent() {
-			status = strings.TrimPrefix(status, j.Mode.label()+" · ")
-		} else if j.Mode == journeyManual {
-			status = fmt.Sprintf("%.2f km · straight-line", entry.document.Items[i].Track.Distance/1000)
+	entry, itemIndex, _ := m.workspace.lookup(m.planner.ref)
+	track := entry.document.Items[itemIndex].Track
+	if height > 3 && (len(track.Points) > 0 || j.Busy || j.Error != "") {
+		status := strings.TrimPrefix(journeyRoutingStatus(j, track), j.Mode.label()+" · ")
+		if j.Mode == journeyManual {
+			status = fmt.Sprintf("%.2f km · straight-line", track.Distance/1000)
 		}
 		rows = append(rows, s.dialogMuted.Render(pad(status, width)))
-		if height > 5 {
-			rows = append(rows, s.dialogMuted.Render(pad("del remove · alt+up/down order", width)))
+		if j.Error != "" && height > 5 {
+			rows = append(rows, s.dialogMuted.Render(pad("ctrl+u error details · ctrl+d retry", width)))
 		}
 	}
-	count := max(1, height-len(rows))
-	start := max(0, m.planner.row-count+1)
-	m.planner.menuDialog = dialogJourney
-	m.planner.menuStart, m.planner.menuY = start, len(rows)
-	m.planner.menuCount = min(len(labels)-start, count)
-	for i := start; i < min(len(labels), start+count); i++ {
+	var lines []string
+	var indices []int
+	selectedLine := 0
+	for _, i := range journeyMenuOrder(len(j.Stops)) {
+		label := labels[i]
+		if i == 1 && len(j.Stops) > 2 || i == len(labels)-1 && len(j.Stops) == 2 ||
+			i == len(j.Stops)-1 || i == len(j.Stops) {
+			lines, indices = append(lines, ""), append(indices, -1)
+		}
 		style, prefix := s.dialogText, "  "
 		if i == m.planner.row {
 			style, prefix = s.selected, "> "
+			selectedLine = len(lines)
 		}
-		rows = append(rows, style.Render(pad(prefix+labels[i], width)))
+		lines = append(lines, style.Render(pad(prefix+label, width)))
+		indices = append(indices, i)
 	}
-	return "Journey Planner", strings.Join(rows, "\n"), "ctrl+b mode / ctrl+u feedback / esc map"
+	count := max(1, height-len(rows))
+	start := max(0, selectedLine-count+1)
+	end := min(len(lines), start+count)
+	m.planner.menuDialog = dialogJourney
+	m.planner.menuStart, m.planner.menuY = start, len(rows)
+	m.planner.menuCount = end - start
+	m.planner.menuIndices = indices[start:end]
+	rows = append(rows, lines[start:end]...)
+	return "Journey Planner", strings.Join(rows, "\n"), "enter edit / ctrl+p pick / esc back"
 }
 
 func (m *viewer) journeyDetails() []string {
@@ -486,13 +551,15 @@ func (m *viewer) journeyDetails() []string {
 		if stop.Location != nil {
 			name = stop.Location.Name
 		}
-		lines = append(lines, journeyStopLabel(i, len(j.Stops)), name)
-		if stop.Location != nil {
-			lines = append(lines, fmt.Sprintf("%.6f, %.6f", stop.Location.Lat, stop.Location.Lon))
-			if j.routeCurrent() {
-				snapped := j.Route.Snapped[i]
-				lines = append(lines, fmt.Sprintf("Road/path: %.6f, %.6f", snapped.Y, snapped.X))
+		lines = append(lines, journeyStopLabel(i, len(j.Stops)))
+		if stop.Location == nil {
+			lines = append(lines, name)
+		} else {
+			coordinates := fmt.Sprintf("%.6f, %.6f", stop.Location.Lat, stop.Location.Lon)
+			if _, numeric, _ := coordinateLocation(name); !numeric && name != "" {
+				lines = append(lines, name)
 			}
+			lines = append(lines, coordinates)
 		}
 		lines = append(lines, "")
 	}
@@ -532,4 +599,17 @@ func (m *viewer) journeyCredits(existing ...sourceCredit) string {
 		}
 	}
 	return strings.Join(credits, "\n")
+}
+
+// Rows retain their stop/action identifiers while the add row sits before Destination.
+func journeyMenuOrder(stops int) []int {
+	order := make([]int, 0, stops+len(journeyActions)+1)
+	for i := 0; i < stops-1; i++ {
+		order = append(order, i)
+	}
+	order = append(order, stops+len(journeyActions), stops-1)
+	for i := range journeyActions {
+		order = append(order, stops+i)
+	}
+	return order
 }

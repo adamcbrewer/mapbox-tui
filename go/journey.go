@@ -47,6 +47,18 @@ type Journey struct {
 	cancel     context.CancelFunc
 }
 
+func (j *Journey) hasCompleteLocations() bool {
+	if len(j.Stops) < 2 {
+		return false
+	}
+	for _, stop := range j.Stops {
+		if stop.Location == nil {
+			return false
+		}
+	}
+	return true
+}
+
 func (w *Workspace) newJourney() ItemRef {
 	d := &Document{Name: "Planned journey", Filename: "Planned journey (session only)", Format: "planned"}
 	item := d.addItem("planned")

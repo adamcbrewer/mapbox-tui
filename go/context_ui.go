@@ -98,16 +98,40 @@ func (m *viewer) contextSummary() (string, string, string) {
 		fmt.Sprintf("Bearing %.0f°", math.Mod(m.camera.Bearing+360, 360))
 }
 
-func (m *viewer) contextFooter() []string {
+func (m *viewer) contextSummaryRows() []string {
 	name, first, second := m.contextSummary()
-	hints := "tab details · / search · ? help"
+	hints := "ctrl+b sidebar · / search · ? help"
 	if m.ui.detailsOpen {
-		hints = "tab close · / search · ? help"
+		hints = "ctrl+b hide · / search · ? help"
 	}
 	if m.width < 40 {
-		hints = "tab details / search ? help"
+		hints = "ctrl+b sidebar / search ? help"
 		if m.ui.detailsOpen {
-			hints = "tab close / search ? help"
+			hints = "ctrl+b hide / search ? help"
+		}
+	}
+	if m.ui.dialog == dialogWorkspace {
+		hints = "ctrl+b hide · esc close · ? help"
+		if m.ui.filesCollapsed {
+			hints = "ctrl+b files · esc close · ? help"
+		}
+		if m.width < 40 {
+			hints = "ctrl+b hide · esc close"
+			if m.ui.filesCollapsed {
+				hints = "ctrl+b files · esc close"
+			}
+		}
+	}
+	if m.journeyPanelOpen() {
+		hints = "ctrl+b hide · / search · ? help"
+		if m.planner.collapsed {
+			hints = "ctrl+b planner · / search · ? help"
+		}
+		if m.width < 40 {
+			hints = "ctrl+b hide / search ? help"
+			if m.planner.collapsed {
+				hints = "ctrl+b planner / search ? help"
+			}
 		}
 	}
 	if m.loading || m.sources.busy() {
@@ -134,13 +158,9 @@ func (m *viewer) contextFooter() []string {
 	return []string{pad(line, m.width-ansi.StringWidth(hints)-2) + "  " + m.styles.muted.Render(hints)}
 }
 
-func (m *viewer) contextDrawerHeight() int {
-	return min(m.camera.Height+2, max(8, min(16, m.height/3)))
-}
+func (m *viewer) contextDrawerHeight() int { return m.camera.Height }
 
-func (m *viewer) contextDrawerY() int {
-	return m.mapOriginY() + m.camera.Height + 1 - m.contextDrawerHeight()
-}
+func (m *viewer) contextDrawerY() int { return m.mapOriginY() }
 
 func (m *viewer) contextDetails() []string {
 	lines := m.details()
@@ -167,9 +187,9 @@ func (m *viewer) contextDetails() []string {
 
 func (m *viewer) contextDrawer(status string) {
 	height := m.contextDrawerHeight()
-	width := max(1, m.width-4)
+	width := max(1, m.journeyPanelWidth()-4)
 	m.ui.details.SetWidth(width)
-	m.ui.details.SetHeight(max(1, height-3))
+	m.ui.details.SetHeight(max(1, height-5))
 	lines := m.contextDetails()
 	// Keep status and diagnostics available without taking permanent map space.
 	lines = append(lines, "", ansi.Strip(status))
@@ -177,16 +197,47 @@ func (m *viewer) contextDrawer(status string) {
 		lines = append(lines, ansi.Strip(m.workspaceLegend(width, m.visibleProfile())))
 	}
 	m.ui.details.Style = m.styles.dialogText
-	m.ui.details.SetContent(strings.Join(lines, "\n"))
-	body := m.ui.details.View() + "\n" + m.styles.dialogMuted.Render(pad("pgup/dn scroll · esc close", width))
+	m.ui.details.SetContent(ansi.Wrap(strings.Join(lines, "\n"), width, ""))
+	name, _, _ := m.contextSummary()
+	body := "\n" + m.styles.dialogHeading.Render(pad(name, width)) + "\n" + m.ui.details.View() + "\n" + m.styles.dialogMuted.Render(pad("pgup/dn scroll · esc close", width))
 	box := lipgloss.NewStyle().Background(lipgloss.Color(m.theme().Surface)).
 		Foreground(lipgloss.Color(m.theme().Text)).
 		Border(m.boxBorder()).BorderForeground(lipgloss.Color(m.theme().Border)).
-		Padding(0, 1).Width(m.width).Render(body)
-	name, _, _ := m.contextSummary()
-	box = m.titleBox(box, name, nil)
+		Padding(0, 1).Width(m.journeyPanelWidth()).Render(body)
+	box = m.panelTabs(box, dialogNone)
 	m.content = lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(
 		lipgloss.NewLayer(m.content),
-		lipgloss.NewLayer(box).Y(m.contextDrawerY()).Z(1),
+		lipgloss.NewLayer(box).X(m.journeyPanelX()).Y(m.contextDrawerY()).Z(1),
 	)).Render()
+}
+
+func (m *viewer) hasJourneyContext() bool {
+	_, err := m.workspace.journey(m.planner.ref)
+	return err == nil
+}
+
+func (m *viewer) contextFooter() []string {
+	rows := m.contextSummaryRows()
+	if !m.hasJourneyContext() {
+		return rows
+	}
+	j, _ := m.workspace.journey(m.planner.ref)
+	label, action := "Journey", "ctrl+j edit"
+	if m.journeyPanelOpen() {
+		action = "esc close"
+		if len(m.ui.parents) > 0 {
+			action = "esc back"
+		}
+	}
+	if m.planner.pickingStop {
+		label = "Pick " + journeyStopLabel(m.planner.row, len(j.Stops))
+		action = "click/enter · esc cancel"
+	} else if m.width >= 60 {
+		entry, index, _ := m.workspace.lookup(m.planner.ref)
+		label += " · " + journeyRoutingStatus(j, entry.document.Items[index].Track)
+	}
+	room := max(1, m.width-ansi.StringWidth(action)-2)
+	line := m.styles.accent.Render(pad(ansi.Truncate(label, room, "…"), room)) +
+		"  " + m.styles.muted.Render(action)
+	return append(rows, pad(line, m.width))
 }

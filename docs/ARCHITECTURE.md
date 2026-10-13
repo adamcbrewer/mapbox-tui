@@ -60,6 +60,15 @@ The main rules:
   snapped coordinates and routed geometry remain distinct. Edit/undo invalidates
   estimates, cancels obsolete work and checks revisions before accepting results.
   Manual coordinates remain usable after provider failure.
+- **Planner editing is independent of inspection:** the viewer keeps a journey
+  editing reference separate from the workspace selection and inspected place.
+  Opening, editing or fitting a plan preserves an imported activity's playback.
+  Incomplete viewer drafts are not selected or listed in Files. A plan becomes
+  listable once all stops are set, and completing it selects it only when there
+  is no existing selection.
+  Context, Files and Journey share one inset right-hand panel with a common
+  header. The narrow layout uses a full-width vertical overlay. Collapse and map-picking state do
+  not resize the camera. Only explicit map-picking mode turns clicks into stop edits.
 - **Our renderer draws the map:** prepare projected coordinates, bounds and
   distances; transform through the camera; thin and clip geometry; rasterise into
   2×4 Braille dots per cell (or ASCII); apply layer/label priorities. Charm handles
