@@ -85,6 +85,14 @@ Use `./bin/mapbox-tui --help` or a subcommand's `--help` for options.
 
 ## Mapbox
 
+You'll need a Mapbox account for online maps, place search and road routing.
+You can start without a credit card, with generous initial usage limits for
+trying the app. See Mapbox's [signup guide](https://docs.mapbox.com/accounts/guides/signup/)
+for current trial limits and what changes when you add a payment method.
+You can sign up and sign in through the [Mapbox Console](https://console.mapbox.com/)
+or during a [Mapbox MCP server connection](https://docs.mapbox.com/accounts/guides/signup/#sign-up-with-mapbox-mcp-server-connection).
+Local files and manual journey planning work without an account.
+
 Install the optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install-a-released-binary),
 then sign in once:
 
@@ -100,6 +108,16 @@ local file inspection and manual journey planning work without Mapbox.
 Mapbox requests use your account and may incur charges. See the
 [Mapbox notes](docs/MAPBOX.md) for configuration, usage, caching and
 attribution.
+
+## Contributing
+
+Contributions are welcome, especially docs improvements, bug reports and feature
+requests. Try the setup or MCP examples and send a small PR for anything unclear,
+outdated or missing.
+
+[Open an issue](https://github.com/adamcbrewer/mapbox-tui/issues) to report a bug
+or suggest a feature. Include steps to reproduce the bug or explain what you'd
+like to do. See [Contributing](CONTRIBUTING.md) for more details.
 
 ## Development
 
