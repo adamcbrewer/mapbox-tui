@@ -100,40 +100,33 @@ func (m *viewer) contextSummary() (string, string, string) {
 
 func (m *viewer) contextSummaryRows() []string {
 	name, first, second := m.contextSummary()
-	hints := "ctrl+b sidebar · / search · ? help"
+	action := "sidebar"
 	if m.ui.detailsOpen {
-		hints = "ctrl+b hide · / search · ? help"
+		action = "hide"
 	}
+	separator := " · "
 	if m.width < 40 {
-		hints = "ctrl+b sidebar / search ? help"
-		if m.ui.detailsOpen {
-			hints = "ctrl+b hide / search ? help"
-		}
+		separator = " "
 	}
-	if m.ui.dialog == dialogWorkspace {
-		hints = "ctrl+b hide · esc close · ? help"
+	shortcuts := []string{"/ search", "? help"}
+	switch {
+	case m.ui.dialog == dialogWorkspace:
+		action = "hide"
 		if m.ui.filesCollapsed {
-			hints = "ctrl+b files · esc close · ? help"
+			action = "files"
 		}
+		separator = " · "
+		shortcuts = []string{"esc close", "? help"}
 		if m.width < 40 {
-			hints = "ctrl+b hide · esc close"
-			if m.ui.filesCollapsed {
-				hints = "ctrl+b files · esc close"
-			}
+			shortcuts = shortcuts[:1]
 		}
-	}
-	if m.journeyPanelOpen() {
-		hints = "ctrl+b hide · / search · ? help"
+	case m.journeyPanelOpen():
+		action = "hide"
 		if m.planner.collapsed {
-			hints = "ctrl+b planner · / search · ? help"
-		}
-		if m.width < 40 {
-			hints = "ctrl+b hide / search ? help"
-			if m.planner.collapsed {
-				hints = "ctrl+b planner / search ? help"
-			}
+			action = "planner"
 		}
 	}
+	hints := "ctrl+b " + action + separator + strings.Join(shortcuts, separator)
 	if m.loading || m.sources.busy() {
 		second = m.ui.spinner.View() + " loading"
 	} else if m.sources.view().status() != "" {

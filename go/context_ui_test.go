@@ -631,3 +631,40 @@ func TestEmptyJourneyDraftDoesNotBecomeLoadedFile(t *testing.T) {
 		})
 	}
 }
+
+func TestHiddenSidebarUsesMapKeysWithoutChangingFiles(t *testing.T) {
+	for _, kind := range []dialogKind{dialogWorkspace, dialogJourney} {
+		m := themeViewer(t, 120, 40, false)
+		m.switchPanel(kind)
+		m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+		rows := m.workspaceRows()
+		selection := m.workspace.selection
+		m.Update(tea.KeyPressMsg{Code: tea.KeyDelete})
+		m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		m.Update(tea.KeyPressMsg{Code: 'D', Text: "D"})
+		if !reflect.DeepEqual(rows, m.workspaceRows()) || m.workspace.selection != selection {
+			t.Fatal("hidden panel deleted or selected a file", kind)
+		}
+		m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+		if !m.activePlayback().Playing || !reflect.DeepEqual(rows, m.workspaceRows()) {
+			t.Fatal("hidden panel swallowed playback or toggled file visibility", kind)
+		}
+		beforeProfile := m.showProfile
+		m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		if m.showProfile == beforeProfile {
+			t.Fatal("hidden panel swallowed the profile toggle", kind)
+		}
+	}
+}
+
+func TestFilesKeysAfterLeavingJourneyMapPick(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	m.openJourney()
+	m.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	m.Update(tea.KeyPressMsg{Code: 'l', Mod: tea.ModCtrl})
+	selected, camera := m.ui.selected, m.camera
+	m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if m.ui.selected == selected || m.camera != camera {
+		t.Fatal("stale journey picking state captured Files navigation")
+	}
+}

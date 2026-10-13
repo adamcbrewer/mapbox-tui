@@ -495,23 +495,18 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.pushDialog(dialogSearch)
 			case "?":
 				return m, m.pushDialog(dialogHelp)
-			case "ctrl+l":
-				return m, m.pushDialog(dialogWorkspace)
 			}
 		}
 
-		mapInput := m.journeyPanelOpen() && (m.planner.collapsed || m.planner.pickingStop)
-		mapKey := (mapInput || (m.ui.dialog == dialogWorkspace && m.ui.filesCollapsed)) && journeyMapKey(key)
-		if m.journeyPanelOpen() && m.planner.collapsed && key == "enter" {
-			return m, m.pushDialog(dialogInspect)
-		}
-		if m.journeyPanelOpen() && m.planner.collapsed {
-			if key == "esc" {
+		hiddenPanel := (m.journeyPanelOpen() && m.planner.collapsed) ||
+			(m.ui.dialog == dialogWorkspace && m.ui.filesCollapsed)
+		mapKey := hiddenPanel || (m.journeyPanelOpen() && m.planner.pickingStop && journeyMapKey(key))
+		if hiddenPanel {
+			switch key {
+			case "enter":
+				return m, m.pushDialog(dialogInspect)
+			case "esc":
 				m.closeDialog()
-				return m, nil
-			}
-			// Hidden editors must not consume map input or change unseen fields.
-			if !mapKey {
 				return m, nil
 			}
 		}
@@ -697,16 +692,15 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		insideMapY := y >= originY && y < m.camera.Height+originY
 		inside := insideMapX && insideMapY
 		drawerVisible := m.ui.dialog == dialogNone && m.ui.detailsOpen
-		drawerX := x >= m.journeyPanelX() && x < m.width-1
-		overDetails := drawerVisible && drawerX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
+		panelX := x >= m.journeyPanelX() && x < m.width-1
+		overDetails := drawerVisible && panelX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
-		plannerX := x >= m.journeyPanelX() && x < m.width-1
-		overPlanner := m.journeyPanelVisible() && plannerX && y >= m.journeyPanelY() && y < m.camera.Height+1
+		overPlanner := m.journeyPanelVisible() && panelX && y >= m.journeyPanelY() && y < m.camera.Height+1
 		if overPlanner && !mapGesture {
 			return m, m.updateDialog(msg)
 		}
 		if m.ui.dialog == dialogWorkspace {
-			if !m.ui.filesCollapsed && plannerX && y >= 1 && y < m.camera.Height+1 && !mapGesture {
+			if !m.ui.filesCollapsed && panelX && y >= 1 && y < m.camera.Height+1 && !mapGesture {
 				return m, m.updateFilesPanelMouse(msg)
 			}
 		} else if m.ui.dialog != dialogNone && !m.journeyPanelOpen() {
