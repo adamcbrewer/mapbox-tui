@@ -75,7 +75,7 @@ The main rules:
   requests finish while tile coverage is unchanged, and retain usable data with
   stale status after a failed refresh. CLI/MCP renders take one-shot snapshots.
 
-See [provider policies](PROVIDERS.md) for cache and attribution details.
+See [Mapbox policies](MAPBOX.md) for cache and attribution details.
 
 ## Tradeoffs
 

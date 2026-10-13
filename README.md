@@ -98,32 +98,24 @@ through `MAPBOX_ACCESS_TOKEN` for scripts. `--no-provider` disables the basemap;
 local file inspection and manual journey planning work without Mapbox.
 
 Mapbox requests use your account and may incur charges. See the
-[provider notes](docs/PROVIDERS.md) for configuration, usage, caching and
+[Mapbox notes](docs/MAPBOX.md) for configuration, usage, caching and
 attribution.
 
 ## Development
 
-You'll also need Python 3 for the development scripts.
+You'll also need Python 3. Use `make dev` to rebuild on changes and `make check`
+to run the offline checks. See [development notes](docs/DEVELOPMENT.md) for the
+local workflow and terminal prerequisites.
 
-```sh
-make dev
-make test
-make check
-make interactions
-```
+## Further reading and other docs
 
-`make dev` rebuilds on changes. `make test` builds, tests, vets and checks
-CLI/MCP parity; `make check` adds formatting and race checks. These checks
-handle their own offline setup, so there's no token prefix to add.
-
-Run `make interactions` after viewer changes. See
-[development notes](docs/DEVELOPMENT.md) for terminal dependencies, benchmarks,
-packaging and optional live checks.
-
-## Further reading
-
+- [Usage](docs/USAGE.md)
+- [MCP](docs/MCP.md)
+- [Mapbox](docs/MAPBOX.md)
+- [Development](docs/DEVELOPMENT.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Themes](docs/THEMES.md)
+- [Go style](docs/GO_STYLE.md)
 - [Contributing](CONTRIBUTING.md)
 
 [MIT licence](LICENSE). [Third-party notices](THIRD_PARTY_NOTICES.txt).

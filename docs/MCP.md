@@ -1,7 +1,9 @@
 # MCP notes
 
+These notes are for people connecting an MCP client and agents using the tools.
 See the [README](../README.md#use-it-with-your-agent) for connection setup and
-prompts. Tool names, arguments and constraints live in [shared/tools.json](../shared/tools.json).
+prompts. The server advertises tool names, arguments and constraints through MCP;
+[shared/tools.json](../shared/tools.json) is the repository reference.
 
 ## Files and measurements
 
@@ -48,7 +50,7 @@ Mapbox is used when credentials are available. `provider: "none"` keeps a
 render offline. Provider failures appear in `scene.status`; importing and
 inspecting files don't need Mapbox.
 
-## Working with the viewer
+## Beyond MCP: terminal control
 
 MCP and the terminal viewer keep separate workspaces. MCP manages imports,
 selection, visibility, inspection and text maps. Place search, journey planning,
@@ -60,5 +62,5 @@ For example, with Mapbox connected:
 > Use mapbox-tui in the terminal to plan a trip from King's Cross to Greenwich.
 > Compare the cycling and walking estimates, then show me the cycling route.
 
-An agent that can capture screenshots can also show the viewer's map. MCP
-renders text rather than screenshots.
+These viewer actions and screenshots require separate terminal control. The MCP
+tools return text maps and scene metadata; they don't control or capture the viewer.

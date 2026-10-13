@@ -20,6 +20,6 @@ Public documentation examples use plain `go` and `make` commands with version re
 - Go changes: [code-style skill and project exceptions](docs/GO_STYLE.md).
 - Workspace lifecycle, selection, playback and scene changes: [architecture](docs/ARCHITECTURE.md#shared-model-and-rendering).
 - Verification commands and terminal requirements: [development notes](docs/DEVELOPMENT.md).
-- Provider changes: [loading, caching and attribution policies](docs/PROVIDERS.md).
+- Provider changes: [loading, caching and attribution policies](docs/MAPBOX.md).
 - Theme changes: [palette format and API](docs/THEMES.md).
 - CLI/MCP contract changes: [usage](docs/USAGE.md), [MCP notes](docs/MCP.md) and [tool schemas](shared/tools.json).

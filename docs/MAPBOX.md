@@ -1,4 +1,4 @@
-# Map providers
+# Mapbox
 
 Mapbox is the online map provider. The viewer, CLI and MCP support:
 
@@ -177,7 +177,7 @@ The live check on **10 October 2026** confirmed Traffic v1 access with the exist
 saved-login account: TileJSON advertised zooms **6–16**, and one London zoom-14
 tile decoded **1,043 road features**. This proves access for that account, not all
 account types; card-free trial access has not been tested. See
-[live provider checks](DEVELOPMENT.md#optional-live-provider-checks) for the opt-in check.
+[live account checks](#live-account-checks) for the opt-in check.
 
 Traffic calls are additional Vector Tiles requests, including stationary refresh.
 See current [pricing](https://www.mapbox.com/pricing#vector-tiles-api),
@@ -339,9 +339,30 @@ allowances, not app-enforced spending caps. Follow current
 [signup/trial limits](https://docs.mapbox.com/accounts/guides/signup/) rather than
 assuming the same allowance or capability for every account. The three profiles
 can be checked independently using the opt-in
-[live provider checks](DEVELOPMENT.md#optional-live-provider-checks).
+[live account checks](#live-account-checks).
 Traffic-aware routing, alternatives, instructions, elevation and persistent caching
 remain separate work.
+
+## Live account checks
+
+These checks use your saved login or public token and make account requests:
+
+```sh
+make build
+python3 scripts/mapbox_auth_check.py
+python3 scripts/mapbox_check.py
+python3 scripts/interactions.py --mapbox
+```
+
+The authentication script checks the saved CLI login and ignores
+`MAPBOX_ACCESS_TOKEN`. The opt-in flags and request counts for the Directions and
+Traffic integration tests live beside the tests in
+[directions_live_test.go](../go/directions_live_test.go) and
+[traffic_live_test.go](../go/traffic_live_test.go). `make mapbox-check` checks
+installed CLI schemas without account requests.
+
+Record the revision, tool versions, date, account type and token-free results.
+Existing-account checks don't establish card-free trial access.
 
 ## Attribution
 

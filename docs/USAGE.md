@@ -81,7 +81,7 @@ default to Driving and recalculate after location or mode edits. Routed distance
 and travel time come from Mapbox; planned geometry has no recorded timestamps
 or elevation. Plans last for the viewer session.
 
-Traffic and colour themes are in Ctrl-K. See [provider notes](PROVIDERS.md)
+Traffic and colour themes are in Ctrl-K. See [Mapbox notes](MAPBOX.md)
 for routing, traffic and search policies, and [themes](THEMES.md) for palettes.
 
 ## Imports and CLI output
