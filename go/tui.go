@@ -65,6 +65,7 @@ type viewer struct {
 	planner                   journeyUI
 	searchPosition            *XY
 	searchCredit              string
+	searchName                string
 	places                    *placeClient
 	directions                *directionsClient
 	authID                    uint64
@@ -193,10 +194,14 @@ func (m *viewer) load(path string) tea.Cmd {
 	})
 }
 func mapSize(w, h int) (int, int) {
-	if w >= 90 {
-		return max(1, w-32), max(1, h-6)
+	footer := 2
+	if w < 110 {
+		footer = 3
 	}
-	return max(1, w-2), max(1, h-9)
+	if w < 60 {
+		footer = 4
+	}
+	return max(1, w-2), max(1, h-footer-2)
 }
 func (m *viewer) fetch() tea.Cmd {
 	return m.fetchAt(time.Now())
@@ -465,22 +470,28 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m, m.openDialog(dialogInspect)
 		case "tab":
-			if m.width >= 90 {
-				m.ui.detailsFocused = !m.ui.detailsFocused
+			m.ui.detailsOpen = !m.ui.detailsOpen
+			m.dragging, m.rotating = false, false
+			m.dirty = true
+			return m, nil
+		}
+		if m.ui.detailsOpen {
+			switch key {
+			case "home":
+				m.ui.details.GotoTop()
 				m.dirty = true
 				return m, nil
-			}
-			return m, m.openDialog(dialogInspect)
-		}
-		if m.ui.detailsFocused {
-			switch key {
-			case "up", "down", "left", "right", "h", "j", "k", "l", "pgup", "pgdown", "home", "end":
+			case "end":
+				m.ui.details.GotoBottom()
+				m.dirty = true
+				return m, nil
+			case "pgup", "pgdown":
 				var cmd tea.Cmd
 				m.ui.details, cmd = m.ui.details.Update(msg)
 				m.dirty = true
 				return m, cmd
 			case "esc":
-				m.ui.detailsFocused = false
+				m.ui.detailsOpen = false
 				m.dirty = true
 				return m, nil
 			}
@@ -590,13 +601,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		originY := m.mapOriginY()
 		insideMapY := y >= originY && y < m.camera.Height+originY
 		inside := insideMapX && insideMapY
-		overDetails := m.width >= 90 && x >= m.camera.Width+4
+		overDetails := m.ui.detailsOpen && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
 		outsidePlannerMap := !m.journeyPanelOpen() || (!inside && !mapGesture)
 		if m.ui.dialog != dialogNone && outsidePlannerMap {
 			return m, m.updateDialog(msg)
 		}
-		if !inside && !mapGesture && overDetails && !m.journeyPanelOpen() {
+		if overDetails && !mapGesture && !m.journeyPanelOpen() {
 			var cmd tea.Cmd
 			m.ui.details, cmd = m.ui.details.Update(msg)
 			m.dirty = true
@@ -607,7 +618,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if inside && (mouse.Button == tea.MouseLeft || mouse.Button == tea.MouseRight) {
 				m.motion.Active = false
 				m.following = false
-				m.ui.detailsFocused = false
 				m.dragging = mouse.Button == tea.MouseLeft
 				m.rotating = mouse.Button == tea.MouseRight
 				m.moved = false
@@ -679,7 +689,7 @@ func (m *viewer) layout() {
 	} else if m.journeyPanelOpen() {
 		w, h = m.width-2, m.height-m.journeyStripHeight()-4
 	}
-	if len(m.workspace.items()) > 1 {
+	if len(m.workspace.items()) > 1 && (m.showProfile || m.journeyPanelOpen()) {
 		h--
 	}
 	m.profileHeight = profileRows(h, m.showProfile && len(m.workspace.profileItems()) > 0)
@@ -689,11 +699,8 @@ func (m *viewer) layout() {
 	}
 	m.camera.Width, m.camera.Height = max(1, w), max(1, h-m.profileHeight)
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
-	if m.width < 90 {
-		m.ui.detailsFocused = false
-	}
 	if m.journeyPanelOpen() {
-		m.ui.detailsFocused = false
+		m.ui.detailsOpen = false
 	}
 }
 func (m *viewer) pausePlayback() {
@@ -928,23 +935,27 @@ func (m *viewer) rebuild() {
 		m.workspace.sceneItems(),
 		cursor,
 	)
-	details := m.details()
+	if m.inspected != nil {
+		// Inspection belongs to the viewer, independently of the playback cursor.
+		g.owner = ItemRef{}
+		g.label(c.screen(project(m.inspected.X, m.inspected.Y)), "*", roleCursor, false)
+	}
 	t, s := m.theme(), m.styles
-	provider := s.accent.Background(lipgloss.Color(t.Selected)).Padding(0, 1).Render(m.provider.Kind)
-	name := "Free roam"
-	if t := m.activeTrack(); t != nil {
-		name = t.Name
+	var rows []string
+	if m.journeyPanelOpen() {
+		provider := s.accent.Background(lipgloss.Color(t.Selected)).Padding(0, 1).Render(m.provider.Kind)
+		name := "Free roam"
+		if track := m.activeTrack(); track != nil {
+			name = track.Name
+		}
+		if len(m.workspace.documents) > 1 {
+			name += fmt.Sprintf(" · %d files", len(m.workspace.documents))
+		}
+		title := m.gradient("Mapbox TUI", lipgloss.Color(t.Background)) + "  " +
+			s.heading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
+		rows = append(rows, pad(title, m.width-lipgloss.Width(provider)-1)+" "+provider)
 	}
-	if len(m.workspace.documents) > 1 {
-		name += fmt.Sprintf(" · %d files", len(m.workspace.documents))
-	}
-	title := m.gradient("Mapbox TUI", lipgloss.Color(t.Background)) + "  " +
-		s.heading.Foreground(lipgloss.Color(m.activeColor())).Render(name)
-	rows := []string{pad(title, m.width-lipgloss.Width(provider)-1) + " " + provider}
-	border := lipgloss.NormalBorder()
-	if m.settings.ASCII {
-		border = lipgloss.ASCIIBorder()
-	}
+	border := m.boxBorder()
 	mapRows := []string{}
 	for y := 0; y < c.Height; y++ {
 		mapRows = append(mapRows, m.gridRow(g, y, m.settings.ASCII))
@@ -956,72 +967,16 @@ func (m *viewer) rebuild() {
 	if m.journeySidebar() {
 		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+
 			strings.ReplaceAll(m.journeyPanel(), "\n", "\n  "))
-	} else if m.width >= 90 {
-		styled := []string{}
-		for i, line := range details {
-			style := s.text
-			if i == 0 || line == "Selected position" {
-				style = s.heading.Foreground(lipgloss.Color(t.Accent))
-			} else if i > 16 || strings.Contains(line, "unavailable") {
-				style = s.muted
-			}
-			styled = append(styled, style.Render(line))
-		}
-		m.ui.details.SetWidth(28)
-		m.ui.details.SetHeight(c.Height)
-		m.ui.details.SetContent(strings.Join(styled, "\n"))
-		focus := s.muted.Render("tab focus · wheel scroll")
-		if m.ui.detailsFocused {
-			focus = s.accent.Render("Details focused · tab map")
-		}
-		panel := "\n" + m.ui.details.View() + "\n" + focus
-		frame = lipgloss.JoinHorizontal(lipgloss.Top, frame, "  "+strings.ReplaceAll(panel, "\n", "\n  "))
 	}
 	if m.journeyStripHeight() > 0 {
 		rows = append(rows, m.journeyPanel())
 	}
 	rows = append(rows, frame)
 	profile := m.visibleProfile()
-	if len(m.workspace.items()) > 1 {
+	if len(m.workspace.items()) > 1 && (m.showProfile || m.journeyPanelOpen()) {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
 	}
-	if m.width < 90 && !m.journeyPanelOpen() {
-		if t := m.activeTrack(); t != nil {
-			summary := fmt.Sprintf(
-				"%.2f km | %d points | zoom %.2f | bearing %.0f",
-				t.Distance/1000,
-				len(t.Points),
-				c.Zoom,
-				c.Bearing,
-			)
-			rows = append(rows, m.paint(pad(summary, m.width), roleActiveRoute, m.activeSwatch()))
-			line := strings.Join(details[7:min(len(details), 14)], " | ")
-			hint := "[ ] select; PgUp/PgDn ±100; c follow · enter inspect"
-			if m.activePlayback() == nil {
-				j, _ := m.workspace.journey(m.workspace.selection.ref)
-				line = journeyRoutingStatus(j, t)
-				hint = "ctrl+j edit journey · enter details"
-			}
-			rows = append(
-				rows,
-				s.text.Render(pad(line, m.width)),
-				s.muted.Render(pad(hint, m.width)),
-			)
-		} else {
-			center := unproject(c.Center)
-			location := fmt.Sprintf("Lat %.6f | Lon %.6f", center.Y, center.X)
-			if m.inspected != nil {
-				location = fmt.Sprintf("Selected: %.6f, %.6f", m.inspected.Y, m.inspected.X)
-			}
-			summary := fmt.Sprintf("Free roam | zoom %.2f | bearing %.0f", c.Zoom, c.Bearing)
-			rows = append(
-				rows,
-				m.paint(pad(summary, m.width), roleActiveRoute),
-				s.text.Render(pad(location, m.width)),
-				s.muted.Render(pad("ctrl+l loaded files · f fit visible", m.width)),
-			)
-		}
-	}
+
 	if profile != nil {
 		header, chart, axis := profile.frame(pos)
 		rows = append(rows, s.heading.Foreground(lipgloss.Color(t.Accent)).Render(pad(header, m.width)))
@@ -1061,6 +1016,7 @@ func (m *viewer) rebuild() {
 		}
 		status = m.ui.spinner.View() + " " + label + " " + status
 	}
+	contextStatus := status
 	if playback != nil {
 		if m.progress == nil {
 			bar := progress.New(progress.WithoutPercentage(), progress.WithFillCharacters('█', '░'))
@@ -1087,22 +1043,27 @@ func (m *viewer) rebuild() {
 	}
 	m.ui.help.SetWidth(m.width)
 	keys := shortcutMap{
-		compact:        m.width < 90,
-		playing:        playback != nil && playback.Playing,
-		detailsFocused: m.ui.detailsFocused,
-		freeRoam:       m.activePlayback() == nil,
+		compact:     m.width < 90,
+		playing:     playback != nil && playback.Playing,
+		detailsOpen: m.ui.detailsOpen,
+		freeRoam:    m.activePlayback() == nil,
 	}
 	credits, _ := sources.attribution()
 	journeyCredits := strings.ReplaceAll(m.journeyCredits(sources.Credits...), "\n", " ")
 	notice := m.connectionNotice()
-	noticeFits := journeyCredits == "" || lipgloss.Width(notice+" "+journeyCredits) <= m.width
-	if notice != "" && noticeFits {
+	if notice != "" && journeyCredits == "" {
 		credits = notice
 	}
 	if journeyCredits != "" {
-		credits += " " + journeyCredits
+		if credits == "No basemap" {
+			credits = journeyCredits
+		} else {
+			credits += " " + journeyCredits
+		}
 	}
-	if m.journeyStripHeight() == 0 {
+	if !m.journeyPanelOpen() {
+		rows = append(rows, m.contextFooter()...)
+	} else if m.journeyStripHeight() == 0 {
 		help := m.ui.help.View(keys)
 		if m.journeyPanelOpen() {
 			help = s.muted.Render("ctrl+j planner · mouse pan/zoom · esc back/close")
@@ -1111,6 +1072,9 @@ func (m *viewer) rebuild() {
 	}
 	rows = append(rows, s.muted.Render(pad(credits, m.width)))
 	m.content = s.text.Background(lipgloss.Color(t.Background)).Width(m.width).Render(strings.Join(rows, "\n"))
+	if m.ui.detailsOpen && !m.journeyPanelOpen() {
+		m.contextDrawer(contextStatus)
+	}
 	m.overlay()
 }
 func (m *viewer) View() tea.View {
@@ -1150,7 +1114,7 @@ func openViewerFiles(paths []string, a Args) error {
 		width:        120,
 		height:       40,
 		dirty:        true,
-		showProfile:  true,
+		showProfile:  false,
 		authFirstRun: len(paths) == 0 && !explicit && !p.quiet,
 	}
 	if len(paths) > 0 {

@@ -36,7 +36,10 @@ func (m *viewer) journeyStripHeight() int {
 }
 
 func (m *viewer) mapOriginY() int {
-	return 2 + m.journeyStripHeight()
+	if m.journeyPanelOpen() {
+		return 2 + m.journeyStripHeight()
+	}
+	return 1
 }
 
 func (m *viewer) journeyPanel() string {
@@ -78,10 +81,7 @@ func (m *viewer) journeyPanel() string {
 	if !compactInput {
 		rows = append(rows, m.styles.dialogMuted.Render(pad(hints, innerWidth)))
 	}
-	border := lipgloss.NormalBorder()
-	if m.settings.ASCII {
-		border = lipgloss.ASCIIBorder()
-	}
+	border := m.boxBorder()
 	if m.ui.dialog == dialogJourneyLocation {
 		if cursor := m.ui.search.Cursor(); cursor != nil {
 			cursor.X += 2
@@ -96,7 +96,7 @@ func (m *viewer) journeyPanel() string {
 		}
 	}
 	return lipgloss.NewStyle().Background(surface).
-		Border(border).BorderForeground(lipgloss.Color(m.theme().Accent)).
+		Border(border).BorderForeground(lipgloss.Color(m.theme().Border)).
 		Padding(0, 1).Width(width).MaxHeight(height).
 		Render(strings.Join(rows, "\n"))
 }

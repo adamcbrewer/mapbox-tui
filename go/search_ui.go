@@ -26,6 +26,7 @@ func (m *viewer) applyPlaceLocation(location placeLocation) tea.Cmd {
 	m.searchPosition = &XY{location.Lon, location.Lat}
 	m.inspected = m.searchPosition
 	m.searchCredit = location.Attribution
+	m.searchName = location.Name
 	m.moveCamera(localView(XY{location.Lon, location.Lat}, m.destination()))
 	return m.fetch()
 }

@@ -429,5 +429,5 @@ func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(max(1, height))
 	m.ui.page.SetContent(content.String())
-	return "Mapbox installation", m.ui.page.View(), "↑/↓ scroll   esc close"
+	return "Installation", m.ui.page.View(), "↑/↓ scroll   esc close"
 }

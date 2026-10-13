@@ -109,7 +109,7 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 			t.Fatal("route-only controls changed free roam state")
 		}
 		m.rebuild()
-		if !strings.Contains(m.content, "Free roam") || strings.Contains(m.content, "Elevation profile") || lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {
+		if !strings.Contains(m.content, "Selected position") || strings.Contains(m.content, "Elevation profile") || lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {
 			t.Fatalf("free roam layout invalid at %v", size)
 		}
 		m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

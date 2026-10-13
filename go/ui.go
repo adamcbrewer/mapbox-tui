@@ -41,20 +41,20 @@ const (
 )
 
 type uiState struct {
-	dialog         dialogKind
-	parents        []dialogFrame
-	help           help.Model
-	picker         filepicker.Model
-	search         textinput.Model
-	inputID        string
-	page, details  pager.Model
-	spinner        spinner.Model
-	spinning       bool
-	selected       int
-	themeBefore    int
-	menuNavigated  bool
-	detailsFocused bool
-	notice         string
+	dialog        dialogKind
+	parents       []dialogFrame
+	help          help.Model
+	picker        filepicker.Model
+	search        textinput.Model
+	inputID       string
+	page, details pager.Model
+	spinner       spinner.Model
+	spinning      bool
+	selected      int
+	themeBefore   int
+	menuNavigated bool
+	detailsOpen   bool
+	notice        string
 }
 
 type dialogFrame struct {
@@ -65,7 +65,7 @@ type dialogFrame struct {
 	page                        pager.Model
 }
 
-type shortcutMap struct{ compact, playing, detailsFocused, freeRoam, profiles bool }
+type shortcutMap struct{ compact, playing, detailsOpen, freeRoam, profiles bool }
 
 type viewerCommand struct {
 	title, shortcut, action   string
@@ -113,8 +113,8 @@ func menuStep(selected, direction, count int) int {
 
 func (k shortcutMap) ShortHelp() []key.Binding {
 	focus := "details"
-	if k.detailsFocused {
-		focus = "map"
+	if k.detailsOpen {
+		focus = "close details"
 	}
 	if k.freeRoam {
 		if k.compact {
@@ -183,7 +183,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			{
 				binding("click", "select coordinates"),
 				binding("enter", "inspect location"),
-				binding("tab", "focus map/details"),
+				binding("tab", "open/close context"),
 			},
 			elevation,
 			{
@@ -215,7 +215,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("pgup/pgdown", "seek 100 points"),
 			binding("home/end", "first/last point"),
 			binding("enter", "inspect position"),
-			binding("tab", "focus map/details"),
+			binding("tab", "open/close context"),
 		},
 		{
 			binding("space", "play/pause selected activity"),
@@ -841,15 +841,14 @@ func (m *viewer) overlay() {
 	if !dialogOpen || !hasRoom || m.journeyPanelOpen() {
 		return
 	}
-	depth := min(len(m.ui.parents), m.width-9, m.height-9)
-	width := min(64, m.width-8-depth)
+	width := min(64, m.width-8)
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
-		width = min(38, m.width-8-depth)
+		width = min(38, m.width-8)
 	}
 	if m.ui.dialog == dialogMapbox {
-		width = min(52, m.width-8-depth)
+		width = min(52, m.width-8)
 	}
-	height := max(1, min(17, m.height-10, m.height-8-depth))
+	height := max(1, min(17, m.height-10, m.height-8))
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
 	}
@@ -873,22 +872,20 @@ func (m *viewer) overlay() {
 		MaxWidth(width).
 		Height(height).
 		MaxHeight(height)
-	content := m.gradient(title, surface) + "\n\n" + bodyStyle.Render(body) + "\n\n" +
+	content := bodyStyle.Render(body) + "\n\n" +
 		s.dialogMuted.Render(ansi.Truncate(hints, width, "…"))
-	border := lipgloss.RoundedBorder()
-	if m.settings.ASCII {
-		border = lipgloss.ASCIIBorder()
-	}
+	border := m.boxBorder()
 	box := lipgloss.NewStyle().
 		Width(width+6).
 		Padding(1, 2).
 		Background(surface).
 		Foreground(lipgloss.Color(t.Text)).
 		Border(border).
-		BorderForegroundBlend(lipgloss.Color(t.Accent), lipgloss.Color(t.Highlight)).
+		BorderForeground(lipgloss.Color(t.Border)).
 		Render(content)
+	box = m.titleBox(box, title, m.dialogAncestors())
 	boxWidth, boxHeight := lipgloss.Width(box), lipgloss.Height(box)
-	x, y := (m.width-boxWidth-depth)/2, (m.height-boxHeight-depth)/2
+	x, y := (m.width-boxWidth)/2, (m.height-boxHeight)/2
 	if m.ui.dialog == dialogSpeed {
 		x, y = max(1, m.camera.Width-boxWidth), max(1, m.height-boxHeight-3)
 	}
@@ -899,39 +896,28 @@ func (m *viewer) overlay() {
 			y = max(0, min(m.height-boxHeight-3, int(point.Y/4)+2))
 		}
 	}
-	x = max(0, min(m.width-boxWidth-depth, x))
-	y = max(0, min(m.height-boxHeight-depth, y))
+	x = max(0, min(m.width-boxWidth, x))
+	y = max(0, min(m.height-boxHeight, y))
 	baseStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(t.Dimmed)).
 		Background(lipgloss.Color(t.Background))
 	base := lipgloss.NewLayer(baseStyle.Render(ansi.Strip(m.content)))
-	layers := []*lipgloss.Layer{base}
-	// Matching the active footprint exposes only back-frame edges, even when parent dialogs differ in size.
-	backFrame := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Dimmed)).
-		Background(surface).Render(ansi.Strip(box))
-	for i := range depth {
-		layers = append(layers, lipgloss.NewLayer(backFrame).X(x+i).Y(y+i).Z(i+1))
-	}
-	layers = append(layers, lipgloss.NewLayer(box).X(x+depth).Y(y+depth).Z(depth+1))
 	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(
-		lipgloss.NewCompositor(layers...),
+		lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)),
 	)
-	// Nested Bubbles views reset some cells to the terminal's default background.
-	for i := range depth + 1 {
-		for row := y + i + 1; row < y+i+boxHeight-1; row++ {
-			for column := x + i + 1; column < x+i+boxWidth-1; column++ {
-				if cell := canvas.CellAt(column, row); cell != nil && cell.Style.Bg == nil {
-					cell.Style.Bg = surface
-				}
+	// Bubbles views can reset cells to the terminal's default background.
+	for row := y + 1; row < y+boxHeight-1; row++ {
+		for column := x + 1; column < x+boxWidth-1; column++ {
+			if cell := canvas.CellAt(column, row); cell != nil && cell.Style.Bg == nil {
+				cell.Style.Bg = surface
 			}
 		}
 	}
 	m.content = canvas.Render()
-	x, y = x+depth, y+depth
 	if m.ui.dialog == dialogCommands || m.placeSearchOpen() {
 		if cursor := m.ui.search.Cursor(); cursor != nil {
 			cursor.X += max(0, x) + 3
-			cursor.Y += max(0, y) + 4
+			cursor.Y += max(0, y) + 2
 			if m.ui.notice != "" {
 				cursor.Y++
 			}

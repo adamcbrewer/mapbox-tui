@@ -153,7 +153,7 @@ func TestCommandActionsAndSidebarFocusKeepPlaybackControlsWorking(t *testing.T) 
 	if m.showProfile || !m.activePlayback().Playing {
 		t.Fatal("command palette did not hide the default profile while playing")
 	}
-	m.ui.detailsFocused = true
+	m.ui.detailsOpen = true
 	m.Update(tea.KeyPressMsg{Code: ' '})
 	if m.activePlayback().Playing {
 		t.Fatal("sidebar focus swallowed the playback shortcut")

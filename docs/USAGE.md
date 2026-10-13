@@ -37,13 +37,23 @@ Both work offline; a configured Mapbox account adds the basemap. Add
 | Change playback speed | `p` picker, `s` / `S` cycle | |
 | Centre and follow | `c` | |
 | Toggle elevation profiles | `e` | |
-| Focus route details | Tab | Wheel over sidebar |
+| Open / close context drawer | Tab, Esc closes | Wheel over drawer scrolls |
 | Rotate / north-up | `,` / `.` / `n` | Right-drag |
 | Toggle ASCII / camera animation | `a` / `m` | |
 | Map credits | `v` | |
 | Back / quit | Esc / `q` or Ctrl-C | |
 
-Menus wrap. Esc goes back in nested dialogs and closes the top-level dialog.
+The map starts with a compact context line: the active route or place, two facts,
+and hints for Tab, `/` search and `?` help. Tab opens a scrollable context drawer
+without resizing the map or moving the camera. The drawer stays open while you
+pan, zoom, or select positions on the map. Arrow keys and H/J/K/L navigate the map;
+Page Up/Down and Home/End scroll the drawer, as does the wheel over it.
+Tab or Esc closes the drawer. A `*` on the map marks the selected coordinates
+shown in the context line, including search results.
+Elevation profiles are opt-in with `e`. Attribution stays in the footer.
+
+Menus wrap. Rounded modal borders contain the current title and a breadcrumb
+for nested dialogs. Esc goes back in nested dialogs and closes the top-level dialog.
 Use `--ascii` if your terminal doesn't render Braille well. The minimum viewer
 size is 30 columns by 12 rows.
 

@@ -90,7 +90,7 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	}
 	showJourneyFromMenu(m)
 	m.rebuild()
-	if !strings.Contains(ansi.Strip(m.content), "Journey plan") || m.activePlayback() != nil || m.profileHeight != 0 {
+	if !strings.Contains(ansi.Strip(m.content), "Manual") || m.activePlayback() != nil || m.profileHeight != 0 {
 		t.Fatal("manual journey became a recorded activity or elevation profile")
 	}
 	ref := m.planner.ref

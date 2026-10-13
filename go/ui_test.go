@@ -264,7 +264,7 @@ func TestCompletedNestedActionsReturnToMap(t *testing.T) {
 	}
 }
 
-func TestNestedPopupFramesExposeOnlyTopAndLeftEdges(t *testing.T) {
+func TestNestedPopupUsesBreadcrumbsWithoutBackFrames(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 18}, {30, 12}} {
 		for _, ascii := range []bool{false, true} {
 			name := fmt.Sprintf("%dx%d/ascii=%v", size[0], size[1], ascii)
@@ -288,43 +288,18 @@ func TestNestedPopupFramesExposeOnlyTopAndLeftEdges(t *testing.T) {
 				}
 				m.rebuild()
 				text := ansi.Strip(m.content)
-				var rows [][]rune
-				for _, line := range strings.Split(text, "\n") {
-					rows = append(rows, []rune(line))
-				}
-				corner, rightCorner, bottomCorner := '╭', '╮', '╯'
-				horizontal, vertical := '─', '│'
+				separator := " › "
 				if ascii {
-					corner, rightCorner, bottomCorner = '+', '+', '+'
-					horizontal, vertical = '-', '|'
+					separator = " > "
 				}
-				var found bool
-				for y := range len(rows) - 2 {
-					for x := range min(len(rows[y]), len(rows[y+1]), len(rows[y+2])) - 2 {
-						diagonal := rows[y][x] == corner && rows[y+1][x+1] == corner && rows[y+2][x+2] == corner
-						topLeft := rows[y][x+1] == horizontal && rows[y+1][x] == vertical
-						if !diagonal || !topLeft {
-							continue
-						}
-						found = true
-						right := x + 3
-						for right < len(rows[y+2]) && rows[y+2][right] != rightCorner {
-							right++
-						}
-						if right == len(rows[y+2]) || rows[y+1][right-1] != rightCorner || rows[y][right-2] != rightCorner {
-							t.Fatal("back frames extended beyond the active top-right footprint", text)
-						}
-						bottom := y + 3
-						for bottom < len(rows) && rows[bottom][right] != bottomCorner {
-							bottom++
-						}
-						if bottom == len(rows) || rows[bottom-1][right-1] == bottomCorner || rows[bottom-2][right-2] == bottomCorner {
-							t.Fatal("back frames leaked their bottom-right corners", text)
-						}
-					}
+				if !strings.Contains(text, separator+"Installation") || !strings.Contains(text, "esc back") {
+					t.Fatal("current modal title or explicit nesting missing", text)
 				}
-				if !found || !strings.Contains(text, "esc back") {
-					t.Fatal("three-level diagonal stack or back hint missing", text)
+				if size[0] >= 70 && !strings.Contains(text, "Commands"+separator+"Mapbox"+separator) {
+					t.Fatal("ancestor names missing from wide modal", text)
+				}
+				if !ascii && strings.Count(text, "╭") > 2 {
+					t.Fatal("nested modal rendered fake parent frames", text)
 				}
 				if lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {
 					t.Fatal("stack overflowed terminal")

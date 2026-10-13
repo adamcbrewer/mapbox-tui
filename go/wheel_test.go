@@ -63,7 +63,7 @@ func TestModifiedWheelDoublesZoomAndPreservesPointerAnchor(t *testing.T) {
 	}{{0, 0.1}, {tea.ModCtrl, 0.2}, {tea.ModSuper, 0.2}, {tea.ModMeta, 0.2}, {tea.ModCtrl | tea.ModSuper, 0.2}, {tea.ModCtrl | tea.ModShift, 0.2}, {tea.ModAlt | tea.ModShift, 0.1}} {
 		for _, button := range []tea.MouseButton{tea.MouseWheelUp, tea.MouseWheelDown} {
 			m := &viewer{camera: Camera{project(-0.1, 51.5), 14, 45, 2.4, 120, 40}}
-			pointer := XY{39, 34}
+			pointer := XY{39, float64((10-m.mapOriginY())*4 + 2)}
 			before := m.camera.world(pointer)
 			m.Update(tea.MouseWheelMsg{X: 20, Y: 10, Button: button, Mod: modifier.mod})
 			want := 14 + modifier.step

@@ -40,8 +40,8 @@ Use a bundled palette as a complete template. Every field is required:
 | `surface` | Dialog background |
 | `selected` | Selected row and search input background |
 | `text`, `muted` | Primary and secondary UI text |
-| `accent`, `highlight` | Keys, headings, title/border gradients and input cursor |
-| `border` | Map frame |
+| `accent`, `highlight` | Keys, headings, active border titles and input cursor |
+| `border` | Map, modal and context drawer frames |
 | `dimmed` | Map/UI text beneath an open dialog |
 | `progress_empty` | Unfilled playback progress bar |
 | `activities` | Exactly six colours, assigned to stable per-item slots |
@@ -73,6 +73,11 @@ must have IDs distinct from built-ins.
 | `viewer.applyTheme(index)` | Select a loaded palette, restyle existing widgets/progress and request a redraw |
 
 `viewer.settings.Theme` holds an index into that viewer's loaded registry.
+Modal titles use `accent`; breadcrumb ancestors use `muted`, with `border` for
+the frame and `surface` for the background. The context drawer uses the same
+surface and text roles. Unicode boxes have subtle rounded corners; ASCII mode
+uses plain corners and breadcrumb separators. The terminal controls the font.
+
 Theme switching updates widget styles in place, preserving dialog selection,
 file-picker location, text input/focus, scroll offsets and playback position.
 

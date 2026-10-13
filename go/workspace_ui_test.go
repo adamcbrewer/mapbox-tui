@@ -401,7 +401,7 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 		}
 		labelsOrLayoutWrong := !strings.Contains(text, "Short") ||
 			!strings.Contains(text, "Long") ||
-			!strings.Contains(text, "2:1 Long | Playing") ||
+			!strings.Contains(text, "Playing") ||
 			lipgloss.Width(m.content) > size[0] ||
 			lipgloss.Height(m.content) != size[1] ||
 			m.progress.FullColor != lipgloss.Color(m.activeColor())

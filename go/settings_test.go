@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
@@ -125,6 +127,7 @@ func TestBrokenTelemetrySettingsDoNotBlockOfflineViewer(t *testing.T) {
 			m.args.Provider, m.args.ProviderSet = "none", true
 			m.provider.quiet = true
 			runLoadCommand(m, m.load("../fixtures/example.gpx"))
+			m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 			m.rebuild()
 			if !strings.Contains(m.content, "Point 1 / 10") || m.preferences.MapboxCLITelemetry {
 				t.Fatal("broken telemetry settings prevented offline geometry or enabled telemetry")
