@@ -1,6 +1,7 @@
 from pathlib import Path
 import difflib
 import html
+import difflib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import subprocess
 import time
 import sys
 import tempfile
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 SOCKET = f"mapbox-tui-{os.getpid()}"
@@ -86,6 +88,7 @@ def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width*9}" height="{height*18}" viewBox="0 0 {width*9} {height*18}">', f'<rect width="100%" height="100%" fill="{background}"/>', '<g font-family="DejaVu Sans Mono,monospace" font-size="15" xml:space="preserve">']
     fg = foreground
     bg = background
+    bold = False
     for y, line in enumerate(capture(colors=True).splitlines()):
         x, position = 0, 0
         for match in [*ANSI.finditer(line), None]:
@@ -104,7 +107,8 @@ def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
                 chunk = "".join(expanded)
                 if bg != background:
                     out.append(f'<rect x="{x*9}" y="{y*18}" width="{len(chunk)*9}" height="18" fill="{bg}"/>')
-                out.append(f'<text x="{x*9}" y="{y*18+14}" fill="{fg}">{html.escape(chunk)}</text>')
+                weight = ' font-weight="bold"' if bold else ''
+                out.append(f'<text x="{x*9}" y="{y*18+14}" fill="{fg}"{weight}>{html.escape(chunk)}</text>')
                 x += len(chunk)
             if match:
                 nums = [int(n or 0) for n in match.group(1).split(';')]
@@ -115,6 +119,11 @@ def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
                         fg = foreground
                         if n == 0:
                             bg = background
+                            bold = False
+                    elif n == 1:
+                        bold = True
+                    elif n == 22:
+                        bold = False
                     elif n == 49:
                         bg = background
                     elif 30 <= n <= 37:
@@ -556,7 +565,12 @@ def theme_switching(binary, width, height):
         wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
         baseline = settled()
         original_colors = capture(colors=True)
-        names = ("Catppuccin Latte", "Catppuccin", "Tokyo Night")
+        palettes = [tomllib.loads(path.read_text()) for path in sorted((ROOT / "go/themes").glob("*.toml"))]
+        names = tuple(palette["name"] for palette in palettes)
+        default = next(i for i, palette in enumerate(palettes) if palette["id"] == "catppuccin")
+        synthwave = next(i for i, palette in enumerate(palettes) if palette["id"] == "synthwave")
+        preview = (default - 1) % len(palettes)
+        previous = (preview - 1) % len(palettes)
 
         def open_picker():
             send("\x0b")
@@ -577,17 +591,18 @@ def theme_switching(binary, width, height):
             wait_for(lambda s: "Colour theme" not in s and "Commands" not in s)
 
         screen = open_picker()
-        assert all(name in screen for name in names), "theme list omitted a built-in palette"
+        assert f"> {names[default]} (current)" in screen, "theme list lost the selected current palette"
         assert "Commands › Colour theme" in screen and screen.count("╭") <= 2, "theme picker lost breadcrumbs or added parent frames"
         save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-picker-{width}x{height}.svg", width, height)
         picker_colors = capture(colors=True)
         tmux("send-keys", "-t", "poc:0.0", "Up")
-        wait_for(lambda s: "> Catppuccin Latte" in s and "Catppuccin (current)" in s and capture(colors=True) != picker_colors)
+        wait_for(lambda s: f"> {names[preview]}" in s and capture(colors=True) != picker_colors)
         tmux("send-keys", "-t", "poc:0.0", "Up")
-        wait_for(lambda s: "> Tokyo Night" in s and "Catppuccin (current)" in s)
+        wait_for(lambda s: f"> {names[previous]}" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down")
-        wait_for(lambda s: "> Catppuccin Latte" in s and "Catppuccin (current)" in s)
-        save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-preview-{width}x{height}.svg", width, height, "#eff1f5", "#4c4f69")
+        wait_for(lambda s: f"> {names[preview]}" in s)
+        palette = palettes[preview]
+        save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-preview-{width}x{height}.svg", width, height, palette["background"], palette["text"])
         before = settled()
         colors = capture(colors=True)
         send("\x14")
@@ -597,11 +612,19 @@ def theme_switching(binary, width, height):
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Commands" not in s)
         assert settled() == baseline and capture(colors=True) == original_colors, "cancelled theme selection applied a palette"
-        for index, name, background, foreground in ((2, "Tokyo Night", "#1a1b26", "#a9b1d6"), (0, "Catppuccin Latte", "#eff1f5", "#4c4f69"), (1, "Catppuccin", "#1e1e2e", "#cdd6f4")):
+        for index in [i for i in range(len(palettes)) if i != default] + [default]:
+            palette = palettes[index]
             select_theme(index)
-            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{name.lower().replace(' ', '-')}-{width}x{height}.svg", width, height, background, foreground)
+            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{palette['id']}-{width}x{height}.svg", width, height, palette["background"], palette["text"])
+            if index == synthwave:
+                open_picker()
+                save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-synthwave-picker-{width}x{height}.svg", width, height, palette["background"], palette["text"])
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: active_modal(s, "Commands") and "› theme" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
+                wait_for(lambda s: "Commands" not in s)
         assert settled() == baseline, "theme selection changed geometry, selection or playback"
-        select_theme(0)
+        select_theme((default + 1) % len(palettes))
         wait_for(lambda s: capture(colors=True) != original_colors)
         assert settled() == baseline, "palette change affected map text or layout"
         send("\x10:")
@@ -613,11 +636,78 @@ def theme_switching(binary, width, height):
             wait_for(lambda s: label not in s)
         send("a ")
         wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
-        select_theme(2)
-        wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+        for index, palette in enumerate(palettes):
+            select_theme(index)
+            wait_for(lambda s: "Playing 1x" in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+            save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-{palette['id']}-ascii-{width}x{height}.svg", width, height, palette["background"], palette["text"])
         send(" q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name} {width}×{height}: live theme preview, three palettes, confirm/cancel restoration, removed shortcut, recoloured dialogs, unchanged geometry, ASCII playback and terminal restoration passed")
+        print(f"{binary.name} {width}×{height}: live theme preview, {len(palettes)} palettes, confirm/cancel restoration, removed shortcut, recoloured dialogs, unchanged geometry, ASCII playback and terminal restoration passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
+def command_palette_access(binary, width, height):
+    command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
+    tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+    try:
+        wait_for(lambda s: "Paused 1x" in s and "Loading track file" not in s)
+        send("f")
+        settled()
+
+        def round_trip(view):
+            before = settled()
+            send("\x0b")
+            wait_for(lambda s: active_modal(s, "Commands") and "Type a command" in s)
+            send("keyboard")
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            wait_for(lambda s: active_modal(s, "Keyboard shortcuts") and "esc back" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: active_modal(s, "Commands") and "› keyboard" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: not active_modal(s, "Commands"))
+            after = settled()
+            difference = "\n".join(difflib.unified_diff(before.splitlines(), after.splitlines(), fromfile="before", tofile="after"))
+            assert after == before, f"command palette did not restore {view}:\n{difference}"
+
+        for ascii_mode in (False, True):
+            if ascii_mode:
+                send("a")
+                wait_for(lambda s: not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+            send("\x02")
+            wait_for(lambda s: "ctrl+b hide" in s)
+            round_trip("Context")
+            send("\x0c")
+            wait_for(lambda s: "Loaded files" in s)
+            tmux("send-keys", "-t", "poc:0.0", "End")
+            round_trip("Files selection")
+            send("\x02")
+            wait_for(lambda s: "Loaded files" not in s)
+            round_trip("collapsed Files")
+            send("\x0a")
+            wait_for(lambda s: "A Start" in s and "Context · Files · Journey" in s)
+            round_trip("Journey")
+            tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
+            wait_for(lambda s: "Place or latitude" in s)
+            send("51.31, -2.58")
+            round_trip("journey location input")
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "> A Start" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "Context · Files · Journey" not in s)
+            send("/51.32, -2.59")
+            wait_for(lambda s: "Quick search" in s)
+            round_trip("quick-search input")
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "Quick search" not in s)
+            send("\x0f")
+            wait_for(lambda s: "Open track file" in s and "example.gpx" in s)
+            round_trip("file picker")
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "Open track file" not in s)
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        print(f"{binary.name} {width}×{height}: command palette from Context, Files, collapsed Files, Journey, location input, quick search and file picker; nested command execution, return state, ASCII and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
@@ -1115,6 +1205,7 @@ if __name__ == "__main__":
                 dialogs(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24)):
                     theme_switching(ROOT / "bin" / name, width, height)
+                    command_palette_access(ROOT / "bin" / name, width, height)
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)

@@ -124,7 +124,7 @@ Use `fixtures/country-ride.gpx` in the same CLI commands to try the longer ride.
 
 In the viewer, Ctrl-O opens files, Ctrl-L manages loaded items, `/` searches
 for places and Ctrl-J opens the journey planner. Ctrl-K opens the command
-palette.
+palette from any panel or dialog; Esc returns to the previous view.
 
 `summary` and `inspect` return JSON. `render` gives you a text map; add `--json`
 for scene metadata too. CLI and MCP maps are ANSI-free.
@@ -170,8 +170,8 @@ like to do. See [Contributing](CONTRIBUTING.md) for more details.
 
 ## Development
 
-You'll also need Python 3. Use `make dev` to rebuild on changes and `make check`
-to run the offline checks. See [development notes](docs/DEVELOPMENT.md) for the
+You'll also need Python 3.11 or newer. Use `make dev` to rebuild on changes and
+`make check` to run the offline checks. See [development notes](docs/DEVELOPMENT.md) for the
 local workflow and terminal prerequisites.
 
 ## Further reading and other docs

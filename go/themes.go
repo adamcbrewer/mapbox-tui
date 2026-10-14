@@ -51,6 +51,12 @@ func decodeTheme(r io.Reader) (presentationTheme, error) {
 	if len(theme.Activities) != activityColorCount {
 		return theme, fmt.Errorf("theme activities must contain exactly %d colours", activityColorCount)
 	}
+	if theme.ActivityText == nil {
+		theme.ActivityText = slices.Clone(theme.Activities)
+	}
+	if len(theme.ActivityText) != activityColorCount {
+		return theme, fmt.Errorf("theme activity_text must contain exactly %d colours when specified", activityColorCount)
+	}
 	if theme.Map == nil {
 		theme.Map = map[string]string{}
 	}
@@ -82,6 +88,15 @@ func decodeTheme(r io.Reader) (presentationTheme, error) {
 	}
 	for i, color := range theme.Activities {
 		colors[fmt.Sprintf("activities[%d]", i)] = color
+	}
+	for i, color := range theme.ActivityText {
+		colors[fmt.Sprintf("activity_text[%d]", i)] = color
+	}
+	if theme.BorderGradient != nil && len(theme.BorderGradient) < 2 {
+		return theme, fmt.Errorf("theme border_gradient must contain at least two colours when specified")
+	}
+	for i, color := range theme.BorderGradient {
+		colors[fmt.Sprintf("border_gradient[%d]", i)] = color
 	}
 	for role, color := range colors {
 		if !themeColorPattern.MatchString(color) {

@@ -78,7 +78,8 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			&a.Theme,
 			"theme",
 			"catppuccin",
-			"colour theme: catppuccin, catppuccin-latte, tokyo-night, or a TOML file path",
+			"colour theme: catppuccin, noir, nord, paper, "+
+				"synthwave, tokyo-night, or a TOML file path",
 		)
 	}
 	if command.Name == "render" || command.Name == "bench" {

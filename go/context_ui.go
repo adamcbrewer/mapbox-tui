@@ -64,8 +64,12 @@ func (m *viewer) titleBox(box, title string, ancestors []string) string {
 	t := m.theme()
 	frame := lipgloss.NewStyle().Foreground(lipgloss.Color(t.Border)).Background(lipgloss.Color(t.Surface))
 	remaining := max(0, width-5-ansi.StringWidth(prefix+label))
+	titleText := m.styles.dialogAccent.Bold(true).Render(label)
+	if len(t.BorderGradient) > 0 {
+		titleText = m.gradient(label, lipgloss.Color(t.Surface))
+	}
 	rows[0] = frame.Render(border.TopLeft+border.Top+" ") +
-		m.styles.dialogMuted.Render(prefix) + m.styles.dialogAccent.Bold(true).Render(label) +
+		m.styles.dialogMuted.Render(prefix) + titleText +
 		frame.Render(" "+strings.Repeat(border.Top, remaining)+border.TopRight)
 	return strings.Join(rows, "\n")
 }
@@ -193,9 +197,9 @@ func (m *viewer) contextDrawer(status string) {
 	m.ui.details.SetContent(ansi.Wrap(strings.Join(lines, "\n"), width, ""))
 	name, _, _ := m.contextSummary()
 	body := "\n" + m.styles.dialogHeading.Render(pad(name, width)) + "\n" + m.ui.details.View() + "\n" + m.styles.dialogMuted.Render(pad("pgup/dn scroll · esc close", width))
-	box := lipgloss.NewStyle().Background(lipgloss.Color(m.theme().Surface)).
+	box := m.theme().borderStyle().Background(lipgloss.Color(m.theme().Surface)).
 		Foreground(lipgloss.Color(m.theme().Text)).
-		Border(m.boxBorder()).BorderForeground(lipgloss.Color(m.theme().Border)).
+		Border(m.boxBorder()).
 		Padding(0, 1).Width(m.journeyPanelWidth()).Render(body)
 	box = m.panelTabs(box, dialogNone)
 	m.content = lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(

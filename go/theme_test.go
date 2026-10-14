@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 func themeViewer(t *testing.T, width, height int, ascii bool) *viewer {
@@ -37,9 +39,10 @@ func themeViewer(t *testing.T, width, height int, ascii bool) *viewer {
 }
 
 func TestThemeRegistryLoadsBuiltinsAndCustomPalette(t *testing.T) {
-	for _, id := range []string{"catppuccin", "catppuccin-latte", "tokyo-night"} {
+	ids := []string{"catppuccin", "noir", "nord", "paper", "synthwave", "tokyo-night"}
+	for _, id := range ids {
 		themes, selected, err := loadThemes(id)
-		builtInSelectionWrong := err != nil || len(themes) != 3 || themes[selected].ID != id
+		builtInSelectionWrong := err != nil || len(themes) != len(ids) || themes[selected].ID != id
 		if builtInSelectionWrong {
 			t.Fatal("built-in selection failed", id, err)
 		}
@@ -50,12 +53,24 @@ func TestThemeRegistryLoadsBuiltinsAndCustomPalette(t *testing.T) {
 	}
 	custom := strings.ReplaceAll(string(data), "catppuccin", "custom")
 	custom = strings.ReplaceAll(custom, "Catppuccin", "Custom palette")
+	custom = strings.Replace(
+		custom,
+		"[map]",
+		"border_gradient = [\"#89b4fa\", \"#f5c2e7\"]\n\n[map]",
+		1,
+	)
 	path := importFile(t, "custom palette.toml", []byte(custom))
 	m := &viewer{args: Args{Theme: path}}
 	err = m.initUI()
-	customThemeMissing := err != nil || len(m.themes) != 4 || m.theme().ID != "custom"
+	customThemeMissing := err != nil || len(m.themes) != len(ids)+1 || m.theme().ID != "custom"
 	if customThemeMissing {
 		t.Fatal("custom theme did not join the same registry", err)
+	}
+	if len(m.theme().BorderGradient) != 2 {
+		t.Fatal("custom palette lost its gradient stops")
+	}
+	if !slices.Equal(m.theme().ActivityText, m.theme().Activities) {
+		t.Fatal("older custom palette changed its activity label colours")
 	}
 	m.openDialog(dialogThemes)
 	_, content, _ := m.dialogContent(50, 10)
@@ -77,6 +92,42 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 	valid := string(data)
 	for name, data := range map[string]string{
 		"syntax": "[map",
+		"empty activity text": strings.Replace(
+			valid,
+			"[map]",
+			"activity_text = []\n[map]",
+			1,
+		),
+		"short activity text": strings.Replace(
+			valid,
+			"[map]",
+			"activity_text = [\"#123456\"]\n[map]",
+			1,
+		),
+		"invalid activity text": strings.Replace(
+			valid,
+			"[map]",
+			"activity_text = [\"bad\", \"#123456\", \"#123456\", \"#123456\", \"#123456\", \"#123456\"]\n[map]",
+			1,
+		),
+		"empty border gradient": strings.Replace(
+			valid,
+			"[map]",
+			"border_gradient = []\n[map]",
+			1,
+		),
+		"single border gradient stop": strings.Replace(
+			valid,
+			"[map]",
+			"border_gradient = [\"#123456\"]\n[map]",
+			1,
+		),
+		"invalid border gradient colour": strings.Replace(
+			valid,
+			"[map]",
+			"border_gradient = [\"#123456\", \"pink\"]\n[map]",
+			1,
+		),
 		"unknown field": strings.Replace(
 			valid,
 			"background =",
@@ -315,7 +366,7 @@ func TestThemePickerAndPaintingAcrossLayoutsAndASCIIMode(t *testing.T) {
 				}
 				m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 				m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-				if m.settings.Theme != 1 || m.ui.dialog != dialogNone {
+				if m.settings.Theme != len(m.themes)-2 || m.ui.dialog != dialogNone {
 					t.Fatal("picker did not apply the selected palette")
 				}
 			})
@@ -405,6 +456,172 @@ func TestThemePreviewRestoredOnDialogDismissal(t *testing.T) {
 			}
 			if m.ui.search.Styles().Focused.Text.GetBackground() != lipgloss.Color(m.themes[0].Selected) {
 				t.Fatal("dismissed preview left widgets styled with the preview palette")
+			}
+		})
+	}
+}
+
+func TestBuiltinThemeTextContrast(t *testing.T) {
+	themes, _, err := loadThemes("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type contrastPair struct {
+		name, foreground, background string
+	}
+	for _, theme := range themes {
+		t.Run(theme.ID, func(t *testing.T) {
+			pairs := []contrastPair{
+				{name: "canvas text", foreground: theme.Text, background: theme.Background},
+				{name: "dialog text", foreground: theme.Text, background: theme.Surface},
+				{name: "dialog muted", foreground: theme.Muted, background: theme.Surface},
+				{name: "dialog accent", foreground: theme.Accent, background: theme.Surface},
+				{name: "selected text", foreground: theme.Highlight, background: theme.Selected},
+			}
+			for i, activity := range theme.ActivityText {
+				pairs = append(pairs,
+					contrastPair{
+						name:       fmt.Sprintf("activity %d canvas", i+1),
+						foreground: activity,
+						background: theme.Background,
+					},
+					contrastPair{
+						name:       fmt.Sprintf("activity %d dialog", i+1),
+						foreground: activity,
+						background: theme.Surface,
+					},
+				)
+			}
+			for _, pair := range pairs {
+				t.Run(pair.name, func(t *testing.T) {
+					if contrast := themeContrast(pair.foreground, pair.background); contrast < 4.5 {
+						t.Errorf(
+							"text contrast %.2f:1 is below 4.5:1 (%s on %s)",
+							contrast,
+							pair.foreground,
+							pair.background,
+						)
+					}
+				})
+			}
+			isDark := themeLuminance(theme.Background) < 0.5
+			if isDark && themeLuminance(theme.Text) <= themeLuminance(theme.Muted) {
+				t.Error("secondary text is brighter than primary text on a dark canvas")
+			}
+		})
+	}
+}
+
+func TestBuiltinThemeActivitiesStandOutFromRoads(t *testing.T) {
+	themes, _, err := loadThemes("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, theme := range themes {
+		for i, activity := range theme.Activities {
+			name := fmt.Sprintf("%s/activity-%d", theme.ID, i+1)
+			for _, role := range []string{"road", "major_road"} {
+				t.Run(name+"/"+role, func(t *testing.T) {
+					stroke, err := colorful.Hex(activity)
+					if err != nil {
+						t.Fatal(err)
+					}
+					road, err := colorful.Hex(theme.Map[role])
+					if err != nil {
+						t.Fatal(err)
+					}
+					contrast := themeContrast(activity, theme.Map[role])
+					distance := stroke.DistanceLab(road)
+					if contrast < 3 && distance < 0.35 {
+						t.Errorf(
+							"activity/road separation is too weak: %.2f:1 contrast, %.2f Lab distance (%s against %s)",
+							contrast,
+							distance,
+							activity,
+							theme.Map[role],
+						)
+					}
+				})
+			}
+		}
+	}
+}
+
+func themeContrast(foreground, background string) float64 {
+	lo, hi := themeLuminance(foreground), themeLuminance(background)
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	return (hi + 0.05) / (lo + 0.05)
+}
+
+func themeLuminance(hex string) float64 {
+	r, g, b, _ := lipgloss.Color(hex).RGBA()
+	linear := func(channel uint32) float64 {
+		value := float64(channel) / 65535
+		if value <= 0.04045 {
+			return value / 12.92
+		}
+		return math.Pow((value+0.055)/1.055, 2.4)
+	}
+	return 0.2126*linear(r) + 0.7152*linear(g) + 0.0722*linear(b)
+}
+
+func TestActivityLegendUsesReadableTextPalette(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	for i, theme := range m.themes {
+		t.Run(theme.ID, func(t *testing.T) {
+			m.applyTheme(i)
+			legend := m.workspaceLegend(120, nil)
+			column := strings.Index(ansi.Strip(legend), "1:1")
+			if column < 0 {
+				t.Fatal("first activity was absent from the legend")
+			}
+			canvas := lipgloss.NewCanvas(120, 1).Compose(
+				lipgloss.NewCompositor(lipgloss.NewLayer(legend)),
+			)
+			cell := canvas.CellAt(column, 0)
+			if cell == nil || cell.Style.Fg == nil {
+				t.Fatal("activity label had no foreground colour")
+			}
+			r, g, b, a := cell.Style.Fg.RGBA()
+			wantR, wantG, wantB, wantA := lipgloss.Color(theme.ActivityText[0]).RGBA()
+			got, want := [4]uint32{r, g, b, a}, [4]uint32{wantR, wantG, wantB, wantA}
+			if got != want {
+				t.Fatalf("activity label used %v, want its readable text colour %v", got, want)
+			}
+		})
+	}
+}
+
+func TestSelectedActivityRowKeepsSelectionContrast(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	m.openDialog(dialogWorkspace)
+	for i, theme := range m.themes {
+		t.Run(theme.ID, func(t *testing.T) {
+			m.applyTheme(i)
+			for row, item := range m.workspaceRows() {
+				if item.color == 0 {
+					continue
+				}
+				m.ui.selected = row
+				_, body, _ := m.workspaceDialogContent(50, 12)
+				found := false
+				for _, line := range strings.Split(body, "\n") {
+					plain := ansi.Strip(line)
+					if strings.HasPrefix(plain, "> ") {
+						found = true
+						if line != m.styles.selected.Render(plain) {
+							t.Fatal(
+								"selected activity replaced the selection foreground",
+								item.label,
+							)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("selected activity row was absent", item.label)
+				}
 			}
 		})
 	}

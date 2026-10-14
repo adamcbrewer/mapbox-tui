@@ -144,9 +144,9 @@ func (m *viewer) overlayFilesPanel() {
 	content := "\n" + m.styles.dialogHeading.Render(pad(title, inner)) + "\n" +
 		lipgloss.NewStyle().Height(max(1, height-5)).MaxHeight(max(1, height-5)).Render(body) + "\n" +
 		m.styles.dialogMuted.Render(pad(m.dialogHints("enter inspect / space hide / esc close"), inner))
-	box := lipgloss.NewStyle().Background(lipgloss.Color(m.theme().Surface)).
+	box := m.theme().borderStyle().Background(lipgloss.Color(m.theme().Surface)).
 		Foreground(lipgloss.Color(m.theme().Text)).
-		Border(m.boxBorder()).BorderForeground(lipgloss.Color(m.theme().Border)).
+		Border(m.boxBorder()).
 		Padding(0, 1).Width(width).MaxHeight(height).Render(content)
 	box = m.panelTabs(box, dialogWorkspace)
 	m.content = lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(

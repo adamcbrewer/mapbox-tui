@@ -122,8 +122,8 @@ func (m *viewer) journeyPanel() string {
 			m.cursor = cursor
 		}
 	}
-	box := lipgloss.NewStyle().Background(surface).
-		Border(border).BorderForeground(lipgloss.Color(m.theme().Border)).
+	box := m.theme().borderStyle().Background(surface).
+		Border(border).
 		Padding(0, 1).Width(width).MaxHeight(height).
 		Render(strings.Join(rows, "\n"))
 	if m.ui.dialog == dialogJourney || m.ui.dialog == dialogJourneyLocation {

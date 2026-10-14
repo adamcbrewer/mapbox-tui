@@ -446,6 +446,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelAuth()
 			return m, tea.Quit
 		}
+		if key == "ctrl+k" && m.ui.dialog != dialogCommands {
+			return m, m.pushDialog(dialogCommands)
+		}
 		if key == "esc" && !m.planner.pickingStop && len(m.ui.parents) == 0 &&
 			(m.ui.dialog == dialogWorkspace || m.ui.dialog == dialogJourney) {
 			m.ui.detailsOpen = false
@@ -525,8 +528,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.pushDialog(dialogSearch)
 		case "ctrl+o", "o":
 			return m, m.openDialog(dialogFiles)
-		case "ctrl+k":
-			return m, m.openDialog(dialogCommands)
 		case "ctrl+l":
 			return m, m.openDialog(dialogWorkspace)
 		case "ctrl+j":
@@ -860,9 +861,10 @@ func (m *viewer) zoomWheel(p XY, direction int, mod tea.KeyMod, now time.Time) {
 }
 
 func (m *viewer) paint(s string, role mapRole, colors ...activityColor) string {
+	activeGeometry := role == roleActiveRoute || role == roleActiveMarker
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.theme().mapColor(role, colors...))).
-		Bold(role == roleCursor).
+		Bold(activeGeometry || role == roleCursor).
 		Render(s)
 }
 func pad(s string, w int) string {
@@ -1045,9 +1047,8 @@ func (m *viewer) rebuild() {
 	for y := 0; y < c.Height; y++ {
 		mapRows = append(mapRows, m.gridRow(g, y, m.settings.ASCII))
 	}
-	frame := lipgloss.NewStyle().
+	frame := t.borderStyle().
 		Border(border).
-		BorderForeground(lipgloss.Color(t.Border)).
 		Render(strings.Join(mapRows, "\n"))
 	rows = append(rows, frame)
 	profile := m.visibleProfile()
@@ -1061,7 +1062,7 @@ func (m *viewer) rebuild() {
 		for y := 0; y < chart.Height; y++ {
 			rows = append(rows, " "+m.gridRow(chart, y, m.settings.ASCII)+" ")
 		}
-		rows = append(rows, m.paint(pad(" "+axis, m.width), roleRoad))
+		rows = append(rows, s.text.Render(pad(" "+axis, m.width)))
 	}
 	status := "Left-drag pan · wheel zoom · click inspect · right-drag rotate"
 	playback := m.activePlayback()

@@ -1,7 +1,7 @@
 # Development
 
 Run commands from the repository root with Go meeting the minimum in
-[go.mod](../go.mod), Make and Python 3.
+[go.mod](../go.mod), Make and Python 3.11 or newer.
 
 ## Local workflow
 

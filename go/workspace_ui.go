@@ -149,9 +149,9 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 			prefix = "> "
 			style = s.selected
 		}
-		if rows[i].color != 0 {
+		if rows[i].color != 0 && i != m.ui.selected {
 			style = style.
-				Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, rows[i].color))).
+				Foreground(lipgloss.Color(m.theme().activityTextColor(rows[i].color))).
 				Faint(!rows[i].visible)
 		}
 		lines = append(lines, style.Render(pad(prefix+rows[i].label, width)))
@@ -202,7 +202,7 @@ func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
 				item.Track.Name,
 			)
 		}
-		style := s.text.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, item.Color))).Bold(item.Active)
+		style := s.text.Foreground(lipgloss.Color(m.theme().activityTextColor(item.Color))).Bold(item.Active)
 		label = pad(ansi.Truncate(label, columnWidth, "…"), columnWidth)
 		labels = append(labels, style.Render(label))
 	}

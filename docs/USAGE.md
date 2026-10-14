@@ -53,6 +53,8 @@ the panel header; Journey shows its travel mode in the menu without a repeated
 inner title. Click a header tab or use
 Tab to cycle forwards or Shift-Tab backwards; Ctrl-L and Ctrl-J remain direct shortcuts.
 Ctrl-L and Ctrl-J open or focus their view; pressing them again keeps it open.
+Ctrl-K opens the command palette from any panel, editor or dialog. Esc returns to
+the previous view, preserving its input, selection and sidebar visibility.
 Esc closes the whole sidebar from any top-level tab, without stepping through
 previous tabs. Within a nested editor or dialog, Esc goes back. Ctrl-B toggles sidebar visibility.
 

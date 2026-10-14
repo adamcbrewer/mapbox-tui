@@ -1,6 +1,8 @@
 package main
 
 import (
+	"image/color"
+
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/help"
 	tea "charm.land/bubbletea/v2"
@@ -8,20 +10,34 @@ import (
 )
 
 type presentationTheme struct {
-	ID            string            `toml:"id"`
-	Name          string            `toml:"name"`
-	Background    string            `toml:"background"`
-	Surface       string            `toml:"surface"`
-	Selected      string            `toml:"selected"`
-	Text          string            `toml:"text"`
-	Muted         string            `toml:"muted"`
-	Accent        string            `toml:"accent"`
-	Highlight     string            `toml:"highlight"`
-	Border        string            `toml:"border"`
-	Dimmed        string            `toml:"dimmed"`
-	ProgressEmpty string            `toml:"progress_empty"`
-	Map           map[string]string `toml:"map"`
-	Activities    []string          `toml:"activities"`
+	ID             string            `toml:"id"`
+	Name           string            `toml:"name"`
+	Background     string            `toml:"background"`
+	Surface        string            `toml:"surface"`
+	Selected       string            `toml:"selected"`
+	Text           string            `toml:"text"`
+	Muted          string            `toml:"muted"`
+	Accent         string            `toml:"accent"`
+	Highlight      string            `toml:"highlight"`
+	Border         string            `toml:"border"`
+	BorderGradient []string          `toml:"border_gradient"`
+	Dimmed         string            `toml:"dimmed"`
+	ProgressEmpty  string            `toml:"progress_empty"`
+	Map            map[string]string `toml:"map"`
+	Activities     []string          `toml:"activities"`
+	ActivityText   []string          `toml:"activity_text"`
+}
+
+func (t *presentationTheme) borderStyle() lipgloss.Style {
+	style := lipgloss.NewStyle().BorderForeground(lipgloss.Color(t.Border))
+	if len(t.BorderGradient) == 0 {
+		return style
+	}
+	colors := make([]color.Color, len(t.BorderGradient))
+	for i, stop := range t.BorderGradient {
+		colors[i] = lipgloss.Color(stop)
+	}
+	return style.BorderForegroundBlend(colors...)
 }
 
 type uiStyles struct {
@@ -52,6 +68,13 @@ func (t *presentationTheme) mapColor(role mapRole, colors ...activityColor) stri
 		return t.Activities[color-1]
 	}
 	return t.Map[mapRoleNames[role]]
+}
+
+func (t *presentationTheme) activityTextColor(slot activityColor) string {
+	if slot == 0 {
+		return t.Text
+	}
+	return t.ActivityText[slot-1]
 }
 
 func (m *viewer) theme() *presentationTheme {
