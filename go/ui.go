@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -316,6 +317,12 @@ func (m *viewer) closeDialog() {
 	if m.ui.dialog == dialogWorkspace {
 		m.ui.filesSelected = m.ui.selected
 	}
+	setupOpen := m.ui.dialog == dialogMapbox || slices.ContainsFunc(m.ui.parents, func(frame dialogFrame) bool {
+		return frame.kind == dialogMapbox
+	})
+	if setupOpen {
+		m.cancelAuth()
+	}
 	m.restoreThemePreview()
 	m.cancelPlaceSearch()
 	m.planner.showRevision = nil
@@ -448,12 +455,12 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 }
 
 func (m *viewer) backDialog() tea.Cmd {
-	if m.ui.dialog == dialogMapbox {
-		m.cancelAuth()
-	}
 	if len(m.ui.parents) == 0 {
 		m.closeDialog()
 		return nil
+	}
+	if m.ui.dialog == dialogMapbox {
+		m.cancelAuth()
 	}
 	last := len(m.ui.parents) - 1
 	frame := m.ui.parents[last]

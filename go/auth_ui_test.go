@@ -159,6 +159,136 @@ func TestViewerLoginResultPreservesNestedSetupContext(t *testing.T) {
 	}
 }
 
+func pendingViewerAuthResult(t *testing.T, m *viewer, afterLogin bool) (context.Context, credentialResult) {
+	t.Helper()
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "pk.synthetic-pending-auth")
+	var pending context.Context
+	command := m.discoverCredentialsWith(afterLogin, true, func(ctx context.Context, _ *Provider) authSection {
+		pending = ctx
+		return authSection{State: "ready"}
+	})
+	result := command().(credentialResult)
+	if pending == nil {
+		t.Fatal("credential discovery did not start its connection check")
+	}
+	return pending, result
+}
+
+func TestViewerClosingDialogStackCancelsSuspendedMapboxSetup(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		close func(*viewer)
+	}{
+		{name: "foreground setup", close: func(m *viewer) { m.closeDialog() }},
+		{name: "command palette", close: func(m *viewer) {
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.runCommand("ascii")
+		}},
+		{name: "nested command palette", close: func(m *viewer) {
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.runCommand("help")
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.runCommand("ascii")
+		}},
+		{name: "theme confirmation", close: func(m *viewer) {
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.runCommand("theme")
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := authTestViewer(t)
+			m.openDialog(dialogMapbox)
+			pending, login := pendingViewerAuthResult(t, m, true)
+			id := m.authID
+			test.close(m)
+			check := login
+			check.afterLogin = false
+			for _, late := range []struct {
+				name string
+				msg  tea.Msg
+			}{
+				{name: "login credentials", msg: login},
+				{name: "connection check", msg: check},
+				{name: "dependency check", msg: mapboxDependencyResult{
+					id: id, status: mapboxDependencyStatus{State: "ready"},
+				}},
+				{name: "prepared login", msg: mapboxLoginReady{
+					id: id, ctx: pending, cli: &mapboxCLI{path: "unused-mapbox-cli"},
+				}},
+				{name: "completed login", msg: mapboxLoginDone{id: id}},
+			} {
+				_, command := m.Update(late.msg)
+				changed := m.ui.dialog != dialogNone || m.authBusy || m.provider.token != "" ||
+					m.authCLI.State != "" || m.authMessage != "" || command != nil
+				if changed {
+					t.Fatal("dismissed setup accepted a late result", late.name)
+				}
+			}
+			if pending.Err() != context.Canceled || m.authCancel != nil || m.authID <= id {
+				t.Fatal("closing the dialog stack did not cancel and invalidate setup work")
+			}
+		})
+	}
+}
+
+func TestViewerReturningToMapboxSetupPreservesPendingWork(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		nested bool
+	}{
+		{name: "command palette"},
+		{name: "nested command palette", nested: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := authTestViewer(t)
+			m.openDialog(dialogMapbox)
+			pending, result := pendingViewerAuthResult(t, m, true)
+			id := m.authID
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			if test.nested {
+				m.runCommand("help")
+				m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			}
+			for range len(m.ui.parents) {
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				if pending.Err() != nil || !m.authBusy || m.authID != id {
+					t.Fatal("returning through the dialog stack cancelled setup work")
+				}
+			}
+			m.Update(result)
+			if m.ui.dialog != dialogMapbox || m.provider.token != result.credential.token || m.authBusy {
+				t.Fatal("resumed setup did not accept its pending credential result")
+			}
+		})
+	}
+}
+
+func TestViewerClosingUnrelatedDialogsPreservesStartupDiscovery(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		kind dialogKind
+	}{
+		{name: "command palette", kind: dialogCommands},
+		{name: "keyboard shortcuts", kind: dialogHelp},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := authTestViewer(t)
+			pending, result := pendingViewerAuthResult(t, m, false)
+			id := m.authID
+			m.openDialog(test.kind)
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if pending.Err() != nil || !m.authBusy || m.authID != id {
+				t.Fatal("closing an unrelated dialog cancelled startup discovery")
+			}
+			m.Update(result)
+			if m.ui.dialog != dialogNone || m.provider.token != result.credential.token || m.authBusy {
+				t.Fatal("startup credential discovery was not accepted after dialog dismissal")
+			}
+		})
+	}
+}
+
 func TestViewerFirstRunPromptAndOfflineSetupSuppression(t *testing.T) {
 	for _, test := range []struct {
 		name, path             string
