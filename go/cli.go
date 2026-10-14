@@ -19,6 +19,12 @@ type cliCommand struct {
 }
 
 func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
+	if len(argv) > 0 && argv[0] == "--version" {
+		if len(argv) != 1 {
+			return cliCommand{}, fmt.Errorf("--version takes no other arguments")
+		}
+		return cliCommand{Name: "version"}, nil
+	}
 	if len(argv) > 0 && argv[0] == "auth" {
 		return parseAuthCLI(argv[1:], output)
 	}
@@ -231,7 +237,8 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	switch name {
 	case "open":
 		fmt.Fprintln(output, "Usage: mapbox-tui [FILE...] [OPTIONS]\n"+
-			"       mapbox-tui COMMAND [FILE] [OPTIONS]\n\n"+
+			"       mapbox-tui COMMAND [FILE] [OPTIONS]\n"+
+			"       mapbox-tui --version\n\n"+
 			"Browse maps and load GPX, FIT, TCX or KML files into a workspace.\n"+
 			"Ctrl-L lists loaded files and their routes. Opening a file adds it; reopening\n"+
 			"a loaded path selects the existing import. 'open' is an optional alias.\n"+

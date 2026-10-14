@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Prepare Linux release
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ github.ref_name }}
+      MAPBOX_ACCESS_TOKEN: ""
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release tag and ancestry
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+          if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", os.environ["VERSION"]):
+              sys.exit("Release tags must use vMAJOR.MINOR.PATCH, for example v0.1.0")
+          PY
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - name: Package Linux x86-64 binary
+        run: make package
+      - name: Verify packaged binary
+        run: |
+          cd dist
+          sha256sum --check "mapbox-tui-${VERSION}-linux-amd64.tar.gz.sha256"
+          mkdir smoke
+          tar -xzf "mapbox-tui-${VERSION}-linux-amd64.tar.gz" -C smoke
+          test "$(smoke/mapbox-tui --version)" = "mapbox-tui ${VERSION} ($(git rev-parse --short=12 HEAD))"
+          smoke/mapbox-tui --help
+          smoke/mapbox-tui summary ../fixtures/example.gpx
+          smoke/mapbox-tui render ../fixtures/example.gpx --no-provider --ascii --width 60 --height 20
+          cp smoke/mapbox-tui ../bin/mapbox-tui
+          cd ..
+          python3 scripts/validate.py
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            "dist/mapbox-tui-${VERSION}-linux-amd64.tar.gz" \
+            "dist/mapbox-tui-${VERSION}-linux-amd64.tar.gz.sha256" \
+            --verify-tag --draft --generate-notes --title "$VERSION"

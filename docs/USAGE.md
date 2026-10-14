@@ -8,6 +8,7 @@ explore the map, or open several files together:
 ```
 
 Use `--help` for command options and `?` in the viewer for shortcuts.
+Use `--version` to print the build version and commit without starting the viewer.
 
 From the repository root, try `./bin/mapbox-tui fixtures/example.gpx` for a small
 synthetic activity with a planned route and waypoints, or

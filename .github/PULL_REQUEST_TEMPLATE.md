@@ -1,5 +1,8 @@
 ## What and why
 
+<!-- Title: type(scope): Description, e.g. feat(journeys): Adds route planning.
+     Scope is optional. Use ! before the colon for a breaking change. -->
+
 Related issue:
 
 ## Verification

@@ -4,6 +4,9 @@ These notes are for people connecting an MCP client and agents using the tools.
 See the [README](../README.md#use-it-with-your-agent) for connection setup and
 prompts. The server advertises tool names, arguments and constraints through MCP;
 [shared/tools.json](../shared/tools.json) is the repository reference.
+The server's initialisation response reports the same build version as
+`mapbox-tui --version`: the release tag for published binaries, or `dev` for
+ordinary source builds.
 
 ## Files and measurements
 

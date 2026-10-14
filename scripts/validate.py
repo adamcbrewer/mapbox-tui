@@ -72,6 +72,9 @@ def validate_mcp(binary):
     try:
         init = m.send("initialize", {"protocolVersion": "2025-11-25", "clientInfo": {"name": "prototype-validation", "version": "1"}, "capabilities": {}})
         assert "tools" in init["result"]["capabilities"]
+        version = subprocess.check_output([str(binary), "--version"], env=ENV, text=True, timeout=20)
+        assert version.startswith("mapbox-tui ") and "\x1b" not in version, version
+        assert init["result"]["serverInfo"]["version"] == version.split()[1], (init, version)
         m.send("notifications/initialized", {}, notify=True)
         tools = m.send("tools/list", {})["result"]["tools"]
         expected = json.loads((ROOT / "shared/tools.json").read_text())

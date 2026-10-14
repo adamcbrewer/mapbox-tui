@@ -17,6 +17,8 @@ Unix-like terminal; viewer state resets on restart.
 `make check` runs formatting, build, tests, vet, CLI/MCP parity and race checks
 offline. Run `make interactions` after viewer changes; it needs tmux,
 `rsvg-convert` and DejaVu fonts. Captures go in ignored `reports/`.
+Colour assertions require `NO_COLOR` to be unset. If your environment sets it,
+run `env -u NO_COLOR python3 scripts/interactions.py` after building.
 
 The [Makefile](../Makefile) defines individual checks, watcher arguments,
 benchmarks, installation and packaging options. The [CI workflow](../.github/workflows/ci.yml)
@@ -61,6 +63,10 @@ If you already have hooks, add the bundled commands to them. Restore the previou
 `core.hooksPath` value or unset it to disable this setup.
 
 Before merging, pass all three CI checks and resolve review conversations.
+
+Follow the [PR-title convention](../CONTRIBUTING.md#pull-request-titles) and pass
+the `PR title` check too. For versioning, packaging and publishing, use the
+[release reference](RELEASING.md).
 
 ## Live Mapbox checks
 

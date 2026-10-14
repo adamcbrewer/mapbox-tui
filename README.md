@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/github/license/adamcbrewer/mapbox-tui)](LICENSE)
 [![Builds: Linux, macOS and Windows](https://img.shields.io/badge/builds-Linux%20%7C%20macOS%20%7C%20Windows-blue)](#platforms)
 
+![Mapbox TUI showing the Country ride on a map, with an elevation profile and the journey planning panel](docs/images/mapbox-tui.png)
+
 A terminal map viewer and journey planner for GPX, FIT, TCX and KML files,
 with optional Mapbox maps and a local MCP server. Built with Go and Bubble Tea.
 
@@ -12,6 +14,10 @@ Open an activity, compare routes, replay a recording or let your agent inspect
 it. Imported files work offline.
 
 ## Getting started
+
+For prebuilt Linux x86-64 binaries, see [GitHub Releases](https://github.com/adamcbrewer/mapbox-tui/releases)
+and the [installation instructions](docs/INSTALL.md). Until the first release is
+published, build from source below.
 
 You'll need Go 1.27.1 or newer (see [go.mod](go.mod)). The Linux/macOS example
 below uses Make; see [Platforms](#platforms) for a Windows build.
@@ -46,6 +52,10 @@ For basemaps, place search and road routing, [connect Mapbox](#mapbox).
 The Go binary cross-compiles for Linux, macOS and Windows on x86-64 and ARM64.
 CI runs the tests and terminal interaction checks on Linux. Native macOS and
 Windows runtime behaviour has not yet been verified.
+
+Help wanted: [Windows runtime and CI](https://github.com/adamcbrewer/mapbox-tui/issues/59),
+[PowerShell journey commands](https://github.com/adamcbrewer/mapbox-tui/issues/60),
+and [macOS verification](https://github.com/adamcbrewer/mapbox-tui/issues/61).
 
 The viewer needs an interactive terminal with ANSI/VT support. The optional
 [Mapbox CLI](https://github.com/mapbox/mapbox-cli#download-the-archive-yourself)
@@ -132,6 +142,36 @@ for scene metadata too. CLI and MCP maps are ANSI-free.
 Use `./bin/mapbox-tui --help` or a subcommand's `--help` for options.
 [Usage notes](docs/USAGE.md) cover controls, imports and playback.
 
+## Themes
+
+Choose **Colour theme** from the Ctrl-K command palette to preview a palette,
+or start with `--theme synthwave`. Click a screenshot to see it at full size.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>Catppuccin</strong><br>
+      <a href="docs/images/theme-catppuccin.png"><img src="docs/images/theme-catppuccin.png" alt="Country ride map in the dark Catppuccin theme" width="100%"></a>
+    </td>
+    <td width="50%" align="center">
+      <strong>Synthwave</strong><br>
+      <a href="docs/images/theme-synthwave.png"><img src="docs/images/theme-synthwave.png" alt="Country ride map in the purple and cyan Synthwave theme" width="100%"></a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <strong>Paper</strong><br>
+      <a href="docs/images/theme-paper.png"><img src="docs/images/theme-paper.png" alt="Country ride map in the light Paper theme" width="100%"></a>
+    </td>
+    <td width="50%" align="center">
+      <strong>Noir</strong><br>
+      <a href="docs/images/theme-noir.png"><img src="docs/images/theme-noir.png" alt="Country ride map in the black and green Noir theme" width="100%"></a>
+    </td>
+  </tr>
+</table>
+
+See [Terminal themes](docs/THEMES.md) for all six built-in palettes and custom themes.
+
 ## Mapbox
 
 You'll need a Mapbox account for online maps, place search and road routing.
@@ -180,6 +220,7 @@ local workflow and terminal prerequisites.
 - [MCP](docs/MCP.md)
 - [Mapbox](docs/MAPBOX.md)
 - [Development](docs/DEVELOPMENT.md)
+- [Release reference for maintainers](docs/RELEASING.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Themes](docs/THEMES.md)
 - [Go style](docs/GO_STYLE.md)

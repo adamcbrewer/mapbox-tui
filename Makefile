@@ -1,9 +1,12 @@
 .PHONY: build install package distribution-check mapbox-check dev pre-commit format-check check test race interactions fixtures bench
 ARGS ?= fixtures/example.gpx
 PREFIX ?= $(HOME)/.local
+VERSION ?= dev
+COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || printf unknown)
+ARCHIVE = mapbox-tui-$(VERSION)-linux-amd64.tar.gz
 build:
 	mkdir -p bin
-	cd go && go build -trimpath -o ../bin/mapbox-tui .
+	cd go && go build -trimpath -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)" -o ../bin/mapbox-tui .
 mapbox-check:
 	python3 scripts/check_mapbox_contract.py
 distribution-check:
@@ -12,9 +15,11 @@ install: distribution-check build
 	install -d "$(DESTDIR)$(PREFIX)/bin" "$(DESTDIR)$(PREFIX)/share/licenses/mapbox-tui"
 	install -m 755 bin/mapbox-tui "$(DESTDIR)$(PREFIX)/bin/mapbox-tui"
 	install -m 644 LICENSE THIRD_PARTY_NOTICES.txt "$(DESTDIR)$(PREFIX)/share/licenses/mapbox-tui/"
+package: export CGO_ENABLED = 0
 package: distribution-check build
 	mkdir -p dist
-	tar -czf "dist/mapbox-tui-$$(go env GOOS)-$$(go env GOARCH).tar.gz" LICENSE THIRD_PARTY_NOTICES.txt -C bin mapbox-tui
+	tar -czf "dist/$(ARCHIVE)" LICENSE THIRD_PARTY_NOTICES.txt -C docs INSTALL.md -C ../bin mapbox-tui
+	cd dist && sha256sum "$(ARCHIVE)" > "$(ARCHIVE).sha256"
 dev:
 	python3 scripts/dev.py $(ARGS)
 pre-commit:

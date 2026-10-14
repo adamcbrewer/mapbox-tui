@@ -18,6 +18,10 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	if command.Name == "version" {
+		fmt.Printf("mapbox-tui %s (%s)\n", version, commit)
+		return nil
+	}
 	if command.Name == "mcp" {
 		return serveMCP()
 	}
