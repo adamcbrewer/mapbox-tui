@@ -1,5 +1,10 @@
 # Mapbox TUI
 
+[![CI](https://github.com/adamcbrewer/mapbox-tui/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/adamcbrewer/mapbox-tui/actions/workflows/ci.yml)
+[![Go version](https://img.shields.io/github/go-mod/go-version/adamcbrewer/mapbox-tui?logo=go)](go.mod)
+[![License: MIT](https://img.shields.io/github/license/adamcbrewer/mapbox-tui)](LICENSE)
+[![Builds: Linux, macOS and Windows](https://img.shields.io/badge/builds-Linux%20%7C%20macOS%20%7C%20Windows-blue)](#platforms)
+
 A terminal map viewer and journey planner for GPX, FIT, TCX and KML files,
 with optional Mapbox maps and a local MCP server. Built with Go and Bubble Tea.
 
@@ -8,7 +13,8 @@ it. Imported files work offline.
 
 ## Getting started
 
-You'll need Go 1.27.1 or newer (see [go.mod](go.mod)) and Make.
+You'll need Go 1.27.1 or newer (see [go.mod](go.mod)). The Linux/macOS example
+below uses Make; see [Platforms](#platforms) for a Windows build.
 
 ```sh
 git clone https://github.com/adamcbrewer/mapbox-tui.git
@@ -34,6 +40,31 @@ account for the basemap; add `--no-provider` to stay offline.
 
 On Linux x86-64, `make install` puts the binary in `~/.local/bin`.
 For basemaps, place search and road routing, [connect Mapbox](#mapbox).
+
+## Platforms
+
+The Go binary cross-compiles for Linux, macOS and Windows on x86-64 and ARM64.
+CI runs the tests and terminal interaction checks on Linux. Native macOS and
+Windows runtime behaviour has not yet been verified.
+
+The viewer needs an interactive terminal with ANSI/VT support. The optional
+[Mapbox CLI](https://github.com/mapbox/mapbox-cli#download-the-archive-yourself)
+publishes binaries for all three platforms. Imported files work without it.
+
+On Windows, build and run directly with Go from the repository root in PowerShell:
+
+```powershell
+go build -trimpath -o bin/mapbox-tui.exe ./go
+.\bin\mapbox-tui.exe fixtures/example.gpx --no-provider
+```
+
+`make install` and `make package` currently require Linux x86-64. On macOS and
+Windows, build from source and put the binary on your `PATH` yourself.
+
+The development watcher, terminal interaction checks and shell-based auth test
+helpers need a Unix-like environment. The viewer's **Copy journey to clipboard**
+command uses POSIX shell quoting; adapt copied commands for PowerShell or Command
+Prompt.
 
 ## Use it with your agent
 
@@ -111,7 +142,7 @@ You can sign up and sign in through the [Mapbox Console](https://console.mapbox.
 or during a [Mapbox MCP server connection](https://docs.mapbox.com/accounts/guides/signup/#sign-up-with-mapbox-mcp-server-connection).
 Local files and manual journey planning work without an account.
 
-Install the optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install-a-released-binary),
+Install the optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install),
 then sign in once:
 
 ```sh
