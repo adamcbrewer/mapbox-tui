@@ -365,6 +365,8 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 	if err == nil && revision != j.revision {
 		if !j.hasCompleteLocations() && m.workspace.selection != nil && m.workspace.selection.ref == m.planner.ref {
 			m.workspace.clearSelection()
+		} else if j.hasCompleteLocations() && m.workspace.selection == nil {
+			_ = m.workspace.selectItem(m.planner.ref)
 		}
 		m.dirty = true
 		m.fitPlannerJourney(m.planner.ref)

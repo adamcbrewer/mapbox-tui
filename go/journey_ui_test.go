@@ -799,3 +799,34 @@ func TestNestedJourneyHeaderCapturesMouse(t *testing.T) {
 		}
 	}
 }
+
+func TestUndoRestoresCompleteJourneySelection(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		m := journeyViewer(t)
+		m.openJourney()
+		enterJourneyCoordinate(m, 0, "51.3,-2.5")
+		enterJourneyCoordinate(m, 1, "51.4,-2.6")
+		m.planner.row = 0
+		m.Update(tea.KeyPressMsg{Code: tea.KeyDelete})
+		if m.workspace.selection != nil {
+			t.Fatal("incomplete journey remained selected")
+		}
+		expected := m.planner.ref
+		if imported {
+			var err error
+			expected, err = m.workspace.open("../fixtures/country-ride.gpx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.activePlayback().Playing = true
+		}
+		m.Update(tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl})
+		j, _ := m.workspace.journey(m.planner.ref)
+		if !j.hasCompleteLocations() || m.workspace.selection == nil || m.workspace.selection.ref != expected {
+			t.Fatal("undo did not restore the journey or preserve the expected selection")
+		}
+		if imported && !m.activePlayback().Playing {
+			t.Fatal("undo interrupted imported playback")
+		}
+	}
+}
