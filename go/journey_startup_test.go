@@ -4,6 +4,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestNativeJourneyArguments(t *testing.T) {
@@ -86,4 +88,46 @@ func TestNativeJourneyWaitsForCredentials(t *testing.T) {
 		t.Fatal("credential refresh duplicated the route request")
 	}
 	m.workspace.cancelJourneyRoutes()
+}
+
+func TestMixedFileArgumentsPreserveOrder(t *testing.T) {
+	for _, args := range [][]string{
+		{"--file", "first.gpx", "second.gpx", "--file=third.gpx"},
+		{"first.gpx", "--file=second.gpx", "third.gpx"},
+		{"--file=first.gpx", "--", "second.gpx", "third.gpx"},
+	} {
+		command, err := parseCLI(args, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(command.Paths, ",") != "first.gpx,second.gpx,third.gpx" {
+			t.Fatalf("file order changed: %v", command.Paths)
+		}
+	}
+}
+
+func TestStartupJourneyWaitsForTerminalSize(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		m := journeyViewer(t)
+		m.windowSizeKnown = false
+		m.args.Journey, _ = parseStartupJourney("51.3,-2.5", "51.4,-2.6", nil, "manual")
+		if imported {
+			runLoadCommand(m, m.load("../fixtures/country-ride.gpx"))
+		} else {
+			m.Init()
+		}
+		if m.args.Journey == nil || m.journeyPanelOpen() {
+			t.Fatal("journey started before terminal size arrived")
+		}
+		m.Update(tea.WindowSizeMsg{Width: 70, Height: 18})
+		j, err := m.workspace.journey(m.planner.ref)
+		if err != nil || !j.hasCompleteLocations() {
+			t.Fatal("size message did not start journey", err)
+		}
+		before := m.camera
+		m.fitPlannerJourney(m.planner.ref)
+		if m.camera != before {
+			t.Fatal("startup camera was not fitted to the actual terminal size")
+		}
+	}
 }

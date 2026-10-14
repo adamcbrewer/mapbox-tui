@@ -37,7 +37,7 @@ func parseStartupJourney(start, end string, waypoints []string, mode string) (*s
 
 func (m *viewer) startJourneyFromArgs() tea.Cmd {
 	initial := m.args.Journey
-	if initial == nil {
+	if initial == nil || !m.windowSizeKnown {
 		return nil
 	}
 	m.args.Journey = nil

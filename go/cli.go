@@ -38,7 +38,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	var noProvider bool
 	var journeyStart, journeyEnd string
 	journeyModeName := "driving"
-	var journeyWaypoints, fileOptions []string
+	var journeyWaypoints []string
 	var journeyRequested bool
 	mapMode := command.Name == "open" || command.Name == "render" || command.Name == "bench"
 	if mapMode {
@@ -71,7 +71,6 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			if value == "" {
 				return fmt.Errorf("file path must not be empty")
 			}
-			fileOptions = append(fileOptions, value)
 			return nil
 		})
 		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
@@ -128,7 +127,6 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		}
 		return command, nil
 	}
-	paths = append(paths, fileOptions...)
 	multipleFiles := len(paths) > 1
 	workspaceCommand := command.Name == "open" || command.Name == "render"
 	if multipleFiles && !workspaceCommand {
@@ -209,7 +207,7 @@ func parseOptions(fs *flag.FlagSet, argv []string) ([]string, error) {
 			paths = append(paths, arg)
 			continue
 		}
-		name, _, inline := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-"), "=")
+		name, value, inline := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-"), "=")
 		option := fs.Lookup(name)
 		options = append(options, arg)
 		if option == nil {
@@ -219,6 +217,10 @@ func parseOptions(fs *flag.FlagSet, argv []string) ([]string, error) {
 		if !inline && (!isBool || !boolean.IsBoolFlag()) && i+1 < len(argv) {
 			i++
 			options = append(options, argv[i])
+			value = argv[i]
+		}
+		if name == "file" {
+			paths = append(paths, value)
 		}
 	}
 	return paths, fs.Parse(options)

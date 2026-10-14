@@ -34,6 +34,7 @@ type viewer struct {
 	pendingPaths              []string
 	startupCameraPending      bool
 	startupJourneyRouting     bool
+	windowSizeKnown           bool
 	initialised               bool
 	provider                  *Provider
 	sources                   sourceLoader
@@ -330,12 +331,16 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
+		m.windowSizeKnown = true
 		m.layout()
 		if m.ui.dialog == dialogFiles {
 			m.ui.picker.SetHeight(max(1, min(17, m.height-10)-2))
 			m.ui.picker, _ = m.ui.picker.Update(msg)
 		}
 		m.dirty = true
+		if m.initialised && !m.loading && len(m.pendingPaths) == 0 {
+			return m, m.startJourneyFromArgs()
+		}
 	case loaded:
 		if v.id != m.loadID {
 			return m, nil
@@ -695,7 +700,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		panelX := x >= m.journeyPanelX() && x < m.width-1
 		overDetails := drawerVisible && panelX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
-		overPlanner := m.journeyPanelVisible() && panelX && y >= m.journeyPanelY() && y < m.camera.Height+1
+		overPlanner := m.journeyPanelVisible() && panelX && y >= originY && y < m.camera.Height+1
 		if overPlanner && !mapGesture {
 			return m, m.updateDialog(msg)
 		}
@@ -742,13 +747,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseReleaseMsg:
 			if m.dragging && !m.moved && inside {
-				m.pausePlayback()
 				p := XY{float64((x-1)*2 + 1), float64((y-originY)*4 + 2)}
 				world := unproject(m.camera.world(p))
 				m.dragging, m.rotating = false, false
 				if cmd, picked := m.pickJourneyLocation(world); picked {
 					return m, cmd
 				}
+				m.pausePlayback()
 				m.inspected = &world
 				if ref, i := m.workspace.pick(m.camera, p); ref != (ItemRef{}) && !m.journeyPanelOpen() {
 					_ = m.workspace.selectItem(ref)

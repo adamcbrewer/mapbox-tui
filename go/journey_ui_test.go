@@ -31,7 +31,7 @@ func journeyViewer(t *testing.T) *viewer {
 	if err := m.initUI(); err != nil {
 		t.Fatal(err)
 	}
-	m.layout()
+	m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m
 }
 
@@ -754,6 +754,46 @@ func TestJourneyDialogsFitWideNarrowAndASCIITerminals(t *testing.T) {
 				}
 				if ascii && strings.ContainsFunc(m.content, func(r rune) bool { return r >= 0x2800 && r <= 0x28ff }) {
 					t.Fatal("ASCII planner rendered Braille")
+				}
+			}
+		}
+	}
+}
+
+func TestJourneyMapPickPreservesImportedPlayback(t *testing.T) {
+	m := journeyViewer(t)
+	ref, err := m.workspace.open("../fixtures/country-ride.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.openJourney()
+	m.editJourneyLocation(0)
+	playback := m.activePlayback()
+	playback.Playing = true
+	m.lastTick = time.Now()
+	m.Update(tea.MouseClickMsg{X: 3, Y: 4, Button: tea.MouseLeft})
+	m.Update(tea.MouseReleaseMsg{X: 3, Y: 4, Button: tea.MouseLeft})
+	j, _ := m.workspace.journey(m.planner.ref)
+	if j.Stops[0].Location == nil || !playback.Playing || m.workspace.selection.ref != ref {
+		t.Fatal("journey map pick failed or interrupted the imported activity")
+	}
+}
+
+func TestNestedJourneyHeaderCapturesMouse(t *testing.T) {
+	for _, dialog := range []dialogKind{dialogJourneyRouting, dialogJourneyRoutingHelp} {
+		for _, button := range []tea.MouseButton{tea.MouseLeft, tea.MouseRight} {
+			m := journeyViewer(t)
+			m.openJourney()
+			m.pushDialog(dialog)
+			for y := m.mapOriginY(); y < m.journeyPanelY(); y++ {
+				x := m.width - 3
+				m.Update(tea.MouseClickMsg{X: x, Y: y, Button: button})
+				if m.dragging || m.rotating {
+					t.Fatal("header click started a map gesture")
+				}
+				m.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: button})
+				if m.inspected != nil {
+					t.Fatal("header click inspected the covered map")
 				}
 			}
 		}
