@@ -53,10 +53,6 @@ The Go binary cross-compiles for Linux, macOS and Windows on x86-64 and ARM64.
 CI runs the tests and terminal interaction checks on Linux. Native macOS and
 Windows runtime behaviour has not yet been verified.
 
-Help wanted: [Windows runtime and CI](https://github.com/adamcbrewer/mapbox-tui/issues/59),
-[PowerShell journey commands](https://github.com/adamcbrewer/mapbox-tui/issues/60),
-and [macOS verification](https://github.com/adamcbrewer/mapbox-tui/issues/61).
-
 The viewer needs an interactive terminal with ANSI/VT support. The optional
 [Mapbox CLI](https://github.com/mapbox/mapbox-cli#download-the-archive-yourself)
 publishes binaries for all three platforms. Imported files work without it.

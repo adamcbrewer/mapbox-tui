@@ -24,13 +24,15 @@ in third-person present tense. Start it with a capital letter:
 
 ```text
 feat(journeys): Adds route planning
+feature(journeys): Adds route planning
 fix(imports): Preserves gaps between recorded segments
 docs(releases): Explains how to publish a Linux release
 ci: Checks pull request titles
 ```
 
-Use `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` or
-`revert`. The scope is optional; when useful, choose a short lowercase area such
+Use `feat`, `feature`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`,
+`chore` or `revert`. We accept `feature` as an alias for `feat`. The scope is
+optional; when useful, choose a short lowercase area such
 as `journeys`, `imports`, `viewer`, `mcp` or `releases`. Digits and hyphens are
 allowed in scopes. Add `!` before the colon for a breaking change, for example
 `feat(mcp)!: Changes workspace selection arguments`, and explain the migration

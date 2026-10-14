@@ -1,39 +1,32 @@
 # Install a Linux release
 
-Release binaries support Linux x86-64 (`uname -m` reports `x86_64`). You don't
-need Go, Make, Python or a Mapbox account to use the binary with local files.
+Release binaries support Linux x86-64. You don't need Go or any build tools.
+
+1. Download the Linux `.tar.gz` archive from [GitHub Releases](https://github.com/adamcbrewer/mapbox-tui/releases).
+2. Extract it using your archive manager, or `tar -xzf mapbox-tui-v0.1.0-linux-amd64.tar.gz`
+   (replace the example version with the one you downloaded).
+3. Put the extracted `mapbox-tui` binary in a directory on your `PATH`.
+   For example, from the extracted folder:
+
+   ```sh
+   mkdir -p ~/.local/bin
+   install -m755 mapbox-tui ~/.local/bin/mapbox-tui
+   ```
+
+If `~/.local/bin` isn't already on your `PATH`, add it in your shell configuration.
+You can also run the extracted binary directly with `./mapbox-tui`.
+Keep the bundled `LICENSE` and `THIRD_PARTY_NOTICES.txt` with your downloaded copy.
+
+Run `mapbox-tui --version` to check the installation, then
+`mapbox-tui /path/to/ride.gpx --no-provider` to open a local activity.
 The viewer needs an interactive terminal with ANSI/VT support.
+See the [README](https://github.com/adamcbrewer/mapbox-tui#mapbox) for optional Mapbox setup.
 
-Download the `.tar.gz` archive and matching `.tar.gz.sha256` file for your chosen
-version from [GitHub Releases](https://github.com/adamcbrewer/mapbox-tui/releases).
-In the directory containing both files, replace the example version as needed:
+To upgrade, quit the app and replace the installed binary with the new version.
+To uninstall, delete that binary. Your imported files and saved settings remain.
 
-```sh
-VERSION=v0.1.0
-sha256sum --check "mapbox-tui-${VERSION}-linux-amd64.tar.gz.sha256"
-mkdir "mapbox-tui-${VERSION}"
-tar -xzf "mapbox-tui-${VERSION}-linux-amd64.tar.gz" -C "mapbox-tui-${VERSION}"
-cd "mapbox-tui-${VERSION}"
-install -Dm755 mapbox-tui "$HOME/.local/bin/mapbox-tui"
-install -Dm644 LICENSE "$HOME/.local/share/licenses/mapbox-tui/LICENSE"
-install -Dm644 THIRD_PARTY_NOTICES.txt "$HOME/.local/share/licenses/mapbox-tui/THIRD_PARTY_NOTICES.txt"
-"$HOME/.local/bin/mapbox-tui" --version
-```
+## Verify the download
 
-Stop if checksum verification fails. Add `~/.local/bin` to your shell's `PATH`
-if it isn't already there. Then open a local activity:
-
-```sh
-mapbox-tui /path/to/ride.gpx --no-provider
-```
-
-The [README](https://github.com/adamcbrewer/mapbox-tui#mapbox) explains optional
-Mapbox setup. The Mapbox CLI is installed separately.
-
-To upgrade, quit the app and repeat these steps for the new version. To return
-to an earlier version, check its compatibility with your saved configuration
-and repeat the steps with that version's archive. There is no automatic updater.
-
-To uninstall, remove `~/.local/bin/mapbox-tui` and
-`~/.local/share/licenses/mapbox-tui/`. Your imported files and saved settings are
-not removed by these commands.
+To check the archive before extracting it, download its matching `.sha256` file
+into the same directory and run `sha256sum --check mapbox-tui-v0.1.0-linux-amd64.tar.gz.sha256`,
+using your downloaded version. Continue only if it reports `OK`.

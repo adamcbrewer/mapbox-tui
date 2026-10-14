@@ -7,6 +7,16 @@ checks and prepares a draft with an archive, checksum and generated notes.
 The process uses the existing Makefile and GitHub CLI. There is no release service,
 automatic version bump or package-manager publishing to maintain.
 
+This follows GitHub's [tag-and-release model](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases):
+tag a source revision, build it, and attach binaries to the release. Open-source
+projects vary in how they automate those steps; this project's choices are manual
+version selection, automated checks/builds and a draft reviewed before publishing.
+
+Commit and push the source code, documentation and workflows. Built binaries and
+archives are not committed: `bin/` and `dist/` are ignored by Git. Pushing a version
+tag makes Actions build that source and upload the archive and checksum as GitHub
+Release attachments. Publishing the draft makes those downloads available to users.
+
 ## Choose a version
 
 Start with `v0.1.0`. Use `vMAJOR.MINOR.PATCH` tags, with no version file to edit.
