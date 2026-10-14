@@ -70,6 +70,13 @@ type dialogFrame struct {
 	searchValue, notice, action string
 	page                        pager.Model
 	picker                      *filepicker.Model
+	journey                     *journeyDialogFrame
+}
+
+type journeyDialogFrame struct {
+	ref                         ItemRef
+	row, stopID                 int
+	addingWaypoint, pickingStop bool
 }
 
 type shortcutMap struct{ compact, playing, detailsOpen, freeRoam, profiles bool }
@@ -404,11 +411,26 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 	parents := m.ui.parents
 	if m.ui.dialog != dialogNone && m.ui.dialog != kind {
 		frame := dialogFrame{
-			kind: m.ui.dialog, selected: m.ui.selected, menuNavigated: m.ui.menuNavigated,
-			searchValue: m.ui.search.Value(), searchPosition: m.ui.search.Position(),
-			notice: m.ui.notice, page: m.ui.page, collapsed: m.planner.collapsed,
-			filesCollapsed:  m.ui.filesCollapsed,
-			searchCharLimit: m.ui.search.CharLimit, searchPlaceholder: m.ui.search.Placeholder,
+			kind:              m.ui.dialog,
+			selected:          m.ui.selected,
+			menuNavigated:     m.ui.menuNavigated,
+			searchValue:       m.ui.search.Value(),
+			searchPosition:    m.ui.search.Position(),
+			searchCharLimit:   m.ui.search.CharLimit,
+			searchPlaceholder: m.ui.search.Placeholder,
+			notice:            m.ui.notice,
+			page:              m.ui.page,
+			collapsed:         m.planner.collapsed,
+			filesCollapsed:    m.ui.filesCollapsed,
+		}
+		if m.journeyPanelOpen() {
+			frame.journey = &journeyDialogFrame{
+				ref:            m.planner.ref,
+				row:            m.planner.row,
+				stopID:         m.planner.stopID,
+				addingWaypoint: m.planner.addingWaypoint,
+				pickingStop:    m.planner.pickingStop,
+			}
 		}
 		if frame.kind == dialogFiles {
 			picker := m.ui.picker
@@ -443,16 +465,24 @@ func (m *viewer) backDialog() tea.Cmd {
 	m.ui.page.Style = m.styles.dialogText
 	m.planner.collapsed = frame.collapsed
 	m.ui.filesCollapsed = frame.filesCollapsed
+	if frame.journey != nil {
+		m.cancelPlaceSearch()
+		m.planner.ref = frame.journey.ref
+		m.planner.row, m.planner.stopID = frame.journey.row, frame.journey.stopID
+		m.planner.addingWaypoint = frame.journey.addingWaypoint
+		m.planner.pickingStop = frame.journey.pickingStop
+	}
 	if frame.kind == dialogThemes {
 		m.applyTheme(frame.selected)
 	}
-	if frame.kind == dialogCommands || m.placeSearchOpen() {
+	placeSearch := m.placeSearchOpen()
+	if frame.kind == dialogCommands || placeSearch {
 		m.ui.search.CharLimit = frame.searchCharLimit
 		m.ui.search.Placeholder = frame.searchPlaceholder
 		m.ui.search.SetValue(frame.searchValue)
 		m.ui.search.SetCursor(frame.searchPosition)
 	}
-	if m.placeSearchOpen() {
+	if placeSearch {
 		m.ui.inputID = rand.Text()
 		m.ui.search.Blur()
 		if !m.planner.collapsed && !m.planner.pickingStop {
@@ -770,10 +800,10 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 			if command.disabled {
 				style = style.Foreground(lipgloss.Color(m.theme().Dimmed))
 			}
-			label := command.label()
+			label := command.title
 			if command.checked {
 				tick := style.Foreground(lipgloss.Color(m.theme().Accent)).Render("✓")
-				label = command.title + " " + tick
+				label += " " + tick
 			}
 			line := pad(label, max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
 			rows = append(rows, style.Render(pad(line, width)))

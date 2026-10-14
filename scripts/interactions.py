@@ -1,7 +1,6 @@
 from pathlib import Path
 import difflib
 import html
-import difflib
 import json
 import os
 import re
@@ -691,6 +690,21 @@ def command_palette_access(binary, width, height):
             wait_for(lambda s: "Place or latitude" in s)
             send("51.31, -2.58")
             round_trip("journey location input")
+            editor_before = settled()
+            send("\x0b")
+            wait_for(lambda s: active_modal(s, "Commands") and "Type a command" in s)
+            send("Journey Planner")
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+            wait_for(lambda s: "> A Start" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Home", "Down", "Down", "Enter")
+            wait_for(lambda s: "B Destination" in s and "Place or latitude" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "> B Destination" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: active_modal(s, "Commands") and "› Journey Planner" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Escape")
+            wait_for(lambda s: "A Start" in s and "51.31, -2.58" in s and not active_modal(s, "Commands"))
+            assert settled() == editor_before, "nested planner changed the original location editor's target or input"
             tmux("send-keys", "-t", "poc:0.0", "Escape")
             wait_for(lambda s: "> A Start" in s)
             tmux("send-keys", "-t", "poc:0.0", "Escape")
@@ -707,7 +721,7 @@ def command_palette_access(binary, width, height):
             wait_for(lambda s: "Open track file" not in s)
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name} {width}×{height}: command palette from Context, Files, collapsed Files, Journey, location input, quick search and file picker; nested command execution, return state, ASCII and terminal restoration passed")
+        print(f"{binary.name} {width}×{height}: command palette from Context, Files, collapsed Files, Journey, location input, quick search and file picker; nested planner ownership, command execution, return state, ASCII and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 

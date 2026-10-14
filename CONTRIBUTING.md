@@ -1,6 +1,6 @@
 # Contributing
 
-Use Go meeting the minimum in [go.mod](go.mod), Make and Python 3. Run
+Use Go meeting the minimum in [go.mod](go.mod), Make and Python 3.11 or newer. Run
 `make build` from the repository root. See [development notes](docs/DEVELOPMENT.md)
 and [Go style](docs/GO_STYLE.md).
 

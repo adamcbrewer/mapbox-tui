@@ -10,6 +10,134 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestCommandPaletteRestoresJourneyEditorTarget(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		index, nested  int
+		addingWaypoint bool
+		otherJourney   bool
+	}{
+		{name: "start", index: 0, nested: 1},
+		{name: "destination", index: 1, nested: 0},
+		{name: "waypoint", addingWaypoint: true},
+		{name: "other journey", index: 0, nested: 1, otherJourney: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.openJourney()
+			enterJourneyCoordinate(m, 0, "51.5, -0.1")
+			enterJourneyCoordinate(m, 1, "51.6, -0.2")
+			ref := m.planner.ref
+			if test.addingWaypoint {
+				m.editNewWaypoint()
+			} else {
+				m.editJourneyLocation(test.index)
+			}
+			m.ui.search.SetValue("51.55, -0.15")
+			var otherRef ItemRef
+			if test.otherJourney {
+				otherRef = m.workspace.newJourney()
+				if err := m.workspace.setJourneyLocation(otherRef, 1, placeLocation{Lat: 51.8, Lon: -0.4}); err != nil {
+					t.Fatal(err)
+				}
+				if err := m.workspace.selectItem(otherRef); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.Update(tea.PasteMsg{Content: "Journey Planner"})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if m.ui.dialog != dialogJourney {
+				t.Fatal("palette did not open the nested planner")
+			}
+			var late placeSearchResult
+			if !test.addingWaypoint {
+				m.editJourneyLocation(test.nested)
+				late = placeSearchResult{
+					id: m.planner.searchID, ref: m.planner.ref, stopID: m.planner.stopID,
+					location: &placeLocation{Lat: 52, Lon: -1},
+				}
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if m.ui.dialog != dialogJourneyLocation || m.ui.search.Value() != "51.55, -0.15" {
+				t.Fatal("Escape did not restore the original editor input")
+			}
+			if !test.addingWaypoint {
+				m.Update(late)
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			j, err := m.workspace.journey(ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := []placeLocation{{Lat: 51.5, Lon: -0.1}, {Lat: 51.6, Lon: -0.2}}
+			location := placeLocation{Lat: 51.55, Lon: -0.15}
+			if test.addingWaypoint {
+				expected = []placeLocation{expected[0], location, expected[1]}
+			} else {
+				expected[test.index] = location
+			}
+			if len(j.Stops) != len(expected) {
+				t.Fatal("resumed editor did not add its waypoint", m.ui.notice)
+			}
+			for i, want := range expected {
+				got := j.Stops[i].Location
+				if got == nil || got.Lat != want.Lat || got.Lon != want.Lon {
+					t.Fatalf(
+						"resumed editor changed the wrong stop: stop %d is %v, want %v",
+						i,
+						got,
+						want,
+					)
+				}
+			}
+			if test.otherJourney {
+				other, err := m.workspace.journey(otherRef)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if other.Stops[0].Location.Lat != 51.8 || other.Stops[0].Location.Lon != -0.4 {
+					t.Fatal("resumed editor changed the nested journey")
+				}
+			}
+		})
+	}
+}
+
+func TestCommandPaletteRestoresJourneyMapPicking(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		kind dialogKind
+	}{
+		{name: "planner", kind: dialogJourney},
+		{name: "location editor", kind: dialogJourneyLocation},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.openJourney()
+			if test.kind == dialogJourneyLocation {
+				m.editJourneyLocation(0)
+			}
+			m.startJourneyPick()
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.Update(tea.PasteMsg{Content: "Journey Planner"})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			j, err := m.workspace.journey(m.planner.ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if j.Stops[0].Location == nil || j.Stops[1].Location != nil {
+				t.Fatal("resumed picking mode did not choose the original stop")
+			}
+		})
+	}
+}
+
 func TestMenusWrapSelection(t *testing.T) {
 	for _, tc := range []struct {
 		name, query string
