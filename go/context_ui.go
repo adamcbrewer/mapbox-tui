@@ -137,13 +137,20 @@ func (m *viewer) contextSummaryRows() []string {
 		second = "source status: v"
 	}
 	facts := first + " · " + second
+	theme := "Theme: " + m.theme().Name
 	if m.width < 60 {
+		theme = ansi.Truncate(m.theme().Name, m.width-6, "…")
+		room := m.width - ansi.StringWidth(theme) - 2
+		title := m.styles.heading.Render(pad(ansi.Truncate(name, room, "…"), room)) +
+			"  " + m.styles.muted.Render(theme)
 		return []string{
-			m.styles.heading.Render(pad(name, m.width)),
+			title,
 			m.styles.text.Render(pad(facts, m.width)),
 			m.styles.muted.Render(pad(hints, m.width)),
 		}
 	}
+	themeRoom := min(24, m.width-ansi.StringWidth(hints+separator))
+	hints += separator + ansi.Truncate(theme, themeRoom, "…")
 	if m.width < 110 {
 		// Split the line on small screens; hints must never be clipped by a long name.
 		room := max(4, m.width-ansi.StringWidth(facts)-3)

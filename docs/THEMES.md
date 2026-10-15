@@ -13,6 +13,7 @@ viewer; Enter keeps it and returns to the map. Esc restores the theme active whe
 the picker opened and returns to the command menu. Closing or replacing the
 picker without confirmation also restores that theme. Dialogs overlay the viewer
 without dimming the map, activities or panels, so previews retain their full colours.
+The bottom context bar shows the current theme, including live previews.
 
 Built-ins are `catppuccin`, `noir`, `nord`, `paper`,
 `synthwave` and `tokyo-night`.

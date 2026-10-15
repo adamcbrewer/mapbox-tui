@@ -72,6 +72,10 @@ func TestContextSurfacesInheritEveryThemeAndFitTerminal(t *testing.T) {
 					if m.ui.details.Style.GetBackground() != lipgloss.Color(m.theme().Surface) {
 						t.Fatal("context viewport retained another theme's background")
 					}
+					footer := ansi.Strip(strings.Join(m.contextFooter(), "\n"))
+					if !strings.Contains(footer, m.theme().Name) {
+						t.Fatal("context footer lost the current theme", footer)
+					}
 					m.openDialog(dialogCommands)
 					m.pushDialog(dialogThemes)
 					m.rebuild()

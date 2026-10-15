@@ -602,7 +602,7 @@ def theme_switching(binary, width, height):
                 tmux("send-keys", "-t", "poc:0.0", *(["Down"] * steps))
             wait_for(lambda s: f"> {names[index]}" in s)
             tmux("send-keys", "-t", "poc:0.0", "Enter")
-            wait_for(lambda s: "Colour theme" not in s and "Commands" not in s)
+            wait_for(lambda s: "Colour theme" not in s and "Commands" not in s and f"Theme: {names[index]}" in s)
 
         screen = open_picker()
         assert f"> {names[default]} (current)" in screen, "theme list lost the selected current palette"
@@ -613,7 +613,7 @@ def theme_switching(binary, width, height):
         picker_cells = visible_cells(picker_colors, width)
         assert all(picker_cells[position] == cell for position, cell in baseline_cells.items() if position[0] < 8), "theme picker dimmed the visible map"
         tmux("send-keys", "-t", "poc:0.0", "Up")
-        wait_for(lambda s: f"> {names[preview]}" in s and capture(colors=True) != picker_colors)
+        wait_for(lambda s: f"> {names[preview]}" in s and f"Theme: {names[preview]}" in s and capture(colors=True) != picker_colors)
         tmux("send-keys", "-t", "poc:0.0", "Up")
         wait_for(lambda s: f"> {names[previous]}" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down")
@@ -643,9 +643,11 @@ def theme_switching(binary, width, height):
         assert settled() == baseline, "theme selection changed geometry, selection or playback"
         select_theme((default + 1) % len(palettes))
         wait_for(lambda s: capture(colors=True) != original_colors)
-        assert settled() == baseline, "palette change affected map text or layout"
+        changed = settled()
+        footer_rows = 2 if width >= 110 else 3
+        assert changed.splitlines()[:-footer_rows] == baseline.splitlines()[:-footer_rows], "palette change affected map text or layout"
         send("\x10:")
-        assert settled() == baseline, "removed Commands shortcut or deferred fallback opened a menu"
+        assert settled() == changed, "removed Commands shortcut or deferred fallback opened a menu"
         for key, label in (("?", "Keyboard shortcuts"), ("v", "Map credits"), ("p", "Playback speed multiplier"), ("\x0c", "Loaded files"), ("\x0f", "Open track file"), ("\x0b", "Commands")):
             send(key)
             wait_for(lambda s: label in s)

@@ -218,7 +218,10 @@ func TestThemeChangePreservesPlaybackImportsProfileAndSourceFreshness(t *testing
 	items, camera, position := m.workspace.items(), m.camera, *m.position()
 	base := slices.Clone(profile.Grid.Cells)
 	sources := m.sources.view()
-	text := ansi.Strip(m.content)
+	mapRows := func() string {
+		return strings.Join(strings.Split(ansi.Strip(m.content), "\n")[:m.camera.Height+2], "\n")
+	}
+	text := mapRows()
 	initial := m.settings.Theme
 	for i := 1; i <= len(m.themes); i++ {
 		m.applyTheme((initial + i) % len(m.themes))
@@ -242,7 +245,7 @@ func TestThemeChangePreservesPlaybackImportsProfileAndSourceFreshness(t *testing
 			m.progress != progress ||
 			m.ui.dialog != dialogSpeed ||
 			m.ui.selected != 2 ||
-			ansi.Strip(m.content) != text
+			mapRows() != text
 		if cachedPresentationChanged {
 			t.Fatal("theme change rebuilt cached geometry, recreated controls or changed dialog content")
 		}
@@ -394,6 +397,9 @@ func TestThemePickerPreviewsAndRestoresUnlessConfirmed(t *testing.T) {
 	if m.styles.dialogText.GetForeground() != lipgloss.Color(m.themes[initial+1].Text) {
 		t.Fatal("preview did not recolour the modal")
 	}
+	if !strings.Contains(ansi.Strip(m.content), "Theme: "+m.themes[initial+1].Name) {
+		t.Fatal("context footer did not show the previewed theme")
+	}
 	if !strings.Contains(ansi.Strip(m.content), m.themes[initial].Name+" (current)") {
 		t.Fatal("picker lost the current theme indicator")
 	}
@@ -401,6 +407,10 @@ func TestThemePickerPreviewsAndRestoresUnlessConfirmed(t *testing.T) {
 	inputRestored := m.ui.search.Value() == "theme" && m.ui.search.Position() == 2 && m.ui.search.Focused()
 	if m.settings.Theme != initial || m.ui.dialog != dialogCommands || !inputRestored {
 		t.Fatal("cancelled theme selection changed the theme or lost the parent filter")
+	}
+	m.rebuild()
+	if !strings.Contains(ansi.Strip(m.content), "Theme: "+m.themes[initial].Name) {
+		t.Fatal("context footer did not restore the original theme")
 	}
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
