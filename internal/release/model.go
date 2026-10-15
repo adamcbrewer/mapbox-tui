@@ -301,6 +301,11 @@ func (m Model) promptForm() string {
 		action := map[Step]string{
 			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "publish",
 		}[m.session.Step]
+		question, context, hasContext := strings.Cut(prompt, "\n")
+		prompt = m.style("#F5D76E").Render(question)
+		if hasContext {
+			prompt += "\n" + context
+		}
 		lines = append(lines, prompt,
 			m.style("#D4D4D4").Render("Type yes, then enter to "+action+"."), m.input.View())
 	case Failed:
