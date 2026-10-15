@@ -49,7 +49,10 @@ The nine sections run the actual checks and commands:
    and push only that tag. Existing tags are never moved or overwritten.
 5. Find the release workflow for that tag and commit, then wait for its jobs.
 6. Inspect the draft, download attachments into a fresh directory, and verify
-   the checksum, archive, embedded metadata and offline rendering again.
+   the checksum and archive. Before any execution, compare the extracted binary's
+   SHA-256 with the verified local build, then check embedded metadata and offline
+   rendering again. Local and CI builds must use matching Go toolchains and build
+   settings; a mismatch stops the release without executing the download.
 7. Open the downloaded binary with the local fixture and `--no-provider`.
    Quit the viewer to return, then type `yes` to confirm it worked.
 8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to

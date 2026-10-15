@@ -48,6 +48,7 @@ func newReleaseHarness(t *testing.T, mode Mode) (*RealAdapter, *releaseCommands,
 		t.Fatal(err)
 	}
 	result.State.Version = "v0.1.1"
+	result.State.LocalBinaryDigest = fmt.Sprintf("%x", sha256.Sum256([]byte("fixture mapbox-tui")))
 	return adapter, commands, result.State
 }
 func jsonValue(v any) string {
@@ -64,7 +65,7 @@ func (f *releaseCommands) releases() []map[string]any {
 		body = f.notes
 	}
 	if f.remote {
-		all = append(all, map[string]any{"id": 2, "tag_name": "v0.1.1", "draft": !f.published, "body": body, "html_url": "https://github.com/example/mapbox-tui/releases/tag/v0.1.1", "assets": []map[string]any{{"id": 11, "name": archiveName("v0.1.1"), "size": 100}, {"id": 12, "name": archiveName("v0.1.1") + ".sha256", "size": 100}}})
+		all = append(all, map[string]any{"id": 2, "tag_name": "v0.1.1", "name": "v0.1.1", "draft": !f.published, "body": body, "html_url": "https://github.com/example/mapbox-tui/releases/tag/v0.1.1", "assets": []map[string]any{{"id": 11, "name": archiveName("v0.1.1"), "size": 100}, {"id": 12, "name": archiveName("v0.1.1") + ".sha256", "size": 100}}})
 	}
 	return all
 }
@@ -88,6 +89,8 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 			return "", nil
 		case "rev-parse HEAD", "rev-parse origin/main", "rev-parse v0.1.1^{commit}":
 			return testCommit, nil
+		case "rev-parse refs/tags/v0.1.1":
+			return strings.Repeat("b", 40), nil
 		case "cat-file -t refs/tags/v0.1.1":
 			return "tag", nil
 		case "tag --list":
@@ -205,6 +208,10 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 }
 func writeReleaseArchive(t *testing.T, dir string) {
 	t.Helper()
+	writeReleaseArchiveWithBinary(t, dir, "fixture mapbox-tui")
+}
+func writeReleaseArchiveWithBinary(t *testing.T, dir, binary string) {
+	t.Helper()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +224,9 @@ func writeReleaseArchive(t *testing.T, dir string) {
 	tw := tar.NewWriter(gz)
 	for _, name := range []string{"mapbox-tui", "INSTALL.md", "LICENSE", "THIRD_PARTY_NOTICES.txt"} {
 		body := []byte("fixture " + name)
+		if name == "mapbox-tui" {
+			body = []byte(binary)
+		}
 		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
 		}
@@ -331,6 +341,13 @@ func TestLostMutationResponsesAreReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 	state = result.State
+	for _, op := range []Operation{Build, LocalArtifact} {
+		result, err = adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = result.State
+	}
 	downloaded, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
 	if err != nil {
 		t.Fatal(err)
@@ -694,7 +711,7 @@ func TestResumePushesMissingTagAfterMainAdvances(t *testing.T) {
 }
 
 func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
-	for _, name := range []string{"replaced attachment", "added attachment", "changed notes", "already public with different notes"} {
+	for _, name := range []string{"replaced attachment", "added attachment", "changed notes", "changed title", "already public with different notes"} {
 		t.Run(name, func(t *testing.T) {
 			adapter, commands, state := newReleaseHarness(t, Live)
 			commands.local, commands.remote = true, true
@@ -722,6 +739,8 @@ func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
 					assets[0]["id"] = 99
 				case "added attachment":
 					data[1]["assets"] = append(assets, map[string]any{"id": 99, "name": "extra.exe", "size": 100})
+				case "changed title":
+					data[1]["name"] = "Unexpected title"
 				case "changed notes":
 					data[1]["body"] = "Unexpected notes"
 				}
@@ -733,6 +752,77 @@ func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "release is public") {
 				t.Fatalf("failure did not report public state: %v", err)
+			}
+		})
+	}
+}
+
+func TestRemoteTagRequiresMatchingObjectAndCommit(t *testing.T) {
+	for _, name := range []string{"different annotation", "different commit", "lightweight tag"} {
+		t.Run(name, func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			commands.local, commands.remote = true, true
+			state.TagIntent = true
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+				if c.Name != "git" || !slices.Contains(c.Args, "ls-remote") {
+					return "", nil, false
+				}
+				object, commit := strings.Repeat("b", 40), testCommit
+				if name == "different annotation" {
+					object = strings.Repeat("c", 40)
+				}
+				if name == "different commit" {
+					commit = strings.Repeat("d", 40)
+				}
+				raw := object + "\trefs/tags/v0.1.1"
+				if name != "lightweight tag" {
+					raw += "\n" + commit + "\trefs/tags/v0.1.1^{}"
+				}
+				return raw, nil, true
+			}}
+			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: PushTag}, func(string) {})
+			if err == nil || !strings.Contains(err.Error(), "remote annotated tag") {
+				t.Fatalf("accepted mismatched tag: %v", err)
+			}
+		})
+	}
+}
+
+func TestPublicationRejectsChangedDraftTitle(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.local, commands.remote = true, true
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name != "gh" || !slices.Contains(c.Args, "repos/example/mapbox-tui/releases?per_page=100") {
+			return "", nil, false
+		}
+		data := commands.releases()
+		data[1]["name"] = "Unexpected title"
+		return jsonValue([]any{data}), nil, true
+	}}
+	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "release title") || commands.published {
+		t.Fatalf("renamed draft was accepted: %v", err)
+	}
+}
+
+func TestDownloadedBinaryMustMatchLocalBuildBeforeExecution(t *testing.T) {
+	for _, name := range []string{"replaced binary and checksum", "missing local verification"} {
+		t.Run(name, func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			state.DownloadDir = t.TempDir()
+			if name == "missing local verification" {
+				state.LocalBinaryDigest = ""
+				writeReleaseArchive(t, state.DownloadDir)
+			} else {
+				writeReleaseArchiveWithBinary(t, state.DownloadDir, "untrusted executable")
+			}
+			before := len(commands.calls)
+			result, err := adapter.Execute(t.Context(), Request{State: state, Operation: RemoteArtifact}, func(string) {})
+			if err == nil || !strings.Contains(err.Error(), "will not be executed") || result.State.AssetIdentity != "" {
+				t.Fatalf("unauthenticated executable accepted: %+v, %v", result, err)
+			}
+			if len(commands.calls) != before {
+				t.Fatal("downloaded binary was executed before authentication")
 			}
 		})
 	}

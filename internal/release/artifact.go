@@ -104,3 +104,17 @@ func verifyArtifact(dir, version string) (string, error) {
 	ok = true
 	return filepath.Join(out, "mapbox-tui"), nil
 }
+
+// binaryDigest binds remote execution to the independently built local executable.
+func binaryDigest(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open binary: %w", err)
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("hash binary: %w", err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}

@@ -133,6 +133,9 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 		if err == nil {
 			result.State.Binary, err = verifyArtifact(result.State.LocalDir, state.Version)
 		}
+		if err == nil {
+			result.State.LocalBinaryDigest, err = binaryDigest(result.State.Binary)
+		}
 		result.Message = "Local checksum and archive contents verified"
 	case LocalSmoke:
 		err = r.smoke(ctx, state, emit)
@@ -149,6 +152,13 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 		result.Message = "Release attachments downloaded into a fresh private directory"
 	case RemoteArtifact:
 		result.State.Binary, err = verifyArtifact(state.DownloadDir, state.Version)
+		if err == nil {
+			var digest string
+			digest, err = binaryDigest(result.State.Binary)
+			if err == nil && (state.LocalBinaryDigest == "" || digest != state.LocalBinaryDigest) {
+				err = fmt.Errorf("downloaded binary differs from the verified local build; it will not be executed. Check source, Go toolchain and build settings")
+			}
+		}
 		if err == nil {
 			err = r.smoke(ctx, result.State, emit)
 		}
@@ -364,6 +374,7 @@ func (r *RealAdapter) preflight(ctx context.Context, state State) error {
 type githubRelease struct {
 	ID         int64  `json:"id"`
 	Tag        string `json:"tag_name"`
+	Name       string `json:"name"`
 	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 	Body       string `json:"body"`
@@ -553,13 +564,27 @@ func (r *RealAdapter) checkRemoteTag(ctx context.Context, state State, allowMiss
 	if raw == "" && allowMissing {
 		return nil
 	}
+	local, err := r.git(ctx, "rev-parse", "refs/tags/"+state.Version)
+	if err != nil {
+		return err
+	}
+	var object, commit string
 	for _, line := range strings.Split(raw, "\n") {
 		parts := strings.Fields(line)
-		if len(parts) == 2 && parts[1] == "refs/tags/"+state.Version+"^{}" && parts[0] == state.Commit {
-			return nil
+		if len(parts) != 2 {
+			continue
+		}
+		switch parts[1] {
+		case "refs/tags/" + state.Version:
+			object = parts[0]
+		case "refs/tags/" + state.Version + "^{}":
+			commit = parts[0]
 		}
 	}
-	return fmt.Errorf("remote annotated tag %s does not point to selected commit %s", state.Version, state.Commit)
+	if object != local || commit != state.Commit {
+		return fmt.Errorf("remote annotated tag %s differs from the local tag object or selected commit %s", state.Version, state.Commit)
+	}
+	return nil
 }
 
 type workflowRun struct {
@@ -671,6 +696,9 @@ func (r *RealAdapter) requireRelease(ctx context.Context, state State) (*githubR
 		if !release.Draft && !state.PublishIntent {
 			return nil, fmt.Errorf("release is already public; published assets and tags must remain unchanged")
 		}
+		if release.Name != state.Version {
+			return nil, fmt.Errorf("release title %q differs from expected version %s", release.Name, state.Version)
+		}
 		if release.Prerelease {
 			return nil, fmt.Errorf("expected a stable release, found prerelease")
 		}
@@ -757,6 +785,9 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 		if item.Tag == state.Version && item.ID == release.ID && !item.Draft {
 			if assetIdentity(&item) != state.AssetIdentity {
 				return result, fmt.Errorf("release is public but its attachments changed during publication; inspect %s before continuing", item.URL)
+			}
+			if item.Name != state.Version {
+				return result, fmt.Errorf("release is public but its title differs from the selected version; inspect %s before continuing", item.URL)
 			}
 			if item.Body != state.Notes {
 				return result, fmt.Errorf("release is public but its notes differ from the reviewed notes; inspect %s before continuing", item.URL)
