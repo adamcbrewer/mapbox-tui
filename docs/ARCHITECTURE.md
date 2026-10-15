@@ -27,64 +27,74 @@ Versions live in [`go.mod`](../go.mod); build/package commands are in the
 
 ## Shared model and rendering
 
-These are parts of one Go `main` package. The viewer keeps a session workspace,
-multi-file CLI rendering creates a temporary one, and MCP keeps one for its server
-process. **We share lifecycle and scene rules, not sessions.** Single-file CLI/MCP
-calls retain their combined-file snapshot or item-selection behaviour.
+We use the same workspace model and scene renderer for the viewer, CLI and MCP.
+They live in one Go executable, so we don't have separate implementations of
+selection, playback or map layering to maintain.
 
-| Part | Owns | Source |
-|---|---|---|
-| Imports | GPX/FIT/TCX/KML documents, named items, disconnected parts | [`import.go`](../go/import.go), [`document.go`](../go/document.go) |
-| Workspace | Identity, visibility, selection, playback, elevation profiles | [`workspace.go`](../go/workspace.go) |
-| Map | Projection, camera, scene grid, picking, plain output and metadata | [`core.go`](../go/core.go), [`render.go`](../go/render.go), [`map.go`](../go/map.go) |
-| Sources | Features, request lifecycle, freshness, status and credits | [`sources.go`](../go/sources.go), [`provider.go`](../go/provider.go), [`traffic.go`](../go/traffic.go) |
-| Front ends | Viewer state/widgets/styling; CLI/MCP inputs and results | [`tui.go`](../go/tui.go), [`ui.go`](../go/ui.go), [`theme.go`](../go/theme.go), [`main.go`](../go/main.go), [`service.go`](../go/service.go) |
+Each front end has its own session. The viewer keeps a workspace while it's open,
+multi-file CLI rendering creates a temporary one, and MCP keeps one for the
+server process. Single-file CLI/MCP snapshots use the same renderer without
+needing a workspace.
 
-The main rules:
+![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP return plain text and metadata.](images/shared-rendering.svg)
 
-- **Stable identity:** `ItemRef` pairs a workspace document ID with a document-local
-  item ID. Document IDs aren't reused after removal or clearing. An old reference
-  can't select a later import.
-- **Selection isn't visibility:** selecting reveals an item. Hiding/removing the
-  active item clears selection and stops playback. Showing it doesn't select it.
-- **Imports preserve ownership:** duplicate imports compare normalised absolute
-  paths and reuse the existing document without rereading it. Failed imports
-  preserve the workspace; clearing or removing active data preserves the camera.
-  Disconnected parts and gaps never become connecting paths.
-- **Playback and profiles:** switching items starts paused; reselecting the active
-  item preserves its position. Only the active recorded item plays. Visible
-  elevation sections use file-load/item order and cumulative distance offsets,
-  while measurements remain item-local.
-- **Planned intent stays separate:** session-only journeys share workspace identity
-  and rendering, with no invented recorded timestamps or elevation. User stops,
-  snapped coordinates and routed geometry remain distinct. Edit/undo invalidates
-  estimates, cancels obsolete work and checks revisions before accepting results.
-  Manual coordinates remain usable after provider failure.
-- **Planner editing is independent of inspection:** the viewer keeps a journey
-  editing reference separate from the workspace selection and inspected place.
-  Opening, editing or fitting a plan preserves an imported activity's playback.
-  Incomplete viewer drafts are not selected or listed in Files. A plan becomes
-  listable once all stops are set, and completing it selects it only when there
-  is no existing selection.
-  Context, Files and Journey share one inset right-hand panel with a common
-  header. The narrow layout uses a full-width vertical overlay. Collapse and map-picking state do
-  not resize the camera. Only explicit map-picking mode turns clicks into stop edits.
-- **Our renderer draws the map:** prepare projected coordinates, bounds and
-  distances; transform through the camera; thin and clip geometry; rasterise into
-  2×4 Braille dots per cell (or ASCII); apply layer/label priorities. Charm handles
-  the UI around that grid. The viewer resolves cell roles/colour slots through its
-  palette. One foreground colour per cell means overlaps need explicit priorities.
-- **Picking follows drawing:** occupied-cell picking uses the scene rules to
-  identify the displayed item.
-- **Imports work offline:** geometry, measurements and playback don't depend on
-  a token or provider features. Missing credentials and failed requests leave
-  imports usable.
-- **Sources refresh independently:** each viewer source has its own cancellable
-  request, generation, snapshot and deadline. We reject stale results, let useful
-  requests finish while tile coverage is unchanged, and retain usable data with
-  stale status after a failed refresh. CLI/MCP renders take one-shot snapshots.
+### Imports and workspace
 
-See [Mapbox policies](MAPBOX.md) for cache and attribution details.
+We load GPX, FIT, TCX and KML into a common document model with named items and
+geometry. During import, we project the coordinates and calculate bounds and
+measurements. Moving the camera doesn't require another file read. Disconnected
+segments stay separate, so we don't draw paths across gaps in a recording.
+
+The workspace manages which items are loaded, visible and selected, along with
+recorded playback. The camera determines how we view them. These rules don't
+depend on the viewer's widgets or layout, so CLI and MCP can use them too.
+
+Planned journeys use the same workspace and renderer. We keep the user's chosen
+stops separate from the path returned by a routing provider. Plans don't have
+recorded timestamps or elevation.
+
+### Mapbox data and offline use
+
+We fetch and decode Mapbox vector tiles, then pass their features to the renderer
+alongside local geometry. Each source includes its status and attribution. The
+viewer refreshes sources independently in the background and rejects responses
+that no longer apply. If a refresh fails, it can keep the previous data on screen
+and mark it as stale. CLI/MCP load a snapshot for each render call.
+
+For authentication, we use an environment token or a saved login through the
+optional official Mapbox CLI. The CLI is installed separately and handles login
+and credential storage. Mapbox TUI uses the token to make its own data requests.
+The helper doesn't render anything.
+
+Local files already contain the geometry we need to draw them, calculate
+measurements and play back recordings. None of that needs a token or a network
+connection. Without provider data, we draw the imports on an empty canvas.
+We don't download basemaps for offline use. The tile cache is bounded and only
+held in memory. Authentication, caching and attribution details are in
+[Mapbox policies](MAPBOX.md).
+
+### Rendering
+
+We draw the map ourselves. Charm handles the surrounding UI and styling.
+The rendering pipeline is:
+
+1. Transform projected geometry through the camera into screen coordinates.
+2. Thin route geometry to suit the screen resolution and clip drawing to the
+   viewport, keeping disconnected segments separate.
+3. Rasterise paths and shapes into terminal cells. Layer, marker and label
+   priorities decide what appears where they overlap. Braille uses 2×4 dots per
+   cell. ASCII uses symbols chosen by cell role from the same scene.
+4. Format the grid for the front end. The viewer applies its palette and adds
+   the UI. CLI/MCP return ANSI-free text and scene metadata, including source
+   status and attribution.
+
+Picking uses the drawing rules to identify the item shown in a cell. Colours
+are applied separately, so changing the theme doesn't require another import or
+tile request.
+
+There's only one foreground colour per terminal cell, and a limited number of
+dots. We have to choose which overlapping features take priority. Some detail
+gets lost, particularly where several routes or labels occupy the same cells.
 
 ## Tradeoffs
 

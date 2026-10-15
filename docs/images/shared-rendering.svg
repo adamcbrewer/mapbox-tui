@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="850" viewBox="0 0 960 850" role="img" aria-labelledby="title desc">
+  <title id="title">Shared rendering architecture</title>
+  <desc id="desc">Viewer, CLI and MCP use shared workspace rules and scene rendering. Local file imports supply geometry independently of optional Mapbox data. An environment token or official Mapbox CLI saved login supplies credentials for the application's Mapbox requests. The renderer produces a cell grid for styled viewer output or ANSI-free CLI and MCP output. Single-file snapshots also use the renderer without a workspace.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8Z" fill="#333333"/></marker>
+    <style>
+      text { font-family: system-ui, sans-serif; fill: #333333; font-size: 17px; }
+      .heading { font-size: 21px; font-weight: 600; }
+      .small { font-size: 15px; fill: #333333; }
+      .box { fill: #fff; stroke: #666; stroke-width: 1; }
+      .shared { fill: #fff; stroke: #666; stroke-width: 1; }
+      .optional { fill: #fff; stroke: #666; stroke-width: 1; }
+      .flow { fill: none; stroke: #333333; stroke-width: 2; marker-end: url(#arrow); }
+      .online { stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+  <rect width="960" height="850" fill="#fff"/>
+  <text x="40" y="35" class="small">Shared rendering architecture</text>
+  <rect x="40" y="55" width="160" height="85" class="box"/>
+  <text x="120" y="88" text-anchor="middle" class="heading">Viewer</text>
+  <text x="120" y="115" text-anchor="middle" class="small">Interactive session</text>
+  <rect x="215" y="55" width="160" height="85" class="box"/>
+  <text x="295" y="88" text-anchor="middle" class="heading">CLI</text>
+  <text x="295" y="115" text-anchor="middle" class="small">One-shot render</text>
+  <rect x="390" y="55" width="160" height="85" class="box"/>
+  <text x="470" y="88" text-anchor="middle" class="heading">MCP</text>
+  <text x="470" y="115" text-anchor="middle" class="small">Server session</text>
+  <path d="M120 140V190" class="flow"/>
+  <path d="M295 140V190" class="flow"/>
+  <path d="M470 140V190" class="flow"/>
+  <rect x="40" y="190" width="510" height="120" class="shared"/>
+  <text x="64" y="224" class="heading">Workspace model</text>
+  <text x="64" y="254">Item identity · visibility · selection · playback</text>
+  <text x="64" y="282" class="small">Local documents and planned journeys</text>
+  <rect x="610" y="190" width="310" height="120" class="box"/>
+  <text x="634" y="224" class="heading">Local file imports</text>
+  <text x="634" y="254">GPX · FIT · TCX · KML</text>
+  <text x="634" y="282" class="small">Projected geometry · separate segments</text>
+  <path d="M610 250H550" class="flow"/>
+  <path d="M510 310V440" class="flow"/>
+  <text x="40" y="351" class="small">Visible geometry + camera</text>
+  <text x="40" y="385" class="small">Single-file CLI/MCP snapshots also enter</text>
+  <text x="40" y="407" class="small">the shared renderer without a workspace.</text>
+  <rect x="610" y="335" width="310" height="115" class="optional"/>
+  <text x="634" y="368" class="heading">Optional credentials</text>
+  <text x="634" y="397">Environment token, or</text>
+  <text x="634" y="424">official Mapbox CLI saved login</text>
+  <path d="M765 450V500" class="flow online"/>
+  <text x="779" y="481" class="small">Token</text>
+  <rect x="610" y="500" width="310" height="120" class="optional"/>
+  <text x="634" y="533" class="heading">Mapbox data loading</text>
+  <text x="634" y="563">Tile requests and decoding</text>
+  <text x="634" y="592" class="small">Features · status · attribution</text>
+  <path d="M610 555H550" class="flow online"/>
+  <rect x="40" y="440" width="510" height="180" class="shared"/>
+  <text x="64" y="476" class="heading">Shared scene renderer</text>
+  <text x="64" y="508">Camera transform → thinning + clipping</text>
+  <text x="64" y="538">Rasterisation + layer / label priorities</text>
+  <text x="64" y="568">Cell grid → Braille or ASCII</text>
+  <text x="64" y="598" class="small">Scene-based item picking</text>
+  <path d="M170 620V675" class="flow"/>
+  <path d="M425 620V675" class="flow"/>
+  <rect x="40" y="675" width="245" height="90" class="box"/>
+  <text x="64" y="709" class="heading">Viewer presentation</text>
+  <text x="64" y="739">Palette + Charm UI</text>
+  <rect x="305" y="675" width="245" height="90" class="box"/>
+  <text x="329" y="709" class="heading">CLI / MCP results</text>
+  <text x="329" y="739">ANSI-free text + metadata</text>
+  <text x="610" y="709" class="small">Dashed arrows: optional provider inputs.</text>
+  <line x1="40" y1="792" x2="920" y2="792" stroke="#aaa"/>
+  <text x="40" y="820" class="small">Build: dev (ca83d9fe1d80) · Base: v0.1.0 + 3 commits · No release tag at this revision</text>
+</svg>
