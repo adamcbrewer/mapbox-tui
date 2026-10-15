@@ -111,7 +111,7 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 		case "tag -a v0.1.1 " + testCommit + " -m Release v0.1.1":
 			f.local = true
 			return "", nil
-		case "push origin refs/tags/v0.1.1:refs/tags/v0.1.1":
+		case "push --no-follow-tags origin refs/tags/v0.1.1:refs/tags/v0.1.1":
 			f.remote = true
 			if f.losePush {
 				f.losePush = false

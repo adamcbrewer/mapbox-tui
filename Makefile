@@ -28,7 +28,7 @@ package: export GOTOOLCHAIN = local
 package: export CGO_ENABLED = 0
 package: distribution-check build
 	mkdir -p dist
-	tar -czf "dist/$(ARCHIVE)" LICENSE THIRD_PARTY_NOTICES.txt -C docs INSTALL.md -C ../bin mapbox-tui
+	tar --mode='a=rX,u+w' -czf "dist/$(ARCHIVE)" LICENSE THIRD_PARTY_NOTICES.txt -C docs INSTALL.md -C ../bin mapbox-tui
 	cd dist && sha256sum "$(ARCHIVE)" > "$(ARCHIVE).sha256"
 dev:
 	python3 scripts/dev.py $(ARGS)

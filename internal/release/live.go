@@ -545,7 +545,7 @@ func (r *RealAdapter) pushTag(ctx context.Context, state State) (State, error) {
 		return state, err
 	}
 	if remote == "" {
-		if _, err = r.git(ctx, "push", "origin", "refs/tags/"+state.Version+":refs/tags/"+state.Version); err != nil {
+		if _, err = r.git(ctx, "push", "--no-follow-tags", "origin", "refs/tags/"+state.Version+":refs/tags/"+state.Version); err != nil {
 			return state, err
 		}
 	}
