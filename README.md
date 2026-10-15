@@ -18,7 +18,8 @@ with a JSON CLI and local MCP server. Desgined to work with Mapbox for place, se
   <video src="https://github.com/user-attachments/assets/09033b01-8f17-49f3-bc45-1ec23bb64d66" width="100%" controls></video>
 </div>
 
-
+The demo shows place search, activity playback with an elevation profile, theme
+switching, journey planning and copying a command to reopen the journey.
 
 ## Features
 
