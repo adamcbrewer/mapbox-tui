@@ -201,6 +201,10 @@ func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 	if _, err = r.git(ctx, "fetch", "origin", "main", "--tags"); err != nil {
 		return state, fmt.Errorf("fetch origin without overwriting tags: %w", err)
 	}
+	before, err := r.git(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return state, err
+	}
 	if r.Mode == Live && !r.Resume {
 		if _, err = r.git(ctx, "merge", "--ff-only", "origin/main"); err != nil {
 			return state, fmt.Errorf("main diverged; reconcile it before releasing: %w", err)
@@ -209,6 +213,9 @@ func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 	state.Commit, err = r.git(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return state, err
+	}
+	if state.Commit != before {
+		return state, fmt.Errorf("main was fast-forwarded; rerun make release to load the updated release tool")
 	}
 	state.Policy, err = r.policy(ctx, state)
 	if err != nil {
@@ -333,7 +340,7 @@ func (r *RealAdapter) preflight(ctx context.Context, state State) error {
 		return fmt.Errorf("release requires %s on linux/amd64; got %s on %s/%s (check mise trust/install)", required, env.GOVERSION, env.GOOS, env.GOARCH)
 	}
 	for _, command := range []Command{
-		{Name: "make", Args: []string{"--version"}}, {Name: "python3", Args: []string{"--version"}},
+		{Name: "make", Args: []string{"--version"}}, {Name: "python3", Args: []string{"-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 'Python 3.11 or newer is required')"}},
 		{Name: "tmux", Args: []string{"-V"}}, {Name: "rsvg-convert", Args: []string{"--version"}},
 	} {
 		_, err := r.run(ctx, command, nil)
@@ -662,6 +669,9 @@ func (r *RealAdapter) requireRelease(ctx context.Context, state State) (*githubR
 		if release.Prerelease {
 			return nil, fmt.Errorf("expected a stable release, found prerelease")
 		}
+		if len(release.Assets) != 2 {
+			return nil, fmt.Errorf("release must contain only the expected archive and checksum; found %d attachments", len(release.Assets))
+		}
 		for _, name := range []string{archiveName(state.Version), archiveName(state.Version) + ".sha256"} {
 			count := 0
 			for _, asset := range release.Assets {
@@ -706,7 +716,7 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	if err != nil {
 		return result, err
 	}
-	if policy.Latest != "" && compareVersions(policy.Latest, state.Version) > 0 {
+	if release.Draft && policy.Latest != "" && compareVersions(policy.Latest, state.Version) > 0 {
 		return result, fmt.Errorf("a newer version %s is already published; refusing to replace latest", policy.Latest)
 	}
 	if strings.TrimSpace(state.Notes) == "" {
@@ -726,7 +736,10 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 		if err = os.WriteFile(path, []byte(state.Notes), 0o600); err != nil {
 			return result, err
 		}
-		if _, err = r.gh(ctx, state, "release", "edit", state.Version, "--notes-file", path, "--draft=false", "--latest", "--verify-tag"); err != nil {
+		// Let GitHub determine latest using semantic version ordering at publication
+		// time, rather than forcibly replacing a concurrently published release.
+		if _, err = r.api(ctx, state, "/releases/"+strconv.FormatInt(release.ID, 10),
+			"--method", "PATCH", "-F", "body=@"+path, "-F", "draft=false", "-f", "make_latest=legacy"); err != nil {
 			return result, err
 		}
 	}
@@ -753,12 +766,24 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	if err = json.Unmarshal([]byte(raw), &latest); err != nil {
 		return result, err
 	}
-	if latest.ID != release.ID || latest.Tag != state.Version {
+	expectedLatest := release
+	for i := range releases {
+		item := &releases[i]
+		if !item.Draft && !item.Prerelease && stableVersion.MatchString(item.Tag) &&
+			compareVersions(item.Tag, expectedLatest.Tag) > 0 {
+			expectedLatest = item
+		}
+	}
+	if latest.ID != expectedLatest.ID || latest.Tag != expectedLatest.Tag {
 		q.State = state
 		return pending(q, "Waiting for GitHub to confirm latest release", 10)
 	}
 	state.Published = true
-	return Result{State: state, Message: "Publication and latest status verified: " + state.URL}, nil
+	message := "Publication and latest status verified: " + state.URL
+	if latest.Tag != state.Version {
+		message += "; newer release " + latest.Tag + " remains latest"
+	}
+	return Result{State: state, Message: message}, nil
 }
 
 // GitHub asset IDs change when an attachment is replaced. Bind publication to

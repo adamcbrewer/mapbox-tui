@@ -31,7 +31,9 @@ go run ./cmd/release
 ```
 
 This is the official maintainer workflow. It fetches origin without overwriting
-tags, fast-forwards `main`, and inspects local/remote tags and GitHub releases.
+tags and fast-forwards `main`. If that updates the checkout, it asks you to rerun
+so the release tool is rebuilt from the selected source. It then inspects
+local/remote tags and GitHub releases.
 The initial screen suggests the next available version; edit it before starting.
 Only one patch, minor or major increment from the highest published stable release
 is accepted, with lower components reset. Existing tags and drafts reserve their
@@ -52,7 +54,9 @@ The nine sections run the actual checks and commands:
    Quit the viewer to return, then type `yes` to confirm it worked.
 8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to
    discard edits. Type `yes` to accept the notes.
-9. Ask for `yes`, publish the reviewed draft as latest, and verify GitHub's response.
+9. Ask for `yes`, publish the reviewed draft using GitHub's automatic latest-version selection,
+   and verify GitHub's response. If a newer stable release is published concurrently,
+   that version remains latest.
 
 The numbered checklist shows nested command output and a braille spinner on the
 active operation. Polling updates the same waiting leaf, with bounded retries and

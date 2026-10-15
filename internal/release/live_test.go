@@ -118,8 +118,11 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 	if c.Name == "go" && args == "env -json GOVERSION GOOS GOARCH" {
 		return `{"GOVERSION":"go1.27.1","GOOS":"linux","GOARCH":"amd64"}`, nil
 	}
-	if (c.Name == "make" || c.Name == "python3" || c.Name == "rsvg-convert") && args == "--version" {
+	if (c.Name == "make" || c.Name == "rsvg-convert") && args == "--version" {
 		return "3.11.0", nil
+	}
+	if c.Name == "python3" && slices.Equal(c.Args, []string{"-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 'Python 3.11 or newer is required')"}) {
+		return "", nil
 	}
 	if c.Name == "tmux" && args == "-V" {
 		return "tmux 3.6", nil
@@ -163,12 +166,12 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 			writeReleaseArchive(f.t, c.Args[4])
 			return "", nil
 		}
-		if len(c.Args) == 10 && slices.Equal(c.Args[:4], []string{"release", "edit", "v0.1.1", "--notes-file"}) {
-			want := []string{"--draft=false", "--latest", "--verify-tag", "--repo", "github.com/example/mapbox-tui"}
-			if !slices.Equal(c.Args[5:], want) {
+		if len(c.Args) == 12 && slices.Equal(c.Args[:6], []string{"api", "--hostname", "github.com", "repos/example/mapbox-tui/releases/2", "--method", "PATCH"}) {
+			if c.Args[6] != "-F" || !strings.HasPrefix(c.Args[7], "body=@") ||
+				!slices.Equal(c.Args[8:], []string{"-F", "draft=false", "-f", "make_latest=legacy"}) {
 				f.t.Fatalf("publication flags: %v", c.Args)
 			}
-			b, err := os.ReadFile(c.Args[4])
+			b, err := os.ReadFile(strings.TrimPrefix(c.Args[7], "body=@"))
 			if err != nil {
 				f.t.Fatal(err)
 			}
@@ -348,7 +351,7 @@ func TestLostMutationResponsesAreReconciled(t *testing.T) {
 		if c.Name == "git" && c.Args[0] == "push" {
 			pushes++
 		}
-		if c.Name == "gh" && slices.Equal(c.Args[:min(2, len(c.Args))], []string{"release", "edit"}) {
+		if c.Name == "gh" && slices.Contains(c.Args, "PATCH") {
 			edits++
 		}
 	}
@@ -539,5 +542,105 @@ func TestPublicationCannotReplaceNewerLatest(t *testing.T) {
 	}
 	if commands.published {
 		t.Fatal("publication command ran")
+	}
+}
+
+func TestDraftRejectsUnexpectedAttachments(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.remote = true
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name != "gh" || c.Args[0] != "api" {
+			return "", nil, false
+		}
+		data := commands.releases()
+		assets := data[1]["assets"].([]map[string]any)
+		data[1]["assets"] = append(assets, map[string]any{"id": 13, "name": "unexpected.exe", "size": 100})
+		return jsonValue([]any{data}), nil, true
+	}}
+	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "only the expected archive") {
+		t.Fatalf("unexpected attachment accepted: %v", err)
+	}
+	for _, c := range commands.calls {
+		if slices.Contains(c.Args, "download") {
+			t.Fatal("download started before attachment validation")
+		}
+	}
+}
+
+func TestPreflightChecksPythonMinimum(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Rehearsal)
+	checked := false
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name != "python3" {
+			return "", nil, false
+		}
+		checked = true
+		if !strings.Contains(strings.Join(c.Args, " "), "sys.version_info >= (3, 11)") {
+			t.Fatal("Python minimum not checked")
+		}
+		return "", fmt.Errorf("Python 3.11 or newer is required"), true
+	}}
+	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: Tools}, func(string) {})
+	if !checked || err == nil || !strings.Contains(err.Error(), "Python 3.11") {
+		t.Fatalf("preflight did not explain Python requirement: %v", err)
+	}
+}
+
+func TestInspectRequiresRestartAfterFastForward(t *testing.T) {
+	adapter, commands, _ := newReleaseHarness(t, Live)
+	merged := false
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		args := strings.Join(c.Args, " ")
+		if args == "merge --ff-only origin/main" {
+			merged = true
+			return "", nil, true
+		}
+		if args == "rev-parse HEAD" && merged {
+			return strings.Repeat("c", 40), nil, true
+		}
+		if merged && c.Name == "gh" {
+			t.Fatal("continued with stale tool after fast-forward")
+		}
+		return "", nil, false
+	}}
+	_, err := adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "rerun make release") {
+		t.Fatalf("did not require restart: %v", err)
+	}
+}
+
+func TestConcurrentHigherReleaseRemainsLatest(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.local, commands.remote = true, true
+	for _, op := range []Operation{FetchArtifact, RemoteArtifact} {
+		result, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = result.State
+	}
+	state.Notes = "Reviewed notes"
+	newer := map[string]any{"id": 3, "tag_name": "v0.2.0", "draft": false}
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		// The competing release appears only after our publication request. The
+		// strict runner requires make_latest=legacy, never an unconditional override.
+		if !commands.published || c.Name != "gh" || c.Args[0] != "api" {
+			return "", nil, false
+		}
+		if strings.HasSuffix(c.Args[3], "/latest") {
+			return jsonValue(newer), nil, true
+		}
+		data := append(commands.releases(), newer)
+		return jsonValue([]any{data}), nil, true
+	}}
+	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+	if err != nil || !result.State.Published || !strings.Contains(result.Message, "v0.2.0 remains latest") {
+		t.Fatalf("concurrent latest not reconciled: %+v %v", result, err)
+	}
+	// Reconciliation after a lost response must also accept a newer latest.
+	result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: PublishRelease, Retry: true}, func(string) {})
+	if err != nil || !result.State.Published {
+		t.Fatalf("publication recovery blocked: %v", err)
 	}
 }
