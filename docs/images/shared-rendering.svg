@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="850" viewBox="0 0 960 850" role="img" aria-labelledby="title desc">
   <title id="title">Shared rendering architecture</title>
-  <desc id="desc">Viewer, CLI and MCP use shared workspace rules and scene rendering. Local file imports supply geometry independently of optional Mapbox data. An environment token or official Mapbox CLI saved login supplies credentials for the application's Mapbox requests. The renderer produces a cell grid for styled viewer output or ANSI-free CLI and MCP output. Single-file snapshots also use the renderer without a workspace.</desc>
+  <desc id="desc">Viewer, CLI and MCP use shared workspace rules and scene rendering. Local file imports supply geometry independently of optional Mapbox data. An environment token or official Mapbox CLI saved login supplies credentials for the application's Mapbox requests. The renderer produces a cell grid for styled viewer output or ANSI-free CLI and MCP output, with scene metadata in CLI JSON and MCP responses. Single-file snapshots also use the renderer without a workspace.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8Z" fill="#333333"/></marker>
     <style>
@@ -65,7 +65,8 @@
   <text x="64" y="739">Palette + Charm UI</text>
   <rect x="305" y="675" width="245" height="90" class="box"/>
   <text x="329" y="709" class="heading">CLI / MCP results</text>
-  <text x="329" y="739">ANSI-free text + metadata</text>
+  <text x="329" y="734">ANSI-free text</text>
+  <text x="329" y="755" class="small">Metadata: CLI JSON / MCP</text>
   <text x="610" y="709" class="small">Dashed arrows: optional provider inputs.</text>
   <line x1="40" y1="792" x2="920" y2="792" stroke="#aaa"/>
   <text x="40" y="820" class="small">Build: dev (ca83d9fe1d80) · Base: v0.1.0 + 3 commits · No release tag at this revision</text>

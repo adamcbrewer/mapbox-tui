@@ -36,7 +36,7 @@ multi-file CLI rendering creates a temporary one, and MCP keeps one for the
 server process. Single-file CLI/MCP snapshots use the same renderer without
 needing a workspace.
 
-![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP return plain text and metadata.](images/shared-rendering.svg)
+![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP use plain text, with scene metadata in CLI JSON and MCP responses.](images/shared-rendering.svg)
 
 ### Imports and workspace
 
@@ -85,8 +85,8 @@ The rendering pipeline is:
    priorities decide what appears where they overlap. Braille uses 2×4 dots per
    cell. ASCII uses symbols chosen by cell role from the same scene.
 4. Format the grid for the front end. The viewer applies its palette and adds
-   the UI. CLI/MCP return ANSI-free text and scene metadata, including source
-   status and attribution.
+   the UI. CLI/MCP map text is ANSI-free. CLI JSON output and MCP responses also
+   include scene metadata, such as source status and attribution.
 
 Picking uses the drawing rules to identify the item shown in a cell. Colours
 are applied separately, so changing the theme doesn't require another import or
