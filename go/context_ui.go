@@ -140,6 +140,8 @@ func (m *viewer) contextSummaryRows() []string {
 	theme := "Theme: " + m.theme().Name
 	if m.width < 60 {
 		theme = ansi.Truncate(m.theme().Name, m.width-6, "…")
+		buildVersion := ansi.Truncate(version, m.width-2, "…")
+		facts = pad(facts, m.width-ansi.StringWidth(buildVersion)-2) + "  " + buildVersion
 		room := m.width - ansi.StringWidth(theme) - 2
 		title := m.styles.heading.Render(pad(ansi.Truncate(name, room, "…"), room)) +
 			"  " + m.styles.muted.Render(theme)
@@ -149,8 +151,10 @@ func (m *viewer) contextSummaryRows() []string {
 			m.styles.muted.Render(pad(hints, m.width)),
 		}
 	}
-	themeRoom := min(24, m.width-ansi.StringWidth(hints+separator))
-	hints += separator + ansi.Truncate(theme, themeRoom, "…")
+	versionRoom := min(24, max(0, m.width-ansi.StringWidth(hints+separator+separator)-2))
+	versionLabel := separator + ansi.Truncate(version, versionRoom, "…")
+	themeRoom := min(24, m.width-ansi.StringWidth(hints+separator+versionLabel))
+	hints += separator + ansi.Truncate(theme, max(0, themeRoom), "…") + versionLabel
 	if m.width < 110 {
 		// Split the line on small screens; hints must never be clipped by a long name.
 		room := max(4, m.width-ansi.StringWidth(facts)-3)

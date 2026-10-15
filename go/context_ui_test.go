@@ -672,3 +672,31 @@ func TestFilesKeysAfterLeavingJourneyMapPick(t *testing.T) {
 		t.Fatal("stale journey picking state captured Files navigation")
 	}
 }
+
+func TestContextSummaryShowsBuildVersion(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+	for _, build := range []string{"dev", "v0.1.0", "v0.1.0-rc.1", "v0.1.0-" + strings.Repeat("long", 20)} {
+		version = build
+		for _, width := range []int{30, 39, 40, 59, 60, 70, 109, 110, 120, 160} {
+			t.Run(fmt.Sprintf("%s/%d", build, width), func(t *testing.T) {
+				m := themeViewer(t, width, 40, false)
+				rows := m.contextSummaryRows()
+				text := ansi.Strip(strings.Join(rows, "\n"))
+				if len(build) <= 10 && !strings.Contains(text, build) {
+					t.Fatalf("missing build version %q: %s", build, text)
+				}
+				for _, hint := range []string{"ctrl+b sidebar", "/ search", "? help"} {
+					if !strings.Contains(text, hint) {
+						t.Fatalf("missing hint %q: %s", hint, text)
+					}
+				}
+				for _, row := range rows {
+					if ansi.StringWidth(row) > width {
+						t.Fatalf("row exceeds width %d: %q", width, ansi.Strip(row))
+					}
+				}
+			})
+		}
+	}
+}
