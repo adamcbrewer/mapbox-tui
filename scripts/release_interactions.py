@@ -1,4 +1,4 @@
-"""Exercise the release demo in a real PTY, using the viewer's capture helpers."""
+"""Exercise the release workflow in a real PTY, using the viewer's capture helpers."""
 import shlex
 from pathlib import Path
 
@@ -24,7 +24,7 @@ def capture(name, width, height):
 def launch(scenario, delay="60ms"):
     command = shlex.join([
         "python3", str(ROOT / "scripts/terminal_runner.py"),
-        str(ROOT / "bin/mapbox-release"), f"--delay={delay}", f"--scenario={scenario}",
+        str(ROOT / "bin/mapbox-release"), "--mode=test", f"--delay={delay}", f"--scenario={scenario}",
     ])
     terminal.tmux("new-session", "-d", "-s", "poc", "-x", "90", "-y", "32", command)
     expect("Edit suggested tag")
@@ -72,6 +72,11 @@ def main():
         terminal.send("yes")
         key("Enter")
         expect("Review notes:")
+        terminal.send("e")
+        expect("ctrl+s")
+        terminal.send("Reviewed release notes. ")
+        key("C-s")
+        expect("Review notes:")
         terminal.send("yes")
         key("Enter")
         expect("Confirm publication")
@@ -80,13 +85,13 @@ def main():
         capture("narrow-confirmation", 40, 22)
         terminal.send("yes")
         key("Enter")
-        expect("Demo complete")
+        expect("Test complete")
         key("Enter")
         expect("TERMINAL_RESTORED=True EXIT=0")
         terminal.tmux("kill-session", "-t", "poc")
         launch("auth-error")
         key("Enter")
-        expect("Authentication failed")
+        expect("authentication failed")
         capture("failure", 90, 32)
         key("Enter")
         expect("Push annotated tag")
@@ -101,7 +106,26 @@ def main():
         capture("busy-leaf", 90, 32)
         key("C-c")
         expect("TERMINAL_RESTORED=True EXIT=0")
-        print("Release demo: confirmations, checklist scrolling, resize, retry, cancellation and terminal restoration passed.")
+        terminal.tmux("kill-session", "-t", "poc")
+        command = shlex.join([
+            "python3", str(ROOT / "scripts/terminal_runner.py"),
+            "env", f"RELEASE_TERMINAL_ROOT={ROOT}",
+            str(ROOT / "bin/release-terminal-test"), "-test.run=^TestViewerTerminalHandoff$",
+        ])
+        terminal.tmux("new-session", "-d", "-s", "poc", "-x", "100", "-y", "35", command)
+        expect("Edit suggested tag")
+        key("Enter")
+        expect("Riverside exploration")
+        capture("offline-viewer", 100, 35)
+        terminal.send("q")
+        expect("confirm it started")
+        capture("returned-from-viewer", 100, 35)
+        terminal.send("yes")
+        key("Enter")
+        expect("Rehearsal complete")
+        key("Enter")
+        expect("TERMINAL_RESTORED=True EXIT=0")
+        print("Release workflow: confirmations, checklist scrolling, resize, retry, cancellation and terminal restoration passed.")
     finally:
         terminal.tmux("kill-server", check=False)
 

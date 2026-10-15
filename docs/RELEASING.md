@@ -17,85 +17,120 @@ archives are not committed: `bin/` and `dist/` are ignored by Git. Pushing a ver
 tag makes Actions build that source and upload the archive and checksum as GitHub
 Release attachments. Publishing the draft makes those downloads available to users.
 
-## Interactive release preview (in development)
+## Interactive release command
 
-Issue #68 is being implemented incrementally. The first increment is a standalone
-Bubble Tea demo of the release flow, separate from the shipped viewer. With the Go
-version in `go.mod` installed, run this from the repository root:
+Use the Go version pinned in `go.mod`, on Linux x86-64, with Make, Python 3.11+,
+GitHub CLI and the terminal dependencies listed in [Development](DEVELOPMENT.md).
+Authenticate `gh` with permission to push tags and manage releases. From a clean
+checkout on `main`, run:
 
 ```sh
-make release-demo
+make release
+# Equivalent direct command:
+go run ./cmd/release
 ```
 
-The demo uses deterministic in-memory results. It does not invoke commands, read
-credentials, contact GitHub, create tags or publish releases. Repository and commit
-values are visibly fictional. It simulates checks, packaging, workflow discovery,
-draft verification and publication, pausing for explicit confirmation at the tag,
-viewer, notes and publication stages. The viewer and release notes are placeholders;
-this preview does not launch a binary or edit real notes.
+This is the official maintainer workflow. It fetches origin without overwriting
+tags, fast-forwards `main`, and inspects local/remote tags and GitHub releases.
+The initial screen suggests the next available version; edit it before starting.
+Only one patch, minor or major increment from the highest published stable release
+is accepted, with lower components reset. Existing tags and drafts reserve their
+versions. For a repository with no stable releases, the initial version is `v0.1.0`.
 
-Choose a version and scenario, or accelerate the demonstration:
+The nine sections run the actual checks and commands:
+
+1. Verify tools, clean source, release history and successful CI for the exact commit.
+2. Run `make check` and `make interactions` with `NO_COLOR` unset for interactions.
+3. Run `make package`, verify the checksum and archive contents, then check the
+   extracted binary's version, commit and offline rendering.
+4. Ask for `yes`, recheck source and version availability, create an annotated tag
+   and push only that tag. Existing tags are never moved or overwritten.
+5. Find the release workflow for that tag and commit, then wait for its jobs.
+6. Inspect the draft, download attachments into a fresh directory, and verify
+   the checksum, archive, embedded metadata and offline rendering again.
+7. Open the downloaded binary with the local fixture and `--no-provider`.
+   Quit the viewer to return, then type `yes` to confirm it worked.
+8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to
+   discard edits. Type `yes` to accept the notes.
+9. Ask for `yes`, publish the reviewed draft as latest, and verify GitHub's response.
+
+The numbered checklist shows nested command output and a braille spinner on the
+active operation. Polling updates the same waiting leaf, with bounded retries and
+backoff. Completed section headings turn green. The cyan/pink bar counts completed
+sections, rather than estimating how long a server request will take. The output
+under each operation retains its latest twelve lines. Arrow/page keys and the
+mouse wheel scroll overflowing content; advancing a section brings it into view.
+Prompts stay above the checklist. `NO_COLOR=1` disables colour. Use at least 36
+columns and 20 rows.
+
+Escape or Ctrl+C cancels local commands and restores the terminal. It does not
+cancel an already-triggered GitHub workflow. Recovery state is locked and written
+atomically in the Git directory, without credentials. Resume from the same clean
+source checkout with:
 
 ```sh
-make release-demo RELEASE_ARGS='--version=v0.2.0 --scenario=delayed-workflow --delay=200ms'
+make release RELEASE_ARGS='--resume'
 ```
 
-Available scenarios: `success`, `slow-checks`, `delayed-workflow`, `failed-checks`,
-`auth-error`, `checksum-mismatch` and `existing-draft` and `existing-tag`. Failure scenarios pause and
-let Enter simulate repairing the fixture and retrying the same step. This does
-not prescribe retrying a real release after a source or checksum change.
+Resume repeats verification and confirmations, reconciles an uncertain tag push
+or publication, and downloads fresh attachments. It does not recreate a draft or
+move a tag. A changed source commit requires a new release version. Keep the
+saved source checked out while resuming; a newer `main` on origin is accepted only
+when the already-tagged source remains its ancestor. If GitHub reports altered
+attachments, restart with `--resume` and review them again before publication.
 
-The initial tag is editable. The demo starts from a simulated `v0.1.0` release
-and suggests the next unreserved increment, normally `v0.1.1`. It accepts only
-`v0.1.1`, `v0.2.0` or `v1.0.0`: one patch, minor or major increment, resetting the
-lower components to zero. Existing tags, skipped versions and downgrades are
-blocked. The `existing-tag` scenario reserves `v0.1.1` so you can try the duplicate
-tag guard. `--version` changes the initial selection, subject to the same checks.
-These are fixture tags; live local/remote tag reconciliation is still pending.
+### Interactive tests and local rehearsal
 
-Press Enter to accept the version and start. Type `yes` at every confirmation,
-including publication. Version selection locks once preparation starts, and tag
-availability is checked again at tag confirmation.
-
-The checklist expands with nested activity as each step runs. Each simulated
-operation takes one demo delay, so you can see individual leaves progress. A
-braille spinner marks the active leaf and describes the operation or response it
-is waiting for; completed operations get a checkmark. Failed and cancelled leaves
-retain distinct markers. Polling updates the waiting leaf in place. Try
-`--scenario=slow-checks --delay=1s` or `--scenario=delayed-workflow --delay=1s`
-to inspect longer waits. Completed section titles turn green; symbols distinguish active, waiting and failed steps. The progress bar counts completed
-steps out of nine; it does not estimate elapsed work within a command. Arrow keys, page keys and the mouse wheel scroll the checklist when it overflows.
-The scroll hint appears only when needed. Advancing to the next step brings it
-into view automatically; all activity stays beneath its numbered section.
-Escape or Ctrl+C cancels and restores the terminal. `NO_COLOR=1` disables colour.
-Use a terminal at least 36 columns wide and 20 rows high; the checklist scrolls
-within the available space at narrow sizes.
-
-Only `--mode=demo` is currently accepted. **Local rehearsal, real command/GitHub
-adapters, editable notes and persisted resume are not implemented yet.** Use the
-manual process below for actual releases. Cancelling the demo discards its state;
-rerunning starts a new simulation.
-
-### Preview checks
-
-`make test` includes pure transition tests and deterministic normal/narrow text
-snapshots. With the terminal dependencies from [Development](DEVELOPMENT.md), run:
+There is one command and one workflow. To exercise its UI without credentials,
+subprocesses or network access, explicitly select its fixture-backed test mode:
 
 ```sh
+make release RELEASE_ARGS='--mode=test'
+make release RELEASE_ARGS='--mode=test --scenario=delayed-workflow --delay=200ms'
+```
+
+The test mode uses the same steps, confirmations, version policy, asynchronous
+result handling and rendering. Repository and commit values are fictional. It
+substitutes deterministic operation results, including the viewer handoff and
+publication. Scenarios are `success`, `slow-checks`, `delayed-workflow`,
+`failed-checks`, `auth-error`, `checksum-mismatch`, `existing-draft` and
+`existing-tag`. Enter retries a failed fixture. `--version` seeds the editable tag;
+`--delay` controls fixture timing. There is no separate release-demo command or target.
+
+To run real local checks, packaging and the offline viewer without creating a tag
+or publishing, use a clean checkout and authenticated GitHub access:
+
+```sh
+make release RELEASE_ARGS='--mode=rehearsal'
+```
+
+Rehearsal reads repository/release metadata and fetches refs, but does not advance
+your branch. It explicitly skips remote CI as a publication gate, tag push,
+release workflow, draft download, notes and publication. It cannot be used as
+proof that those skipped stages passed.
+
+### Automated verification
+
+```sh
+make test
 make release-interactions
 ```
 
-This checks confirmations, retry, checklist scrolling, resizing, cancellation and terminal
-restoration in tmux. Text, SVG and PNG captures are saved under
-`reports/generated/release/` and retained by CI. Review the captures and try the
-demo interactively when assessing the UI. To intentionally update text snapshots,
-run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review the diff.
+The tests exercise the production adapter using a strict fake command runner,
+including exact Git/GitHub arguments, confirmation ordering, archive verification,
+rehearsal restrictions and recovery after lost mutation responses. They also cover
+process cancellation, recovery-file locking, version guards, shared session
+transitions and normal/narrow text snapshots. The tests never push a real tag or
+publish a release.
 
-The existing [teatest module](https://github.com/charmbracelet/x/blob/main/exp/teatest/go.mod)
-depends on Bubble Tea v1; this repository uses `charm.land/bubbletea/v2`. This
-increment therefore tests model messages directly and uses the existing tmux
-capture helpers for real terminal behaviour, without adding a second Bubble Tea
-version solely for testing.
+The interaction suite executes the same release command in test mode inside tmux,
+checking confirmations, paste, notes editing, scrolling, resizing, retry, animated
+waiting, cancellation and terminal restoration. A separate integration case opens
+the actual offline viewer from the release UI and verifies returning to it. It needs the terminal dependencies
+from [Development](DEVELOPMENT.md). Text, SVG and PNG captures are saved under
+`reports/generated/release/` and retained by CI. To intentionally update text
+snapshots, run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review
+the diff. The manual commands below remain useful for diagnosis and recovery.
 
 ## Choose a version
 

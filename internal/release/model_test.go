@@ -147,7 +147,7 @@ func TestChecklistScrolling(t *testing.T) {
 			m.input.SetValue("yes")
 			updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			m = updated.(Model)
-			if m.session.Step != Workflow || !strings.Contains(m.viewport.View(), "▶ 5") {
+			if m.session.Step != Tag || m.session.Status != Running || !strings.Contains(m.viewport.View(), "▶ 4") {
 				t.Fatal("confirming next step did not bring it into view")
 			}
 		})
@@ -190,7 +190,7 @@ func TestPastedInput(t *testing.T) {
 		t.Fatal("paste must fill confirmation without submitting it")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if updated.(Model).session.Step != Workflow {
+	if updated.(Model).session.Step != Tag || updated.(Model).session.Status != Running {
 		t.Fatal("pasted confirmation was not accepted")
 	}
 }

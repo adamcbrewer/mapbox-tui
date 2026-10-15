@@ -18,6 +18,9 @@ type VersionPolicy struct {
 }
 
 func (p VersionPolicy) Candidates() ([]string, error) {
+	if p.Latest == "" {
+		return []string{"v0.1.0"}, nil
+	}
 	if !stableVersion.MatchString(p.Latest) {
 		return nil, fmt.Errorf("invalid latest stable release %q", p.Latest)
 	}
@@ -67,9 +70,27 @@ func (s *Session) SelectVersion(version string) error {
 	if s.Status != Ready {
 		return fmt.Errorf("version is locked once preparation starts")
 	}
+	if s.TagIntent {
+		if version != s.Version {
+			return fmt.Errorf("resume version is locked to %s", s.Version)
+		}
+		return nil
+	}
 	if err := s.Policy.Validate(version); err != nil {
 		return err
 	}
 	s.Version = version
 	return nil
+}
+
+func compareVersions(a, b string) int {
+	left, right := strings.Split(strings.TrimPrefix(a, "v"), "."), strings.Split(strings.TrimPrefix(b, "v"), ".")
+	for i := range 3 {
+		l, _ := new(big.Int).SetString(left[i], 10)
+		r, _ := new(big.Int).SetString(right[i], 10)
+		if cmp := l.Cmp(r); cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
 }

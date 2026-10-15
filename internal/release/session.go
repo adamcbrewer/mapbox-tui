@@ -1,8 +1,8 @@
-// Package release contains the maintainer release demo. It has no command or
-// GitHub adapter: all results are deterministic, in-memory fixtures.
+// Package release implements the shared maintainer release workflow.
 package release
 
 import (
+	"context"
 	"fmt"
 	"slices"
 )
@@ -30,7 +30,7 @@ var stepNames = []string{
 
 func (s Step) String() string {
 	if s == Complete {
-		return "Demo complete"
+		return "Test complete"
 	}
 	return stepNames[s]
 }
@@ -65,16 +65,14 @@ const (
 type ActivityEntry struct {
 	Text   string
 	Status ActivityStatus
+	Output []string
 }
 
-type demoOperation struct{ waiting, result string }
-
-// Session is independent of terminal rendering, wall-clock time and external IO.
-// Advance represents one simulated unit of work, never an actual release action.
+// Session owns transitions and confirmations, never subprocesses or network IO.
 type Session struct {
-	Policy    VersionPolicy
+	State
 	Activity  [Complete + 1][]ActivityEntry
-	Version   string
+	Skipped   [Complete]bool
 	Scenario  string
 	Step      Step
 	Status    Status
@@ -83,36 +81,43 @@ type Session struct {
 	operation int
 	ticks     int
 	retried   bool
+	approved  bool
 }
 
 func NewSession(version, scenario string) (Session, error) {
 	if !slices.Contains(scenarios, scenario) {
 		return Session{}, fmt.Errorf("unknown scenario %q; choose %s", scenario, Scenarios)
 	}
-	policy := VersionPolicy{Latest: "v0.1.0", Tags: []string{"v0.1.0"}}
-	if scenario == "existing-tag" {
-		policy.Tags = append(policy.Tags, "v0.1.1")
-	}
-	if version == "" {
-		var err error
-		version, err = policy.Suggested()
+	state := fixtureState(scenario)
+	state.Version = version
+	return NewSessionWithState(state, scenario)
+}
+
+func NewSessionWithState(state State, scenario string) (Session, error) {
+	if state.Version == "" {
+		version, err := state.Policy.Suggested()
 		if err != nil {
 			return Session{}, err
 		}
+		state.Version = version
 	}
-	if err := policy.Validate(version); err != nil {
-		return Session{}, err
+	if !state.TagIntent {
+		if err := state.Policy.Validate(state.Version); err != nil {
+			return Session{}, err
+		}
 	}
-	return Session{Version: version, Policy: policy, Scenario: scenario, Status: Ready}, nil
+	return Session{State: state, Scenario: scenario, Status: Ready}, nil
 }
 
 func (s *Session) Start() {
 	if s.Status != Ready {
 		return
 	}
-	if err := s.Policy.Validate(s.Version); err != nil {
-		s.Detail = err.Error()
-		return
+	if !s.TagIntent {
+		if err := s.Policy.Validate(s.Version); err != nil {
+			s.Detail = err.Error()
+			return
+		}
 	}
 	s.enter()
 }
@@ -120,57 +125,45 @@ func (s *Session) Start() {
 func (s *Session) enter() {
 	s.ticks = 0
 	s.Status = Running
-	s.Detail = "Simulating " + s.Step.String()
-	switch s.Step {
-	case Tag, Viewer, Notes, Publish:
-		s.Status = Confirmation
-		s.Detail = s.Prompt()
-	case Complete:
+	if s.Step == Complete {
 		s.Status = Done
-		s.Detail = "Simulated publication verified. No real release was created."
-	}
-	if s.Status == Running {
-		s.startOperation()
+		s.Detail = s.Summary()
+		s.log(s.Detail)
 		return
 	}
-	s.log(s.Detail)
-}
-
-func (s *Session) startOperation() {
-	s.ticks = 0
-	s.Detail = demoOperations[s.Step][s.operation].waiting
+	if (s.Step == Tag || s.Step == Publish) && !s.approved {
+		s.Status = Confirmation
+		s.Detail = s.Prompt()
+		s.log(s.Detail)
+		return
+	}
+	s.Detail = operations[s.Step][s.operation].waiting
 	s.Activity[s.Step] = append(s.Activity[s.Step], ActivityEntry{Text: s.Detail, Status: ActivityRunning})
-	s.Logs = append(s.Logs, s.Detail)
-}
-
-func (s *Session) updateOperation(text string, status ActivityStatus) {
-	entries := s.Activity[s.Step]
-	entries[len(entries)-1] = ActivityEntry{Text: text, Status: status}
-	s.Detail = text
 }
 
 func (s Session) Prompt() string {
+	suffix := ""
+	if s.Mode == TestMode {
+		suffix = " (simulated)"
+	}
 	switch s.Step {
 	case Tag:
-		return "Push annotated tag " + s.Version + " for example/mapbox-tui at 0123456789ab? (simulated)"
+		return fmt.Sprintf("Push annotated tag %s for %s at %s?%s", s.Version, s.Repository, s.Commit, suffix)
 	case Viewer:
-		return "Offline viewer smoke test (simulated): confirm it started and quit correctly."
+		return "Offline viewer smoke test: confirm it started and quit correctly." + suffix
 	case Notes:
-		return "Review notes: Linux x86-64; docs/INSTALL.md link; breaking changes; limitations. Demo notes only."
+		return "Review notes: Linux x86-64; installation link; breaking changes; limitations. Press e to edit, then yes to accept." + suffix
 	case Publish:
-		return "Publish " + s.Version + " as latest? Type yes to confirm simulated publication."
+		return fmt.Sprintf("Publish %s for %s at %s as latest?%s", s.Version, s.Repository, s.Commit, suffix)
 	}
 	return ""
 }
 
 func (s *Session) Confirm(answer string) {
-	if s.Status != Confirmation {
+	if s.Status != Confirmation || answer != "yes" {
 		return
 	}
-	if answer != "yes" {
-		return
-	}
-	if s.Step == Tag {
+	if s.Step == Tag && !s.TagIntent {
 		if err := s.Policy.Validate(s.Version); err != nil {
 			s.Status, s.Detail = Failed, err.Error()
 			s.log(s.Detail)
@@ -178,66 +171,82 @@ func (s *Session) Confirm(answer string) {
 		}
 	}
 	s.log("Confirmed: " + s.Step.String())
+	if s.Step == Tag || s.Step == Publish {
+		s.approved = true
+		s.enter()
+		return
+	}
 	s.next()
 }
 
+func (s *Session) Request() Request {
+	s.ticks++
+	return Request{State: s.State, Operation: operations[s.Step][s.operation].id, Attempt: s.ticks, Retry: s.retried}
+}
+
+func (s *Session) Accept(result Result, err error) {
+	if s.Status != Running {
+		return
+	}
+	if err != nil {
+		if result.State.Version == s.Version {
+			s.State = result.State
+		}
+		s.Status = Failed
+		s.updateOperation(err.Error(), ActivityFailed)
+		s.Logs = append(s.Logs, err.Error())
+		return
+	}
+	s.State = result.State
+	if result.Pending {
+		s.updateOperation(result.Message, ActivityRunning)
+		return
+	}
+	s.updateOperation(result.Message, ActivityComplete)
+	s.Logs = append(s.Logs, result.Message)
+	s.operation++
+	if s.operation < len(operations[s.Step]) {
+		s.enter()
+		return
+	}
+	if s.Step == Viewer || s.Step == Notes {
+		s.Status = Confirmation
+		s.Detail = s.Prompt()
+		return
+	}
+	s.next()
+}
+
+// Advance drives the same adapter/result protocol synchronously for deterministic tests.
 func (s *Session) Advance() {
 	if s.Status != Running {
 		return
 	}
-	s.ticks++
-	if s.Scenario == "slow-checks" && s.Step == Checks && s.operation == 1 && s.ticks < 8 {
-		s.updateOperation("Running terminal interactions; waiting for the process to finish", ActivityRunning)
-		return
-	}
-	if s.Scenario == "delayed-workflow" && s.Step == Workflow && s.operation == 0 && s.ticks < 5 {
-		s.Detail = fmt.Sprintf("Waiting for GitHub to start the matching workflow (attempt %d/5).", s.ticks)
-		s.updateOperation(s.Detail, ActivityRunning)
-		return
-	}
-	if !s.retried {
-		failure := ""
-		switch {
-		case s.Scenario == "auth-error" && s.Step == Preflight:
-			failure = "Authentication failed. In a real release, run gh auth login, then retry."
-		case s.Scenario == "failed-checks" && s.Step == Checks && s.operation == 1:
-			failure = "Terminal checks failed. Inspect logs; source fixes require a new release preparation."
-		case s.Scenario == "checksum-mismatch" && s.Step == Download && s.operation == 1:
-			failure = "Checksum mismatch. Stop before executing the download; inspect the draft assets."
-		}
-		if failure != "" {
-			s.Status, s.Detail = Failed, failure
-			s.updateOperation(failure, ActivityFailed)
-			s.Logs = append(s.Logs, failure)
-			return
-		}
-	}
-	result := demoOperations[s.Step][s.operation].result
-	s.updateOperation(result, ActivityComplete)
-	s.Logs = append(s.Logs, result)
-	s.operation++
-	if s.operation < len(demoOperations[s.Step]) {
-		s.startOperation()
-		return
-	}
-
-	detail := "Simulated success: " + s.Step.String()
-	if s.Scenario == "existing-draft" && s.Step == Download {
-		detail = "Existing draft matches tag and commit; inspect its assets without creating another draft. (simulated)"
-	}
-	s.log(detail)
-	s.next()
+	result, err := (FixtureAdapter{Scenario: s.Scenario}).Execute(context.Background(), s.Request(), func(string) {})
+	s.Accept(result, err)
 }
 
-func (s *Session) next() { s.Step++; s.operation = 0; s.enter() }
+func (s *Session) next() {
+	if s.Mode == Rehearsal && s.Step == Package {
+		for _, step := range []Step{Tag, Workflow, Download, Notes, Publish} {
+			s.Skipped[step] = true
+		}
+		s.Step = Viewer
+	} else if s.Mode == Rehearsal && s.Step == Viewer {
+		s.Step = Complete
+	} else {
+		s.Step++
+	}
+	s.operation, s.approved = 0, false
+	s.enter()
+}
 
-// Retry models a repaired fixture, not permission to retry real release mutations.
 func (s *Session) Retry() {
 	if s.Status != Failed {
 		return
 	}
 	s.retried = true
-	s.log("Demo: simulating an external repair, then retrying this step.")
+	s.log("Retrying this operation; existing release state will be reconciled.")
 	s.enter()
 }
 
@@ -249,37 +258,34 @@ func (s *Session) Cancel() {
 		s.updateOperation(s.Detail, ActivityCancelled)
 	}
 	s.Status = Cancelled
-	s.Detail = "Demo cancelled. No commands ran; no remote workflow is running."
+	s.Detail = s.Summary()
 	s.log(s.Detail)
+}
+
+func (s Session) Summary() string {
+	if s.Mode == TestMode {
+		if s.Status == Done {
+			return "Test complete. No real release was created."
+		}
+		return "Test cancelled. No commands ran; no remote workflow is running."
+	}
+	if s.Status == Done {
+		if s.Mode == Rehearsal {
+			return "Rehearsal complete. Local artifacts verified; tag, workflow, draft and publication stages were not exercised."
+		}
+		return "Publication verified: " + s.URL
+	}
+	return "Stopped locally. A pushed tag may still have a remote workflow running. Resume with --resume to reconcile git and GitHub."
+}
+
+func (s *Session) updateOperation(text string, status ActivityStatus) {
+	entries := s.Activity[s.Step]
+	entries[len(entries)-1].Text = text
+	entries[len(entries)-1].Status = status
+	s.Detail = text
 }
 
 func (s *Session) log(message string) {
 	s.Logs = append(s.Logs, message)
 	s.Activity[s.Step] = append(s.Activity[s.Step], ActivityEntry{Text: message, Status: ActivityNote})
-}
-
-// These messages describe fixture results, never observations from the machine.
-var demoOperations = map[Step][]demoOperation{
-	Preflight: {
-		{waiting: "Checking toolchain and waiting for gh authentication", result: "Toolchain and gh authentication ready"},
-		{waiting: "Inspecting the working tree and selecting main", result: "Clean main selected: 0123456789ab"},
-		{waiting: "Waiting for GitHub CI status for 0123456789ab", result: "CI passed for the selected commit"},
-	},
-	Checks: {
-		{waiting: "Running formatting, tests, vet and race checks", result: "Formatting, tests, vet and race checks passed"},
-		{waiting: "Running terminal interactions with NO_COLOR unset", result: "Terminal interactions passed with NO_COLOR unset"},
-	},
-	Package: {
-		{waiting: "Building the Linux amd64 archive", result: "Linux amd64 archive prepared"},
-		{waiting: "Verifying the local archive checksum", result: "SHA-256 checksum matched"},
-		{waiting: "Checking the packaged version and commit", result: "Embedded version and commit matched selection"},
-	},
-	Workflow: {
-		{waiting: "Waiting for GitHub to start the matching workflow", result: "Matched release workflow by tag and commit"},
-		{waiting: "Waiting for GitHub checks, packaging and draft creation", result: "Checks and packaging jobs succeeded; draft ready"},
-	},
-	Download: {
-		{waiting: "Downloading draft attachments from GitHub", result: "Draft attachments downloaded to a fresh directory"},
-		{waiting: "Verifying downloaded checksum, version and commit", result: "Checksum, embedded version and commit verified"},
-	},
 }

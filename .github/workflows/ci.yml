@@ -62,13 +62,13 @@ jobs:
           sudo apt-get install --no-install-recommends -y tmux librsvg2-bin fonts-dejavu-core
       - name: Check terminal interactions
         run: make interactions
-      - name: Check release demo interactions
+      - name: Check release workflow interactions
         run: make release-interactions
-      - name: Save release demo captures
+      - name: Save release workflow captures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-demo-captures
+          name: release-workflow-captures
           path: reports/generated/release/
           if-no-files-found: ignore
           retention-days: 7

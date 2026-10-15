@@ -20,7 +20,7 @@ func TestVersionValidation(t *testing.T) {
 	}
 }
 
-func TestDemoScenarios(t *testing.T) {
+func TestWorkflowScenarios(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) {
 			s, err := NewSession("v0.2.0", scenario)

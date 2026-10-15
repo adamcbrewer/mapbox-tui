@@ -1,12 +1,14 @@
 package release
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -18,18 +20,26 @@ import (
 type tickMsg struct{}
 
 type Model struct {
-	session       Session
-	interval      time.Duration
-	started       time.Time
-	elapsed       time.Duration
-	spinner       spinner.Model
-	input         textinput.Model
-	viewport      viewport.Model
-	width, height int
-	noColor       bool
-	scrollable    bool
-	follow        bool
-	versionError  string
+	session        Session
+	interval       time.Duration
+	started        time.Time
+	elapsed        time.Duration
+	spinner        spinner.Model
+	input          textinput.Model
+	viewport       viewport.Model
+	width, height  int
+	noColor        bool
+	scrollable     bool
+	follow         bool
+	versionError   string
+	adapter        Adapter
+	ctx            context.Context
+	cancel         context.CancelFunc
+	busy, stopping bool
+	execution      *executionLifecycle
+	output         chan string
+	editor         textarea.Model
+	editing        bool
 }
 
 func NewModel(session Session, interval time.Duration, noColor bool) Model {
@@ -43,7 +53,7 @@ func NewModel(session Session, interval time.Duration, noColor bool) Model {
 	input.Focus()
 	m := Model{
 		session: session, interval: interval, spinner: spinner.New(spinner.WithSpinner(spinner.Dot)), input: input,
-		viewport: viewport.New(), width: 80, height: 30, noColor: noColor, follow: true,
+		viewport: viewport.New(), editor: textarea.New(), width: 80, height: 30, noColor: noColor, follow: true,
 	}
 	m.spinner.Style = m.style("#FFFFFF")
 	m.refresh()
@@ -61,13 +71,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
 		m.input.SetWidth(max(1, min(30, m.width-6)))
+		m.editor.SetWidth(max(1, m.width-4))
+		m.editor.SetHeight(max(1, m.height-7))
 		m.refresh()
+		return m, nil
+	case operationResultMsg:
+		m.busy = false
+		m.drainOutput()
+		if m.stopping {
+			return m, tea.Quit
+		}
+		previous := m.session.Step
+		m.session.Accept(msg.result, msg.err)
+		if m.session.Step != previous {
+			m.follow = true
+		}
+		m.refresh()
+		if m.session.Status == Running {
+			if msg.result.Pending {
+				return m, tea.Tick(m.retryDelay(), func(time.Time) tea.Msg { return tickMsg{} })
+			}
+			cmd := m.command()
+			return m, cmd
+		}
 		return m, nil
 	case tickMsg:
 		if m.session.Status != Running {
 			return m, nil
 		}
 		m.elapsed = time.Since(m.started).Truncate(time.Second)
+		if m.adapter != nil {
+			cmd := m.command()
+			return m, cmd
+		}
 		previous := m.session.Step
 		m.session.Advance()
 		if m.session.Step != previous {
@@ -75,13 +111,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh()
 		if m.session.Status == Running {
-			return m, m.tick()
+			cmd := m.command()
+			return m, cmd
 		}
 		return m, nil
 	case tea.KeyPressMsg:
+		if m.editing {
+			switch msg.String() {
+			case "ctrl+s":
+				m.session.Notes = m.editor.Value()
+				m.editing = false
+				m.refresh()
+				return m, nil
+			case "esc":
+				m.editing = false
+				return m, nil
+			case "ctrl+c":
+			default:
+				var cmd tea.Cmd
+				m.editor, cmd = m.editor.Update(msg)
+				return m, cmd
+			}
+		}
+		if msg.String() == "e" && m.session.Status == Confirmation && m.session.Step == Notes && m.input.Value() == "" {
+			m.editor = textarea.New()
+			m.editor.CharLimit = 128 * 1024
+			m.editor.SetValue(m.session.Notes)
+			m.editor.SetWidth(max(1, m.width-4))
+			m.editor.SetHeight(max(1, m.height-7))
+			m.editing = true
+			cmd := m.editor.Focus()
+			return m, cmd
+		}
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			m.session.Cancel()
+			if m.cancel != nil {
+				m.cancel()
+			}
+			if m.busy {
+				m.stopping = true
+				m.refresh()
+				return m, nil
+			}
 			return m, tea.Quit
 		case "up", "down", "pgup", "pgdown":
 			m.follow = false
@@ -113,7 +185,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.follow = true
 			m.refresh()
 			if m.session.Status == Running {
-				return m, m.tick()
+				cmd := m.command()
+				return m, cmd
 			}
 			return m, nil
 		}
@@ -124,9 +197,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
 	case spinner.TickMsg:
+		m.drainOutput()
+		if !m.started.IsZero() {
+			m.elapsed = time.Since(m.started).Truncate(time.Second)
+		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		m.refresh()
+		return m, cmd
+	}
+	if m.editing {
+		var cmd tea.Cmd
+		m.editor, cmd = m.editor.Update(msg)
 		return m, cmd
 	}
 	if m.session.Status == Ready || m.session.Status == Confirmation {
@@ -155,12 +237,13 @@ func (m Model) header() string {
 	)
 	bar.EmptyColor = lipgloss.Color("#484B54")
 	title := m.style("#FFFFFF").Bold(true).Render("MAPBOX / RELEASE")
-	identity := fmt.Sprintf("%s · example/mapbox-tui · 0123456789ab", m.session.Version)
+	identity := fmt.Sprintf("%s · %s · %s", m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
 	if m.width < 60 {
-		identity = m.session.Version + " · demo repository"
+		identity = m.session.Version + " · " + m.session.Repository
 	}
+	modeLabel := map[Mode]string{TestMode: "TEST · simulated release", Rehearsal: "REHEARSAL · no remote writes", Live: "RELEASE · real git and GitHub operations"}[m.session.Mode]
 	return ansi.Wrap(fmt.Sprintf("%s\n%s\n%s\n%s  %d/9 steps complete",
-		title, m.style("#A0A0A0").Render("DEMO · simulated release"), m.style("#A0A0A0").Render(identity),
+		title, m.style("#A0A0A0").Render(modeLabel), m.style("#A0A0A0").Render(identity),
 		bar.ViewAs(float64(m.session.Step)/float64(Complete)), m.session.Step,
 	), width, "")
 }
@@ -176,7 +259,7 @@ func (m Model) controls() string {
 	switch m.session.Status {
 	case Ready:
 		candidates, _ := m.session.Policy.Candidates()
-		lines = append(lines, "Latest release: "+m.session.Policy.Latest+" (demo)",
+		lines = append(lines, "Latest release: "+m.session.Policy.Latest,
 			"Next: "+strings.Join(candidates, " / "))
 		if m.height >= 26 {
 			lines = append(lines, "")
@@ -189,9 +272,9 @@ func (m Model) controls() string {
 	case Confirmation:
 		lines = append(lines, m.session.Prompt(), m.style("#D4D4D4").Render("Type yes, then enter."), m.input.View())
 	case Failed:
-		lines = append(lines, m.style("#FFFFFF").Render(m.session.Detail), "Enter: simulate repair and retry")
+		lines = append(lines, m.style("#FFFFFF").Render(m.session.Detail), "Enter: retry this operation")
 	case Done:
-		lines = append(lines, "Demo complete. No real release was created. Enter: exit")
+		lines = append(lines, m.session.Summary()+" Enter: exit")
 	case Running:
 		lines = append(lines, m.spinner.View()+" "+m.session.Step.String())
 	}
@@ -221,7 +304,9 @@ func (m Model) checklist() (string, int) {
 	activeLine := 0
 	for i, name := range stepNames {
 		marker, color := "○", "#A0A0A0"
-		if Step(i) < m.session.Step {
+		if m.session.Skipped[i] {
+			marker, color = "–", "#A0A0A0"
+		} else if Step(i) < m.session.Step {
 			marker, color = "✓", "#73D69C"
 		}
 		if Step(i) == m.session.Step {
@@ -257,7 +342,11 @@ func (m Model) checklist() (string, int) {
 			case ActivityCancelled:
 				prefix = "– "
 			}
-			branch.Child(m.style("#C0C0C0").Render(ansi.Wrap(prefix+entry.Text, max(1, m.width-8), "")))
+			leaf := tree.Root(m.style("#C0C0C0").Render(ansi.Wrap(prefix+entry.Text, max(1, m.width-8), "")))
+			for _, line := range entry.Output {
+				leaf.Child(m.style("#A0A0A0").Render(ansi.Wrap(line, max(1, m.width-12), "")))
+			}
+			branch.Child(leaf)
 		}
 		sections = append(sections, branch.String())
 	}
@@ -293,8 +382,11 @@ func (m *Model) refresh() {
 
 func (m Model) View() tea.View {
 	content := m.header() + m.groupSeparator() + m.controls() + m.groupSeparator() + m.viewport.View()
+	if m.editing {
+		content = "Release notes · ctrl+s save · esc back\n\n" + m.editor.View() + "\nLinux x86-64 · installation link · breaking changes · limitations"
+	}
 	if m.height < 20 || m.width < 36 {
-		content = ansi.Wrap("Release demo: enlarge terminal to 36 columns and 20 rows. Esc cancels.", max(1, m.width-4), "")
+		content = ansi.Wrap("Release: enlarge terminal to 36 columns and 20 rows. Esc cancels.", max(1, m.width-4), "")
 	}
 	if m.noColor {
 		content = ansi.Strip(content)
@@ -305,9 +397,4 @@ func (m Model) View() tea.View {
 	return view
 }
 
-func (m Model) Summary() string {
-	if m.session.Status == Done {
-		return "Demo complete. No real release was created."
-	}
-	return "Demo cancelled. No commands ran; no remote workflow is running."
-}
+func (m Model) Summary() string { return m.session.Summary() }

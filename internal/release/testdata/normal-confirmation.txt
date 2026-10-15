@@ -1,10 +1,10 @@
 
   MAPBOX / RELEASE
-  DEMO · simulated release
+  TEST · simulated release
   v0.2.0 · example/mapbox-tui · 0123456789ab
   ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌░░░  8/9 steps complete
 
-  │ Publish v0.2.0 as latest? Type yes to confirm simulated publication.
+  │ Publish v0.2.0 for example/mapbox-tui at 0123456789ab as latest? (simulated)
   │ Type yes, then enter.
   │ >
 
@@ -19,4 +19,4 @@
   ✓ 7  Confirm offline viewer
   ✓ 8  Review release notes
   ? 9  Confirm publication
-  ╰──· Publish v0.2.0 as latest? Type yes to confirm simulated publication.
+  ╰──· Publish v0.2.0 for example/mapbox-tui at 0123456789ab as latest? (simulated)

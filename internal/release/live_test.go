@@ -1,0 +1,546 @@
+package release
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// These tests execute the production adapter and session. Only the process
+// boundary is replaced, so unexpected commands and flags fail the test.
+type releaseCommands struct {
+	t                        *testing.T
+	root                     string
+	local, remote, published bool
+	losePush, losePublish    bool
+	calls                    []Command
+	notes                    string
+}
+type memoryJournal struct {
+	state  State
+	exists bool
+}
+
+func (j *memoryJournal) Load() (State, bool, error) { return j.state, j.exists, nil }
+func (j *memoryJournal) Save(s State) error         { j.state, j.exists = s, true; return nil }
+
+const testCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+func newReleaseHarness(t *testing.T, mode Mode) (*RealAdapter, *releaseCommands, State) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module fixture\n\ngo 1.27.1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commands := &releaseCommands{t: t, root: root}
+	adapter := &RealAdapter{Mode: mode, Root: root, Runner: commands, Journal: &memoryJournal{}}
+	t.Cleanup(adapter.Cleanup)
+	result, err := adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.State.Version = "v0.1.1"
+	return adapter, commands, result.State
+}
+func jsonValue(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+func (f *releaseCommands) releases() []map[string]any {
+	all := []map[string]any{{"id": 1, "tag_name": "v0.1.0", "draft": false}}
+	if f.remote {
+		all = append(all, map[string]any{"id": 2, "tag_name": "v0.1.1", "draft": !f.published, "body": "Linux x86-64 release. See docs/INSTALL.md.", "html_url": "https://github.com/example/mapbox-tui/releases/tag/v0.1.1", "assets": []map[string]any{{"id": 11, "name": archiveName("v0.1.1"), "size": 100}, {"id": 12, "name": archiveName("v0.1.1") + ".sha256", "size": 100}}})
+	}
+	return all
+}
+func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string)) (string, error) {
+	f.t.Helper()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	f.calls = append(f.calls, c)
+	if c.Dir != f.root {
+		f.t.Fatalf("wrong command root: %+v", c)
+	}
+	args := strings.Join(c.Args, " ")
+	if c.Name == "git" {
+		switch args {
+		case "remote get-url origin":
+			return "git@github.com:example/mapbox-tui.git", nil
+		case "branch --show-current":
+			return "main", nil
+		case "status --porcelain --untracked-files=normal", "fetch origin main --tags", "fetch origin main", "merge --ff-only origin/main":
+			return "", nil
+		case "rev-parse HEAD", "rev-parse origin/main", "rev-parse v0.1.1^{commit}":
+			return testCommit, nil
+		case "cat-file -t refs/tags/v0.1.1":
+			return "tag", nil
+		case "tag --list":
+			if f.local {
+				return "v0.1.0\nv0.1.1", nil
+			}
+			return "v0.1.0", nil
+		case "tag --list v0.1.1":
+			if f.local {
+				return "v0.1.1", nil
+			}
+			return "", nil
+		case "tag -a v0.1.1 " + testCommit + " -m Release v0.1.1":
+			f.local = true
+			return "", nil
+		case "push origin refs/tags/v0.1.1:refs/tags/v0.1.1":
+			f.remote = true
+			if f.losePush {
+				f.losePush = false
+				return "", fmt.Errorf("response lost after push")
+			}
+			return "", nil
+		case "ls-remote --tags origin", "ls-remote --tags origin refs/tags/v0.1.1", "ls-remote --tags origin refs/tags/v0.1.1 refs/tags/v0.1.1^{}":
+			if f.remote {
+				return "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/tags/v0.1.1\n" + testCommit + "\trefs/tags/v0.1.1^{}", nil
+			}
+			return "", nil
+		case "log --oneline -50 v0.1.0.." + testCommit:
+			return "aaaaaaa Change ready for release", nil
+		}
+	}
+	if c.Name == "go" && args == "env -json GOVERSION GOOS GOARCH" {
+		return `{"GOVERSION":"go1.27.1","GOOS":"linux","GOARCH":"amd64"}`, nil
+	}
+	if c.Name == "fc-match" && args == "DejaVu Sans Mono" {
+		return "DejaVuSansMono.ttf", nil
+	}
+	if (c.Name == "make" || c.Name == "python3" || c.Name == "rsvg-convert") && args == "--version" {
+		return "3.11.0", nil
+	}
+	if c.Name == "tmux" && args == "-V" {
+		return "tmux 3.6", nil
+	}
+	if c.Name == "make" {
+		switch args {
+		case "check", "interactions":
+			if c.Env["MAPBOX_ACCESS_TOKEN"] != "" {
+				f.t.Fatal("checks must be offline")
+			}
+			if args == "interactions" && !slices.Contains(c.Unset, "NO_COLOR") {
+				f.t.Fatal("interactions must enable colour")
+			}
+			emit("local checks completed")
+			return "", nil
+		case "package VERSION=v0.1.1 COMMIT=aaaaaaaaaaaa":
+			writeReleaseArchive(f.t, filepath.Join(f.root, "dist"))
+			return "", nil
+		}
+	}
+	if c.Name == "gh" {
+		switch args {
+		case "auth status --hostname github.com":
+			return "authenticated", nil
+		case "api --hostname github.com repos/example/mapbox-tui/releases?per_page=100 --paginate --slurp":
+			return jsonValue([]any{f.releases()}), nil
+		case "api --hostname github.com repos/example/mapbox-tui/releases/latest":
+			return jsonValue(f.releases()[len(f.releases())-1]), nil
+		case "run list --workflow ci.yml --branch main --commit " + testCommit + " --event push --limit 100 --json databaseId,headSha,headBranch,status,conclusion,url --repo github.com/example/mapbox-tui":
+			return `[{"databaseId":4,"headSha":"` + testCommit + `","headBranch":"main","status":"completed","conclusion":"success"}]`, nil
+		case "run list --workflow release.yml --branch v0.1.1 --commit " + testCommit + " --event push --limit 100 --json databaseId,headSha,headBranch,status,conclusion,url --repo github.com/example/mapbox-tui":
+			return `[{"databaseId":5,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"completed","conclusion":"success"}]`, nil
+		case "run view 5 --json databaseId,headSha,headBranch,status,conclusion,url,jobs --repo github.com/example/mapbox-tui":
+			return `{"databaseId":5,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"completed","conclusion":"success","jobs":[{"name":"checks","status":"completed","conclusion":"success"}]}`, nil
+		}
+		if len(c.Args) == 11 && slices.Equal(c.Args[:4], []string{"release", "download", "v0.1.1", "--dir"}) {
+			want := []string{"--pattern", archiveName("v0.1.1"), "--pattern", archiveName("v0.1.1") + ".sha256", "--repo", "github.com/example/mapbox-tui"}
+			if !slices.Equal(c.Args[5:], want) {
+				f.t.Fatalf("download flags: %v", c.Args)
+			}
+			writeReleaseArchive(f.t, c.Args[4])
+			return "", nil
+		}
+		if len(c.Args) == 10 && slices.Equal(c.Args[:4], []string{"release", "edit", "v0.1.1", "--notes-file"}) {
+			want := []string{"--draft=false", "--latest", "--verify-tag", "--repo", "github.com/example/mapbox-tui"}
+			if !slices.Equal(c.Args[5:], want) {
+				f.t.Fatalf("publication flags: %v", c.Args)
+			}
+			b, err := os.ReadFile(c.Args[4])
+			if err != nil {
+				f.t.Fatal(err)
+			}
+			f.notes = string(b)
+			f.published = true
+			if f.losePublish {
+				f.losePublish = false
+				return "", fmt.Errorf("response lost after publication")
+			}
+			return "", nil
+		}
+	}
+	if filepath.Base(c.Name) == "mapbox-tui" {
+		if c.Env["MAPBOX_ACCESS_TOKEN"] != "" {
+			f.t.Fatal("smoke must be offline")
+		}
+		if args == "--version" {
+			return "mapbox-tui v0.1.1 (aaaaaaaaaaaa)", nil
+		}
+		if slices.Equal(c.Args, []string{"render", filepath.Join(f.root, "fixtures/example.gpx"), "--no-provider", "--ascii", "--width", "60", "--height", "20"}) {
+			emit("offline rendering passed")
+			return "map", nil
+		}
+	}
+	f.t.Fatalf("unexpected command: %s %v", c.Name, c.Args)
+	return "", fmt.Errorf("unexpected command")
+}
+func writeReleaseArchive(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, archiveName("v0.1.1"))
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(file)
+	tw := tar.NewWriter(gz)
+	for _, name := range []string{"mapbox-tui", "INSTALL.md", "LICENSE", "THIRD_PARTY_NOTICES.txt"} {
+		body := []byte("fixture " + name)
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, err := range []error{tw.Close(), gz.Close(), file.Close()} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checksum := fmt.Sprintf("%x  %s\n", sha256.Sum256(data), filepath.Base(path))
+	if err := os.WriteFile(path+".sha256", []byte(checksum), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRealWorkflowCommandsAndConfirmations(t *testing.T) {
+	for _, mode := range []Mode{Live, Rehearsal} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+			adapter, commands, state := newReleaseHarness(t, mode)
+			session, err := NewSessionWithState(state, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			session.Start()
+			var gates []Step
+			var executed []Operation
+			for range 60 {
+				if session.Status == Done {
+					break
+				}
+				if session.Status == Confirmation {
+					gates = append(gates, session.Step)
+					if session.Step == Tag && commands.remote {
+						t.Fatal("pushed before confirmation")
+					}
+					if session.Step == Publish && commands.published {
+						t.Fatal("published before confirmation")
+					}
+					session.Confirm("no")
+					if session.Status != Confirmation {
+						t.Fatal("accepted no")
+					}
+					session.Confirm("yes")
+					continue
+				}
+				q := session.Request()
+				executed = append(executed, q.Operation)
+				var result Result
+				if q.Operation == OpenViewer {
+					// Verify the real terminal handoff command; never run the fixture archive.
+					cmd, err := adapter.ViewerCommand(t.Context(), q.State)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !slices.Equal(cmd.Args, []string{q.State.Binary, filepath.Join(commands.root, "fixtures/example.gpx"), "--no-provider"}) {
+						t.Fatalf("viewer command: %v", cmd.Args)
+					}
+					result = Result{State: q.State, Message: "Offline viewer exited"}
+				} else {
+					result, err = adapter.Execute(t.Context(), q, func(string) {})
+				}
+				if err != nil {
+					t.Fatalf("%s: %v", q.Operation, err)
+				}
+				session.Accept(result, nil)
+			}
+			if session.Status != Done {
+				t.Fatalf("not complete: %+v", session)
+			}
+			wantGates := []Step{Tag, Viewer, Notes, Publish}
+			if mode == Rehearsal {
+				wantGates = []Step{Viewer}
+			}
+			if !slices.Equal(gates, wantGates) {
+				t.Fatalf("gates %v; want %v", gates, wantGates)
+			}
+			if mode == Live && (!commands.remote || !commands.published || commands.notes != session.Notes) {
+				t.Fatal("release or reviewed notes not published")
+			}
+			if mode == Rehearsal && (commands.local || commands.remote || commands.published) {
+				t.Fatal("rehearsal mutated tags/releases")
+			}
+			if mode == Live && !slices.Equal(executed, []Operation{Tools, Source, CI, Check, Interactions, Build, LocalArtifact, LocalSmoke, PushTag, Discover, Jobs, FetchArtifact, RemoteArtifact, OpenViewer, ReadNotes, PublishRelease}) {
+				t.Fatalf("missing/reordered operations: %v", executed)
+			}
+		})
+	}
+}
+
+func TestLostMutationResponsesAreReconciled(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.losePush = true
+	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PushTag}, func(string) {})
+	if err == nil || !result.State.TagIntent || !commands.remote {
+		t.Fatal("expected uncertain push with saved intent")
+	}
+	adapter.Resume = true
+	inspected, err := adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = adapter.Execute(t.Context(), Request{State: inspected.State, Operation: PushTag, Retry: true}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = result.State
+	downloaded, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := adapter.Execute(t.Context(), Request{State: downloaded.State, Operation: RemoteArtifact}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = verified.State
+	state.Notes = "Reviewed release notes"
+	commands.losePublish = true
+	result, err = adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+	if err == nil || !result.State.PublishIntent || !commands.published {
+		t.Fatal("expected uncertain publish with saved intent")
+	}
+	result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: PublishRelease, Retry: true}, func(string) {})
+	if err != nil || !result.State.Published {
+		t.Fatalf("reconcile publication: %v", err)
+	}
+	pushes, edits := 0, 0
+	for _, c := range commands.calls {
+		if c.Name == "git" && c.Args[0] == "push" {
+			pushes++
+		}
+		if c.Name == "gh" && slices.Equal(c.Args[:min(2, len(c.Args))], []string{"release", "edit"}) {
+			edits++
+		}
+	}
+	if pushes != 1 || edits != 1 {
+		t.Fatalf("replayed mutations: pushes %d edits %d", pushes, edits)
+	}
+}
+
+func TestRealAdapterRejectsUnsafeRequests(t *testing.T) {
+	for _, name := range []string{"rehearsal tag", "rehearsal publish", "version injection", "wrong mode", "wrong source", "duplicate tag"} {
+		t.Run(name, func(t *testing.T) {
+			mode := Live
+			if strings.HasPrefix(name, "rehearsal") {
+				mode = Rehearsal
+			}
+			adapter, commands, state := newReleaseHarness(t, mode)
+			op := PushTag
+			switch name {
+			case "rehearsal publish":
+				op = PublishRelease
+			case "version injection":
+				state.Version = "v0.1.1$(shell touch bad)"
+				op = Build
+			case "wrong mode":
+				state.Mode = TestMode
+			case "wrong source":
+				state.Commit = "bad"
+				op = Build
+			case "duplicate tag":
+				commands.local = true
+			}
+			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+			if err == nil {
+				t.Fatal("unsafe operation accepted")
+			}
+			if commands.remote || commands.published {
+				t.Fatal("remote mutation")
+			}
+		})
+	}
+}
+
+type commandOverride struct {
+	base     CommandRunner
+	override func(Command) (string, error, bool)
+}
+
+func (r commandOverride) Run(ctx context.Context, c Command, emit func(string)) (string, error) {
+	if output, err, ok := r.override(c); ok {
+		return output, err
+	}
+	return r.base.Run(ctx, c, emit)
+}
+
+func TestWorkflowWaitsForMatchingRunAndFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		op        Operation
+		payload   string
+		attempt   int
+		pending   bool
+		wantError bool
+	}{
+		{name: "unrelated CI", op: CI, payload: `[{"databaseId":9,"headSha":"other","headBranch":"main","status":"completed","conclusion":"success"}]`, attempt: 1, pending: true},
+		{name: "CI not started", op: CI, payload: `[]`, attempt: 40, wantError: true},
+		{name: "CI queued", op: CI, payload: `[{"databaseId":9,"headSha":"` + testCommit + `","headBranch":"main","status":"queued"}]`, attempt: 1, pending: true},
+		{name: "CI failed", op: CI, payload: `[{"databaseId":9,"headSha":"` + testCommit + `","headBranch":"main","status":"completed","conclusion":"failure"}]`, wantError: true},
+		{name: "release not started", op: Discover, payload: `[]`, attempt: 1, pending: true},
+		{name: "release timed out", op: Discover, payload: `[]`, attempt: 40, wantError: true},
+		{name: "release wrong tag", op: Discover, payload: `[{"databaseId":9,"headSha":"` + testCommit + `","headBranch":"v0.1.2"}]`, attempt: 1, pending: true},
+		{name: "jobs running", op: Jobs, payload: `{"databaseId":5,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"in_progress"}`, attempt: 1, pending: true},
+		{name: "wrong run ID", op: Jobs, payload: `{"databaseId":6,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"completed","conclusion":"success"}`, wantError: true},
+		{name: "jobs failed", op: Jobs, payload: `{"databaseId":5,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"completed","conclusion":"failure"}`, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			adapter, commands, state := newReleaseHarness(t, Live)
+			state.RunID = 5
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) { return tc.payload, nil, c.Name == "gh" && c.Args[0] == "run" }}
+			result, err := adapter.Execute(t.Context(), Request{State: state, Operation: tc.op, Attempt: tc.attempt}, func(string) {})
+			if (err != nil) != tc.wantError || result.Pending != tc.pending {
+				t.Fatalf("pending=%v err=%v", result.Pending, err)
+			}
+		})
+	}
+}
+
+func TestResumeAllowsNewerMainButRequiresSameTaggedSource(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PushTag}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.Resume = true
+	ancestorChecked := false
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		switch strings.Join(c.Args, " ") {
+		case "rev-parse origin/main":
+			return strings.Repeat("c", 40), nil, true
+		case "merge-base --is-ancestor " + testCommit + " origin/main":
+			ancestorChecked = true
+			return "", nil, true
+		}
+		return "", nil, false
+	}}
+	_, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: Source}, func(string) {})
+	if err != nil || !ancestorChecked {
+		t.Fatalf("valid recovery blocked: %v", err)
+	}
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		return strings.Repeat("c", 40), nil, strings.Join(c.Args, " ") == "rev-parse HEAD"
+	}}
+	if _, err = adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {}); err == nil {
+		t.Fatal("resumed changed source")
+	}
+}
+
+func TestPublicationRejectsReplacedAttachments(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.local, commands.remote = true, true
+	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := adapter.Execute(t.Context(), Request{State: result.State, Operation: RemoteArtifact}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = verified.State
+	state.Notes = "Reviewed notes"
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name == "gh" && c.Args[0] == "api" {
+			data := commands.releases()
+			data[1]["assets"].([]map[string]any)[0]["id"] = 99
+			return jsonValue([]any{data}), nil, true
+		}
+		return "", nil, false
+	}}
+	if _, err = adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {}); err == nil {
+		t.Fatal("published replacement assets")
+	}
+	if commands.published {
+		t.Fatal("publication command ran")
+	}
+}
+
+type failingJournal struct{ memoryJournal }
+
+func (j *failingJournal) Save(State) error { return fmt.Errorf("disk full") }
+
+func TestTagIntentMustBeDurableBeforeEveryMutationAttempt(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	adapter.Journal = &failingJournal{}
+	for range 2 {
+		result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PushTag, Retry: true}, func(string) {})
+		if err == nil {
+			t.Fatal("ignored journal error")
+		}
+		state = result.State
+		if commands.local || commands.remote {
+			t.Fatal("mutated a tag without durable intent")
+		}
+	}
+}
+
+func TestPublicationCannotReplaceNewerLatest(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.local, commands.remote = true, true
+	for _, op := range []Operation{FetchArtifact, RemoteArtifact} {
+		result, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = result.State
+	}
+	state.Notes = "Reviewed notes"
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name == "gh" && c.Args[0] == "api" {
+			data := commands.releases()
+			data = append(data, map[string]any{"id": 3, "tag_name": "v0.2.0", "draft": false})
+			return jsonValue([]any{data}), nil, true
+		}
+		return "", nil, false
+	}}
+	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "newer version") {
+		t.Fatalf("newer latest ignored: %v", err)
+	}
+	if commands.published {
+		t.Fatal("publication command ran")
+	}
+}

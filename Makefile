@@ -41,12 +41,13 @@ fixtures:
 bench: build fixtures
 	python3 scripts/benchmark.py
 
-# Maintainer-only preview; this command is not included in release archives.
-.PHONY: release-demo release-interactions
+# Maintainer release command; not included in viewer archives.
+.PHONY: release release-interactions
 RELEASE_ARGS ?=
-release-demo:
-	go run ./cmd/release --mode=demo $(RELEASE_ARGS)
-release-interactions:
+release:
+	go run ./cmd/release $(RELEASE_ARGS)
+release-interactions: build
 	mkdir -p bin
 	go build -o bin/mapbox-release ./cmd/release
+	go test -tags=integration -c -o bin/release-terminal-test ./internal/release
 	python3 scripts/release_interactions.py

@@ -1,6 +1,6 @@
 
   MAPBOX / RELEASE
-  DEMO · simulated release
+  TEST · simulated release
   v0.2.0 · example/mapbox-tui · 0123456789ab
   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/9 steps complete
 
@@ -10,7 +10,7 @@
 
   ▶ 1  Preflight & exact-commit CI
   ├──✓ Toolchain and gh authentication ready
-  ╰──⣾  Inspecting the working tree and selecting main
+  ╰──⣾  Checking selected source and release history
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
   ○ 4  Confirm tag push
