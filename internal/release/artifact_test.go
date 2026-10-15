@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -245,6 +246,60 @@ func TestArtifactDigestAuthenticatesAllFilesAndPermissions(t *testing.T) {
 			}
 			if (got == want) != (name == "host metadata") {
 				t.Fatalf("archive identity comparison incorrect for %s", name)
+			}
+		})
+	}
+}
+
+func TestVerifyArtifactBoundsTrailingData(t *testing.T) {
+	for _, name := range []string{"valid padding", "excessive padding", "second gzip member", "trailing bytes"} {
+		t.Run(name, func(t *testing.T) {
+			data := artifactFixture(t, artifactHeaders())
+			switch name {
+			case "trailing bytes":
+				data = append(data, 0)
+			case "second gzip member":
+				var extra bytes.Buffer
+				gz := gzip.NewWriter(&extra)
+				if _, err := gz.Write(make([]byte, 1<<20)); err != nil {
+					t.Fatal(err)
+				}
+				if err := gz.Close(); err != nil {
+					t.Fatal(err)
+				}
+				data = append(data, extra.Bytes()...)
+			default:
+				gz, err := gzip.NewReader(bytes.NewReader(data))
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw, err := io.ReadAll(gz)
+				if err != nil {
+					t.Fatal(err)
+				}
+				gz.Close()
+				padding := 8192
+				if name == "excessive padding" {
+					padding = 1 << 20
+				}
+				var padded bytes.Buffer
+				writer := gzip.NewWriter(&padded)
+				if _, err := writer.Write(append(raw, make([]byte, padding)...)); err != nil {
+					t.Fatal(err)
+				}
+				if err := writer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				data = padded.Bytes()
+			}
+			dir := t.TempDir()
+			writeArtifactFixture(t, dir, data, "")
+			if name == "valid padding" {
+				if _, err := verifyArtifact(dir, "v0.2.0"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				assertArtifactRejected(t, dir)
 			}
 		})
 	}

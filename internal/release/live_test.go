@@ -734,7 +734,7 @@ func TestResumePushesMissingTagAfterMainAdvances(t *testing.T) {
 }
 
 func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
-	for _, name := range []string{"replaced attachment", "added attachment", "changed notes", "changed title", "already public with different notes"} {
+	for _, name := range []string{"replaced attachment", "added attachment", "changed notes", "changed title", "changed prerelease", "already public with different notes"} {
 		t.Run(name, func(t *testing.T) {
 			adapter, commands, state := newReleaseHarness(t, Live)
 			commands.local, commands.remote = true, true
@@ -767,6 +767,8 @@ func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
 					assets[0]["id"] = 99
 				case "added attachment":
 					data[1]["assets"] = append(assets, map[string]any{"id": 99, "name": "extra.exe", "size": 100})
+				case "changed prerelease":
+					data[1]["prerelease"] = true
 				case "changed title":
 					data[1]["name"] = "Unexpected title"
 				case "changed notes":

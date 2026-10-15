@@ -795,6 +795,9 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	public := false
 	for _, item := range releases {
 		if item.Tag == state.Version && item.ID == release.ID && !item.Draft {
+			if item.Prerelease {
+				return result, fmt.Errorf("release is public but marked as a prerelease; inspect %s before continuing", item.URL)
+			}
 			if assetIdentity(&item) != state.AssetIdentity {
 				return result, fmt.Errorf("release is public but its attachments changed during publication; inspect %s before continuing", item.URL)
 			}

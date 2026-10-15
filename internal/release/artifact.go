@@ -2,6 +2,7 @@ package release
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -45,11 +46,13 @@ func verifyArtifact(dir, version string) (string, error) {
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	gz, err := gzip.NewReader(file)
+	compressed := bufio.NewReader(file)
+	gz, err := gzip.NewReader(compressed)
 	if err != nil {
 		return "", fmt.Errorf("read gzip: %w", err)
 	}
 	defer gz.Close()
+	gz.Multistream(false)
 	out, err := os.MkdirTemp(dir, "verified-")
 	if err != nil {
 		return "", err
@@ -97,9 +100,18 @@ func verifyArtifact(dir, version string) (string, error) {
 			return "", fmt.Errorf("archive is missing %s", name)
 		}
 	}
-	// Consume the gzip trailer, including its CRC, before allowing execution.
-	if _, err = io.Copy(io.Discard, gz); err != nil {
+	// GNU tar pads its final 10 KiB record. Bound this read, check the first
+	// gzip member's CRC, and reject appended members without decompressing them.
+	const maxPadding = 10 * 1024
+	padding, err := io.ReadAll(io.LimitReader(gz, maxPadding+1))
+	if err != nil {
 		return "", fmt.Errorf("gzip integrity: %w", err)
+	}
+	if len(padding) > maxPadding || strings.Trim(string(padding), "\x00") != "" {
+		return "", fmt.Errorf("unexpected data after tar terminator")
+	}
+	if _, err := compressed.Peek(1); err != io.EOF {
+		return "", fmt.Errorf("unexpected data after gzip member")
 	}
 	ok = true
 	return filepath.Join(out, "mapbox-tui"), nil
