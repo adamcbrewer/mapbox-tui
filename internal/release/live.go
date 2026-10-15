@@ -163,6 +163,9 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 	case ReadNotes:
 		var release *githubRelease
 		release, err = r.requireRelease(ctx, state)
+		if err == nil && state.PublishIntent && !release.Draft && release.Body != state.Notes {
+			err = fmt.Errorf("public release notes differ from the reviewed notes; inspect the release before continuing")
+		}
 		if err == nil {
 			result.State.Notes = release.Body
 			emit(release.Body)
@@ -239,6 +242,7 @@ func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 		state.Version = saved.Version
 		state.TagIntent, state.PublishIntent, state.Published = saved.TagIntent, saved.PublishIntent, saved.Published
 		state.RunID, state.URL = saved.RunID, saved.URL
+		state.Notes = saved.Notes
 		if state.TagIntent {
 			if err = r.checkRemoteTag(ctx, state, true); err != nil {
 				return state, err
@@ -751,6 +755,12 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	public := false
 	for _, item := range releases {
 		if item.Tag == state.Version && item.ID == release.ID && !item.Draft {
+			if assetIdentity(&item) != state.AssetIdentity {
+				return result, fmt.Errorf("release is public but its attachments changed during publication; inspect %s before continuing", item.URL)
+			}
+			if item.Body != state.Notes {
+				return result, fmt.Errorf("release is public but its notes differ from the reviewed notes; inspect %s before continuing", item.URL)
+			}
 			public = true
 			state.URL = item.URL
 		}

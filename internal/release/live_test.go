@@ -59,8 +59,12 @@ func jsonValue(v any) string {
 }
 func (f *releaseCommands) releases() []map[string]any {
 	all := []map[string]any{{"id": 1, "tag_name": "v0.1.0", "draft": false}}
+	body := "Linux x86-64 release. See docs/INSTALL.md."
+	if f.published {
+		body = f.notes
+	}
 	if f.remote {
-		all = append(all, map[string]any{"id": 2, "tag_name": "v0.1.1", "draft": !f.published, "body": "Linux x86-64 release. See docs/INSTALL.md.", "html_url": "https://github.com/example/mapbox-tui/releases/tag/v0.1.1", "assets": []map[string]any{{"id": 11, "name": archiveName("v0.1.1"), "size": 100}, {"id": 12, "name": archiveName("v0.1.1") + ".sha256", "size": 100}}})
+		all = append(all, map[string]any{"id": 2, "tag_name": "v0.1.1", "draft": !f.published, "body": body, "html_url": "https://github.com/example/mapbox-tui/releases/tag/v0.1.1", "assets": []map[string]any{{"id": 11, "name": archiveName("v0.1.1"), "size": 100}, {"id": 12, "name": archiveName("v0.1.1") + ".sha256", "size": 100}}})
 	}
 	return all
 }
@@ -686,5 +690,50 @@ func TestResumePushesMissingTagAfterMainAdvances(t *testing.T) {
 	}
 	if !commands.remote {
 		t.Fatal("missing tag was not pushed")
+	}
+}
+
+func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
+	for _, name := range []string{"replaced attachment", "added attachment", "changed notes", "already public with different notes"} {
+		t.Run(name, func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			commands.local, commands.remote = true, true
+			for _, op := range []Operation{FetchArtifact, RemoteArtifact} {
+				result, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+				if err != nil {
+					t.Fatal(err)
+				}
+				state = result.State
+			}
+			state.Notes = "Reviewed notes"
+			if name == "already public with different notes" {
+				state.PublishIntent = true
+				commands.published = true
+				commands.notes = "Someone else's notes"
+			}
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+				if !commands.published || c.Name != "gh" || c.Args[0] != "api" {
+					return "", nil, false
+				}
+				data := commands.releases()
+				assets := data[1]["assets"].([]map[string]any)
+				switch name {
+				case "replaced attachment":
+					assets[0]["id"] = 99
+				case "added attachment":
+					data[1]["assets"] = append(assets, map[string]any{"id": 99, "name": "extra.exe", "size": 100})
+				case "changed notes":
+					data[1]["body"] = "Unexpected notes"
+				}
+				return jsonValue([]any{data}), nil, true
+			}}
+			result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+			if err == nil || result.State.Published {
+				t.Fatalf("unverified publication accepted: %+v %v", result, err)
+			}
+			if !strings.Contains(err.Error(), "release is public") {
+				t.Fatalf("failure did not report public state: %v", err)
+			}
+		})
 	}
 }
