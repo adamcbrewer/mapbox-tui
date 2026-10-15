@@ -4,7 +4,9 @@
   v0.2.0 · example/mapbox-tui
   ▌▌▌▌▌▌▌▌▌▌▌▌▌░░  8/9 steps complete
   Elapsed 0s · esc cancel
-  ↑/↓ · pgup/pgdown · wheel scroll
+  ✓ 1  Preflight & exact-commit CI
+  ✓ 2  Checks & terminal interactions
+  ✓ 3  Package & verify locally
   ✓ 4  Confirm tag push
   ✓ 5  Wait for release workflow
   ✓ 6  Verify draft attachments

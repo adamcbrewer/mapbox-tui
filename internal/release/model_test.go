@@ -107,10 +107,10 @@ func TestEditableVersionAndNestedActivity(t *testing.T) {
 		updated, _ = m.Update(tickMsg{})
 		m = updated.(Model)
 	}
-	content, _ := m.checklist()
-	if !strings.Contains(content, "✓ 1") || !strings.Contains(content, "├──") ||
-		!strings.Contains(content, "CI passed for the selected commit") {
-		t.Fatalf("completed activity missing from tree: %s", content)
+	content := m.checklist()
+	if !strings.Contains(content, "✓ 1") || !strings.Contains(content, "Running formatting") ||
+		strings.Contains(content, "CI passed for the selected commit") {
+		t.Fatalf("completed section was not summarised: %s", content)
 	}
 	if !strings.Contains(ansi.Strip(m.header()), "1/9 steps complete") {
 		t.Fatal("progress did not advance")
@@ -123,6 +123,7 @@ func TestChecklistScrolling(t *testing.T) {
 	for s.Step != Tag {
 		s.Advance()
 	}
+	s.Activity[Tag] = append(s.Activity[Tag], ActivityEntry{Text: strings.Repeat("operation output\n", 20), Status: ActivityNote})
 	for _, tc := range []struct {
 		name string
 		msg  tea.Msg
@@ -133,7 +134,7 @@ func TestChecklistScrolling(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := NewModel(s, time.Second, true)
-			resized, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+			resized, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
 			m = resized.(Model)
 			before := m.viewport.YOffset()
 			updated, _ := m.Update(tc.msg)
@@ -167,6 +168,7 @@ func TestScrollHintsOnlyWhenNeeded(t *testing.T) {
 	if strings.Contains(m.controls(), "scroll") {
 		t.Fatal("scroll hint shown when checklist fits")
 	}
+	m.session.Activity[Preflight] = []ActivityEntry{{Text: strings.Repeat("line\n", 30), Status: ActivityRunning}}
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 22})
 	m = updated.(Model)
 	if !strings.Contains(m.controls(), "scroll") {
@@ -202,34 +204,38 @@ func TestPastedInput(t *testing.T) {
 	}
 }
 
-func TestHiddenPromptsCannotAcceptInput(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		step   Step
-		status Status
+func TestShortTerminalKeepsConfirmationUsable(t *testing.T) {
+	for _, size := range []struct {
+		name          string
+		width, height int
 	}{
-		{name: "start", step: Preflight, status: Ready},
-		{name: "retry", step: Preflight, status: Failed},
-		{name: "tag", step: Tag, status: Confirmation},
-		{name: "publish", step: Publish, status: Confirmation},
+		{name: "short", width: 90, height: 5},
+		{name: "narrow", width: 35, height: 19},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(size.name, func(t *testing.T) {
 			s, _ := NewSession("v0.2.0", "success")
-			s.Step, s.Status = tc.step, tc.status
+			s.Step = Publish
+			s.enter()
 			m := NewModel(s, time.Second, true)
-			m.input.SetValue("yes")
-			resized, _ := m.Update(tea.WindowSizeMsg{Width: 35, Height: 19})
-			m = resized.(Model)
-			for _, msg := range []tea.Msg{tea.PasteMsg{Content: "yes"}, tea.KeyPressMsg{Code: 'y', Text: "y"}, tea.KeyPressMsg{Code: tea.KeyEnter}} {
-				updated, cmd := m.Update(msg)
-				m = updated.(Model)
-				if cmd != nil || m.session.Status != tc.status || m.input.Value() != "yes" {
-					t.Fatal("hidden prompt accepted input")
+			updated, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
+			m = updated.(Model)
+			content := m.View().Content
+			if strings.Contains(content, "enlarge terminal") || !strings.Contains(content, "Type yes") || !strings.Contains(content, ">") {
+				t.Fatalf("confirmation unavailable: %s", content)
+			}
+			if lipglossHeight := len(strings.Split(content, "\n")); lipglossHeight > size.height {
+				t.Fatalf("view exceeds height: %s", content)
+			}
+			for _, line := range strings.Split(content, "\n") {
+				if ansi.StringWidth(line) > size.width {
+					t.Fatalf("line exceeds width: %q", line)
 				}
 			}
-			updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-			if updated.(Model).session.Status != Cancelled || cmd == nil {
-				t.Fatal("hidden UI could not cancel")
+			updated, _ = m.Update(tea.PasteMsg{Content: "yes"})
+			m = updated.(Model)
+			updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if updated.(Model).session.Status != Running || cmd == nil {
+				t.Fatal("visible confirmation did not accept input")
 			}
 		})
 	}

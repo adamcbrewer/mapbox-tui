@@ -48,18 +48,9 @@ def main():
         key("Enter")
         expect("Waiting for GitHub to start")
         expect("confirm it started")
-        key("PPage")
-        key("PPage")
-        key("PPage")
-        expect("Toolchain and gh authentication ready")
-        capture("scrolled-checklist", 90, 32)
-        # Wheel down must move the same checklist, even while confirmation is focused.
-        terminal.sgr(65, 20, 25)
-        terminal.wait_for(lambda screen: "Toolchain and gh authentication ready" not in screen)
-        key("NPage")
-        key("NPage")
-        key("NPage")
-        expect("Draft attachments downloaded")
+        screen = terminal.capture()
+        assert "Toolchain and gh authentication ready" not in screen, "completed output did not collapse"
+        capture("completed-summaries", 90, 32)
         terminal.send("yes")
         key("Enter")
         expect("Review notes:")
@@ -72,12 +63,11 @@ def main():
         terminal.send("yes")
         key("Enter")
         expect("Confirm publication")
-        terminal.tmux("resize-window", "-t", "poc:0", "-x", "40", "-y", "22")
+        terminal.tmux("resize-window", "-t", "poc:0", "-x", "90", "-y", "6")
         terminal.wait_for(lambda screen:
-            any(line.strip() == "v0.2.0 · example/mapbox-tui" for line in screen.splitlines())
-            and "Type yes, then enter." in screen
+            "Publish v0.2.0?" in screen and "Type yes, then enter." in screen
             and any(line.strip().startswith(">") for line in screen.splitlines()))
-        capture("narrow-confirmation", 40, 22)
+        capture("short-confirmation", 90, 6)
         terminal.send("yes")
         key("Enter")
         expect("Test complete")

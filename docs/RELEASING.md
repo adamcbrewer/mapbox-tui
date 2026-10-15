@@ -58,15 +58,16 @@ The nine sections run the actual checks and commands:
    and verify GitHub's response. If a newer stable release is published concurrently,
    that version remains latest.
 
-The numbered checklist shows nested command output and a braille spinner on the
-active operation. Polling updates the same waiting leaf, with bounded retries and
+The checklist expands only the active section, showing nested command output and
+a braille spinner. Successful sections collapse to one green summary line, and
+upcoming sections stay hidden. New output stays in view automatically. Polling updates the same waiting leaf, with bounded retries and
 backoff. Completed section headings turn green. The cyan/pink bar counts completed
 sections, rather than estimating how long a server request will take. The output
 under each operation retains its latest twelve lines. Arrow/page keys and the
 mouse wheel scroll overflowing content; advancing a section brings it into view.
 Version entry and confirmation prompts appear beneath their tree step. Typing
-returns to the active input; after scrolling away, Enter first reveals the prompt. `NO_COLOR=1` disables colour. Use at least 36
-columns and 20 rows.
+returns to the active input; after scrolling away, Enter first reveals the prompt. `NO_COLOR=1` disables colour. Short terminals show only the active step and its prompt, without a fixed
+minimum-size requirement.
 
 Escape or Ctrl+C cancels local commands and restores the terminal. It does not
 cancel an already-triggered GitHub workflow. Recovery state is locked and written
@@ -131,8 +132,8 @@ publish a release.
 The interaction suite executes the same release command in test mode inside tmux.
 One happy path runs all nine sections, including delayed workflow discovery,
 version input, confirmations and notes editing. One failure path checks the error,
-retry and cancellation. Scrolling, resizing and terminal restoration are checked
-within those two runs. It needs the terminal dependencies
+retry and cancellation. Collapsed output, a six-row confirmation prompt and terminal restoration are
+checked within those two runs. It needs the terminal dependencies
 from [Development](DEVELOPMENT.md). Text, SVG and PNG captures are saved under
 `reports/generated/release/` and retained by CI. To intentionally update text
 snapshots, run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review

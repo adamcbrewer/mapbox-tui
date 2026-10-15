@@ -12,11 +12,3 @@
 
       Edit suggested tag, then enter to start.
       > v0.2.0
-  ○ 2  Checks & terminal interactions
-  ○ 3  Package & verify locally
-  ○ 4  Confirm tag push
-  ○ 5  Wait for release workflow
-  ○ 6  Verify draft attachments
-  ○ 7  Confirm offline viewer
-  ○ 8  Review release notes
-  ○ 9  Confirm publication

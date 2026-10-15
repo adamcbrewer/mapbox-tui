@@ -67,18 +67,7 @@ func (m Model) tick() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.height < 20 || m.width < 36 {
-		switch input := msg.(type) {
-		case tea.KeyPressMsg:
-			if input.String() != "esc" && input.String() != "ctrl+c" {
-				return m, nil
-			}
-			// Escape cancels even when the notes editor is hidden.
-			m.editing = false
-		case tea.PasteMsg:
-			return m, nil
-		}
-	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
@@ -256,6 +245,12 @@ func (m Model) style(color string) lipgloss.Style {
 
 func (m Model) header() string {
 	width := max(1, m.width-4)
+	if m.height < 10 {
+		return ""
+	}
+	if m.height < 20 {
+		return ansi.Truncate(fmt.Sprintf("%s · %s · %d/9 complete", strings.ToUpper(string(m.session.Mode)), m.session.Version, m.session.Step), width, "…")
+	}
 	bar := progress.New(
 		progress.WithWidth(max(1, min(28, width-21))),
 		progress.WithColors(lipgloss.Color("#4DE8E0"), lipgloss.Color("#FF4FB7")),
@@ -284,8 +279,10 @@ func (m Model) inlineForm() string {
 	switch m.session.Status {
 	case Ready:
 		candidates, _ := m.session.Policy.Candidates()
-		lines = append(lines, "Latest release: "+m.session.Policy.Latest,
-			"Next: "+strings.Join(candidates, " / "))
+		if m.height >= 20 {
+			lines = append(lines, "Latest release: "+m.session.Policy.Latest,
+				"Next: "+strings.Join(candidates, " / "))
+		}
 		if m.height >= 26 {
 			lines = append(lines, "")
 		}
@@ -295,7 +292,15 @@ func (m Model) inlineForm() string {
 		}
 		lines = append(lines, m.input.View())
 	case Confirmation:
-		lines = append(lines, m.session.Prompt(), m.style("#D4D4D4").Render("Type yes, then enter."), m.input.View())
+		prompt := m.session.Prompt()
+		if m.height < 12 && (m.session.Step == Tag || m.session.Step == Publish) {
+			action := "Push tag"
+			if m.session.Step == Publish {
+				action = "Publish"
+			}
+			prompt = fmt.Sprintf("%s %s?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
+		}
+		lines = append(lines, prompt, m.style("#D4D4D4").Render("Type yes, then enter."), m.input.View())
 	case Failed:
 		lines = append(lines, "Enter: retry this operation")
 	}
@@ -304,6 +309,9 @@ func (m Model) inlineForm() string {
 
 func (m Model) controls() string {
 	width := max(1, m.width-4)
+	if m.height < 20 && m.session.Status != Done {
+		return ""
+	}
 	hint := func(key, description string) string {
 		return m.style("#D4D4D4").Render(key) + " " + m.style("#909090").Render(description)
 	}
@@ -320,11 +328,16 @@ func (m Model) controls() string {
 
 // checklist uses Lip Gloss's tree renderer for wrapped child activity under each
 // numbered step. The viewport follows the active step until the user scrolls.
-func (m Model) checklist() (string, int) {
+func (m Model) checklist() string {
 	var sections []string
-	activeLine := 0
 	branchStyle := m.style("#707070").PaddingRight(1)
 	for i, name := range stepNames {
+		if Step(i) > m.session.Step {
+			break
+		}
+		if m.height < 20 && Step(i) < m.session.Step {
+			continue
+		}
 		marker, color := "○", "#A0A0A0"
 		if m.session.Skipped[i] {
 			marker, color = "–", "#A0A0A0"
@@ -339,12 +352,12 @@ func (m Model) checklist() (string, int) {
 			if m.session.Status == Confirmation {
 				marker, color = "?", "#FFFFFF"
 			}
-			activeLine = lipgloss.Height(strings.Join(sections, "\n"))
-			if len(sections) == 0 {
-				activeLine = 0
-			}
 		}
 		heading := m.style(color).Bold(Step(i) == m.session.Step).Render(fmt.Sprintf("%s %d  %s", marker, i+1, name))
+		if Step(i) < m.session.Step {
+			sections = append(sections, ansi.Wrap(heading, max(1, m.width-4), ""))
+			continue
+		}
 		branch := tree.Root(ansi.Wrap(heading, max(1, m.width-4), "")).
 			Enumerator(tree.RoundedEnumerator).
 			EnumeratorStyle(branchStyle).
@@ -356,10 +369,6 @@ func (m Model) checklist() (string, int) {
 			prefix := "· "
 			switch entry.Status {
 			case ActivityRunning:
-				activeLine = lipgloss.Height(strings.Join(sections, "\n")) + lipgloss.Height(branch.String())
-				if len(sections) == 0 {
-					activeLine--
-				}
 				prefix = m.spinner.View() + " "
 			case ActivityComplete:
 				prefix = "✓ "
@@ -379,15 +388,11 @@ func (m Model) checklist() (string, int) {
 		if Step(i) == m.session.Step {
 			if form := m.inlineForm(); form != "" {
 				branch.Child(form)
-				activeLine = lipgloss.Height(strings.Join(sections, "\n")) + lipgloss.Height(branch.String()) - 1
-				if len(sections) == 0 {
-					activeLine--
-				}
 			}
 		}
 		sections = append(sections, branch.String())
 	}
-	return strings.Join(sections, "\n"), activeLine
+	return strings.Join(sections, "\n")
 }
 
 // Keep field groups distinct when space permits; compact terminals prioritise
@@ -399,37 +404,49 @@ func (m Model) groupSeparator() string {
 	return "\n"
 }
 
+// Short terminals spend their rows on the active step instead of fixed chrome.
+func (m Model) chrome() string {
+	var parts []string
+	if header := m.header(); header != "" {
+		parts = append(parts, header)
+	}
+	if controls := m.controls(); controls != "" {
+		parts = append(parts, controls)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, m.groupSeparator()) + m.groupSeparator()
+}
+
+func (m Model) verticalPadding() int {
+	if m.height < 20 {
+		return 0
+	}
+	return 1
+}
+
 func (m *Model) refresh() {
 	m.viewport.SetWidth(max(1, m.width-4))
-	content, active := m.checklist()
-	chrome := lipgloss.Height(m.header()) + 2*len(m.groupSeparator()) + 2
-	// Check overflow without the scroll hint, then reserve room for it if needed.
+	content := m.checklist()
 	m.scrollable = false
-	m.scrollable = lipgloss.Height(content) > max(1, m.height-chrome-lipgloss.Height(m.controls()))
-	chrome += lipgloss.Height(m.controls())
-	m.viewport.SetHeight(max(1, m.height-chrome))
+	available := func() int {
+		return max(1, m.height-2*m.verticalPadding()-strings.Count(m.chrome(), "\n"))
+	}
+	m.scrollable = lipgloss.Height(content) > available()
+	m.viewport.SetHeight(available())
 	m.viewport.SetContent(content)
 	if m.follow {
-		offset := active - 1
-		if m.inlineForm() != "" {
-			offset = active - m.viewport.Height() + 1
-		}
-		m.viewport.SetYOffset(max(0, offset))
-		if m.session.Status == Done {
-			m.viewport.GotoBottom()
-		}
+		m.viewport.GotoBottom()
 	}
 }
 
 func (m Model) View() tea.View {
-	content := m.header() + m.groupSeparator() + m.controls() + m.groupSeparator() + m.viewport.View()
-	if m.height < 20 || m.width < 36 {
-		content = ansi.Wrap("Release: enlarge terminal to 36 columns and 20 rows. Esc cancels.", max(1, m.width-4), "")
-	}
+	content := m.chrome() + m.viewport.View()
 	if m.noColor {
 		content = ansi.Strip(content)
 	}
-	view := tea.NewView(lipgloss.NewStyle().Padding(1, 2).Render(content))
+	view := tea.NewView(lipgloss.NewStyle().Padding(m.verticalPadding(), 2).Render(content))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
