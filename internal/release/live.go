@@ -341,8 +341,10 @@ func (r *RealAdapter) preflight(ctx context.Context, state State) error {
 		if err != nil {
 			return fmt.Errorf("missing terminal-check dependency %s; see docs/DEVELOPMENT.md: %w", command.Name, err)
 		}
-		if command.Name == "fc-match" && !strings.Contains(output, "DejaVu") {
-			return fmt.Errorf("install DejaVu fonts before running terminal checks")
+		// The capture SVG requests DejaVu Sans Mono with a generic monospace
+		// fallback. Fontconfig aliases may legitimately select another family.
+		if command.Name == "fc-match" && strings.TrimSpace(output) == "" {
+			return fmt.Errorf("no font available for terminal captures; install a monospace font, then retry")
 		}
 	}
 	_, err = r.run(ctx, Command{Name: "gh", Args: []string{"auth", "status", "--hostname", state.Host}}, nil)

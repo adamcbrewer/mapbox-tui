@@ -36,7 +36,8 @@ Unix-like terminal; viewer state resets on restart.
 
 `make check` runs formatting, build, tests, vet, CLI/MCP parity and race checks
 offline. Run `make interactions` after viewer changes; it needs tmux,
-`rsvg-convert` and DejaVu fonts. Captures go in ignored `reports/`.
+`rsvg-convert` and a monospace font. CI uses DejaVu Sans Mono; local captures
+can use a fontconfig fallback such as JetBrains Mono. Captures go in ignored `reports/`.
 Colour assertions require `NO_COLOR` to be unset. If your environment sets it,
 run `env -u NO_COLOR python3 scripts/interactions.py` after building.
 
