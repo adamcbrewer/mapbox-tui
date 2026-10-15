@@ -104,7 +104,7 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		routeControlsChangedState := m.ui.dialog != dialogNone ||
 			m.activePlayback() != nil ||
 			m.selectedPoint() != -1 ||
-			!m.showProfile
+			m.showProfile
 		if routeControlsChangedState {
 			t.Fatal("route-only controls changed free roam state")
 		}

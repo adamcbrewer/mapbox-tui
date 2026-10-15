@@ -54,6 +54,7 @@ type viewer struct {
 	wheel                     wheelZoom
 	lastTick                  time.Time
 	showProfile               bool
+	profileExplicit           bool
 	profileHeight             int
 	progress                  *progress.Model
 	ui                        uiState
@@ -791,6 +792,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *viewer) layout() {
+	if !m.profileExplicit {
+		m.showProfile = m.workspace.hasVisibleElevation()
+	}
 	w, h := mapSize(m.width, m.height)
 	if m.hasJourneyContext() {
 		h--
@@ -1181,7 +1185,6 @@ func openViewerFiles(paths []string, a Args) error {
 		width:        120,
 		height:       40,
 		dirty:        true,
-		showProfile:  false,
 		authFirstRun: len(paths) == 0 && !explicit && !p.quiet,
 	}
 	if len(paths) > 0 {

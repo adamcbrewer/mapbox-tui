@@ -649,6 +649,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 			m.motion.Active = false
 		}
 	case "profile":
+		m.profileExplicit = true
 		m.showProfile = !m.showProfile
 		m.layout()
 	case "play":

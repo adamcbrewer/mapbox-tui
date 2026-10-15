@@ -238,7 +238,7 @@ func TestLoadedFilesDialogShowsOwnershipAndClearsRemovedActiveState(t *testing.T
 	m.Update(tea.KeyPressMsg{Code: ' '})
 	hiddenItemRetainedState := m.activeTrack() != nil ||
 		m.activePlayback() != nil ||
-		m.visibleProfile() == nil ||
+		m.visibleProfile() != nil ||
 		m.camera.Center != before.Center ||
 		len(m.workspace.sceneItems()) != 1
 	if hiddenItemRetainedState {
@@ -457,5 +457,95 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 		if hiddenActivityRetainedState {
 			t.Fatal("hiding the playing activity retained its marker or cleared the other elevation")
 		}
+	}
+}
+
+func TestViewerAutomaticElevationLifecycle(t *testing.T) {
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
+	flat := importFile(t, "flat.gpx", []byte(
+		`<gpx><rte><rtept lat="51" lon="0"/><rtept lat="51" lon="0.01"/></rte></gpx>`,
+	))
+	elevated := importFile(t, "zero.gpx", []byte(
+		`<gpx><rte><rtept lat="51" lon="1"><ele>0</ele></rtept><rtept lat="51" lon="1.01"><ele>0</ele></rtept></rte></gpx>`,
+	))
+	later := importFile(t, "later.gpx", []byte(
+		`<gpx><rte><rtept lat="52" lon="1"><ele>10</ele></rtept><rtept lat="52" lon="1.01"><ele>20</ele></rtept></rte></gpx>`,
+	))
+	for _, tc := range []struct {
+		name  string
+		paths []string
+	}{
+		{name: "elevation first", paths: []string{elevated, flat}},
+		{name: "elevation last", paths: []string{flat, elevated}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &viewer{
+				provider: newProvider("none"), ctx: context.Background(),
+				width: 120, height: 40, args: Args{NoAnimation: true},
+				camera: fit(nil, 118, 30, 2),
+			}
+			m.initUI()
+			m.layout()
+			assertProfile := func(want bool) {
+				t.Helper()
+				if got := m.visibleProfile() != nil; got != want {
+					t.Fatalf("profile visible = %v, want %v", got, want)
+				}
+				if !want && m.profileHeight != 0 {
+					t.Fatal("hidden profile reserved chart space")
+				}
+			}
+			assertProfile(false)
+			runLoadCommand(m, m.load(tc.paths[0]))
+			assertProfile(tc.paths[0] == elevated)
+			runLoadCommand(m, m.load(tc.paths[1]))
+			assertProfile(true)
+			profile := m.visibleProfile()
+			if !profile.Available || profile.Min != 0 || profile.Max != 0 || len(profile.Items) != 2 {
+				t.Fatal("zero elevation or missing-elevation section lost")
+			}
+			if profile.Distance != profile.Items[0].Track.Distance+profile.Items[1].Track.Distance {
+				t.Fatal("profile did not retain shared distance axis")
+			}
+			var elevatedRef, flatRef ItemRef
+			for _, item := range m.workspace.items() {
+				if item.Item.Track.Points[0].Elevation != nil {
+					elevatedRef = item.Ref
+				} else {
+					flatRef = item.Ref
+				}
+			}
+			if err := m.workspace.setVisible(elevatedRef, false); err != nil {
+				t.Fatal(err)
+			}
+			m.selectionChanged()
+			assertProfile(false)
+			if err := m.workspace.setVisible(elevatedRef, true); err != nil {
+				t.Fatal(err)
+			}
+			m.selectionChanged()
+			assertProfile(true)
+			if err := m.workspace.removeDocument(elevatedRef.DocumentID); err != nil {
+				t.Fatal(err)
+			}
+			m.selectionChanged()
+			assertProfile(false)
+			runLoadCommand(m, m.load(elevated))
+			assertProfile(true)
+			m.Update(tea.KeyPressMsg{Code: 'e'})
+			assertProfile(false)
+			if err := m.workspace.selectItem(flatRef); err != nil {
+				t.Fatal(err)
+			}
+			m.selectionChanged()
+			assertProfile(false)
+			runLoadCommand(m, m.load(later))
+			assertProfile(false)
+			m.clearWorkspace()
+			runLoadCommand(m, m.load(elevated))
+			assertProfile(false)
+			m.toggleMenuOption("profile")
+			assertProfile(true)
+		})
 	}
 }

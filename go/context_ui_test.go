@@ -15,6 +15,7 @@ func TestContextDrawerKeepsCameraAndCapturesCoveredMouseEvents(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := themeViewer(t, size[0], size[1], false)
+			m.profileExplicit = true
 			m.showProfile = false
 			m.layout()
 			m.rebuild()
@@ -60,6 +61,7 @@ func TestContextSurfacesInheritEveryThemeAndFitTerminal(t *testing.T) {
 		for _, ascii := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%dx%d/ascii=%v", size[0], size[1], ascii), func(t *testing.T) {
 				m := themeViewer(t, size[0], size[1], ascii)
+				m.profileExplicit = true
 				m.showProfile = false
 				m.layout()
 				m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
@@ -121,6 +123,7 @@ func TestContextDrawerPersistsDuringMapNavigation(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := themeViewer(t, size[0], size[1], false)
 			m.settings.NoAnimation = true
+			m.profileExplicit = true
 			m.showProfile = false
 			m.layout()
 			m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
@@ -171,6 +174,7 @@ func TestSelectedPositionMarkerFollowsMapAndTheme(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		m := themeViewer(t, 120, 40, ascii)
 		m.settings.NoAnimation = true
+		m.profileExplicit = true
 		m.showProfile = false
 		m.layout()
 		m.openDialog(dialogSearch)
@@ -216,6 +220,7 @@ func TestSelectedPositionMarkerFollowsMapAndTheme(t *testing.T) {
 
 func TestPlannerPreservesImportedContextAndDrawer(t *testing.T) {
 	m := themeViewer(t, 120, 40, false)
+	m.profileExplicit = true
 	m.showProfile = false
 	m.layout()
 	m.openDialog(dialogSearch)
@@ -387,6 +392,7 @@ func TestPlannerInsetPreservesOuterMapBorder(t *testing.T) {
 func TestSharedPanelSwitchesViewsWithoutLosingContext(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		m := themeViewer(t, size[0], size[1], false)
+		m.profileExplicit = true
 		m.showProfile = false
 		m.layout()
 		selection := m.workspace.selection
@@ -532,6 +538,7 @@ func TestJourneyShortcutPreservesNestedEditor(t *testing.T) {
 
 func TestSidebarVisibilityAndTabCycle(t *testing.T) {
 	m := themeViewer(t, 120, 40, false)
+	m.profileExplicit = true
 	m.showProfile = false
 	m.layout()
 	selection, camera := m.workspace.selection, m.camera

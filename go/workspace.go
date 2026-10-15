@@ -301,6 +301,19 @@ func (w *Workspace) profile(width, height int) *elevationProfile {
 	return p
 }
 
+// hasVisibleElevation uses the same recorded items as the shared profile, without
+// dropping unelevated sections from its distance axis.
+func (w *Workspace) hasVisibleElevation() bool {
+	for _, item := range w.profileItems() {
+		for _, point := range item.Track.Points {
+			if point.Elevation != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (w *Workspace) profileItems() []sceneItem {
 	items := w.sceneItems()
 	return slices.DeleteFunc(items, func(item sceneItem) bool { return len(item.Track.Points) == 0 || item.Planned })

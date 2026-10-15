@@ -172,7 +172,7 @@ def context_text():
     pages = []
     previous = None
     unchanged = 0
-    tiny = len(capture().splitlines()) < 18
+    tiny = len(capture().splitlines()) <= 18
     for _ in range(60 if tiny else 20):
         time.sleep(.05)
         page = capture()
@@ -202,7 +202,7 @@ def scenario(binary, width, height):
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
         wait_for(lambda s: "Paused 1x" in s and "ctrl+b sidebar" in s)
-        assert "Elevation profile" not in capture(), "profile should be opt-in"
+        assert "Elevation profile" in capture(), "recorded elevation should appear automatically"
         settled()
         send("f")
         initial = settled()
@@ -342,7 +342,6 @@ def profile_playback(binary, width, height):
     tmux("new-session","-d","-s","poc","-x",str(width),"-y",str(height),command)
     try:
         wait_for(lambda s: "ctrl+b sidebar" in s)
-        send("e")
         wait_for(lambda s:"Elevation profile" in s and "Loading basemap" not in s)
         wait_for(lambda s:"Elevation profile" in s and "@ 0.00 km" in s)
         send("e")
@@ -395,7 +394,6 @@ def live_playback(binary):
     try:
         wait_for(lambda s: "ctrl+b sidebar" in s)
         wait_context(lambda s:"Route details" in s and "Loading basemap" not in s and re.search(r"\b[1-9]\d* / 0 / 0",s),timeout=25)
-        send("e")
         before=wait_context(lambda s:"Elevation profile" in s)
         base_hits=int(re.search(r"(\d+) / (\d+) / (\d+)",before).group(2))
         send("ssss ")
@@ -426,7 +424,6 @@ def dense_profile(binary):
     tmux("new-session","-d","-s","poc","-x","120","-y","40",command)
     try:
         wait_for(lambda s: "ctrl+b sidebar" in s)
-        send("e")
         wait_context(lambda s:"100000 points" in s)
         wait_for(lambda s:"Elevation profile" in s)
         send("ss ")
@@ -575,7 +572,6 @@ def theme_switching(binary, width, height):
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
     try:
         wait_for(lambda s: "ctrl+b sidebar" in s)
-        send("e")
         wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
         baseline = settled()
         original_colors = capture(colors=True)
@@ -768,8 +764,10 @@ def workspace_controls(binary):
         settled()
         tmux("resize-window", "-t", "poc:0", "-x", "70", "-y", "24")
         send("\x0c")
+        wait_for(lambda s: "Loaded files" in s)
+        tmux("send-keys", "-t", "poc:0.0", "End")
         wait_for(lambda s: "Loaded files" in s and "Optional spur" in s)
-        tmux("send-keys", "-t", "poc:0.0", "End", "Enter")
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Loaded files" not in s and "Optional spur" in s)
         send("\x0b")
         wait_for(lambda s: active_modal(s, "Commands"))
@@ -801,7 +799,6 @@ def workspace_profiles(binary, width, height):
         tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
         try:
             wait_for(lambda s: "ctrl+b sidebar" in s)
-            send("e")
             initial = wait_for(lambda s: "Elevation profiles" in s and "Short loop" in s and "Long ride" in s and "Loading track file" not in s)
             start_distance = float(re.search(r"@ ([\d.]+) km", initial).group(1))
             total_distance = float(re.search(r"([\d.]+) km total", initial).group(1))
@@ -1077,6 +1074,8 @@ def auth_setup(binary):
                 send("\x1b")
                 wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
                 send("\x0c")
+                wait_for(lambda s: "Loaded files" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Home")
                 wait_for(lambda s: "Loaded files" in s and (width == 30 or "example.gpx" in s))
                 send("\x1b")
                 wait_for(lambda s: "Loaded files" not in s)

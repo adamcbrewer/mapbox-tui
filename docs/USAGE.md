@@ -69,7 +69,12 @@ A `*` on the map marks the selected coordinates shown in the context line,
 including search results. Selecting a loaded file opens its Context view in the
 same panel. Switching views preserves the file selection, context scroll position
 and journey plan.
-Elevation profiles are opt-in with `e`. Attribution stays in the footer.
+Elevation profiles appear automatically when any visible imported activity has
+recorded elevation, including files opened later. They stay hidden without
+elevation data and disappear when the last elevation-bearing activity is hidden
+or removed. Use `e` or the command palette to toggle them; your explicit choice
+lasts for the viewer session, including later loads and selection changes.
+Attribution stays in the footer.
 
 Menus wrap. Rounded modal borders contain the current title and a breadcrumb
 for nested dialogs. Esc goes back in nested dialogs and closes the top-level dialog.
@@ -88,7 +93,8 @@ Reopening a loaded path reuses the import; remove it first to reread a changed f
 
 Only the active item plays. Hiding or removing it stops playback and clears the
 selection. Visible elevation profiles appear in file and item order on a shared
-distance axis.
+distance axis. Sections without elevation stay blank; recorded zero elevation
+is valid, and gaps and disconnected parts stay separate.
 
 Playback uses recorded timing when a part has complete, increasing timestamps.
 Otherwise it uses a labelled 6 m/s estimate. Gaps stay separate; interpolated
