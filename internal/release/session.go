@@ -148,13 +148,13 @@ func (s Session) Prompt() string {
 	}
 	switch s.Step {
 	case Tag:
-		return fmt.Sprintf("Push tag %s to %s at %s now?%s", s.Version, s.Repository, s.Commit, suffix)
+		return fmt.Sprintf("Would you like to push tag %s now?%s\n%s @ %s", s.Version, suffix, s.Repository, s.Commit)
 	case Viewer:
 		return "Did the offline viewer open and quit correctly?" + suffix
 	case Notes:
 		return "Review notes: check installation instructions, breaking changes and limitations. Press e to edit." + suffix
 	case Publish:
-		return fmt.Sprintf("Publish %s on %s at %s now?%s", s.Version, s.Repository, s.Commit, suffix)
+		return fmt.Sprintf("Would you like to publish %s now?%s\n%s @ %s", s.Version, suffix, s.Repository, s.Commit)
 	}
 	return ""
 }

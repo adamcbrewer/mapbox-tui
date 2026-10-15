@@ -25,7 +25,7 @@
 
 
 
-
-  Publish v0.2.0 on example/mapbox-tui at 0123456789ab now? (simulated)
+  Would you like to publish v0.2.0 now? (simulated)
+  example/mapbox-tui @ 0123456789ab
   Type yes, then enter to publish.
   >

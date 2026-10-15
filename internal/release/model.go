@@ -292,11 +292,11 @@ func (m Model) promptForm() string {
 		}
 		prompt := m.session.Prompt()
 		if m.height < 12 && (m.session.Step == Tag || m.session.Step == Publish) {
-			action := "Push tag"
+			action := "push tag"
 			if m.session.Step == Publish {
-				action = "Publish"
+				action = "publish"
 			}
-			prompt = fmt.Sprintf("%s %s now?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
+			prompt = fmt.Sprintf("Would you like to %s %s now?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
 		}
 		action := map[Step]string{
 			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "publish",

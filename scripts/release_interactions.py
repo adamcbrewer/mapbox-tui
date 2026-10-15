@@ -39,11 +39,11 @@ def main():
         key("C-k")
         terminal.send("\x1b[200~v0.2.0\x1b[201~")
         key("Enter")
-        expect("Push tag")
+        expect("Would you like to push tag")
         capture("expanded-checklist", 90, 32)
         terminal.send("no")
         key("Enter")
-        expect("Push tag")
+        expect("Would you like to push tag")
         terminal.send("\x1b[200~yes\x1b[201~")
         key("Enter")
         expect("Waiting for GitHub to start")
@@ -65,7 +65,7 @@ def main():
         expect("Publish release")
         terminal.tmux("resize-window", "-t", "poc:0", "-x", "90", "-y", "6")
         terminal.wait_for(lambda screen:
-            "Publish v0.2.0 now?" in screen and "Type yes, then enter to publish." in screen
+            "Would you like to publish v0.2.0 now?" in screen and "Type yes, then enter to publish." in screen
             and any(line.strip().startswith(">") for line in screen.splitlines()))
         capture("short-confirmation", 90, 6)
         terminal.send("yes")
@@ -79,7 +79,7 @@ def main():
         expect("authentication failed")
         capture("failure", 90, 32)
         key("Enter")
-        expect("Push tag")
+        expect("Would you like to push tag")
         key("Escape")
         expect("TERMINAL_RESTORED=True EXIT=0")
         terminal.tmux("kill-session", "-t", "poc")
