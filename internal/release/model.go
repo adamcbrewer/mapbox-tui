@@ -67,6 +67,18 @@ func (m Model) tick() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.height < 20 || m.width < 36 {
+		switch input := msg.(type) {
+		case tea.KeyPressMsg:
+			if input.String() != "esc" && input.String() != "ctrl+c" {
+				return m, nil
+			}
+			// Escape cancels even when the notes editor is hidden.
+			m.editing = false
+		case tea.PasteMsg:
+			return m, nil
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, msg.Width), max(1, msg.Height)

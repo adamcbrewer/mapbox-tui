@@ -180,6 +180,13 @@ func shortCommit(commit string) string { return commit[:min(12, len(commit))] }
 
 func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 	state := State{Mode: r.Mode, Root: r.Root}
+	saved, exists, err := r.Journal.Load()
+	if err != nil {
+		return state, err
+	}
+	if !r.Resume && exists && saved.TagIntent && !saved.Published {
+		return state, fmt.Errorf("unfinished release %s exists; use --resume to reconcile it", saved.Version)
+	}
 	origin, err := r.git(ctx, "remote", "get-url", "origin")
 	if err != nil {
 		return state, fmt.Errorf("read origin: %w", err)
@@ -221,10 +228,6 @@ func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 	if err != nil {
 		return state, err
 	}
-	saved, exists, err := r.Journal.Load()
-	if err != nil {
-		return state, err
-	}
 	if r.Resume {
 		if !exists {
 			return state, fmt.Errorf("no release journal exists; start without --resume")
@@ -241,8 +244,6 @@ func (r *RealAdapter) inspect(ctx context.Context) (State, error) {
 				return state, err
 			}
 		}
-	} else if exists && saved.TagIntent && !saved.Published {
-		return state, fmt.Errorf("unfinished release %s exists; use --resume to reconcile it", saved.Version)
 	}
 	return state, nil
 }
@@ -309,7 +310,7 @@ func (r *RealAdapter) checkSource(ctx context.Context, state State) error {
 				if err != nil {
 					return fmt.Errorf("saved release source is no longer on main: %w", err)
 				}
-				return r.checkRemoteTag(ctx, state, false)
+				return r.checkRemoteTag(ctx, state, true)
 			}
 			return fmt.Errorf("selected commit does not match origin/main; update main before releasing")
 		}

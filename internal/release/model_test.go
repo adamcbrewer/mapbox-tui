@@ -194,3 +194,36 @@ func TestPastedInput(t *testing.T) {
 		t.Fatal("pasted confirmation was not accepted")
 	}
 }
+
+func TestHiddenPromptsCannotAcceptInput(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		step   Step
+		status Status
+	}{
+		{name: "start", step: Preflight, status: Ready},
+		{name: "retry", step: Preflight, status: Failed},
+		{name: "tag", step: Tag, status: Confirmation},
+		{name: "publish", step: Publish, status: Confirmation},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := NewSession("v0.2.0", "success")
+			s.Step, s.Status = tc.step, tc.status
+			m := NewModel(s, time.Second, true)
+			m.input.SetValue("yes")
+			resized, _ := m.Update(tea.WindowSizeMsg{Width: 35, Height: 19})
+			m = resized.(Model)
+			for _, msg := range []tea.Msg{tea.PasteMsg{Content: "yes"}, tea.KeyPressMsg{Code: 'y', Text: "y"}, tea.KeyPressMsg{Code: tea.KeyEnter}} {
+				updated, cmd := m.Update(msg)
+				m = updated.(Model)
+				if cmd != nil || m.session.Status != tc.status || m.input.Value() != "yes" {
+					t.Fatal("hidden prompt accepted input")
+				}
+			}
+			updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if updated.(Model).session.Status != Cancelled || cmd == nil {
+				t.Fatal("hidden UI could not cancel")
+			}
+		})
+	}
+}

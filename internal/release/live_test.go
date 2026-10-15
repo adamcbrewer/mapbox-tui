@@ -644,3 +644,47 @@ func TestConcurrentHigherReleaseRemainsLatest(t *testing.T) {
 		t.Fatalf("publication recovery blocked: %v", err)
 	}
 }
+
+func TestUnfinishedReleasePreventsCheckoutChanges(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	state.TagIntent = true
+	if err := adapter.Journal.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	commands.calls = nil
+	_, err := adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "use --resume") {
+		t.Fatalf("unfinished release not rejected: %v", err)
+	}
+	if len(commands.calls) != 0 {
+		t.Fatalf("commands ran before recovery guard: %+v", commands.calls)
+	}
+}
+
+func TestResumePushesMissingTagAfterMainAdvances(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	state.TagIntent = true
+	if err := adapter.Journal.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	adapter.Resume = true
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		switch strings.Join(c.Args, " ") {
+		case "rev-parse origin/main":
+			return strings.Repeat("c", 40), nil, true
+		case "merge-base --is-ancestor " + testCommit + " origin/main":
+			return "", nil, true
+		}
+		return "", nil, false
+	}}
+	for _, op := range []Operation{Inspect, Source, PushTag} {
+		result, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+		if err != nil {
+			t.Fatalf("%s: %v", op, err)
+		}
+		state = result.State
+	}
+	if !commands.remote {
+		t.Fatal("missing tag was not pushed")
+	}
+}
