@@ -240,3 +240,30 @@ func TestShortTerminalKeepsConfirmationUsable(t *testing.T) {
 		})
 	}
 }
+
+func TestNotesReviewRetainsFullScrollableContent(t *testing.T) {
+	s, _ := NewSession("v0.2.0", "success")
+	s.Step, s.Status = Notes, Confirmation
+	s.Notes = "Beginning: breaking changes\n" + strings.Repeat("Release detail\n", 40) + "End: limitations"
+	m := NewModel(s, time.Second, true)
+	m.width, m.height = 90, 20
+	m.refresh()
+	if !strings.Contains(m.checklist(), "Beginning: breaking changes") ||
+		!strings.Contains(m.checklist(), "End: limitations") {
+		t.Fatal("full notes are missing from review content")
+	}
+	m.follow = false
+	m.viewport.GotoTop()
+	if !strings.Contains(m.View().Content, "Beginning: breaking changes") {
+		t.Fatal("cannot scroll to the start of the notes")
+	}
+	m.viewport.GotoBottom()
+	if !strings.Contains(m.View().Content, "End: limitations") {
+		t.Fatal("cannot scroll to the end of the notes")
+	}
+	m.session.Notes = "Edited notes"
+	if !strings.Contains(m.checklist(), "Edited notes") ||
+		strings.Contains(m.checklist(), "Beginning: breaking changes") {
+		t.Fatal("review did not update to the edited notes")
+	}
+}

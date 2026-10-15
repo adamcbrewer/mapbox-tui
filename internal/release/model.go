@@ -292,6 +292,10 @@ func (m Model) inlineForm() string {
 		}
 		lines = append(lines, m.input.View())
 	case Confirmation:
+		if m.session.Step == Notes {
+			lines = append(lines, safeText(m.session.Notes), "",
+				"↑/↓ or pgup/pgdown: scroll all notes · e: edit")
+		}
 		prompt := m.session.Prompt()
 		if m.height < 12 && (m.session.Step == Tag || m.session.Step == Publish) {
 			action := "Push tag"

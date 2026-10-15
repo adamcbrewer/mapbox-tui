@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVerifyArtifact(t *testing.T) {
@@ -208,5 +209,43 @@ func assertArtifactRejected(t *testing.T, dir string) {
 		if strings.HasPrefix(entry.Name(), "verified-") {
 			t.Fatalf("rejected extraction left executable files in %s", entry.Name())
 		}
+	}
+}
+
+func TestArtifactDigestAuthenticatesAllFilesAndPermissions(t *testing.T) {
+	local := t.TempDir()
+	writeArtifactFixture(t, local, artifactFixture(t, artifactHeaders()), "")
+	want, err := artifactDigest(local, "v0.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"INSTALL.md", "LICENSE", "THIRD_PARTY_NOTICES.txt", "permissions", "host metadata"} {
+		t.Run(name, func(t *testing.T) {
+			headers := artifactHeaders()
+			for i := range headers {
+				switch {
+				case headers[i].Name == name:
+					headers[i].Size = int64(len("executable fixture"))
+				case name == "permissions":
+					headers[i].Mode = 0o777
+				case name == "host metadata":
+					headers[i].Uid = 1001
+					headers[i].Gid = 1001
+					headers[i].ModTime = time.Unix(123456789, 0)
+				}
+			}
+			remote := t.TempDir()
+			writeArtifactFixture(t, remote, artifactFixture(t, headers), "")
+			if _, err := verifyArtifact(remote, "v0.2.0"); err != nil {
+				t.Fatal(err)
+			}
+			got, err := artifactDigest(remote, "v0.2.0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (got == want) != (name == "host metadata") {
+				t.Fatalf("archive identity comparison incorrect for %s", name)
+			}
+		})
 	}
 }

@@ -105,16 +105,34 @@ func verifyArtifact(dir, version string) (string, error) {
 	return filepath.Join(out, "mapbox-tui"), nil
 }
 
-// binaryDigest binds remote execution to the independently built local executable.
-func binaryDigest(path string) (string, error) {
-	file, err := os.Open(path)
+// artifactDigest authenticates every file and its permissions while ignoring
+// timestamps and ownership, which differ across local and CI packaging hosts.
+// Call only after verifyArtifact has validated the archive structure and checksum.
+func artifactDigest(dir, version string) (string, error) {
+	file, err := os.Open(filepath.Join(dir, archiveName(version)))
 	if err != nil {
-		return "", fmt.Errorf("open binary: %w", err)
+		return "", fmt.Errorf("open archive: %w", err)
 	}
 	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return "", err
+	}
+	defer gz.Close()
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("hash binary: %w", err)
+	reader := tar.NewReader(gz)
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(hash, "%q %d %d %d\n", header.Name, header.Typeflag, header.Mode, header.Size)
+		if _, err := io.Copy(hash, reader); err != nil {
+			return "", fmt.Errorf("hash archive entry: %w", err)
+		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }

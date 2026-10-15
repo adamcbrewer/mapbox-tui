@@ -77,25 +77,25 @@ var operations = map[Step][]operationSpec{
 
 // State is passed by value between the UI and adapters. Credentials are never stored.
 type State struct {
-	Mode              Mode
-	Root              string
-	Repository        string
-	Host              string
-	Commit            string
-	Version           string
-	Policy            VersionPolicy
-	RunID             int64
-	URL               string
-	LocalDir          string
-	LocalBinaryDigest string
-	DownloadDir       string
-	AssetIdentity     string
-	DownloadIdentity  string
-	Binary            string
-	Notes             string
-	TagIntent         bool
-	PublishIntent     bool
-	Published         bool
+	Mode                Mode
+	Root                string
+	Repository          string
+	Host                string
+	Commit              string
+	Version             string
+	Policy              VersionPolicy
+	RunID               int64
+	URL                 string
+	LocalDir            string
+	LocalArtifactDigest string
+	DownloadDir         string
+	AssetIdentity       string
+	DownloadIdentity    string
+	Binary              string
+	Notes               string
+	TagIntent           bool
+	PublishIntent       bool
+	Published           bool
 }
 
 type Request struct {

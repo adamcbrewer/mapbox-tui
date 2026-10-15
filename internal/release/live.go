@@ -134,7 +134,7 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 			result.State.Binary, err = verifyArtifact(result.State.LocalDir, state.Version)
 		}
 		if err == nil {
-			result.State.LocalBinaryDigest, err = binaryDigest(result.State.Binary)
+			result.State.LocalArtifactDigest, err = artifactDigest(result.State.LocalDir, state.Version)
 		}
 		result.Message = "Local checksum and archive contents verified"
 	case LocalSmoke:
@@ -154,9 +154,9 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 		result.State.Binary, err = verifyArtifact(state.DownloadDir, state.Version)
 		if err == nil {
 			var digest string
-			digest, err = binaryDigest(result.State.Binary)
-			if err == nil && (state.LocalBinaryDigest == "" || digest != state.LocalBinaryDigest) {
-				err = fmt.Errorf("downloaded binary differs from the verified local build; it will not be executed. Check source, Go toolchain and build settings")
+			digest, err = artifactDigest(state.DownloadDir, state.Version)
+			if err == nil && (state.LocalArtifactDigest == "" || digest != state.LocalArtifactDigest) {
+				err = fmt.Errorf("downloaded archive differs from the verified local build; it will not be executed or published. Check source, Go toolchain and build settings")
 			}
 		}
 		if err == nil {
@@ -178,7 +178,6 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 		}
 		if err == nil {
 			result.State.Notes = release.Body
-			emit(release.Body)
 		}
 		result.Message = "Release notes loaded; review or edit before publication"
 	case PublishRelease:

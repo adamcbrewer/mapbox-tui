@@ -48,7 +48,12 @@ func newReleaseHarness(t *testing.T, mode Mode) (*RealAdapter, *releaseCommands,
 		t.Fatal(err)
 	}
 	result.State.Version = "v0.1.1"
-	result.State.LocalBinaryDigest = fmt.Sprintf("%x", sha256.Sum256([]byte("fixture mapbox-tui")))
+	local := t.TempDir()
+	writeReleaseArchive(t, local)
+	result.State.LocalArtifactDigest, err = artifactDigest(local, result.State.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return adapter, commands, result.State
 }
 func jsonValue(v any) string {
@@ -811,7 +816,7 @@ func TestDownloadedBinaryMustMatchLocalBuildBeforeExecution(t *testing.T) {
 			adapter, commands, state := newReleaseHarness(t, Live)
 			state.DownloadDir = t.TempDir()
 			if name == "missing local verification" {
-				state.LocalBinaryDigest = ""
+				state.LocalArtifactDigest = ""
 				writeReleaseArchive(t, state.DownloadDir)
 			} else {
 				writeReleaseArchiveWithBinary(t, state.DownloadDir, "untrusted executable")
