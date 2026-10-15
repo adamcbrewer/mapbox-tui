@@ -335,17 +335,12 @@ func (r *RealAdapter) preflight(ctx context.Context, state State) error {
 	for _, command := range []Command{
 		{Name: "make", Args: []string{"--version"}}, {Name: "python3", Args: []string{"--version"}},
 		{Name: "tmux", Args: []string{"-V"}}, {Name: "rsvg-convert", Args: []string{"--version"}},
-		{Name: "fc-match", Args: []string{"DejaVu Sans Mono"}},
 	} {
-		output, err := r.run(ctx, command, nil)
+		_, err := r.run(ctx, command, nil)
 		if err != nil {
 			return fmt.Errorf("missing terminal-check dependency %s; see docs/DEVELOPMENT.md: %w", command.Name, err)
 		}
-		// The capture SVG requests DejaVu Sans Mono with a generic monospace
-		// fallback. Fontconfig aliases may legitimately select another family.
-		if command.Name == "fc-match" && strings.TrimSpace(output) == "" {
-			return fmt.Errorf("no font available for terminal captures; install a monospace font, then retry")
-		}
+
 	}
 	_, err = r.run(ctx, Command{Name: "gh", Args: []string{"auth", "status", "--hostname", state.Host}}, nil)
 	if err != nil {

@@ -118,9 +118,6 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 	if c.Name == "go" && args == "env -json GOVERSION GOOS GOARCH" {
 		return `{"GOVERSION":"go1.27.1","GOOS":"linux","GOARCH":"amd64"}`, nil
 	}
-	if c.Name == "fc-match" && args == "DejaVu Sans Mono" {
-		return "DejaVuSansMono.ttf", nil
-	}
 	if (c.Name == "make" || c.Name == "python3" || c.Name == "rsvg-convert") && args == "--version" {
 		return "3.11.0", nil
 	}
@@ -542,32 +539,5 @@ func TestPublicationCannotReplaceNewerLatest(t *testing.T) {
 	}
 	if commands.published {
 		t.Fatal("publication command ran")
-	}
-}
-
-func TestPreflightAcceptsFontFallback(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		output    string
-		wantError bool
-	}{
-		{name: "DejaVu", output: `DejaVuSansMono.ttf: "DejaVu Sans Mono" "Book"`},
-		{name: "configured fallback", output: `JetBrainsMonoNerdFont-Regular.ttf: "JetBrainsMono Nerd Font" "Regular"`},
-		{name: "no installed font", output: " \n", wantError: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			adapter, commands, state := newReleaseHarness(t, Rehearsal)
-			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
-				return tc.output, nil, c.Name == "fc-match"
-			}}
-			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: Tools}, func(string) {})
-			if (err != nil) != tc.wantError {
-				t.Fatalf("preflight error = %v; want error %v", err, tc.wantError)
-			}
-			if tc.wantError && !strings.Contains(err.Error(), "install a monospace font") {
-				t.Fatalf("missing remedy: %v", err)
-			}
-		})
 	}
 }
