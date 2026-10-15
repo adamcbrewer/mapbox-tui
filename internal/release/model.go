@@ -302,6 +302,7 @@ func (m Model) controls() string {
 func (m Model) checklist() (string, int) {
 	var sections []string
 	activeLine := 0
+	branchStyle := m.style("#707070").PaddingRight(1)
 	for i, name := range stepNames {
 		marker, color := "○", "#A0A0A0"
 		if m.session.Skipped[i] {
@@ -312,7 +313,7 @@ func (m Model) checklist() (string, int) {
 		if Step(i) == m.session.Step {
 			marker, color = "▶", "#FFFFFF"
 			if m.session.Status == Failed {
-				marker, color = "!", "#FFFFFF"
+				marker, color = "✗", "#FF6B6B"
 			}
 			if m.session.Status == Confirmation {
 				marker, color = "?", "#FFFFFF"
@@ -325,7 +326,8 @@ func (m Model) checklist() (string, int) {
 		heading := m.style(color).Bold(Step(i) == m.session.Step).Render(fmt.Sprintf("%s %d  %s", marker, i+1, name))
 		branch := tree.Root(ansi.Wrap(heading, max(1, m.width-4), "")).
 			Enumerator(tree.RoundedEnumerator).
-			EnumeratorStyle(m.style("#707070").PaddingRight(1))
+			EnumeratorStyle(branchStyle).
+			IndenterStyle(branchStyle)
 		for _, entry := range m.session.Activity[i] {
 			prefix := "· "
 			switch entry.Status {
@@ -338,12 +340,13 @@ func (m Model) checklist() (string, int) {
 			case ActivityComplete:
 				prefix = "✓ "
 			case ActivityFailed:
-				prefix = "! "
+				prefix = m.style("#FF6B6B").Render("✗") + " "
 			case ActivityCancelled:
 				prefix = "– "
 			}
 			leaf := tree.Root(m.style("#C0C0C0").Render(ansi.Wrap(prefix+entry.Text, max(1, m.width-9), ""))).
-				EnumeratorStyle(m.style("#707070").PaddingRight(1))
+				EnumeratorStyle(branchStyle).
+				IndenterStyle(branchStyle)
 			for _, line := range entry.Output {
 				leaf.Child(m.style("#A0A0A0").Render(ansi.Wrap(line, max(1, m.width-14), "")))
 			}

@@ -8,8 +8,8 @@
   Enter: retry this operation
   Elapsed 0s · esc cancel
   ↑/↓ · pgup/pgdown · wheel scroll
-  ! 1  Preflight & exact-commit CI
-  ╰── ! authentication failed; run gh
+  ✗ 1  Preflight & exact-commit CI
+  ╰── ✗ authentication failed; run gh
       auth login, then retry
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
