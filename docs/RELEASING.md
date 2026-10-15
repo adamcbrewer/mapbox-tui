@@ -61,10 +61,12 @@ runs when a title is edited, including on fork PRs.
 
 ## Prepare and tag a release
 
-Run these commands from a clean checkout on Linux x86-64. Use the Go version in
-`go.mod`, Make, Python 3.11 or newer, and the terminal-check dependencies listed
-in [Development](DEVELOPMENT.md). Install and authenticate GitHub CLI for `gh`.
-You need permission to push tags and manage releases.
+Run these commands from a clean checkout on Linux x86-64. Use the Go compiler
+pinned in [mise.toml](../mise.toml), matching the version selected from `go.mod`
+by CI and release builds. Follow the [Go toolchain setup](DEVELOPMENT.md#go-toolchain)
+for mise. You'll also need Make, Python 3.11 or newer, and the terminal-check
+dependencies listed in [Development](DEVELOPMENT.md). Install and authenticate
+GitHub CLI for `gh`. You need permission to push tags and manage releases.
 
 1. Update `main`, review the changes since the last release, and choose the next
    version. Confirm the merged changes passed CI.

@@ -3,6 +3,26 @@
 Run commands from the repository root with Go meeting the minimum in
 [go.mod](../go.mod), Make and Python 3.11 or newer.
 
+## Go toolchain
+
+[mise.toml](../mise.toml) pins the local Go compiler. CI and release builds select
+the same version from [go.mod](../go.mod). Keep both files aligned when updating
+the compiler.
+
+Install [mise](https://mise.jdx.dev/getting-started) and enable its
+[shell activation](https://mise.jdx.dev/shell-setup.html), then run these commands
+once from the checkout:
+
+```sh
+mise trust
+mise install
+go version
+```
+
+`go version` should report the version in `mise.toml`. Mise selects that version
+when you enter the project directory, so `go`, `gofmt` and the Make targets work
+without a per-command version or a global Go default.
+
 ## Local workflow
 
 ```sh
