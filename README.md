@@ -13,6 +13,13 @@ with a JSON CLI and local MCP server. Desgined to work with Mapbox for place, se
 
 ![Mapbox TUI showing the Country ride near London, with an elevation profile](docs/images/mapbox-tui.png)
 
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/09033b01-8f17-49f3-bc45-1ec23bb64d66" width="100%" controls></video>
+</div>
+
+
+
 ## Features
 
 - **Activity inspection and playback.** Inspect recorded points and distances,
