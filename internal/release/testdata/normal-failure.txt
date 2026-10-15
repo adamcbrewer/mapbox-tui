@@ -10,7 +10,7 @@
   Elapsed 0s · esc cancel
 
   ! 1  Preflight & exact-commit CI
-  ╰──! authentication failed; run gh auth login, then retry
+  ╰── ! authentication failed; run gh auth login, then retry
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
   ○ 4  Confirm tag push

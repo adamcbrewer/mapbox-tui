@@ -9,8 +9,8 @@
   Elapsed 0s · esc cancel
 
   ▶ 1  Preflight & exact-commit CI
-  ├──✓ Toolchain and gh authentication ready
-  ╰──⣾  Checking selected source and release history
+  ├── ✓ Toolchain and gh authentication ready
+  ╰── ⣾  Checking selected source and release history
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
   ○ 4  Confirm tag push

@@ -325,7 +325,7 @@ func (m Model) checklist() (string, int) {
 		heading := m.style(color).Bold(Step(i) == m.session.Step).Render(fmt.Sprintf("%s %d  %s", marker, i+1, name))
 		branch := tree.Root(ansi.Wrap(heading, max(1, m.width-4), "")).
 			Enumerator(tree.RoundedEnumerator).
-			EnumeratorStyle(m.style("#707070"))
+			EnumeratorStyle(m.style("#707070").PaddingRight(1))
 		for _, entry := range m.session.Activity[i] {
 			prefix := "· "
 			switch entry.Status {
@@ -342,9 +342,10 @@ func (m Model) checklist() (string, int) {
 			case ActivityCancelled:
 				prefix = "– "
 			}
-			leaf := tree.Root(m.style("#C0C0C0").Render(ansi.Wrap(prefix+entry.Text, max(1, m.width-8), "")))
+			leaf := tree.Root(m.style("#C0C0C0").Render(ansi.Wrap(prefix+entry.Text, max(1, m.width-9), ""))).
+				EnumeratorStyle(m.style("#707070").PaddingRight(1))
 			for _, line := range entry.Output {
-				leaf.Child(m.style("#A0A0A0").Render(ansi.Wrap(line, max(1, m.width-12), "")))
+				leaf.Child(m.style("#A0A0A0").Render(ansi.Wrap(line, max(1, m.width-14), "")))
 			}
 			branch.Child(leaf)
 		}

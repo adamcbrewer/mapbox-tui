@@ -19,4 +19,4 @@
   ✓ 7  Confirm offline viewer
   ✓ 8  Review release notes
   ? 9  Confirm publication
-  ╰──· Publish v0.2.0 for example/mapbox-tui at 0123456789ab as latest? (simulated)
+  ╰── · Publish v0.2.0 for example/mapbox-tui at 0123456789ab as latest? (simulated)
