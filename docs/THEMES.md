@@ -16,6 +16,7 @@ without dimming the map, activities or panels, so previews retain their full col
 
 Built-ins are `catppuccin`, `noir`, `nord`, `paper`,
 `synthwave` and `tokyo-night`.
+Catppuccin uses mauve for its first activity, with blue UI accents.
 Synthwave pairs a deep plum canvas with candy pink, pearl-pink text, cyan and
 lilac, with neon gradient frames and a lilac first activity:
 
@@ -24,14 +25,15 @@ lilac, with neon gradient frames and a lilac first activity:
 ```
 
 Nord uses the [Nord palette](https://www.nordtheme.com/docs/colors-and-palettes/):
-slate backgrounds, snow-coloured text and icy blue accents and activities.
+slate backgrounds, snow-coloured text and a snow-white first activity, with icy blue UI accents.
 Its activity colours use brighter tints to keep labels readable on dialog surfaces.
+Tokyo Night uses purple for its first activity, with blue UI accents.
 Paper replaces the Latte and Strava palettes with one light theme: a cool off-white
-canvas inspired by e-ink, pale grey roads, soft grey water, ink-blue routes and elevation
+canvas inspired by e-ink, pale grey roads, soft grey water, charcoal routes and elevation
 profiles, and green UI accents. Its six activity colours have at least 7:1 contrast against the canvas,
 so small Braille dots remain visible on large maps. Nord and Paper use solid borders.
 Noir uses black land, grey roads and oceans, brighter grey place names, and
-ice-blue activities and elevation profiles, with green UI accents.
+cyan activities and elevation profiles, with green UI accents.
 
 Activity palettes use blue, cyan, purple, pink and neutral shades, leaving green,
 yellow and red for traffic. The six slots remain stable as themes change.
