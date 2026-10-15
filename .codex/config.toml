@@ -1,0 +1,3 @@
+[mcp_servers.mapbox-tui]
+command = "sh"
+args = ["-c", 'exec "$(git rev-parse --show-toplevel)/bin/mapbox-tui" mcp']

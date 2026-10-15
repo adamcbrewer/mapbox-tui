@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mapbox-tui": {
+      "type": "local",
+      "command": [
+        "sh",
+        "-c",
+        "exec \"$(git rev-parse --show-toplevel)/bin/mapbox-tui\" mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

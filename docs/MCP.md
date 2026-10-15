@@ -8,6 +8,20 @@ The server's initialisation response reports the same build version as
 `mapbox-tui --version`: the release tag for published binaries, or `dev` for
 ordinary source builds.
 
+## Project setup
+
+[Codex](../.codex/config.toml) and [OpenCode (v1)](../opencode.json) are configured
+for this checkout. Both use the local binary over MCP stdio. Build it, then
+restart your agent:
+
+```sh
+make build
+```
+
+To check the connection, run `codex mcp get mapbox-tui` or `opencode mcp list`.
+Codex needs to trust the project. Build each worktree separately, and rebuild
+and reconnect after server changes.
+
 ## Files and measurements
 
 Use absolute file paths. `load_track` returns the file's `track_id` and its

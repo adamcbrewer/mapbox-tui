@@ -63,7 +63,11 @@ For basemaps, place search and road routing, [connect Mapbox](#mapbox).
 MCP lets your agent inspect files, compare activities and render text maps.
 Loaded files, selection and visibility carry over between requests.
 
-Add the binary as a local stdio server in your agent's MCP configuration:
+This repository includes project-local configurations for Codex and OpenCode.
+Build with `make build`, then start your agent in this checkout. See
+[project MCP setup](docs/MCP.md#project-setup) for connection checks.
+
+For other clients, add the binary as a local stdio server in your agent's MCP configuration:
 
 ```json
 {
