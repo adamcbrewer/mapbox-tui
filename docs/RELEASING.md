@@ -48,7 +48,8 @@ The nine sections run the actual checks and commands:
 4. Ask for `y`, recheck source and version availability, create an annotated tag
    and push only that tag. Existing tags are never moved or overwritten.
 5. Find the release workflow for that tag and commit, then wait for its jobs.
-6. Inspect the draft, download attachments into a fresh directory, and verify
+6. Inspect the draft (archive at most 256 MiB; checksum at most 4 KiB),
+   download attachments into a fresh directory, and verify
    the checksum and archive. Before any execution, compare every file's contents and permissions
    with the verified local archive, then check embedded metadata and offline
    rendering again. Packaging normalises Go flags, experiments, CPU baseline and workspace settings,
@@ -88,8 +89,12 @@ source checkout with:
 make release RELEASE_ARGS='--resume'
 ```
 
+Live preflight requires repository write access for the active `gh` account.
+
 Resume repeats verification and confirmations, reconciles an uncertain tag push
-or publication, and downloads fresh attachments. It does not recreate a draft or
+or publication, and downloads fresh attachments. If a workflow rerun failed after
+creating a release, resume can inspect the matching release and continue through
+full artifact verification. It does not recreate a draft or
 move a tag. A changed source commit requires a new release version. Keep the
 saved source checked out while resuming; a newer `main` on origin is accepted only
 when the already-tagged source remains its ancestor. If GitHub reports altered

@@ -367,6 +367,21 @@ func (r *RealAdapter) preflight(ctx context.Context, state State) error {
 	if err != nil {
 		return fmt.Errorf("authenticate with gh auth login --hostname %s: %w", state.Host, err)
 	}
+	if state.Mode == Live {
+		raw, err := r.api(ctx, state, "")
+		if err != nil {
+			return fmt.Errorf("check GitHub repository write permission: %w", err)
+		}
+		var repository struct {
+			Permissions struct{ Push bool } `json:"permissions"`
+		}
+		if err := json.Unmarshal([]byte(raw), &repository); err != nil {
+			return fmt.Errorf("read GitHub repository permissions: %w", err)
+		}
+		if !repository.Permissions.Push {
+			return fmt.Errorf("active gh account needs write access to %s to update release notes; select a writable account before pushing the tag", state.Repository)
+		}
+	}
 	return nil
 }
 
@@ -675,6 +690,15 @@ func (r *RealAdapter) waitJobs(ctx context.Context, q Request, emit func(string)
 		return pending(q, "Release workflow "+run.Status+": "+run.URL, 120)
 	}
 	if run.Conclusion != "success" {
+		if r.Resume && q.State.TagIntent {
+			release, err := r.requireRelease(ctx, q.State)
+			if err != nil {
+				return Result{}, fmt.Errorf("release workflow %s; existing release cannot be reconciled: %w", run.Conclusion, err)
+			}
+			state := q.State
+			state.URL = release.URL
+			return Result{State: state, Message: "Workflow rerun failed; matching release found. Continuing with full attachment verification: " + release.URL}, nil
+		}
 		return Result{}, fmt.Errorf("release workflow %s: %s; rerun failed jobs for unchanged source or use a new version for source fixes", run.Conclusion, run.URL)
 	}
 	return Result{State: q.State, Message: "Release workflow succeeded; inspect draft next"}, nil
@@ -705,9 +729,16 @@ func (r *RealAdapter) requireRelease(ctx context.Context, state State) (*githubR
 			return nil, fmt.Errorf("release must contain only the expected archive and checksum; found %d attachments", len(release.Assets))
 		}
 		for _, name := range []string{archiveName(state.Version), archiveName(state.Version) + ".sha256"} {
+			limit := int64(256 << 20)
+			if strings.HasSuffix(name, ".sha256") {
+				limit = 4 << 10
+			}
 			count := 0
 			for _, asset := range release.Assets {
 				if asset.Name == name && asset.Size > 0 {
+					if asset.Size > limit {
+						return nil, fmt.Errorf("release attachment %s exceeds the %d-byte download limit", name, limit)
+					}
 					count++
 				}
 			}

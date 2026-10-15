@@ -157,6 +157,8 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 	}
 	if c.Name == "gh" {
 		switch args {
+		case "api --hostname github.com repos/example/mapbox-tui":
+			return `{"permissions":{"push":true}}`, nil
 		case "auth status --hostname github.com":
 			return "authenticated", nil
 		case "api --hostname github.com repos/example/mapbox-tui/releases?per_page=100 --paginate --slurp":
@@ -853,6 +855,104 @@ func TestDownloadedBinaryMustMatchLocalBuildBeforeExecution(t *testing.T) {
 			}
 			if len(commands.calls) != before {
 				t.Fatal("downloaded binary was executed before authentication")
+			}
+		})
+	}
+}
+
+func TestDownloadRejectsOversizedAssets(t *testing.T) {
+	for _, index := range []int{0, 1} {
+		t.Run([]string{"archive", "checksum"}[index], func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			commands.local, commands.remote = true, true
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+				if c.Name != "gh" || !slices.Contains(c.Args, "repos/example/mapbox-tui/releases?per_page=100") {
+					return "", nil, false
+				}
+				data := commands.releases()
+				limit := int64(256 << 20)
+				if index == 1 {
+					limit = 4 << 10
+				}
+				data[1]["assets"].([]map[string]any)[index]["size"] = limit + 1
+				return jsonValue([]any{data}), nil, true
+			}}
+			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
+			if err == nil || !strings.Contains(err.Error(), "download limit") {
+				t.Fatalf("oversized asset accepted: %v", err)
+			}
+			for _, c := range commands.calls {
+				if c.Name == "gh" && slices.Contains(c.Args, "download") {
+					t.Fatal("oversized asset was downloaded")
+				}
+			}
+		})
+	}
+}
+
+func TestPreflightRequiresRepositoryWriteAccess(t *testing.T) {
+	for _, response := range []string{`{"permissions":{"push":false}}`, `{}`} {
+		t.Run(response, func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+				return response, nil, c.Name == "gh" && slices.Contains(c.Args, "repos/example/mapbox-tui")
+			}}
+			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: Tools}, func(string) {})
+			if err == nil || !strings.Contains(err.Error(), "write access") {
+				t.Fatalf("read-only GitHub account accepted: %v", err)
+			}
+			if commands.local || commands.remote {
+				t.Fatal("preflight mutated a tag")
+			}
+		})
+	}
+}
+
+func TestResumeReconcilesDraftAfterFailedWorkflowRerun(t *testing.T) {
+	for _, name := range []string{"matching draft", "no draft", "wrong title", "wrong tag commit"} {
+		t.Run(name, func(t *testing.T) {
+			adapter, commands, state := newReleaseHarness(t, Live)
+			adapter.Resume = true
+			commands.local, commands.remote = true, true
+			state.RunID, state.TagIntent = 5, true
+			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+				if c.Name == "gh" && c.Args[0] == "run" {
+					return `{"databaseId":5,"headSha":"` + testCommit + `","headBranch":"v0.1.1","status":"completed","conclusion":"failure"}`, nil, true
+				}
+				if name == "wrong tag commit" && c.Name == "git" && c.Args[0] == "ls-remote" {
+					return strings.Repeat("b", 40) + "\trefs/tags/v0.1.1\n" +
+						strings.Repeat("c", 40) + "\trefs/tags/v0.1.1^{}", nil, true
+				}
+				if c.Name == "gh" && slices.Contains(c.Args, "repos/example/mapbox-tui/releases?per_page=100") {
+					data := commands.releases()
+					if name == "no draft" {
+						data = data[:1]
+					}
+					if name == "wrong title" {
+						data[1]["name"] = "Wrong title"
+					}
+					return jsonValue([]any{data}), nil, true
+				}
+				return "", nil, false
+			}}
+			result, err := adapter.Execute(t.Context(), Request{State: state, Operation: Jobs}, func(string) {})
+			if name != "matching draft" {
+				if err == nil {
+					t.Fatal("invalid recovery accepted")
+				}
+				return
+			}
+			if err != nil || result.Pending || result.State.AssetIdentity != "" {
+				t.Fatalf("matching draft not reconciled for further verification: %+v %v", result, err)
+			}
+			for _, op := range []Operation{FetchArtifact, RemoteArtifact} {
+				result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: op}, func(string) {})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if result.State.AssetIdentity == "" {
+				t.Fatal("reconciled draft attachments were not verified")
 			}
 		})
 	}
