@@ -7,9 +7,25 @@
   Elapsed 0s · esc cancel
 
   ▶ 1  Preflight & exact-commit CI
-  ╰── Latest release: v0.1.0
-      Next: v0.1.1 / v0.2.0 / v1.0.0
 
-      Edit suggested tag, then enter to start.
-      tag v0.1.0 already exists; existing tags cannot be overwritten
-      > v0.2.0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Latest release: v0.1.0
+  Next: v0.1.1 / v0.2.0 / v1.0.0
+
+  Edit suggested tag, then enter to start.
+  tag v0.1.0 already exists; existing tags cannot be overwritten
+  > v0.2.0

@@ -150,11 +150,6 @@ func TestChecklistScrolling(t *testing.T) {
 			m.input.SetValue("yes")
 			updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			m = updated.(Model)
-			if m.session.Status != Confirmation || !m.follow {
-				t.Fatal("hidden confirmation was accepted instead of revealed")
-			}
-			updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-			m = updated.(Model)
 			if m.session.Step != Tag || m.session.Status != Running || !strings.Contains(m.viewport.View(), "Rechecking source") {
 				t.Fatal("confirming next step did not bring it into view")
 			}
@@ -246,7 +241,7 @@ func TestNotesReviewRetainsFullScrollableContent(t *testing.T) {
 	s.Step, s.Status = Notes, Confirmation
 	s.Notes = "Beginning: breaking changes\n" + strings.Repeat("Release detail\n", 40) + "End: limitations"
 	m := NewModel(s, time.Second, true)
-	m.width, m.height = 90, 20
+	m.width, m.height = 90, 19
 	m.refresh()
 	if !strings.Contains(m.checklist(), "Beginning: breaking changes") ||
 		!strings.Contains(m.checklist(), "End: limitations") {
@@ -257,7 +252,14 @@ func TestNotesReviewRetainsFullScrollableContent(t *testing.T) {
 	if !strings.Contains(m.View().Content, "Beginning: breaking changes") {
 		t.Fatal("cannot scroll to the start of the notes")
 	}
+	topView := strings.Split(m.View().Content, "\n")
 	m.viewport.GotoBottom()
+	bottomView := strings.Split(m.View().Content, "\n")
+	footerRows := strings.Count(m.footer(), "\n")
+	if strings.Join(topView[len(topView)-footerRows:], "\n") !=
+		strings.Join(bottomView[len(bottomView)-footerRows:], "\n") {
+		t.Fatal("question prompt moved when scrolling notes")
+	}
 	if !strings.Contains(m.View().Content, "End: limitations") {
 		t.Fatal("cannot scroll to the end of the notes")
 	}

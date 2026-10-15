@@ -70,8 +70,8 @@ backoff. Completed section headings turn green. The cyan/pink bar counts complet
 sections, rather than estimating how long a server request will take. The output
 under each operation retains its latest twelve lines. Arrow/page keys and the
 mouse wheel scroll overflowing content; advancing a section brings it into view.
-Version entry and confirmation prompts appear beneath their tree step. Typing
-returns to the active input; after scrolling away, Enter first reveals the prompt. `NO_COLOR=1` disables colour. Short terminals show only the active step and its prompt, without a fixed
+Version entry and confirmation prompts stay pinned at the bottom while the
+checklist and full release notes scroll above. Enter submits the visible input. `NO_COLOR=1` disables colour. Short terminals show only the active step and its prompt, without a fixed
 minimum-size requirement.
 
 Escape or Ctrl+C cancels local commands and restores the terminal. It does not

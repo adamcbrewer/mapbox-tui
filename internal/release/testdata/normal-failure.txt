@@ -7,5 +7,25 @@
   Elapsed 0s · esc cancel
 
   ✗ 1  Preflight & exact-commit CI
-  ├── ✗ authentication failed; run gh auth login, then retry
-  ╰── Enter: retry this operation
+  ╰── ✗ authentication failed; run gh auth login, then retry
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Enter: retry this operation

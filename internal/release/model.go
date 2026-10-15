@@ -167,11 +167,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		case "enter":
-			if !m.follow && (m.session.Status == Ready || m.session.Status == Confirmation || m.session.Status == Failed) {
-				m.follow = true
-				m.refresh()
-				return m, nil
-			}
 			switch m.session.Status {
 			case Ready:
 				if err := m.session.SelectVersion(m.input.Value()); err != nil {
@@ -270,7 +265,7 @@ func (m Model) header() string {
 	), width, "")
 }
 
-func (m Model) inlineForm() string {
+func (m Model) promptForm() string {
 	width := max(1, m.width-8)
 	if m.editing {
 		return ansi.Wrap("Release notes · ctrl+s save · esc back", width, "") + "\n" + m.editor.View()
@@ -293,8 +288,7 @@ func (m Model) inlineForm() string {
 		lines = append(lines, m.input.View())
 	case Confirmation:
 		if m.session.Step == Notes {
-			lines = append(lines, safeText(m.session.Notes), "",
-				"↑/↓ or pgup/pgdown: scroll all notes · e: edit")
+			lines = append(lines, "↑/↓ or pgup/pgdown: scroll all notes · e: edit")
 		}
 		prompt := m.session.Prompt()
 		if m.height < 12 && (m.session.Step == Tag || m.session.Step == Publish) {
@@ -389,10 +383,8 @@ func (m Model) checklist() string {
 			}
 			branch.Child(leaf)
 		}
-		if Step(i) == m.session.Step {
-			if form := m.inlineForm(); form != "" {
-				branch.Child(form)
-			}
+		if Step(i) == Notes && m.session.Status == Confirmation && !m.editing {
+			branch.Child(ansi.Wrap(safeText(m.session.Notes), max(1, m.width-8), ""))
 		}
 		sections = append(sections, branch.String())
 	}
@@ -430,12 +422,19 @@ func (m Model) verticalPadding() int {
 	return 1
 }
 
+func (m Model) footer() string {
+	if form := m.promptForm(); form != "" {
+		return m.groupSeparator() + form
+	}
+	return ""
+}
+
 func (m *Model) refresh() {
 	m.viewport.SetWidth(max(1, m.width-4))
 	content := m.checklist()
 	m.scrollable = false
 	available := func() int {
-		return max(1, m.height-2*m.verticalPadding()-strings.Count(m.chrome(), "\n"))
+		return max(1, m.height-2*m.verticalPadding()-strings.Count(m.chrome(), "\n")-strings.Count(m.footer(), "\n"))
 	}
 	m.scrollable = lipgloss.Height(content) > available()
 	m.viewport.SetHeight(available())
@@ -446,7 +445,7 @@ func (m *Model) refresh() {
 }
 
 func (m Model) View() tea.View {
-	content := m.chrome() + m.viewport.View()
+	content := m.chrome() + m.viewport.View() + m.footer()
 	if m.noColor {
 		content = ansi.Strip(content)
 	}
