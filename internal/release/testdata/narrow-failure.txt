@@ -3,17 +3,16 @@
   TEST · simulated release
   v0.2.0 · example/mapbox-tui
   ░░░░░░░░░░░░░░░  0/9 steps complete
-  authentication failed; run gh auth
-  login, then retry
-  Enter: retry this operation
   Elapsed 0s · esc cancel
-  ↑/↓ · pgup/pgdown · wheel scroll
   ✗ 1  Preflight & exact-commit CI
-  ╰── ✗ authentication failed; run gh
-      auth login, then retry
+  ├── ✗ authentication failed; run gh
+  │   auth login, then retry
+  ╰── Enter: retry this operation
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
   ○ 4  Confirm tag push
   ○ 5  Wait for release workflow
   ○ 6  Verify draft attachments
   ○ 7  Confirm offline viewer
+  ○ 8  Review release notes
+  ○ 9  Confirm publication

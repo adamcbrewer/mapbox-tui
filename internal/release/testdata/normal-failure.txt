@@ -4,13 +4,11 @@
   v0.2.0 · example/mapbox-tui · 0123456789ab
   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/9 steps complete
 
-  │ authentication failed; run gh auth login, then retry
-  │ Enter: retry this operation
-
   Elapsed 0s · esc cancel
 
   ✗ 1  Preflight & exact-commit CI
-  ╰── ✗ authentication failed; run gh auth login, then retry
+  ├── ✗ authentication failed; run gh auth login, then retry
+  ╰── Enter: retry this operation
   ○ 2  Checks & terminal interactions
   ○ 3  Package & verify locally
   ○ 4  Confirm tag push

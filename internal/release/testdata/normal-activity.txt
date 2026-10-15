@@ -4,8 +4,6 @@
   v0.2.0 · example/mapbox-tui · 0123456789ab
   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/9 steps complete
 
-  │ ⣾  Preflight & exact-commit CI
-
   Elapsed 0s · esc cancel
 
   ▶ 1  Preflight & exact-commit CI

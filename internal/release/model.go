@@ -82,9 +82,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
-		m.input.SetWidth(max(1, min(30, m.width-6)))
-		m.editor.SetWidth(max(1, m.width-4))
-		m.editor.SetHeight(max(1, m.height-7))
+		m.input.SetWidth(max(1, min(30, m.width-10)))
+		m.editor.SetWidth(max(1, m.width-8))
+		m.editor.SetHeight(max(3, min(10, m.height-17)))
 		m.refresh()
 		return m, nil
 	case operationResultMsg:
@@ -137,11 +137,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "esc":
 				m.editing = false
+				m.refresh()
 				return m, nil
 			case "ctrl+c":
 			default:
 				var cmd tea.Cmd
 				m.editor, cmd = m.editor.Update(msg)
+				m.follow = true
+				m.refresh()
 				return m, cmd
 			}
 		}
@@ -149,10 +152,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editor = textarea.New()
 			m.editor.CharLimit = 128 * 1024
 			m.editor.SetValue(m.session.Notes)
-			m.editor.SetWidth(max(1, m.width-4))
-			m.editor.SetHeight(max(1, m.height-7))
+			m.editor.SetWidth(max(1, m.width-8))
+			m.editor.SetHeight(max(3, min(10, m.height-17)))
 			m.editing = true
 			cmd := m.editor.Focus()
+			m.follow = true
+			m.refresh()
 			return m, cmd
 		}
 		switch msg.String() {
@@ -173,6 +178,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		case "enter":
+			if !m.follow && (m.session.Status == Ready || m.session.Status == Confirmation || m.session.Status == Failed) {
+				m.follow = true
+				m.refresh()
+				return m, nil
+			}
 			switch m.session.Status {
 			case Ready:
 				if err := m.session.SelectVersion(m.input.Value()); err != nil {
@@ -221,11 +231,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.editing {
 		var cmd tea.Cmd
 		m.editor, cmd = m.editor.Update(msg)
+		m.refresh()
 		return m, cmd
 	}
 	if m.session.Status == Ready || m.session.Status == Confirmation {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		switch msg.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg:
+			m.follow = true
+		}
 		m.refresh()
 		return m, cmd
 	}
@@ -260,12 +275,10 @@ func (m Model) header() string {
 	), width, "")
 }
 
-func (m Model) controls() string {
-	width := max(1, m.width-4)
-	framed := m.height >= 26
-	formWidth := width
-	if framed {
-		formWidth -= 2
+func (m Model) inlineForm() string {
+	width := max(1, m.width-8)
+	if m.editing {
+		return ansi.Wrap("Release notes · ctrl+s save · esc back", width, "") + "\n" + m.editor.View()
 	}
 	var lines []string
 	switch m.session.Status {
@@ -278,23 +291,19 @@ func (m Model) controls() string {
 		}
 		lines = append(lines, "Edit suggested tag, then enter to start.")
 		if m.versionError != "" {
-			lines = append(lines, m.style("#FFFFFF").Render(m.versionError))
+			lines = append(lines, m.style("#FF6B6B").Render(m.versionError))
 		}
 		lines = append(lines, m.input.View())
 	case Confirmation:
 		lines = append(lines, m.session.Prompt(), m.style("#D4D4D4").Render("Type yes, then enter."), m.input.View())
 	case Failed:
-		lines = append(lines, m.style("#FFFFFF").Render(m.session.Detail), "Enter: retry this operation")
-	case Done:
-		lines = append(lines, m.session.Summary()+" Enter: exit")
-	case Running:
-		lines = append(lines, m.spinner.View()+" "+m.session.Step.String())
+		lines = append(lines, "Enter: retry this operation")
 	}
-	form := ansi.Wrap(strings.Join(lines, "\n"), formWidth, "")
-	if framed {
-		form = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).
-			BorderForeground(lipgloss.Color("#707070")).PaddingLeft(1).Render(form)
-	}
+	return ansi.Wrap(strings.Join(lines, "\n"), width, "")
+}
+
+func (m Model) controls() string {
+	width := max(1, m.width-4)
 	hint := func(key, description string) string {
 		return m.style("#D4D4D4").Render(key) + " " + m.style("#909090").Render(description)
 	}
@@ -303,10 +312,10 @@ func (m Model) controls() string {
 		help += "\n" + hint("↑/↓ · pgup/pgdown · wheel", "scroll")
 	}
 
-	if form == "" {
-		return ansi.Wrap(help, width, "")
+	if m.session.Status == Done {
+		return ansi.Wrap(m.session.Summary()+" Enter: exit", width, "")
 	}
-	return form + m.groupSeparator() + ansi.Wrap(help, width, "")
+	return ansi.Wrap(help, width, "")
 }
 
 // checklist uses Lip Gloss's tree renderer for wrapped child activity under each
@@ -341,6 +350,9 @@ func (m Model) checklist() (string, int) {
 			EnumeratorStyle(branchStyle).
 			IndenterStyle(branchStyle)
 		for _, entry := range m.session.Activity[i] {
+			if Step(i) == m.session.Step && m.session.Status == Confirmation && entry.Text == m.session.Prompt() {
+				continue
+			}
 			prefix := "· "
 			switch entry.Status {
 			case ActivityRunning:
@@ -363,6 +375,15 @@ func (m Model) checklist() (string, int) {
 				leaf.Child(m.style("#A0A0A0").Render(ansi.Wrap(line, max(1, m.width-14), "")))
 			}
 			branch.Child(leaf)
+		}
+		if Step(i) == m.session.Step {
+			if form := m.inlineForm(); form != "" {
+				branch.Child(form)
+				activeLine = lipgloss.Height(strings.Join(sections, "\n")) + lipgloss.Height(branch.String()) - 1
+				if len(sections) == 0 {
+					activeLine--
+				}
+			}
 		}
 		sections = append(sections, branch.String())
 	}
@@ -389,7 +410,11 @@ func (m *Model) refresh() {
 	m.viewport.SetHeight(max(1, m.height-chrome))
 	m.viewport.SetContent(content)
 	if m.follow {
-		m.viewport.SetYOffset(max(0, active-1))
+		offset := active - 1
+		if m.inlineForm() != "" {
+			offset = active - m.viewport.Height() + 1
+		}
+		m.viewport.SetYOffset(max(0, offset))
 		if m.session.Status == Done {
 			m.viewport.GotoBottom()
 		}
@@ -398,9 +423,6 @@ func (m *Model) refresh() {
 
 func (m Model) View() tea.View {
 	content := m.header() + m.groupSeparator() + m.controls() + m.groupSeparator() + m.viewport.View()
-	if m.editing {
-		content = "Release notes · ctrl+s save · esc back\n\n" + m.editor.View() + "\nLinux x86-64 · installation link · breaking changes · limitations"
-	}
 	if m.height < 20 || m.width < 36 {
 		content = ansi.Wrap("Release: enlarge terminal to 36 columns and 20 rows. Esc cancels.", max(1, m.width-4), "")
 	}

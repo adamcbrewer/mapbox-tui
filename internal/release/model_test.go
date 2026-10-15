@@ -133,6 +133,8 @@ func TestChecklistScrolling(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := NewModel(s, time.Second, true)
+			resized, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+			m = resized.(Model)
 			before := m.viewport.YOffset()
 			updated, _ := m.Update(tc.msg)
 			m = updated.(Model)
@@ -147,7 +149,12 @@ func TestChecklistScrolling(t *testing.T) {
 			m.input.SetValue("yes")
 			updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			m = updated.(Model)
-			if m.session.Step != Tag || m.session.Status != Running || !strings.Contains(m.viewport.View(), "▶ 4") {
+			if m.session.Status != Confirmation || !m.follow {
+				t.Fatal("hidden confirmation was accepted instead of revealed")
+			}
+			updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			m = updated.(Model)
+			if m.session.Step != Tag || m.session.Status != Running || !strings.Contains(m.viewport.View(), "Rechecking source") {
 				t.Fatal("confirming next step did not bring it into view")
 			}
 		})

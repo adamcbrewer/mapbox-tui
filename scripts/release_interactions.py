@@ -74,6 +74,7 @@ def main():
         expect("Review notes:")
         terminal.send("e")
         expect("ctrl+s")
+        capture("inline-notes-editor", 90, 32)
         terminal.send("Reviewed release notes. ")
         key("C-s")
         expect("Review notes:")
@@ -81,7 +82,10 @@ def main():
         key("Enter")
         expect("Confirm publication")
         terminal.tmux("resize-window", "-t", "poc:0", "-x", "40", "-y", "22")
-        expect("Confirm publication")
+        terminal.wait_for(lambda screen:
+            any(line.strip() == "v0.2.0 · example/mapbox-tui" for line in screen.splitlines())
+            and "Type yes, then enter." in screen
+            and any(line.strip().startswith(">") for line in screen.splitlines()))
         capture("narrow-confirmation", 40, 22)
         terminal.send("yes")
         key("Enter")

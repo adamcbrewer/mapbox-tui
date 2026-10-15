@@ -3,17 +3,17 @@
   TEST · simulated release
   v0.2.0 · example/mapbox-tui
   ▌▌▌▌▌▌▌▌▌▌▌▌▌░░  8/9 steps complete
-  Publish v0.2.0 for example/mapbox-
-  tui at 0123456789ab as latest?
-  (simulated)
-  Type yes, then enter.
-  >
   Elapsed 0s · esc cancel
   ↑/↓ · pgup/pgdown · wheel scroll
+  ✓ 4  Confirm tag push
+  ✓ 5  Wait for release workflow
+  ✓ 6  Verify draft attachments
   ✓ 7  Confirm offline viewer
   ✓ 8  Review release notes
   ? 9  Confirm publication
-  ╰── · Publish v0.2.0 for
+  ╰── Publish v0.2.0 for
       example/mapbox-tui at
       0123456789ab as latest?
       (simulated)
+      Type yes, then enter.
+      >
