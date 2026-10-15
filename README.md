@@ -11,7 +11,7 @@ with a JSON CLI and local MCP server. Desgined to work with Mapbox for place, se
 [Getting started](#getting-started) · [MCP](#agent-workflow) ·
 [Themes](#themes) · [Other terminal maps](#other-terminal-map-projects)
 
-![Mapbox TUI showing the Country ride on a map, with an elevation profile and the journey planning panel](docs/images/mapbox-tui.png)
+![Mapbox TUI showing the Country ride near London, with an elevation profile](docs/images/mapbox-tui.png)
 
 ## Features
 
