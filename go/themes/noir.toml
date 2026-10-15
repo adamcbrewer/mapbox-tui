@@ -15,8 +15,8 @@ activities = ["#5ce1f5", "#b7a3ff", "#7dcfff", "#eda7ff", "#a9bfff", "#f2f2f2"]
 [map]
 none = "#8e8e8e"
 water = "#262626"
-road = "#343434"
-major_road = "#505050"
+road = "#2a2a2a"
+major_road = "#404040"
 place = "#8e8e8e"
 route = "#5ce1f5"
 marker = "#5ce1f5"
