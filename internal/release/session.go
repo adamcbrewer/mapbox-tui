@@ -24,8 +24,8 @@ const (
 
 var stepNames = []string{
 	"Preflight & exact-commit CI", "Checks & terminal interactions", "Package & verify locally",
-	"Confirm tag push", "Wait for release workflow", "Verify draft attachments",
-	"Confirm offline viewer", "Review release notes", "Confirm publication",
+	"Push release tag", "Wait for release workflow", "Verify draft attachments",
+	"Test offline viewer", "Review release notes", "Publish release",
 }
 
 func (s Step) String() string {
@@ -148,13 +148,13 @@ func (s Session) Prompt() string {
 	}
 	switch s.Step {
 	case Tag:
-		return fmt.Sprintf("Push annotated tag %s for %s at %s?%s", s.Version, s.Repository, s.Commit, suffix)
+		return fmt.Sprintf("Push tag %s to %s at %s now?%s", s.Version, s.Repository, s.Commit, suffix)
 	case Viewer:
-		return "Offline viewer smoke test: confirm it started and quit correctly." + suffix
+		return "Did the offline viewer open and quit correctly?" + suffix
 	case Notes:
-		return "Review notes: Linux x86-64; installation link; breaking changes; limitations. Press e to edit, then yes to accept." + suffix
+		return "Review notes: check installation instructions, breaking changes and limitations. Press e to edit." + suffix
 	case Publish:
-		return fmt.Sprintf("Publish %s for %s at %s as latest?%s", s.Version, s.Repository, s.Commit, suffix)
+		return fmt.Sprintf("Publish %s on %s at %s now?%s", s.Version, s.Repository, s.Commit, suffix)
 	}
 	return ""
 }

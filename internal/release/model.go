@@ -296,9 +296,13 @@ func (m Model) promptForm() string {
 			if m.session.Step == Publish {
 				action = "Publish"
 			}
-			prompt = fmt.Sprintf("%s %s?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
+			prompt = fmt.Sprintf("%s %s now?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
 		}
-		lines = append(lines, prompt, m.style("#D4D4D4").Render("Type yes, then enter."), m.input.View())
+		action := map[Step]string{
+			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "publish",
+		}[m.session.Step]
+		lines = append(lines, prompt,
+			m.style("#D4D4D4").Render("Type yes, then enter to "+action+"."), m.input.View())
 	case Failed:
 		lines = append(lines, "Enter: retry this operation")
 	}

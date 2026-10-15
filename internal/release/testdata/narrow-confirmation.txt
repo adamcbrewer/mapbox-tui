@@ -7,15 +7,15 @@
   ✓ 1  Preflight & exact-commit CI
   ✓ 2  Checks & terminal interactions
   ✓ 3  Package & verify locally
-  ✓ 4  Confirm tag push
+  ✓ 4  Push release tag
   ✓ 5  Wait for release workflow
   ✓ 6  Verify draft attachments
-  ✓ 7  Confirm offline viewer
+  ✓ 7  Test offline viewer
   ✓ 8  Review release notes
-  ? 9  Confirm publication
-  Publish v0.2.0 for
+  ? 9  Publish release
+
+  Publish v0.2.0 on
   example/mapbox-tui at
-  0123456789ab as latest?
-  (simulated)
-  Type yes, then enter.
+  0123456789ab now? (simulated)
+  Type yes, then enter to publish.
   >
