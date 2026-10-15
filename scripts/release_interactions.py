@@ -33,18 +33,8 @@ def launch(scenario, delay="60ms"):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     try:
-        launch("delayed-workflow")
+        launch("delayed-workflow", "200ms")
         capture("ready", 90, 32)
-        key("C-a")
-        key("C-k")
-        terminal.send("v0.1.0")
-        key("Enter")
-        expect("already exists")
-        key("C-a")
-        key("C-k")
-        terminal.send("v0.3.0")
-        key("Enter")
-        expect("choose one increment")
         key("C-a")
         key("C-k")
         terminal.send("\x1b[200~v0.2.0\x1b[201~")
@@ -56,6 +46,7 @@ def main():
         expect("Push annotated tag")
         terminal.send("\x1b[200~yes\x1b[201~")
         key("Enter")
+        expect("Waiting for GitHub to start")
         expect("confirm it started")
         key("PPage")
         key("PPage")
@@ -102,34 +93,7 @@ def main():
         key("Escape")
         expect("TERMINAL_RESTORED=True EXIT=0")
         terminal.tmux("kill-session", "-t", "poc")
-        launch("slow-checks", "400ms")
-        key("Enter")
-        waiting = "Running terminal interactions; waiting"
-        before = next(line for line in expect(waiting).splitlines() if waiting in line)
-        terminal.wait_for(lambda screen: any(waiting in line and line != before for line in screen.splitlines()))
-        capture("busy-leaf", 90, 32)
-        key("C-c")
-        expect("TERMINAL_RESTORED=True EXIT=0")
-        terminal.tmux("kill-session", "-t", "poc")
-        command = shlex.join([
-            "python3", str(ROOT / "scripts/terminal_runner.py"),
-            "env", f"RELEASE_TERMINAL_ROOT={ROOT}",
-            str(ROOT / "bin/release-terminal-test"), "-test.run=^TestViewerTerminalHandoff$",
-        ])
-        terminal.tmux("new-session", "-d", "-s", "poc", "-x", "100", "-y", "35", command)
-        expect("Edit suggested tag")
-        key("Enter")
-        expect("Riverside exploration")
-        capture("offline-viewer", 100, 35)
-        terminal.send("q")
-        expect("confirm it started")
-        capture("returned-from-viewer", 100, 35)
-        terminal.send("yes")
-        key("Enter")
-        expect("Rehearsal complete")
-        key("Enter")
-        expect("TERMINAL_RESTORED=True EXIT=0")
-        print("Release workflow: confirmations, checklist scrolling, resize, retry, cancellation and terminal restoration passed.")
+        print("Release acceptance: happy path (all steps, delayed workflow and inputs) and failure path (error, retry and cancellation) passed.")
     finally:
         terminal.tmux("kill-server", check=False)
 

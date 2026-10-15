@@ -128,10 +128,11 @@ process cancellation, recovery-file locking, version guards, shared session
 transitions and normal/narrow text snapshots. The tests never push a real tag or
 publish a release.
 
-The interaction suite executes the same release command in test mode inside tmux,
-checking confirmations, paste, notes editing, scrolling, resizing, retry, animated
-waiting, cancellation and terminal restoration. A separate integration case opens
-the actual offline viewer from the release UI and verifies returning to it. It needs the terminal dependencies
+The interaction suite executes the same release command in test mode inside tmux.
+One happy path runs all nine sections, including delayed workflow discovery,
+version input, confirmations and notes editing. One failure path checks the error,
+retry and cancellation. Scrolling, resizing and terminal restoration are checked
+within those two runs. It needs the terminal dependencies
 from [Development](DEVELOPMENT.md). Text, SVG and PNG captures are saved under
 `reports/generated/release/` and retained by CI. To intentionally update text
 snapshots, run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review

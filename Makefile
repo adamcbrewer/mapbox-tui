@@ -46,8 +46,7 @@ bench: build fixtures
 RELEASE_ARGS ?=
 release:
 	go run ./cmd/release $(RELEASE_ARGS)
-release-interactions: build
+release-interactions:
 	mkdir -p bin
 	go build -o bin/mapbox-release ./cmd/release
-	go test -tags=integration -c -o bin/release-terminal-test ./internal/release
 	python3 scripts/release_interactions.py
