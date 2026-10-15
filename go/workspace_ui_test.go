@@ -501,8 +501,12 @@ func TestViewerAutomaticElevationLifecycle(t *testing.T) {
 			runLoadCommand(m, m.load(tc.paths[1]))
 			assertProfile(true)
 			profile := m.visibleProfile()
-			if !profile.Available || profile.Min != 0 || profile.Max != 0 || len(profile.Items) != 2 {
-				t.Fatal("zero elevation or missing-elevation section lost")
+			hasZeroElevation := profile.Available && profile.Min == 0 && profile.Max == 0
+			if !hasZeroElevation {
+				t.Fatal("recorded zero elevation lost")
+			}
+			if len(profile.Items) != 2 {
+				t.Fatal("missing-elevation section lost")
 			}
 			if profile.Distance != profile.Items[0].Track.Distance+profile.Items[1].Track.Distance {
 				t.Fatal("profile did not retain shared distance axis")
