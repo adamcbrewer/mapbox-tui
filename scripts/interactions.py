@@ -83,12 +83,11 @@ def xterm_color(n):
     return "#" + "".join(f"{levels[v]:02x}" for v in (n // 36, n // 6 % 6, n % 6))
 
 
-def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width*9}" height="{height*18}" viewBox="0 0 {width*9} {height*18}">', f'<rect width="100%" height="100%" fill="{background}"/>', '<g font-family="DejaVu Sans Mono,monospace" font-size="15" xml:space="preserve">']
+def styled_runs(screen, width, background="#1e1e2e", foreground="#cdd6f4"):
     fg = foreground
     bg = background
     bold = False
-    for y, line in enumerate(capture(colors=True).splitlines()):
+    for y, line in enumerate(screen.splitlines()):
         x, position = 0, 0
         for match in [*ANSI.finditer(line), None]:
             end = match.start() if match else len(line)
@@ -104,10 +103,7 @@ def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
                         expanded.append(char)
                         column += 1
                 chunk = "".join(expanded)
-                if bg != background:
-                    out.append(f'<rect x="{x*9}" y="{y*18}" width="{len(chunk)*9}" height="18" fill="{bg}"/>')
-                weight = ' font-weight="bold"' if bold else ''
-                out.append(f'<text x="{x*9}" y="{y*18+14}" fill="{fg}"{weight}>{html.escape(chunk)}</text>')
+                yield x, y, chunk, fg, bg, bold
                 x += len(chunk)
             if match:
                 nums = [int(n or 0) for n in match.group(1).split(';')]
@@ -139,6 +135,25 @@ def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
                         fg = "#" + "".join(f"{v:02x}" for v in nums[i+2:i+5]); i += 4
                     i += 1
                 position = match.end()
+
+
+def visible_cells(screen, width, background="#1e1e2e", foreground="#cdd6f4"):
+    # A blank cell's foreground and weight do not affect its appearance. tmux can
+    # retain these attributes after a compositor redraw without changing the map.
+    return {
+        (x + offset, y): (char, fg if char != " " else None, bg, bold if char != " " else False)
+        for x, y, chunk, fg, bg, bold in styled_runs(screen, width, background, foreground)
+        for offset, char in enumerate(chunk)
+    }
+
+
+def save_svg(path, width, height, background="#1e1e2e", foreground="#cdd6f4"):
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width*9}" height="{height*18}" viewBox="0 0 {width*9} {height*18}">', f'<rect width="100%" height="100%" fill="{background}"/>', '<g font-family="DejaVu Sans Mono,monospace" font-size="15" xml:space="preserve">']
+    for x, y, chunk, fg, bg, bold in styled_runs(capture(colors=True), width, background, foreground):
+        if bg != background:
+            out.append(f'<rect x="{x*9}" y="{y*18}" width="{len(chunk)*9}" height="18" fill="{bg}"/>')
+        weight = ' font-weight="bold"' if bold else ''
+        out.append(f'<text x="{x*9}" y="{y*18+14}" fill="{fg}"{weight}>{html.escape(chunk)}</text>')
     out.extend(['</g>', '</svg>'])
     path.write_text('\n'.join(out) + '\n')
     subprocess.run(["rsvg-convert", "-o", str(path.with_suffix('.png')), str(path)], check=True)
@@ -594,6 +609,9 @@ def theme_switching(binary, width, height):
         assert "Commands › Colour theme" in screen and screen.count("╭") <= 2, "theme picker lost breadcrumbs or added parent frames"
         save_svg(ROOT / "reports/generated" / f"{binary.name}-theme-picker-{width}x{height}.svg", width, height)
         picker_colors = capture(colors=True)
+        baseline_cells = visible_cells(original_colors, width)
+        picker_cells = visible_cells(picker_colors, width)
+        assert all(picker_cells[position] == cell for position, cell in baseline_cells.items() if position[0] < 8), "theme picker dimmed the visible map"
         tmux("send-keys", "-t", "poc:0.0", "Up")
         wait_for(lambda s: f"> {names[preview]}" in s and capture(colors=True) != picker_colors)
         tmux("send-keys", "-t", "poc:0.0", "Up")
@@ -610,7 +628,7 @@ def theme_switching(binary, width, height):
         wait_for(lambda s: active_modal(s, "Commands") and "› theme" in s)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Commands" not in s)
-        assert settled() == baseline and capture(colors=True) == original_colors, "cancelled theme selection applied a palette"
+        assert settled() == baseline and visible_cells(capture(colors=True), width) == baseline_cells, "cancelled theme selection applied a palette"
         for index in [i for i in range(len(palettes)) if i != default] + [default]:
             palette = palettes[index]
             select_theme(index)

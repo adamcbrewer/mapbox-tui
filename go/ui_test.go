@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -438,6 +439,53 @@ func TestNestedPopupUsesBreadcrumbsWithoutBackFrames(t *testing.T) {
 				if m.ui.dialog != dialogMapbox || !strings.Contains(ansi.Strip(m.content), "esc back") {
 					t.Fatal("popping the larger help dialog lost its smaller setup parent")
 				}
+			})
+		}
+	}
+}
+
+func TestDialogOverlayPreservesBackgroundColours(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	for _, dialog := range []struct {
+		name string
+		kind dialogKind
+	}{
+		{name: "Commands", kind: dialogCommands},
+		{name: "Colour theme", kind: dialogThemes},
+	} {
+		for i, theme := range m.themes {
+			t.Run(dialog.name+"/"+theme.ID, func(t *testing.T) {
+				m.openDialog(dialog.kind)
+				m.applyTheme(i)
+				var row strings.Builder
+				for _, role := range []mapRole{
+					roleWater, roleRoad, rolePlace, roleTrafficLow, roleTrafficModerate,
+					roleTrafficHeavy, roleTrafficSevere, roleTrafficClosed,
+				} {
+					row.WriteString(m.paint("⠿", role))
+				}
+				row.WriteString(m.paint("⠿", roleActiveRoute, m.activeSwatch()))
+				base := strings.Repeat(row.String()+"\n", m.height-1) + row.String()
+				m.content = base
+				m.overlay()
+				if !strings.Contains(ansi.Strip(m.content), dialog.name) {
+					t.Fatal("dialog was not rendered")
+				}
+				before := lipgloss.NewCanvas(m.width, m.height).Compose(
+					lipgloss.NewCompositor(lipgloss.NewLayer(base)),
+				)
+				after := lipgloss.NewCanvas(m.width, m.height).Compose(
+					lipgloss.NewCompositor(lipgloss.NewLayer(m.content)),
+				)
+				// These columns stay visible beside both dialogs, even at their full height.
+				for y := range m.height {
+					for x := range 9 {
+						if !reflect.DeepEqual(before.CellAt(x, y), after.CellAt(x, y)) {
+							t.Fatalf("dialog changed the underlying map cell at %d,%d", x, y)
+						}
+					}
+				}
+				m.closeDialog()
 			})
 		}
 	}

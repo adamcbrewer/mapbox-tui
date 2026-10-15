@@ -11,27 +11,30 @@ Ctrl-K's **Colour theme** opens the session's palette list, with the current the
 selected and marked. Arrows or `j`/`k` preview the highlighted palette across the
 viewer; Enter keeps it and returns to the map. Esc restores the theme active when
 the picker opened and returns to the command menu. Closing or replacing the
-picker without confirmation also restores that theme.
+picker without confirmation also restores that theme. Dialogs overlay the viewer
+without dimming the map, activities or panels, so previews retain their full colours.
 
 Built-ins are `catppuccin`, `noir`, `nord`, `paper`,
 `synthwave` and `tokyo-night`.
 Synthwave pairs a deep plum canvas with candy pink, pearl-pink text, cyan and
-lilac, with neon gradient frames and an electric yellow-green first activity:
+lilac, with neon gradient frames and a lilac first activity:
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme synthwave
 ```
 
 Nord uses the [Nord palette](https://www.nordtheme.com/docs/colors-and-palettes/):
-slate backgrounds, snow-coloured text and icy blue accents, with warm yellow for
-the first activity so it stands apart from the blue basemap. Activity orange,
-purple and blue use brighter tints to keep labels readable on dialog surfaces.
+slate backgrounds, snow-coloured text and icy blue accents and activities.
+Its activity colours use brighter tints to keep labels readable on dialog surfaces.
 Paper replaces the Latte and Strava palettes with one light theme: a cool off-white
-canvas inspired by e-ink, pale grey roads, soft grey water, charcoal routes and elevation
+canvas inspired by e-ink, pale grey roads, soft grey water, ink-blue routes and elevation
 profiles, and green UI accents. Its six activity colours have at least 7:1 contrast against the canvas,
 so small Braille dots remain visible on large maps. Nord and Paper use solid borders.
 Noir uses black land, grey roads and oceans, brighter grey place names, and
-bright green activities and elevation profiles.
+ice-blue activities and elevation profiles, with green UI accents.
+
+Activity palettes use blue, cyan, purple, pink and neutral shades, leaving green,
+yellow and red for traffic. The six slots remain stable as themes change.
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme nord
@@ -72,7 +75,7 @@ Use a bundled palette as a complete template. These fields are required:
 | `text`, `muted` | Primary and secondary UI text |
 | `accent`, `highlight` | Keys, headings, active border titles and input cursor |
 | `border` | Map, modal and context drawer frames |
-| `dimmed` | Map/UI text beneath an open dialog |
+| `dimmed` | Disabled command text |
 | `progress_empty` | Unfilled playback progress bar |
 | `activities` | Exactly six colours, assigned to stable per-item slots |
 | `[map]` | Colours for map roles listed below |
@@ -98,8 +101,10 @@ luminance contrast or colour distance in CIE Lab. These are palette regression
 checks; live basemap previews also check how the terminal strokes read together.
 
 Traffic adds optional map colours `traffic_low`, `traffic_moderate`, `traffic_heavy`,
-`traffic_severe` and `traffic_closed`. Built-ins define them; older custom palettes
-receive defaults when these keys are absent. Invalid explicit traffic colours still
+`traffic_severe` and `traffic_closed`. Built-ins use green for low, yellow for
+moderate and red for heavy, severe and closed traffic; Paper uses darker shades
+for its light canvas. Closed roads also retain their `X` glyph.
+Older custom palettes receive defaults when these keys are absent. Invalid explicit traffic colours still
 fail validation. Traffic roles control colour, while severity priority and `1`–`4`/
 `X` glyphs stay in the shared renderer.
 

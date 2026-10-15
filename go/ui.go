@@ -995,10 +995,7 @@ func (m *viewer) overlay() {
 	}
 	x = max(0, min(m.width-boxWidth, x))
 	y = max(0, min(m.height-boxHeight, y))
-	baseStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(t.Dimmed)).
-		Background(lipgloss.Color(t.Background))
-	base := lipgloss.NewLayer(baseStyle.Render(ansi.Strip(m.content)))
+	base := lipgloss.NewLayer(m.content)
 	canvas := lipgloss.NewCanvas(m.width, m.height).Compose(
 		lipgloss.NewCompositor(base, lipgloss.NewLayer(box).X(x).Y(y).Z(1)),
 	)

@@ -156,14 +156,14 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 		),
 		"too few activity colours": strings.Replace(
 			valid,
-			", \"#f38ba8\"",
+			", \"#cdd6f4\"",
 			"",
 			1,
 		),
 		"too many activity colours": strings.Replace(
 			valid,
-			", \"#f38ba8\"]",
-			", \"#f38ba8\", \"#123456\"]",
+			", \"#cdd6f4\"]",
+			", \"#cdd6f4\", \"#123456\"]",
 			1,
 		),
 		"invalid id": strings.Replace(
