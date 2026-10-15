@@ -56,6 +56,9 @@ func (d FixtureAdapter) Execute(ctx context.Context, request Request, emit func(
 	case ReadNotes:
 		result.State.Notes = "Linux x86-64. Install: docs/INSTALL.md\n\nNo breaking changes. Known limitations: Linux only."
 		emit(result.State.Notes)
+	case PreparePublication:
+		result.State.PublishIntent = true
+		result.State.URL = "https://example.invalid/releases/" + state.Version
 	case PublishRelease:
 		result.State.Published = true
 		result.State.URL = "https://example.invalid/releases/" + state.Version
@@ -71,20 +74,21 @@ func (d FixtureAdapter) Execute(ctx context.Context, request Request, emit func(
 }
 
 var fixtureResults = map[Operation]string{
-	Tools:          "Toolchain and gh authentication ready",
-	Source:         "Clean main selected: 0123456789ab",
-	CI:             "CI passed for the selected commit",
-	Check:          "Formatting, tests, vet and race checks passed",
-	Interactions:   "Terminal interactions passed with NO_COLOR unset",
-	Build:          "Linux amd64 archive prepared",
-	LocalArtifact:  "SHA-256 checksum matched",
-	LocalSmoke:     "Embedded version and commit matched selection; offline rendering passed",
-	PushTag:        "Annotated tag pushed; only the selected tag was sent",
-	Discover:       "Matched release workflow by tag and commit",
-	Jobs:           "Checks and packaging jobs succeeded; draft ready",
-	FetchArtifact:  "Draft attachments downloaded to a fresh directory",
-	RemoteArtifact: "Checksum, embedded version and commit verified; offline rendering passed",
-	OpenViewer:     "Offline viewer exited; confirm the interaction below",
-	ReadNotes:      "Release notes loaded for review",
-	PublishRelease: "Publication and latest release verified",
+	Tools:              "Toolchain and gh authentication ready",
+	Source:             "Clean main selected: 0123456789ab",
+	CI:                 "CI passed for the selected commit",
+	Check:              "Formatting, tests, vet and race checks passed",
+	Interactions:       "Terminal interactions passed with NO_COLOR unset",
+	Build:              "Linux amd64 archive prepared",
+	LocalArtifact:      "SHA-256 checksum matched",
+	LocalSmoke:         "Embedded version and commit matched selection; offline rendering passed",
+	PushTag:            "Annotated tag pushed; only the selected tag was sent",
+	Discover:           "Matched release workflow by tag and commit",
+	Jobs:               "Checks and packaging jobs succeeded; draft ready",
+	FetchArtifact:      "Draft attachments downloaded to a fresh directory",
+	RemoteArtifact:     "Checksum, embedded version and commit verified; offline rendering passed",
+	OpenViewer:         "Offline viewer exited; confirm the interaction below",
+	ReadNotes:          "Release notes loaded for review",
+	PreparePublication: "Reviewed notes saved to the draft; publish it on GitHub",
+	PublishRelease:     "Publication and latest release verified",
 }

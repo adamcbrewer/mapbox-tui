@@ -62,7 +62,7 @@ func (r *RealAdapter) Execute(ctx context.Context, request Request, emit func(st
 			return Result{}, fmt.Errorf("invalid release identity; inspect the repository again")
 		}
 	}
-	if r.Mode != Live && (request.Operation == PushTag || request.Operation == PublishRelease) {
+	if r.Mode != Live && (request.Operation == PushTag || request.Operation == PreparePublication || request.Operation == PublishRelease) {
 		return Result{}, fmt.Errorf("rehearsal cannot create tags or publish releases")
 	}
 	result, err := r.execute(ctx, request, emit)
@@ -180,7 +180,7 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 			result.State.Notes = release.Body
 		}
 		result.Message = "Release notes loaded; review or edit before publication"
-	case PublishRelease:
+	case PreparePublication, PublishRelease:
 		return r.publish(ctx, q)
 	default:
 		err = fmt.Errorf("unknown release operation %q", q.Operation)
@@ -736,6 +736,9 @@ func (r *RealAdapter) download(ctx context.Context, state State) (State, error) 
 }
 func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	state := q.State
+	if q.Operation == PublishRelease {
+		state.PublishIntent = true
+	}
 	result := Result{State: state}
 	release, err := r.requireRelease(ctx, state)
 	if err != nil {
@@ -754,7 +757,10 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	if strings.TrimSpace(state.Notes) == "" {
 		return result, fmt.Errorf("release notes must not be empty")
 	}
-	if release.Draft {
+	if release.Draft && q.Operation == PublishRelease {
+		return result, fmt.Errorf("release is still a draft; open %s and click Publish release, then retry", release.URL)
+	}
+	if q.Operation == PreparePublication && release.Draft && release.Body != state.Notes {
 		state.PublishIntent = true
 		if err = r.Journal.Save(state); err != nil {
 			return result, err
@@ -768,12 +774,19 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 		if err = os.WriteFile(path, []byte(state.Notes), 0o600); err != nil {
 			return result, err
 		}
-		// Let GitHub determine latest using semantic version ordering at publication
-		// time, rather than forcibly replacing a concurrently published release.
+		// Save reviewed notes without publishing. The maintainer publishes in the web UI.
 		if _, err = r.api(ctx, state, "/releases/"+strconv.FormatInt(release.ID, 10),
-			"--method", "PATCH", "-F", "body=@"+path, "-F", "draft=false", "-f", "make_latest=legacy"); err != nil {
+			"--method", "PATCH", "-F", "body=@"+path); err != nil {
 			return result, err
 		}
+	}
+	if q.Operation == PreparePublication {
+		state.PublishIntent = true
+		state.URL = release.URL
+		if !release.Draft && release.Body != state.Notes {
+			return result, fmt.Errorf("public release notes differ from the reviewed notes; inspect %s", release.URL)
+		}
+		return Result{State: state, Message: "Review and publish the release on GitHub: " + state.URL}, nil
 	}
 	releases, err := r.releases(ctx, state)
 	if err != nil {

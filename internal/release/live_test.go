@@ -20,7 +20,7 @@ type releaseCommands struct {
 	t                        *testing.T
 	root                     string
 	local, remote, published bool
-	losePush, losePublish    bool
+	losePush, loseNotes      bool
 	calls                    []Command
 	notes                    string
 }
@@ -66,7 +66,7 @@ func jsonValue(v any) string {
 func (f *releaseCommands) releases() []map[string]any {
 	all := []map[string]any{{"id": 1, "tag_name": "v0.1.0", "draft": false}}
 	body := "Linux x86-64 release. See docs/INSTALL.md."
-	if f.published {
+	if f.notes != "" {
 		body = f.notes
 	}
 	if f.remote {
@@ -178,9 +178,8 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 			writeReleaseArchive(f.t, c.Args[4])
 			return "", nil
 		}
-		if len(c.Args) == 12 && slices.Equal(c.Args[:6], []string{"api", "--hostname", "github.com", "repos/example/mapbox-tui/releases/2", "--method", "PATCH"}) {
-			if c.Args[6] != "-F" || !strings.HasPrefix(c.Args[7], "body=@") ||
-				!slices.Equal(c.Args[8:], []string{"-F", "draft=false", "-f", "make_latest=legacy"}) {
+		if len(c.Args) == 8 && slices.Equal(c.Args[:6], []string{"api", "--hostname", "github.com", "repos/example/mapbox-tui/releases/2", "--method", "PATCH"}) {
+			if c.Args[6] != "-F" || !strings.HasPrefix(c.Args[7], "body=@") {
 				f.t.Fatalf("publication flags: %v", c.Args)
 			}
 			b, err := os.ReadFile(strings.TrimPrefix(c.Args[7], "body=@"))
@@ -188,10 +187,9 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 				f.t.Fatal(err)
 			}
 			f.notes = string(b)
-			f.published = true
-			if f.losePublish {
-				f.losePublish = false
-				return "", fmt.Errorf("response lost after publication")
+			if f.loseNotes {
+				f.loseNotes = false
+				return "", fmt.Errorf("response lost after saving notes")
 			}
 			return "", nil
 		}
@@ -282,6 +280,13 @@ func TestRealWorkflowCommandsAndConfirmations(t *testing.T) {
 					if session.Status != Confirmation {
 						t.Fatal("accepted no")
 					}
+					if session.Step == Publish {
+						if commands.releases()[1]["body"] != session.Notes || session.Notes == "" {
+							t.Fatal("reviewed notes were not saved before web handoff")
+						}
+						commands.notes = session.Notes
+						commands.published = true // Maintainer clicks Publish release in GitHub.
+					}
 					session.Confirm("yes")
 					continue
 				}
@@ -322,7 +327,7 @@ func TestRealWorkflowCommandsAndConfirmations(t *testing.T) {
 			if mode == Rehearsal && (commands.local || commands.remote || commands.published) {
 				t.Fatal("rehearsal mutated tags/releases")
 			}
-			if mode == Live && !slices.Equal(executed, []Operation{Tools, Source, CI, Check, Interactions, Build, LocalArtifact, LocalSmoke, PushTag, Discover, Jobs, FetchArtifact, RemoteArtifact, OpenViewer, ReadNotes, PublishRelease}) {
+			if mode == Live && !slices.Equal(executed, []Operation{Tools, Source, CI, Check, Interactions, Build, LocalArtifact, LocalSmoke, PushTag, Discover, Jobs, FetchArtifact, RemoteArtifact, OpenViewer, ReadNotes, PreparePublication, PublishRelease}) {
 				t.Fatalf("missing/reordered operations: %v", executed)
 			}
 		})
@@ -363,12 +368,22 @@ func TestLostMutationResponsesAreReconciled(t *testing.T) {
 	}
 	state = verified.State
 	state.Notes = "Reviewed release notes"
-	commands.losePublish = true
-	result, err = adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
-	if err == nil || !result.State.PublishIntent || !commands.published {
-		t.Fatal("expected uncertain publish with saved intent")
+	commands.loseNotes = true
+	result, err = adapter.Execute(t.Context(), Request{State: state, Operation: PreparePublication}, func(string) {})
+	if err == nil || !result.State.PublishIntent || commands.published {
+		t.Fatal("expected uncertain notes save without publication")
 	}
-	result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: PublishRelease, Retry: true}, func(string) {})
+	result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: PreparePublication, Retry: true}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = result.State
+	result, err = adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "still a draft") || commands.published {
+		t.Fatal("tool must wait for manual publication")
+	}
+	commands.published = true
+	result, err = adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease, Retry: true}, func(string) {})
 	if err != nil || !result.State.Published {
 		t.Fatalf("reconcile publication: %v", err)
 	}
@@ -387,7 +402,7 @@ func TestLostMutationResponsesAreReconciled(t *testing.T) {
 }
 
 func TestRealAdapterRejectsUnsafeRequests(t *testing.T) {
-	for _, name := range []string{"rehearsal tag", "rehearsal publish", "version injection", "wrong mode", "wrong source", "duplicate tag"} {
+	for _, name := range []string{"rehearsal tag", "rehearsal prepare", "rehearsal publish", "version injection", "wrong mode", "wrong source", "duplicate tag"} {
 		t.Run(name, func(t *testing.T) {
 			mode := Live
 			if strings.HasPrefix(name, "rehearsal") {
@@ -396,6 +411,8 @@ func TestRealAdapterRejectsUnsafeRequests(t *testing.T) {
 			adapter, commands, state := newReleaseHarness(t, mode)
 			op := PushTag
 			switch name {
+			case "rehearsal prepare":
+				op = PreparePublication
 			case "rehearsal publish":
 				op = PublishRelease
 			case "version injection":
@@ -647,10 +664,11 @@ func TestConcurrentHigherReleaseRemainsLatest(t *testing.T) {
 		state = result.State
 	}
 	state.Notes = "Reviewed notes"
+	commands.published, commands.notes = true, state.Notes
 	newer := map[string]any{"id": 3, "tag_name": "v0.2.0", "draft": false}
 	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
-		// The competing release appears only after our publication request. The
-		// strict runner requires make_latest=legacy, never an unconditional override.
+		// The maintainer has published, but a newer release is now latest.
+		// Verification must not change either release's visibility or latest status.
 		if !commands.published || c.Name != "gh" || c.Args[0] != "api" {
 			return "", nil, false
 		}
@@ -728,13 +746,18 @@ func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
 				state = result.State
 			}
 			state.Notes = "Reviewed notes"
+			state.PublishIntent = true
+			commands.published, commands.notes = true, state.Notes
 			if name == "already public with different notes" {
-				state.PublishIntent = true
-				commands.published = true
 				commands.notes = "Someone else's notes"
 			}
+			reads := 0
 			adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
-				if !commands.published || c.Name != "gh" || c.Args[0] != "api" {
+				if c.Name != "gh" || !slices.Contains(c.Args, "repos/example/mapbox-tui/releases?per_page=100") {
+					return "", nil, false
+				}
+				reads++
+				if reads == 1 {
 					return "", nil, false
 				}
 				data := commands.releases()

@@ -25,7 +25,7 @@ const (
 var stepNames = []string{
 	"Preflight & exact-commit CI", "Checks & terminal interactions", "Package & verify locally",
 	"Push release tag", "Wait for release workflow", "Verify draft attachments",
-	"Test offline viewer", "Review release notes", "Publish release",
+	"Test offline viewer", "Review release notes", "Publish on GitHub",
 }
 
 func (s Step) String() string {
@@ -131,7 +131,7 @@ func (s *Session) enter() {
 		s.log(s.Detail)
 		return
 	}
-	if (s.Step == Tag || s.Step == Publish) && !s.approved {
+	if (s.Step == Tag || (s.Step == Publish && s.operation == 1)) && !s.approved {
 		s.Status = Confirmation
 		s.Detail = s.Prompt()
 		s.log(s.Detail)
@@ -154,7 +154,7 @@ func (s Session) Prompt() string {
 	case Notes:
 		return "Review notes: check installation instructions, breaking changes and limitations. Press e to edit." + suffix
 	case Publish:
-		return fmt.Sprintf("Would you like to publish %s now?%s\n%s @ %s", s.Version, suffix, s.Repository, s.Commit)
+		return fmt.Sprintf("Have you published %s on GitHub?%s\nOpen the draft, review it, then click Publish release:\n%s", s.Version, suffix, s.URL)
 	}
 	return ""
 }

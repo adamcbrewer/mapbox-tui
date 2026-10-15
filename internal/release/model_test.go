@@ -38,6 +38,8 @@ func TestViews(t *testing.T) {
 				switch state {
 				case "confirmation":
 					s.Step = Publish
+					s.operation = 1
+					s.URL = "https://example.invalid/releases/v0.2.0"
 					s.enter()
 				case "failure":
 					s.Scenario = "auth-error"
@@ -210,6 +212,8 @@ func TestShortTerminalKeepsConfirmationUsable(t *testing.T) {
 		t.Run(size.name, func(t *testing.T) {
 			s, _ := NewSession("v0.2.0", "success")
 			s.Step = Publish
+			s.operation = 1
+			s.URL = "https://example.invalid/releases/v0.2.0"
 			s.enter()
 			m := NewModel(s, time.Second, true)
 			updated, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})

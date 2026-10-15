@@ -62,10 +62,10 @@ def main():
         expect("Review notes:")
         terminal.send("yes")
         key("Enter")
-        expect("Publish release")
+        expect("Have you published")
         terminal.tmux("resize-window", "-t", "poc:0", "-x", "90", "-y", "6")
         terminal.wait_for(lambda screen:
-            "Would you like to publish v0.2.0 now?" in screen and "Type yes, then enter to publish." in screen
+            "Have you published v0.2.0 on GitHub?" in screen and "Type yes, then enter to verify publication." in screen
             and any(line.strip().startswith(">") for line in screen.splitlines()))
         capture("short-confirmation", 90, 6)
         terminal.send("yes")

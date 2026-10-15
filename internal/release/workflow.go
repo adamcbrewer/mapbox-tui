@@ -13,23 +13,24 @@ const (
 type Operation string
 
 const (
-	Inspect        Operation = "inspect"
-	Tools          Operation = "tools"
-	Source         Operation = "source"
-	CI             Operation = "ci"
-	Check          Operation = "check"
-	Interactions   Operation = "interactions"
-	Build          Operation = "build"
-	LocalArtifact  Operation = "local-artifact"
-	LocalSmoke     Operation = "local-smoke"
-	PushTag        Operation = "push-tag"
-	Discover       Operation = "discover"
-	Jobs           Operation = "jobs"
-	FetchArtifact  Operation = "fetch-artifact"
-	RemoteArtifact Operation = "remote-artifact"
-	OpenViewer     Operation = "open-viewer"
-	ReadNotes      Operation = "read-notes"
-	PublishRelease Operation = "publish"
+	Inspect            Operation = "inspect"
+	Tools              Operation = "tools"
+	Source             Operation = "source"
+	CI                 Operation = "ci"
+	Check              Operation = "check"
+	Interactions       Operation = "interactions"
+	Build              Operation = "build"
+	LocalArtifact      Operation = "local-artifact"
+	LocalSmoke         Operation = "local-smoke"
+	PushTag            Operation = "push-tag"
+	Discover           Operation = "discover"
+	Jobs               Operation = "jobs"
+	FetchArtifact      Operation = "fetch-artifact"
+	RemoteArtifact     Operation = "remote-artifact"
+	OpenViewer         Operation = "open-viewer"
+	ReadNotes          Operation = "read-notes"
+	PreparePublication Operation = "prepare-publication"
+	PublishRelease     Operation = "publish"
 )
 
 type operationSpec struct {
@@ -71,7 +72,8 @@ var operations = map[Step][]operationSpec{
 		{id: ReadNotes, waiting: "Loading release notes for review"},
 	},
 	Publish: {
-		{id: PublishRelease, waiting: "Publishing as latest and verifying GitHub's response"},
+		{id: PreparePublication, waiting: "Saving reviewed notes to the GitHub draft"},
+		{id: PublishRelease, waiting: "Verifying publication on GitHub"},
 	},
 }
 

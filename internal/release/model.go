@@ -291,15 +291,15 @@ func (m Model) promptForm() string {
 			lines = append(lines, "↑/↓ or pgup/pgdown: scroll all notes · e: edit")
 		}
 		prompt := m.session.Prompt()
-		if m.height < 12 && (m.session.Step == Tag || m.session.Step == Publish) {
+		if m.height < 12 && m.session.Step == Tag {
 			action := "push tag"
-			if m.session.Step == Publish {
-				action = "publish"
-			}
 			prompt = fmt.Sprintf("Would you like to %s %s now?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
 		}
+		if m.height < 12 && m.session.Step == Publish {
+			prompt = fmt.Sprintf("Have you published %s on GitHub?\n%s", m.session.Version, m.session.URL)
+		}
 		action := map[Step]string{
-			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "publish",
+			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "verify publication",
 		}[m.session.Step]
 		question, context, hasContext := strings.Cut(prompt, "\n")
 		prompt = m.style("#F5D76E").Render(question)

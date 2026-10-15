@@ -14,7 +14,7 @@
   ✓ 6  Verify draft attachments
   ✓ 7  Test offline viewer
   ✓ 8  Review release notes
-  ? 9  Publish release
+  ? 9  Publish on GitHub
 
 
 
@@ -24,8 +24,8 @@
 
 
 
-
-  Would you like to publish v0.2.0 now? (simulated)
-  example/mapbox-tui @ 0123456789ab
-  Type yes, then enter to publish.
+  Have you published v0.2.0 on GitHub? (simulated)
+  Open the draft, review it, then click Publish release:
+  https://example.invalid/releases/v0.2.0
+  Type yes, then enter to verify publication.
   >

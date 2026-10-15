@@ -59,9 +59,11 @@ The nine sections run the actual checks and commands:
    Quit the viewer to return, then type `yes` to confirm it worked.
 8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to
    discard edits. Type `yes` to accept the notes.
-9. Ask for `yes`, publish the reviewed draft using GitHub's automatic latest-version selection,
-   and verify GitHub's response. If a newer stable release is published concurrently,
-   that version remains latest.
+9. Save the accepted notes to the draft and show its GitHub link. Open the link,
+   review the release in GitHub, then click **Publish release**. Return to the tool
+   and type `yes` to verify publication, notes, attachments and latest status.
+   The tool never publishes automatically. If it is still a draft, publish it on
+   GitHub and press Enter to retry. Leave a newer stable release marked as latest.
 
 The checklist expands only the active section, showing nested command output and
 a braille spinner. Successful sections collapse to one green summary line, and
