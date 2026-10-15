@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -68,13 +69,25 @@ func TestExecRunnerCancelsProcessGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A reparented zombie can remain briefly until init reaps it, but must not run.
-	status, err := os.ReadFile("/proc/" + strings.TrimSpace(string(pid)) + "/status")
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		t.Fatal(err)
-	}
-	if err == nil && !strings.Contains(string(status), "State:\tZ") {
-		t.Fatalf("child survived cancellation: %s", status)
+	// Group cancellation signals every child, but the parent can be reaped
+	// before its children finish exiting. Accept dead/zombie children or a
+	// vanished /proc entry; reaping during the read can return ESRCH.
+	deadline := time.Now().Add(time.Second)
+	for {
+		status, err := os.ReadFile("/proc/" + strings.TrimSpace(string(pid)) + "/status")
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(status), "State:\tZ") || strings.Contains(string(status), "State:\tX") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("child survived cancellation: %s", status)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
