@@ -83,16 +83,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "esc":
 			m.session.Cancel()
 			return m, tea.Quit
-
-		}
-		scroll := msg.String() == "up" || msg.String() == "down" || msg.String() == "pgup" || msg.String() == "pgdown"
-		if scroll {
+		case "up", "down", "pgup", "pgdown":
 			m.follow = false
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
-		}
-		if msg.String() == "enter" {
+		case "enter":
 			switch m.session.Status {
 			case Ready:
 				if err := m.session.SelectVersion(m.input.Value()); err != nil {
@@ -121,12 +117,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.session.Status == Ready || m.session.Status == Confirmation {
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			m.refresh()
-			return m, cmd
-		}
+
 	case tea.MouseWheelMsg:
 		m.follow = false
 		var cmd tea.Cmd
@@ -135,6 +126,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
+		m.refresh()
+		return m, cmd
+	}
+	if m.session.Status == Ready || m.session.Status == Confirmation {
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
 		m.refresh()
 		return m, cmd
 	}
@@ -279,10 +276,11 @@ func (m Model) groupSeparator() string {
 func (m *Model) refresh() {
 	m.viewport.SetWidth(max(1, m.width-4))
 	content, active := m.checklist()
+	chrome := lipgloss.Height(m.header()) + 2*len(m.groupSeparator()) + 2
+	// Check overflow without the scroll hint, then reserve room for it if needed.
 	m.scrollable = false
-	chrome := lipgloss.Height(m.header()) + lipgloss.Height(m.controls()) + 2*len(m.groupSeparator()) + 2
-	m.scrollable = lipgloss.Height(content) > max(1, m.height-chrome)
-	chrome = lipgloss.Height(m.header()) + lipgloss.Height(m.controls()) + 2*len(m.groupSeparator()) + 2
+	m.scrollable = lipgloss.Height(content) > max(1, m.height-chrome-lipgloss.Height(m.controls()))
+	chrome += lipgloss.Height(m.controls())
 	m.viewport.SetHeight(max(1, m.height-chrome))
 	m.viewport.SetContent(content)
 	if m.follow {

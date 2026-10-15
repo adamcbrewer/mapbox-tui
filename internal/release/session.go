@@ -4,7 +4,6 @@ package release
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 )
 
@@ -52,7 +51,6 @@ const Scenarios = "success, slow-checks, delayed-workflow, failed-checks, auth-e
 var scenarios = []string{
 	"success", "slow-checks", "delayed-workflow", "failed-checks", "auth-error", "checksum-mismatch", "existing-draft", "existing-tag",
 }
-var stableVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 type ActivityStatus int
 
@@ -88,7 +86,6 @@ type Session struct {
 }
 
 func NewSession(version, scenario string) (Session, error) {
-
 	if !slices.Contains(scenarios, scenario) {
 		return Session{}, fmt.Errorf("unknown scenario %q; choose %s", scenario, Scenarios)
 	}

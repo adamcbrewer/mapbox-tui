@@ -1,20 +1,19 @@
-                                        
-  MAPBOX / RELEASE                      
-  DEMO · simulated release              
-  v0.2.0 · demo repository              
-  ░░░░░░░░░░░░░░░  0/9 steps complete   
-  Authentication failed. In a real      
-  release, run gh auth login, then      
-  retry.                                
-  Enter: simulate repair and retry      
-  Elapsed 0s · esc cancel               
-  ↑/↓ · pgup/pgdown · wheel scroll      
-  ! 1  Preflight & exact-commit CI      
-  ╰── ! Authentication failed. In a     
-      real release, run gh auth login,  
-      then retry.                       
-  ○ 2  Checks & terminal interactions   
-  ○ 3  Package & verify locally         
-  ○ 4  Confirm tag push                 
-  ○ 5  Wait for release workflow        
-                                        
+
+  MAPBOX / RELEASE
+  DEMO · simulated release
+  v0.2.0 · demo repository
+  ░░░░░░░░░░░░░░░  0/9 steps complete
+  Authentication failed. In a real
+  release, run gh auth login, then
+  retry.
+  Enter: simulate repair and retry
+  Elapsed 0s · esc cancel
+  ↑/↓ · pgup/pgdown · wheel scroll
+  ! 1  Preflight & exact-commit CI
+  ╰── ! Authentication failed. In a
+      real release, run gh auth login,
+      then retry.
+  ○ 2  Checks & terminal interactions
+  ○ 3  Package & verify locally
+  ○ 4  Confirm tag push
+  ○ 5  Wait for release workflow

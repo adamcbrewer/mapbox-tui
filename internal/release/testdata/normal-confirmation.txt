@@ -1,30 +1,22 @@
-                                                                                          
-  MAPBOX / RELEASE                                                                        
-  DEMO · simulated release                                                                
-  v0.2.0 · example/mapbox-tui · 0123456789ab                                              
-  ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌░░░  8/9 steps complete                                        
-                                                                                          
-  │ Publish v0.2.0 as latest? Type yes to confirm simulated publication.                  
-  │ Type yes, then enter.                                                                 
-  │ >                                                                                     
-                                                                                          
-  Elapsed 0s · esc cancel                                                                 
-                                                                                          
-  ✓ 1  Preflight & exact-commit CI                                                        
-  ✓ 2  Checks & terminal interactions                                                     
-  ✓ 3  Package & verify locally                                                           
-  ✓ 4  Confirm tag push                                                                   
-  ✓ 5  Wait for release workflow                                                          
-  ✓ 6  Verify draft attachments                                                           
-  ✓ 7  Confirm offline viewer                                                             
-  ✓ 8  Review release notes                                                               
-  ? 9  Confirm publication                                                                
-  ╰──· Publish v0.2.0 as latest? Type yes to confirm simulated publication.               
-                                                                                          
-                                                                                          
-                                                                                          
-                                                                                          
-                                                                                          
-                                                                                          
-                                                                                          
-                                                                                          
+
+  MAPBOX / RELEASE
+  DEMO · simulated release
+  v0.2.0 · example/mapbox-tui · 0123456789ab
+  ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌░░░  8/9 steps complete
+
+  │ Publish v0.2.0 as latest? Type yes to confirm simulated publication.
+  │ Type yes, then enter.
+  │ >
+
+  Elapsed 0s · esc cancel
+
+  ✓ 1  Preflight & exact-commit CI
+  ✓ 2  Checks & terminal interactions
+  ✓ 3  Package & verify locally
+  ✓ 4  Confirm tag push
+  ✓ 5  Wait for release workflow
+  ✓ 6  Verify draft attachments
+  ✓ 7  Confirm offline viewer
+  ✓ 8  Review release notes
+  ? 9  Confirm publication
+  ╰──· Publish v0.2.0 as latest? Type yes to confirm simulated publication.

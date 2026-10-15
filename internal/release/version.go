@@ -3,9 +3,12 @@ package release
 import (
 	"fmt"
 	"math/big"
+	"regexp"
 	"slices"
 	"strings"
 )
+
+var stableVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // VersionPolicy uses a release baseline and a complete snapshot of reserved tags.
 // A real adapter must reconcile local and remote tags before supplying this data.

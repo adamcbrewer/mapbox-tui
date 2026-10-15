@@ -64,6 +64,12 @@ func TestViews(t *testing.T) {
 				if len(strings.Split(content, "\n")) > size.height {
 					t.Fatal("view exceeds terminal height")
 				}
+				// Padding is checked above; omit invisible trailing cells from fixtures.
+				lines := strings.Split(content, "\n")
+				for i := range lines {
+					lines[i] = strings.TrimRight(lines[i], " ")
+				}
+				content = strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
 				path := filepath.Join("testdata", size.name+"-"+state+".txt")
 				if os.Getenv("UPDATE_RELEASE_SNAPSHOTS") == "1" {
 					if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -161,5 +167,30 @@ func TestScrollHintsOnlyWhenNeeded(t *testing.T) {
 	}
 	if strings.Contains(m.View().Content, "ctrl+l") || strings.Contains(m.View().Content, "ctrl+f") {
 		t.Fatal("obsolete logs or follow shortcut displayed")
+	}
+}
+
+func TestPastedInput(t *testing.T) {
+	s, _ := NewSession("", "success")
+	m := NewModel(s, time.Second, true)
+	m.input.SetValue("")
+	updated, _ := m.Update(tea.PasteMsg{Content: "v0.2.0"})
+	updated, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+	if m.session.Version != "v0.2.0" || m.session.Status != Running {
+		t.Fatal("pasted version was not accepted")
+	}
+	for m.session.Step != Tag {
+		updated, _ = m.Update(tickMsg{})
+		m = updated.(Model)
+	}
+	updated, _ = m.Update(tea.PasteMsg{Content: "yes"})
+	m = updated.(Model)
+	if m.session.Step != Tag || m.input.Value() != "yes" {
+		t.Fatal("paste must fill confirmation without submitting it")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if updated.(Model).session.Step != Workflow {
+		t.Fatal("pasted confirmation was not accepted")
 	}
 }
