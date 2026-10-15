@@ -17,6 +17,86 @@ archives are not committed: `bin/` and `dist/` are ignored by Git. Pushing a ver
 tag makes Actions build that source and upload the archive and checksum as GitHub
 Release attachments. Publishing the draft makes those downloads available to users.
 
+## Interactive release preview (in development)
+
+Issue #68 is being implemented incrementally. The first increment is a standalone
+Bubble Tea demo of the release flow, separate from the shipped viewer. With the Go
+version in `go.mod` installed, run this from the repository root:
+
+```sh
+make release-demo
+```
+
+The demo uses deterministic in-memory results. It does not invoke commands, read
+credentials, contact GitHub, create tags or publish releases. Repository and commit
+values are visibly fictional. It simulates checks, packaging, workflow discovery,
+draft verification and publication, pausing for explicit confirmation at the tag,
+viewer, notes and publication stages. The viewer and release notes are placeholders;
+this preview does not launch a binary or edit real notes.
+
+Choose a version and scenario, or accelerate the demonstration:
+
+```sh
+make release-demo RELEASE_ARGS='--version=v0.2.0 --scenario=delayed-workflow --delay=200ms'
+```
+
+Available scenarios: `success`, `slow-checks`, `delayed-workflow`, `failed-checks`,
+`auth-error`, `checksum-mismatch` and `existing-draft` and `existing-tag`. Failure scenarios pause and
+let Enter simulate repairing the fixture and retrying the same step. This does
+not prescribe retrying a real release after a source or checksum change.
+
+The initial tag is editable. The demo starts from a simulated `v0.1.0` release
+and suggests the next unreserved increment, normally `v0.1.1`. It accepts only
+`v0.1.1`, `v0.2.0` or `v1.0.0`: one patch, minor or major increment, resetting the
+lower components to zero. Existing tags, skipped versions and downgrades are
+blocked. The `existing-tag` scenario reserves `v0.1.1` so you can try the duplicate
+tag guard. `--version` changes the initial selection, subject to the same checks.
+These are fixture tags; live local/remote tag reconciliation is still pending.
+
+Press Enter to accept the version and start. Type `yes` at every confirmation,
+including publication. Version selection locks once preparation starts, and tag
+availability is checked again at tag confirmation.
+
+The checklist expands with nested activity as each step runs. Each simulated
+operation takes one demo delay, so you can see individual leaves progress. A
+braille spinner marks the active leaf and describes the operation or response it
+is waiting for; completed operations get a checkmark. Failed and cancelled leaves
+retain distinct markers. Polling updates the waiting leaf in place. Try
+`--scenario=slow-checks --delay=1s` or `--scenario=delayed-workflow --delay=1s`
+to inspect longer waits. Completed section titles turn green; symbols distinguish active, waiting and failed steps. The progress bar counts completed
+steps out of nine; it does not estimate elapsed work within a command. Arrow keys, page keys and the mouse wheel scroll the checklist when it overflows.
+The scroll hint appears only when needed. Advancing to the next step brings it
+into view automatically; all activity stays beneath its numbered section.
+Escape or Ctrl+C cancels and restores the terminal. `NO_COLOR=1` disables colour.
+Use a terminal at least 36 columns wide and 20 rows high; the checklist scrolls
+within the available space at narrow sizes.
+
+Only `--mode=demo` is currently accepted. **Local rehearsal, real command/GitHub
+adapters, editable notes and persisted resume are not implemented yet.** Use the
+manual process below for actual releases. Cancelling the demo discards its state;
+rerunning starts a new simulation.
+
+### Preview checks
+
+`make test` includes pure transition tests and deterministic normal/narrow text
+snapshots. With the terminal dependencies from [Development](DEVELOPMENT.md), run:
+
+```sh
+make release-interactions
+```
+
+This checks confirmations, retry, checklist scrolling, resizing, cancellation and terminal
+restoration in tmux. Text, SVG and PNG captures are saved under
+`reports/generated/release/` and retained by CI. Review the captures and try the
+demo interactively when assessing the UI. To intentionally update text snapshots,
+run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review the diff.
+
+The existing [teatest module](https://github.com/charmbracelet/x/blob/main/exp/teatest/go.mod)
+depends on Bubble Tea v1; this repository uses `charm.land/bubbletea/v2`. This
+increment therefore tests model messages directly and uses the existing tmux
+capture helpers for real terminal behaviour, without adding a second Bubble Tea
+version solely for testing.
+
 ## Choose a version
 
 Start with `v0.1.0`. Use `vMAJOR.MINOR.PATCH` tags, with no version file to edit.

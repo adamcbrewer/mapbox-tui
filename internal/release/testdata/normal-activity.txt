@@ -1,0 +1,30 @@
+                                                                                          
+  MAPBOX / RELEASE                                                                        
+  DEMO · simulated release                                                                
+  v0.2.0 · example/mapbox-tui · 0123456789ab                                              
+  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/9 steps complete                                        
+                                                                                          
+  │ ⣾  Preflight & exact-commit CI                                                        
+                                                                                          
+  Elapsed 0s · esc cancel                                                                 
+                                                                                          
+  ▶ 1  Preflight & exact-commit CI                                                        
+  ├──✓ Toolchain and gh authentication ready                                              
+  ╰──⣾  Inspecting the working tree and selecting main                                    
+  ○ 2  Checks & terminal interactions                                                     
+  ○ 3  Package & verify locally                                                           
+  ○ 4  Confirm tag push                                                                   
+  ○ 5  Wait for release workflow                                                          
+  ○ 6  Verify draft attachments                                                           
+  ○ 7  Confirm offline viewer                                                             
+  ○ 8  Review release notes                                                               
+  ○ 9  Confirm publication                                                                
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          

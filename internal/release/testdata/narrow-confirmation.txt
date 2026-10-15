@@ -1,0 +1,20 @@
+                                        
+  MAPBOX / RELEASE                      
+  DEMO · simulated release              
+  v0.2.0 · demo repository              
+  ▌▌▌▌▌▌▌▌▌▌▌▌▌░░  8/9 steps complete   
+  Publish v0.2.0 as latest? Type yes    
+  to confirm simulated publication.     
+  Type yes, then enter.                 
+  >                                     
+  Elapsed 0s · esc cancel               
+  ↑/↓ · pgup/pgdown · wheel scroll      
+  ✓ 5  Wait for release workflow        
+  ✓ 6  Verify draft attachments         
+  ✓ 7  Confirm offline viewer           
+  ✓ 8  Review release notes             
+  ? 9  Confirm publication              
+  ╰── · Publish v0.2.0 as latest? Type  
+      yes to confirm simulated          
+      publication.                      
+                                        
