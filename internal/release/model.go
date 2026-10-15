@@ -288,6 +288,9 @@ func (m Model) promptForm() string {
 		lines = append(lines, m.input.View())
 	case Confirmation:
 		if m.session.Step == Notes {
+			if strings.TrimSpace(m.session.Notes) == "" {
+				lines = append(lines, m.style("#FF6B6B").Render("Release notes cannot be empty. Press e to edit."))
+			}
 			lines = append(lines, "↑/↓ or pgup/pgdown: scroll all notes · e: edit")
 		}
 		prompt := m.session.Prompt()

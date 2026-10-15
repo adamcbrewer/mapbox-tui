@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -17,7 +18,7 @@ func archiveName(version string) string { return "mapbox-tui-" + version + "-lin
 
 // verifyArtifact checks the exact checksum manifest before extracting a strict
 // allowlist of regular files into a newly-created private directory.
-func verifyArtifact(dir, version string) (string, error) {
+func verifyArtifact(ctx context.Context, dir, version string) (string, error) {
 	name := archiveName(version)
 	manifest, err := os.ReadFile(filepath.Join(dir, name+".sha256"))
 	if err != nil {
@@ -37,7 +38,7 @@ func verifyArtifact(dir, version string) (string, error) {
 	}
 	defer file.Close()
 	hash := sha256.New()
-	if _, err = io.Copy(hash, file); err != nil {
+	if _, err = io.Copy(hash, contextReader{ctx, file}); err != nil {
 		return "", fmt.Errorf("hash archive: %w", err)
 	}
 	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), fields[0]) {
@@ -46,7 +47,7 @@ func verifyArtifact(dir, version string) (string, error) {
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	compressed := bufio.NewReader(file)
+	compressed := bufio.NewReader(contextReader{ctx, file})
 	gz, err := gzip.NewReader(compressed)
 	if err != nil {
 		return "", fmt.Errorf("read gzip: %w", err)
@@ -63,8 +64,9 @@ func verifyArtifact(dir, version string) (string, error) {
 			os.RemoveAll(out)
 		}
 	}()
+	var extracted int64
 	allowed := map[string]bool{"mapbox-tui": false, "INSTALL.md": false, "LICENSE": false, "THIRD_PARTY_NOTICES.txt": false}
-	reader := tar.NewReader(gz)
+	reader := tar.NewReader(io.LimitReader(contextReader{ctx, gz}, (256<<20)+(64<<10)))
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
@@ -77,6 +79,13 @@ func verifyArtifact(dir, version string) (string, error) {
 		if !exists || seen || header.Typeflag != tar.TypeReg || header.Size < 0 || header.Size > 256<<20 {
 			return "", fmt.Errorf("unexpected or unsafe archive entry %q", header.Name)
 		}
+		if header.Name != "mapbox-tui" && header.Size > 1<<20 {
+			return "", fmt.Errorf("documentation entry %s exceeds 1 MiB", header.Name)
+		}
+		if header.Size > (256<<20)-extracted {
+			return "", fmt.Errorf("total extracted archive size exceeds 256 MiB")
+		}
+		extracted += header.Size
 		allowed[header.Name] = true
 		mode := os.FileMode(0o644)
 		if header.Name == "mapbox-tui" {
@@ -120,19 +129,19 @@ func verifyArtifact(dir, version string) (string, error) {
 // artifactDigest authenticates every file and its permissions while ignoring
 // timestamps and ownership, which differ across local and CI packaging hosts.
 // Call only after verifyArtifact has validated the archive structure and checksum.
-func artifactDigest(dir, version string) (string, error) {
+func artifactDigest(ctx context.Context, dir, version string) (string, error) {
 	file, err := os.Open(filepath.Join(dir, archiveName(version)))
 	if err != nil {
 		return "", fmt.Errorf("open archive: %w", err)
 	}
 	defer file.Close()
-	gz, err := gzip.NewReader(file)
+	gz, err := gzip.NewReader(contextReader{ctx, file})
 	if err != nil {
 		return "", err
 	}
 	defer gz.Close()
 	hash := sha256.New()
-	reader := tar.NewReader(gz)
+	reader := tar.NewReader(io.LimitReader(contextReader{ctx, gz}, (256<<20)+(64<<10)))
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
@@ -147,4 +156,17 @@ func artifactDigest(dir, version string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// contextReader makes hashing and decompression interruptible between reads.
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

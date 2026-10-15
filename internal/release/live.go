@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -131,10 +132,10 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 			err = copyArtifacts(filepath.Join(r.Root, "dist"), result.State.LocalDir, state.Version)
 		}
 		if err == nil {
-			result.State.Binary, err = verifyArtifact(result.State.LocalDir, state.Version)
+			result.State.Binary, err = verifyArtifact(ctx, result.State.LocalDir, state.Version)
 		}
 		if err == nil {
-			result.State.LocalArtifactDigest, err = artifactDigest(result.State.LocalDir, state.Version)
+			result.State.LocalArtifactDigest, err = artifactDigest(ctx, result.State.LocalDir, state.Version)
 		}
 		result.Message = "Local checksum and archive contents verified"
 	case LocalSmoke:
@@ -151,10 +152,10 @@ func (r *RealAdapter) execute(ctx context.Context, q Request, emit func(string))
 		result.State, err = r.download(ctx, state)
 		result.Message = "Release attachments downloaded into a fresh private directory"
 	case RemoteArtifact:
-		result.State.Binary, err = verifyArtifact(state.DownloadDir, state.Version)
+		result.State.Binary, err = verifyArtifact(ctx, state.DownloadDir, state.Version)
 		if err == nil {
 			var digest string
-			digest, err = artifactDigest(state.DownloadDir, state.Version)
+			digest, err = artifactDigest(ctx, state.DownloadDir, state.Version)
 			if err == nil && (state.LocalArtifactDigest == "" || digest != state.LocalArtifactDigest) {
 				err = fmt.Errorf("downloaded archive differs from the verified local build; it will not be executed or published. Check source, Go toolchain and build settings")
 			}
@@ -401,16 +402,22 @@ type githubRelease struct {
 }
 
 func (r *RealAdapter) releases(ctx context.Context, state State) ([]githubRelease, error) {
-	raw, err := r.api(ctx, state, "/releases?per_page=100", "--paginate", "--slurp")
+	filter := "map({id,tag_name,draft,prerelease} + (if .tag_name == " +
+		strconv.Quote(state.Version) + " then {name,body,html_url,assets} else {} end))"
+	raw, err := r.api(ctx, state, "/releases?per_page=100", "--paginate", "--jq", filter)
 	if err != nil {
 		return nil, fmt.Errorf("read GitHub releases (check authentication): %w", err)
 	}
-	var pages [][]githubRelease
-	if err = json.Unmarshal([]byte(raw), &pages); err != nil {
-		return nil, fmt.Errorf("decode releases: %w", err)
-	}
 	var all []githubRelease
-	for _, page := range pages {
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	for {
+		var page []githubRelease
+		if err := decoder.Decode(&page); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("decode releases: %w", err)
+		}
 		all = append(all, page...)
 	}
 	return all, nil

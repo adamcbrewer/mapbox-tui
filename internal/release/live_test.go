@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -50,7 +51,7 @@ func newReleaseHarness(t *testing.T, mode Mode) (*RealAdapter, *releaseCommands,
 	result.State.Version = "v0.1.1"
 	local := t.TempDir()
 	writeReleaseArchive(t, local)
-	result.State.LocalArtifactDigest, err = artifactDigest(local, result.State.Version)
+	result.State.LocalArtifactDigest, err = artifactDigest(t.Context(), local, result.State.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,13 +157,18 @@ func (f *releaseCommands) Run(ctx context.Context, c Command, emit func(string))
 		}
 	}
 	if c.Name == "gh" {
+		if len(c.Args) == 7 && c.Args[3] == "repos/example/mapbox-tui/releases?per_page=100" &&
+			c.Args[4] == "--paginate" && c.Args[5] == "--jq" {
+			if !strings.Contains(c.Args[6], "then {name,body,html_url,assets} else {} end") {
+				f.t.Fatal("release history must omit unrelated bodies and assets")
+			}
+			return jsonValue(f.releases()), nil
+		}
 		switch args {
 		case "api --hostname github.com repos/example/mapbox-tui":
 			return `{"permissions":{"push":true}}`, nil
 		case "auth status --hostname github.com":
 			return "authenticated", nil
-		case "api --hostname github.com repos/example/mapbox-tui/releases?per_page=100 --paginate --slurp":
-			return jsonValue([]any{f.releases()}), nil
 		case "api --hostname github.com repos/example/mapbox-tui/releases/latest":
 			return jsonValue(f.releases()[len(f.releases())-1]), nil
 		case "run list --workflow ci.yml --branch main --commit " + testCommit + " --event push --limit 100 --json databaseId,headSha,headBranch,status,conclusion,url --repo github.com/example/mapbox-tui":
@@ -531,7 +537,7 @@ func TestPublicationRejectsReplacedAttachments(t *testing.T) {
 		if c.Name == "gh" && c.Args[0] == "api" {
 			data := commands.releases()
 			data[1]["assets"].([]map[string]any)[0]["id"] = 99
-			return jsonValue([]any{data}), nil, true
+			return jsonValue(data), nil, true
 		}
 		return "", nil, false
 	}}
@@ -577,7 +583,7 @@ func TestPublicationCannotReplaceNewerLatest(t *testing.T) {
 		if c.Name == "gh" && c.Args[0] == "api" {
 			data := commands.releases()
 			data = append(data, map[string]any{"id": 3, "tag_name": "v0.2.0", "draft": false})
-			return jsonValue([]any{data}), nil, true
+			return jsonValue(data), nil, true
 		}
 		return "", nil, false
 	}}
@@ -600,7 +606,7 @@ func TestDraftRejectsUnexpectedAttachments(t *testing.T) {
 		data := commands.releases()
 		assets := data[1]["assets"].([]map[string]any)
 		data[1]["assets"] = append(assets, map[string]any{"id": 13, "name": "unexpected.exe", "size": 100})
-		return jsonValue([]any{data}), nil, true
+		return jsonValue(data), nil, true
 	}}
 	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "only the expected archive") {
@@ -678,7 +684,7 @@ func TestConcurrentHigherReleaseRemainsLatest(t *testing.T) {
 			return jsonValue(newer), nil, true
 		}
 		data := append(commands.releases(), newer)
-		return jsonValue([]any{data}), nil, true
+		return jsonValue(data), nil, true
 	}}
 	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
 	if err != nil || !result.State.Published || !strings.Contains(result.Message, "v0.2.0 remains latest") {
@@ -776,7 +782,7 @@ func TestPublicationVerifiesPublicAssetsAndReviewedNotes(t *testing.T) {
 				case "changed notes":
 					data[1]["body"] = "Unexpected notes"
 				}
-				return jsonValue([]any{data}), nil, true
+				return jsonValue(data), nil, true
 			}}
 			result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
 			if err == nil || result.State.Published {
@@ -829,7 +835,7 @@ func TestPublicationRejectsChangedDraftTitle(t *testing.T) {
 		}
 		data := commands.releases()
 		data[1]["name"] = "Unexpected title"
-		return jsonValue([]any{data}), nil, true
+		return jsonValue(data), nil, true
 	}}
 	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: PublishRelease}, func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "release title") || commands.published {
@@ -875,7 +881,7 @@ func TestDownloadRejectsOversizedAssets(t *testing.T) {
 					limit = 4 << 10
 				}
 				data[1]["assets"].([]map[string]any)[index]["size"] = limit + 1
-				return jsonValue([]any{data}), nil, true
+				return jsonValue(data), nil, true
 			}}
 			_, err := adapter.Execute(t.Context(), Request{State: state, Operation: FetchArtifact}, func(string) {})
 			if err == nil || !strings.Contains(err.Error(), "download limit") {
@@ -931,7 +937,7 @@ func TestResumeReconcilesDraftAfterFailedWorkflowRerun(t *testing.T) {
 					if name == "wrong title" {
 						data[1]["name"] = "Wrong title"
 					}
-					return jsonValue([]any{data}), nil, true
+					return jsonValue(data), nil, true
 				}
 				return "", nil, false
 			}}
@@ -955,5 +961,24 @@ func TestResumeReconcilesDraftAfterFailedWorkflowRerun(t *testing.T) {
 				t.Fatal("reconciled draft attachments were not verified")
 			}
 		})
+	}
+}
+
+func TestReleaseHistoryDecodesFilteredPages(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	adapter.Runner = commandOverride{base: commands, override: func(c Command) (string, error, bool) {
+		if c.Name != "gh" || !slices.Contains(c.Args, "repos/example/mapbox-tui/releases?per_page=100") {
+			return "", nil, false
+		}
+		if !slices.Contains(c.Args, "--jq") || slices.Contains(c.Args, "--slurp") ||
+			!strings.Contains(c.Args[len(c.Args)-1], strconv.Quote(state.Version)) {
+			t.Fatalf("missing selected-release history filter: %v", c.Args)
+		}
+		return `[{"id":1,"tag_name":"v0.1.0","draft":false,"prerelease":false}]
+[{"id":2,"tag_name":"v0.1.1","draft":true,"body":"Selected notes"}]`, nil, true
+	}}
+	releases, err := adapter.releases(t.Context(), state)
+	if err != nil || len(releases) != 2 || releases[0].Body != "" || releases[1].Body != "Selected notes" {
+		t.Fatalf("filtered release pages: %+v %v", releases, err)
 	}
 }

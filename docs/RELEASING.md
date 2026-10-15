@@ -50,7 +50,8 @@ The nine sections run the actual checks and commands:
 5. Find the release workflow for that tag and commit, then wait for its jobs.
 6. Inspect the draft (archive at most 256 MiB; checksum at most 4 KiB),
    download attachments into a fresh directory, and verify
-   the checksum and archive. Before any execution, compare every file's contents and permissions
+   the checksum and archive. Extraction is cancellable and limited to 256 MiB total,
+   with at most 1 MiB per documentation file. Before any execution, compare every file's contents and permissions
    with the verified local archive, then check embedded metadata and offline
    rendering again. Packaging normalises Go flags, experiments, CPU baseline and workspace settings,
    ignoring persistent user Go configuration and automatic VCS metadata (the
@@ -59,7 +60,8 @@ The nine sections run the actual checks and commands:
 7. Open the downloaded binary with the local fixture and `--no-provider`.
    Quit the viewer to return, then type `y` to confirm it worked.
 8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to
-   discard edits. Type `y` to accept the notes.
+   discard edits. Type `y` to accept the notes. Empty notes stay in this step so
+   you can correct them with `e`.
 9. Save the accepted notes to the draft and show its GitHub link. Open the link,
    review the release in GitHub, then click **Publish release**. Return to the tool
    and type `y` to verify publication, notes, attachments and latest status.

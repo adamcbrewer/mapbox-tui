@@ -4,7 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +20,7 @@ func TestVerifyArtifact(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeArtifactFixture(t, dir, artifactFixture(t, artifactHeaders()), "")
-	binary, err := verifyArtifact(dir, "v0.2.0")
+	binary, err := verifyArtifact(t.Context(), dir, "v0.2.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +35,7 @@ func TestVerifyArtifact(t *testing.T) {
 	if info.Mode().Perm() != 0o755 {
 		t.Fatalf("binary permissions = %v", info.Mode())
 	}
-	second, err := verifyArtifact(dir, "v0.2.0")
+	second, err := verifyArtifact(t.Context(), dir, "v0.2.0")
 	if err != nil || second == binary {
 		t.Fatalf("repeat verification must extract afresh: %q, %v", second, err)
 	}
@@ -120,6 +122,7 @@ func TestVerifyArtifactRejectsInvalidSize(t *testing.T) {
 		size int64
 	}{
 		{name: "oversized member", size: (256 << 20) + 1},
+		{name: "oversized documentation", size: (1 << 20) + 1},
 		{name: "truncated member", size: 128},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,6 +130,9 @@ func TestVerifyArtifactRejectsInvalidSize(t *testing.T) {
 			var raw bytes.Buffer
 			writer := tar.NewWriter(&raw)
 			header := tar.Header{Name: "mapbox-tui", Typeflag: tar.TypeReg, Size: tc.size, Mode: 0o755}
+			if tc.name == "oversized documentation" {
+				header.Name = "INSTALL.md"
+			}
 			if err := writer.WriteHeader(&header); err != nil {
 				t.Fatal(err)
 			}
@@ -198,7 +204,7 @@ func writeArtifactFixture(t *testing.T, dir string, data []byte, manifest string
 
 func assertArtifactRejected(t *testing.T, dir string) {
 	t.Helper()
-	binary, err := verifyArtifact(dir, "v0.2.0")
+	binary, err := verifyArtifact(t.Context(), dir, "v0.2.0")
 	if err == nil || binary != "" {
 		t.Fatalf("unsafe artifact accepted: %q, %v", binary, err)
 	}
@@ -216,7 +222,7 @@ func assertArtifactRejected(t *testing.T, dir string) {
 func TestArtifactDigestAuthenticatesAllFilesAndPermissions(t *testing.T) {
 	local := t.TempDir()
 	writeArtifactFixture(t, local, artifactFixture(t, artifactHeaders()), "")
-	want, err := artifactDigest(local, "v0.2.0")
+	want, err := artifactDigest(t.Context(), local, "v0.2.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,10 +243,10 @@ func TestArtifactDigestAuthenticatesAllFilesAndPermissions(t *testing.T) {
 			}
 			remote := t.TempDir()
 			writeArtifactFixture(t, remote, artifactFixture(t, headers), "")
-			if _, err := verifyArtifact(remote, "v0.2.0"); err != nil {
+			if _, err := verifyArtifact(t.Context(), remote, "v0.2.0"); err != nil {
 				t.Fatal(err)
 			}
-			got, err := artifactDigest(remote, "v0.2.0")
+			got, err := artifactDigest(t.Context(), remote, "v0.2.0")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -295,12 +301,25 @@ func TestVerifyArtifactBoundsTrailingData(t *testing.T) {
 			dir := t.TempDir()
 			writeArtifactFixture(t, dir, data, "")
 			if name == "valid padding" {
-				if _, err := verifyArtifact(dir, "v0.2.0"); err != nil {
+				if _, err := verifyArtifact(t.Context(), dir, "v0.2.0"); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				assertArtifactRejected(t, dir)
 			}
 		})
+	}
+}
+
+func TestArtifactVerificationCanBeCancelled(t *testing.T) {
+	dir := t.TempDir()
+	writeArtifactFixture(t, dir, artifactFixture(t, artifactHeaders()), "")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := verifyArtifact(ctx, dir, "v0.2.0"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("verification ignored cancellation: %v", err)
+	}
+	if _, err := artifactDigest(ctx, dir, "v0.2.0"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("digest ignored cancellation: %v", err)
 	}
 }

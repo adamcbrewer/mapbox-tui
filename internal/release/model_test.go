@@ -273,3 +273,26 @@ func TestNotesReviewRetainsFullScrollableContent(t *testing.T) {
 		t.Fatal("review did not update to the edited notes")
 	}
 }
+
+func TestEmptyNotesStayEditable(t *testing.T) {
+	s, _ := NewSession("v0.2.0", "success")
+	s.Step, s.Status, s.Notes = Notes, Confirmation, "  \n "
+	m := NewModel(s, time.Second, true)
+	m.input.SetValue("y")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+	if m.session.Step != Notes || m.session.Status != Confirmation ||
+		!strings.Contains(m.View().Content, "cannot be empty") {
+		t.Fatal("empty notes escaped the editable review step")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	m = updated.(Model)
+	if !m.editing {
+		t.Fatal("notes editor is unavailable after validation failure")
+	}
+	m.session.Notes = "Reviewed release notes"
+	m.session.Confirm("y")
+	if m.session.Step != Publish || m.session.Status != Running {
+		t.Fatal("corrected notes did not advance")
+	}
+}

@@ -165,6 +165,10 @@ func (s *Session) Confirm(answer string) {
 	if s.Status != Confirmation || (answer != "y" && answer != "yes") {
 		return
 	}
+	if s.Step == Notes && strings.TrimSpace(s.Notes) == "" {
+		s.Detail = "Release notes cannot be empty. Press e to edit."
+		return
+	}
 	if s.Step == Tag && !s.TagIntent {
 		if err := s.Policy.Validate(s.Version); err != nil {
 			s.Status, s.Detail = Failed, err.Error()
