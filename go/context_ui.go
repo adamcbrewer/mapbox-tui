@@ -153,9 +153,14 @@ func (m *viewer) contextSummaryRows() []string {
 			m.styles.muted.Render(pad(hints, m.width)),
 		}
 	}
-	versionRoom := min(24, max(0, m.width-ansi.StringWidth(hints+separator+separator)-2))
+	hintsRoom := m.width
+	if m.width >= 110 {
+		// Reserve the facts, four name cells and the two gaps on the shared row.
+		hintsRoom -= ansi.StringWidth(facts) + 9
+	}
+	versionRoom := min(24, max(0, hintsRoom-ansi.StringWidth(hints+separator+separator)-2))
 	versionLabel := separator + ansi.Truncate(version, versionRoom, "…")
-	themeRoom := min(24, m.width-ansi.StringWidth(hints+separator+versionLabel))
+	themeRoom := min(24, hintsRoom-ansi.StringWidth(hints+separator+versionLabel))
 	hints += separator + ansi.Truncate(theme, max(0, themeRoom), "…") + versionLabel
 	if m.width < 110 {
 		// Split the line on small screens; hints must never be clipped by a long name.

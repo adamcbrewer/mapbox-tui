@@ -704,3 +704,26 @@ func TestContextSummaryShowsBuildVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestWideContextSummaryKeepsInspectedCoordinates(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+	version = "v0.1.0-" + strings.Repeat("long", 20)
+	for _, width := range []int{110, 120, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m := themeViewer(t, width, 40, false)
+			m.inspected = &XY{X: -179.12345, Y: -89.12345}
+			rows := m.contextSummaryRows()
+			text := ansi.Strip(strings.Join(rows, "\n"))
+			_, latitude, longitude := m.contextSummary()
+			for _, want := range []string{latitude, longitude, "v0.1.0-", "ctrl+b sidebar", "/ search", "? help"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("missing %q at width %d: %s", want, width, text)
+				}
+			}
+			if len(rows) != 1 || ansi.StringWidth(rows[0]) > width {
+				t.Fatalf("summary exceeds its row: %q", text)
+			}
+		})
+	}
+}
