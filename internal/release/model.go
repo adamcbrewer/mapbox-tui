@@ -298,16 +298,13 @@ func (m Model) promptForm() string {
 		if m.height < 12 && m.session.Step == Publish {
 			prompt = fmt.Sprintf("Have you published %s on GitHub?\n%s", m.session.Version, m.session.URL)
 		}
-		action := map[Step]string{
-			Tag: "push", Viewer: "confirm", Notes: "accept these notes", Publish: "verify publication",
-		}[m.session.Step]
 		question, context, hasContext := strings.Cut(prompt, "\n")
-		prompt = m.style("#F5D76E").Render(question)
+		prompt = m.style("#F5D76E").Render(question + " [y/N]")
 		if hasContext {
 			prompt += "\n" + context
 		}
 		lines = append(lines, prompt,
-			m.style("#D4D4D4").Render("Type yes, then enter to "+action+"."), m.input.View())
+			m.style("#D4D4D4").Render("Enter defaults to no · Esc cancels"), m.input.View())
 	case Failed:
 		lines = append(lines, "Enter: retry this operation")
 	}

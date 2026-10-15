@@ -24,8 +24,8 @@
 
 
 
-  Have you published v0.2.0 on GitHub? (simulated)
+  Have you published v0.2.0 on GitHub? (simulated) [y/N]
   Open the draft, review it, then click Publish release:
   https://example.invalid/releases/v0.2.0
-  Type yes, then enter to verify publication.
+  Enter defaults to no · Esc cancels
   >

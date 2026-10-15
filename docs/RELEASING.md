@@ -45,7 +45,7 @@ The nine sections run the actual checks and commands:
 2. Run `make check` and `make interactions` with `NO_COLOR` unset for interactions.
 3. Run `make package`, verify the checksum and archive contents, then check the
    extracted binary's version, commit and offline rendering.
-4. Ask for `yes`, recheck source and version availability, create an annotated tag
+4. Ask for `y`, recheck source and version availability, create an annotated tag
    and push only that tag. Existing tags are never moved or overwritten.
 5. Find the release workflow for that tag and commit, then wait for its jobs.
 6. Inspect the draft, download attachments into a fresh directory, and verify
@@ -56,12 +56,12 @@ The nine sections run the actual checks and commands:
    explicit version and commit remain embedded). Local and CI builds must use the same
    pinned Go toolchain; a content mismatch stops execution and publication.
 7. Open the downloaded binary with the local fixture and `--no-provider`.
-   Quit the viewer to return, then type `yes` to confirm it worked.
+   Quit the viewer to return, then type `y` to confirm it worked.
 8. Review the generated notes. Press `e` to edit, Ctrl+S to save, or Escape to
-   discard edits. Type `yes` to accept the notes.
+   discard edits. Type `y` to accept the notes.
 9. Save the accepted notes to the draft and show its GitHub link. Open the link,
    review the release in GitHub, then click **Publish release**. Return to the tool
-   and type `yes` to verify publication, notes, attachments and latest status.
+   and type `y` to verify publication, notes, attachments and latest status.
    The tool never publishes automatically. If it is still a draft, publish it on
    GitHub and press Enter to retry. Leave a newer stable release marked as latest.
 
@@ -72,6 +72,9 @@ backoff. Completed section headings turn green. The cyan/pink bar counts complet
 sections, rather than estimating how long a server request will take. The output
 under each operation retains its latest twelve lines. Arrow/page keys and the
 mouse wheel scroll overflowing content; advancing a section brings it into view.
+Confirmation prompts use `[y/N]`: enter `y` to proceed. Empty input or `n`
+keeps the current step waiting; Escape cancels.
+
 Version entry and confirmation prompts stay pinned at the bottom while the
 checklist and full release notes scroll above. Enter submits the visible input. `NO_COLOR=1` disables colour. Short terminals show only the active step and its prompt, without a fixed
 minimum-size requirement.

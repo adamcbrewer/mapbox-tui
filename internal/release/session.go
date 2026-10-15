@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 type Step int
@@ -160,7 +161,8 @@ func (s Session) Prompt() string {
 }
 
 func (s *Session) Confirm(answer string) {
-	if s.Status != Confirmation || answer != "yes" {
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	if s.Status != Confirmation || (answer != "y" && answer != "yes") {
 		return
 	}
 	if s.Step == Tag && !s.TagIntent {

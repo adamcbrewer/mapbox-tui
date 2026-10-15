@@ -219,7 +219,7 @@ func TestShortTerminalKeepsConfirmationUsable(t *testing.T) {
 			updated, _ := m.Update(tea.WindowSizeMsg{Width: size.width, Height: size.height})
 			m = updated.(Model)
 			content := m.View().Content
-			if strings.Contains(content, "enlarge terminal") || !strings.Contains(content, "Type yes") || !strings.Contains(content, ">") {
+			if strings.Contains(content, "enlarge terminal") || !strings.Contains(content, "[y/N]") || !strings.Contains(content, ">") {
 				t.Fatalf("confirmation unavailable: %s", content)
 			}
 			if lipglossHeight := len(strings.Split(content, "\n")); lipglossHeight > size.height {
