@@ -682,6 +682,10 @@ func TestContextSummaryShowsBuildVersion(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", build, width), func(t *testing.T) {
 				m := themeViewer(t, width, 40, false)
 				rows := m.contextSummaryRows()
+				_, first, _ := m.contextSummary()
+				if width < 60 && !strings.Contains(ansi.Strip(rows[1]), first) {
+					t.Fatalf("build version displaced context fact %q: %q", first, ansi.Strip(rows[1]))
+				}
 				text := ansi.Strip(strings.Join(rows, "\n"))
 				if len(build) <= 10 && !strings.Contains(text, build) {
 					t.Fatalf("missing build version %q: %s", build, text)

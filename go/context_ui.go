@@ -140,7 +140,9 @@ func (m *viewer) contextSummaryRows() []string {
 	theme := "Theme: " + m.theme().Name
 	if m.width < 60 {
 		theme = ansi.Truncate(m.theme().Name, m.width-6, "…")
-		buildVersion := ansi.Truncate(version, m.width-2, "…")
+		// Keep the leading context fact visible even with a long build label.
+		factsRoom := min(ansi.StringWidth(first), m.width/2)
+		buildVersion := ansi.Truncate(version, min(24, m.width-factsRoom-2), "…")
 		facts = pad(facts, m.width-ansi.StringWidth(buildVersion)-2) + "  " + buildVersion
 		room := m.width - ansi.StringWidth(theme) - 2
 		title := m.styles.heading.Render(pad(ansi.Truncate(name, room, "…"), room)) +
