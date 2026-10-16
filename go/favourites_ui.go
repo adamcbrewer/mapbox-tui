@@ -38,10 +38,10 @@ func (m *viewer) loadFavourites() {
 }
 
 func (m *viewer) matchingFavourites() []favourite {
-	query := strings.ToLower(strings.TrimSpace(m.ui.search.Value()))
+	query := favouriteNameKey(m.ui.search.Value())
 	var matches []favourite
 	for _, entry := range m.favourites.entries {
-		if strings.Contains(strings.ToLower(entry.Name), query) {
+		if strings.Contains(favouriteNameKey(entry.Name), query) {
 			matches = append(matches, entry)
 		}
 	}

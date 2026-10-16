@@ -24,6 +24,7 @@ type journeyUI struct {
 	searchID                    uint64
 	searchCancel                context.CancelFunc
 	searchBusy                  bool
+	searchPending               bool // Debounce or suggest request awaiting completion.
 	savingFavourite             bool
 	showRevision                *uint64
 	collapsed                   bool
@@ -95,6 +96,7 @@ func (m *viewer) cancelPlaceSearch() {
 	}
 	m.planner.searchID++
 	m.planner.searchBusy = false
+	m.planner.searchPending = false
 	m.planner.savingFavourite = false
 	m.planner.suggestions = nil
 	m.planner.result = 0
@@ -151,6 +153,7 @@ func (m *viewer) schedulePlaceSearch() tea.Cmd {
 	if !searchAvailable || coordinate || coordinatePrefix(m.planner.query) {
 		return nil
 	}
+	m.planner.searchPending = true
 	id := m.planner.searchID
 	return tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg { return placeSearchReady{id: id} })
 }
@@ -170,6 +173,7 @@ func (m *viewer) requestPlaceSearch(id uint64) tea.Cmd {
 		m.planner.sessionStarted = now
 	}
 	m.planner.sessionRequests++
+	m.planner.searchPending = true
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.planner.searchCancel, m.planner.searchBusy = cancel, true
 	ref, stopID := m.planner.ref, m.planner.stopID
@@ -210,6 +214,7 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 		m.planner.searchCancel = nil
 	}
 	m.planner.searchBusy = false
+	m.planner.searchPending = false
 	m.dirty = true
 	if result.err != nil {
 		m.ui.notice = result.err.Error()

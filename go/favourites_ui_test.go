@@ -103,6 +103,90 @@ func TestFavouritesOfflineReuseAndWorkspaceIndependence(t *testing.T) {
 	}
 }
 
+func TestFavouritesFilterUnicodeCaseVariants(t *testing.T) {
+	for _, pair := range [][2]string{{"Σ", "ς"}, {"ς", "Σ"}, {"S", "ſ"}, {"ſ", "S"}, {"İ", "i"}} {
+		t.Run(pair[0]+"/"+pair[1], func(t *testing.T) {
+			m := journeyViewer(t)
+			m.favourites.entries = []favourite{{ID: "match", Name: "Place " + pair[0]}, {ID: "other", Name: "Other"}}
+			m.ui.search.SetValue("  " + pair[1] + "  ")
+			matches := m.matchingFavourites()
+			if len(matches) != 1 || matches[0].ID != "match" {
+				t.Fatalf("case-equivalent filter did not find favourite: %v", matches)
+			}
+		})
+	}
+}
+
+func TestNestedDialogsResumeOnlyInterruptedSearches(t *testing.T) {
+	for _, editor := range []string{"quick search", "journey"} {
+		for _, stage := range []string{"debounce", "request", "empty", "results", "error"} {
+			for _, path := range []string{"commands", "favourites", "commands/favourites"} {
+				t.Run(editor+"/"+stage+"/"+path, func(t *testing.T) {
+					t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+					m := journeyViewer(t)
+					m.places.token = "token"
+					requests := 0
+					m.places.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+						requests++
+						return locationResponse(`{"suggestions":[{"mapbox_id":"new","name":"New"}]}`), nil
+					})
+					if editor == "journey" {
+						m.openJourney()
+						m.editJourneyLocation(1)
+					} else {
+						m.openDialog(dialogSearch)
+					}
+					m.ui.search.SetValue("London")
+					m.schedulePlaceSearch()
+					if stage != "debounce" {
+						m.requestPlaceSearch(m.planner.searchID)
+					}
+					old := m.planner
+					if stage == "empty" || stage == "results" || stage == "error" {
+						result := placeSearchResult{id: old.searchID, ref: old.ref, stopID: old.stopID}
+						if stage == "results" {
+							result.suggestions = []placeSuggestion{{ID: "loaded", Label: "Loaded"}}
+						}
+						if stage == "error" {
+							result.err = fmt.Errorf("lookup failed")
+						}
+						m.Update(result)
+					}
+					if path != "favourites" {
+						m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+					}
+					if path != "commands" {
+						m.runCommand("favourites")
+					}
+					_, back := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+					deliverFavouriteSearchCommands(m, back)
+					if path == "commands/favourites" {
+						_, back = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+						deliverFavouriteSearchCommands(m, back)
+					}
+					want := 0
+					if path == "commands" && (stage == "debounce" || stage == "request") {
+						want = 1
+					}
+					if requests != want {
+						t.Fatalf("return made %d requests; want %d", requests, want)
+					}
+					_, stale := m.Update(placeSearchReady{id: old.searchID})
+					deliverFavouriteSearchCommands(m, stale)
+					m.Update(placeSearchResult{id: old.searchID, ref: old.ref, stopID: old.stopID,
+						suggestions: []placeSuggestion{{ID: "stale", Label: "Stale"}}})
+					if requests != want || m.ui.search.Value() != "London" {
+						t.Fatal("stale request was resumed or input lost")
+					}
+					if want == 1 && (len(m.planner.suggestions) != 1 || m.planner.suggestions[0].ID != "new") {
+						t.Fatal("resumed search did not produce fresh results")
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestFavouritesCancelPreservesParentSearch(t *testing.T) {
 	for _, editor := range []string{"quick search", "journey"} {
 		for _, path := range []string{"direct", "commands"} {

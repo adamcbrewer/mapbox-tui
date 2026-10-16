@@ -83,6 +83,7 @@ type dialogFrame struct {
 }
 
 type placeSearchDialogFrame struct {
+	resumeSearch    bool
 	client          *placeClient
 	query, session  string
 	sessionStarted  time.Time
@@ -466,7 +467,8 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 		}
 		if m.placeSearchOpen() {
 			frame.placeSearch = &placeSearchDialogFrame{
-				client: m.places, query: m.planner.query, session: m.planner.session,
+				resumeSearch: m.planner.searchPending,
+				client:       m.places, query: m.planner.query, session: m.planner.session,
 				sessionStarted: m.planner.sessionStarted, sessionRequests: m.planner.sessionRequests,
 				suggestions: slices.Clone(m.planner.suggestions), result: m.planner.result,
 			}
@@ -492,6 +494,14 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 			frame.action = actions[min(frame.selected, len(actions)-1)].action
 		}
 		parents = append(parents, frame)
+	}
+	if kind == dialogFavourites {
+		// Visiting favourites stays lookup-free, including through Commands.
+		for i := range parents {
+			if parents[i].placeSearch != nil {
+				parents[i].placeSearch.resumeSearch = false
+			}
+		}
 	}
 	command := m.openDialog(kind)
 	m.ui.parents = parents
@@ -559,7 +569,7 @@ func (m *viewer) backDialog() tea.Cmd {
 		}
 		if !m.planner.collapsed && !m.planner.pickingStop {
 			var search tea.Cmd
-			if frame.placeSearch == nil {
+			if frame.placeSearch == nil || frame.placeSearch.resumeSearch {
 				search = m.schedulePlaceSearch()
 				m.ui.notice = frame.notice
 			}
