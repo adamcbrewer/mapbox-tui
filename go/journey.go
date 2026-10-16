@@ -14,8 +14,14 @@ import (
 var coordinateNumberPrefix = regexp.MustCompile(`^[+-]?(([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]*)?|\.)?$`)
 
 type placeLocation struct {
-	Name, Source, Attribution string
-	Lon, Lat                  float64
+	Name, Attribution string
+	Source            placeSource
+	ProviderID        string
+	Lon, Lat          float64
+}
+
+func (location placeLocation) userEntered() bool {
+	return location.Source.userEntered() && location.Attribution == ""
 }
 
 type journeyStop struct {
@@ -116,6 +122,30 @@ func (w *Workspace) replaceJourneyTrack(ref ItemRef, track *Track) {
 	}
 }
 
+// Editing displayed coordinates retains the existing origin; choosing another
+// location (including a favourite) is a replacement and keeps its own origin.
+func (w *Workspace) journeyCoordinateEdit(ref ItemRef, id int, location placeLocation) placeLocation {
+	j, err := w.journey(ref)
+	if err != nil {
+		return location
+	}
+	for _, stop := range j.Stops {
+		if stop.ID != id || stop.Location == nil {
+			continue
+		}
+		previous := *stop.Location
+		if location.Lon == previous.Lon && location.Lat == previous.Lat {
+			return previous
+		}
+		location.Attribution = previous.Attribution
+		if !previous.userEntered() {
+			location.Source = previous.Source
+		}
+		break
+	}
+	return location
+}
+
 func (w *Workspace) setJourneyLocation(ref ItemRef, id int, location placeLocation) error {
 	j, err := w.journey(ref)
 	if err != nil {
@@ -124,14 +154,10 @@ func (w *Workspace) setJourneyLocation(ref ItemRef, id int, location placeLocati
 	stops := slices.Clone(j.Stops)
 	for i, stop := range stops {
 		if stop.ID == id {
-			if previous := stop.Location; previous != nil && location.Source == "coordinates" {
-				location.Attribution = previous.Attribution
-				if location.Lon == previous.Lon && location.Lat == previous.Lat {
-					location = *previous
-				}
-			}
 			location.Name = cleanPlaceText(location.Name)
-			location.Source = cleanPlaceText(location.Source)
+			if location.Source != "" && !location.Source.valid() {
+				return fmt.Errorf("unknown location source %q", location.Source)
+			}
 			location.Attribution = cleanPlaceText(location.Attribution)
 			if stop.Location != nil && *stop.Location == location {
 				return nil
@@ -255,7 +281,7 @@ func coordinateLocation(input string) (placeLocation, bool, error) {
 		return placeLocation{}, true, fmt.Errorf("coordinates must be latitude -90..90, longitude -180..180")
 	}
 	return placeLocation{
-		Name: fmt.Sprintf("%.6f, %.6f", lat, lon), Lon: lon, Lat: lat, Source: "coordinates",
+		Name: fmt.Sprintf("%.6f, %.6f", lat, lon), Lon: lon, Lat: lat, Source: placeSourceCoordinates,
 	}, true, nil
 }
 

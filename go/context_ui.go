@@ -26,6 +26,8 @@ func (m *viewer) dialogAncestors() []string {
 		dialogSearch: "Quick search", dialogJourney: "Journey Planner",
 		dialogJourneyLocation: "Location", dialogJourneyRouting: "Routing",
 		dialogJourneyRoutingHelp: "Routing help",
+		dialogFavourites:         "Favourites", dialogFavouriteName: "Favourite name",
+		dialogFavouriteDelete: "Delete favourite",
 	}
 	var ancestors []string
 	for _, parent := range m.ui.parents {

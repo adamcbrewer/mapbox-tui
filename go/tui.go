@@ -65,6 +65,8 @@ type viewer struct {
 	following                 bool
 	motion                    cameraMotion
 	lastMotionTick            time.Time
+	favourites                favouritesUI
+	searchLocation            *placeLocation
 	planner                   journeyUI
 	searchPosition            *XY
 	searchCredit              string
@@ -303,6 +305,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.requestPlaceSearch(v.id)
 	case placeSearchResult:
 		return m, m.acceptPlaceSearch(v)
+	case favouriteSearchResult:
+		m.acceptSearchFavourite(v)
+		return m, nil
 	case journeyRouteResult:
 		if !m.workspace.acceptJourneyRoute(v) {
 			return m, nil
@@ -437,7 +442,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
-		enteringText := m.ui.dialog == dialogCommands || m.ui.dialog == dialogFiles || m.placeSearchOpen()
+		enteringText := m.textDialogOpen() || m.ui.dialog == dialogFiles || m.ui.dialog == dialogFavouriteDelete
 		if m.journeyPanelOpen() && (m.planner.collapsed || m.planner.pickingStop) {
 			enteringText = false
 		}
@@ -569,6 +574,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == "esc" {
 			m.inspected, m.searchPosition = nil, nil
+			m.searchLocation = nil
 			m.searchName = ""
 			m.ui.details.GotoTop()
 			m.dirty = true

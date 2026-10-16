@@ -885,6 +885,73 @@ def quick_search(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+def favourite_controls(binary, width, height):
+    with tempfile.TemporaryDirectory() as config:
+        command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"XDG_CONFIG_HOME={config}",
+                              "TERM=xterm-256color", "COLORTERM=truecolor", "python3",
+                              str(ROOT / "scripts/terminal_runner.py"), str(binary)])
+        saved = Path(config) / "mapbox-tui/favourites.json"
+        for restart in (False, True):
+            tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+            try:
+                wait_for(lambda s: "No basemap" in s)
+                if not restart:
+                    send("/51.5, -0.1")
+                    wait_for(lambda s: "Quick search" in s and "51.5" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "M-s")
+                    wait_for(lambda s: "Save favourite" in s)
+                    send("Home")
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourite saved" in s)
+                    feedback = [run for run in styled_runs(capture(colors=True), width)
+                                if "Favourite saved" in run[2]]
+                    assert len(feedback) == 1 and feedback[0][3] == "#89b4fa", "feedback lost primary colour"
+                    assert feedback[0][0] > width // 2 and feedback[0][1] > height // 2, "feedback is not bottom right"
+                    save_svg(ROOT / "reports/generated" / f"{binary.name}-favourite-feedback-{width}x{height}.svg", width, height)
+                    assert json.loads(saved.read_text())["favourites"][0]["name"] == "Home"
+                    tmux("send-keys", "-t", "poc:0.0", "Escape")
+                    wait_for(lambda s: "Quick search" not in s)
+                else:
+                    send("a/\x06")
+                    wait_for(lambda s: "Favourites" in s and "Home" in s)
+                    send("hom")
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourites" not in s and "51.50000" in s)
+                    assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "favourite reset ASCII mode"
+                    send("\x0bfavourite places")
+                    wait_for(lambda s: active_modal(s, "Commands") and "Favourite places" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourites" in s and "Home" in s)
+                    send("\x12")
+                    wait_for(lambda s: "Rename favourite" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "C-e", "C-u")
+                    send("Quiet home")
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourites" in s and "Quiet home" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "Delete")
+                    wait_for(lambda s: "Delete favourite?" in s and "> Cancel" in s)
+                    save_svg(ROOT / "reports/generated" / f"{binary.name}-favourite-confirm-{width}x{height}.svg", width, height)
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourites" in s and "Quiet home" in s)
+                    assert len(json.loads(saved.read_text())["favourites"]) == 1
+                    tmux("send-keys", "-t", "poc:0.0", "BSpace")
+                    wait_for(lambda s: "Delete favourite?" in s and "> Cancel" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "Tab")
+                    wait_for(lambda s: "> Delete" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    wait_for(lambda s: "Favourite deleted" in s)
+                    assert json.loads(saved.read_text())["favourites"] == []
+                    tmux("send-keys", "-t", "poc:0.0", "Escape")
+                    wait_for(lambda s: active_modal(s, "Commands"))
+                    tmux("send-keys", "-t", "poc:0.0", "Escape")
+                    wait_for(lambda s: "Commands" not in s)
+                send("q")
+                wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+            finally:
+                tmux("kill-session", "-t", "poc", check=False)
+    print(f"{binary.name} {width}×{height}: save favourite, offline restart/reuse, rename, cancel/confirm delete, ASCII and terminal restoration passed")
+
+
 def journey_controls(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -1245,6 +1312,8 @@ if __name__ == "__main__":
                     journey_controls(ROOT / "bin" / name, width, height)
                 for width, height in ((120, 40), (70, 18), (30, 12)):
                     quick_search(ROOT / "bin" / name, width, height)
+                for width, height in ((120, 40), (70, 18)):
+                    favourite_controls(ROOT / "bin" / name, width, height)
     finally:
         tmux("kill-server", check=False)
         settings.cleanup()

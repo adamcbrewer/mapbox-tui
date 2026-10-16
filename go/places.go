@@ -13,6 +13,7 @@ import (
 
 type placeSuggestion struct {
 	ID, Label, Attribution string
+	Type                   string
 }
 
 type placeClient struct {
@@ -44,6 +45,7 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 		Attribution string `json:"attribution"`
 		Suggestions []struct {
 			ID        string `json:"mapbox_id"`
+			Type      string `json:"feature_type"`
 			Name      string `json:"name"`
 			Address   string `json:"full_address"`
 			Formatted string `json:"place_formatted"`
@@ -67,7 +69,7 @@ func (p *placeClient) suggest(ctx context.Context, query, session string, near X
 			label = strings.Trim(suggestion.Name+", "+label, ", ")
 		}
 		results = append(results, placeSuggestion{
-			ID: suggestion.ID, Label: cleanPlaceText(label), Attribution: attribution,
+			ID: suggestion.ID, Label: cleanPlaceText(label), Attribution: attribution, Type: suggestion.Type,
 		})
 	}
 	return results, nil
@@ -100,8 +102,14 @@ func (p *placeClient) retrieve(ctx context.Context, suggestion placeSuggestion, 
 	}
 	return placeLocation{
 		Name: suggestion.Label, Lon: *coords[0], Lat: *coords[1],
-		Source: "Mapbox Search Box", Attribution: cleanPlaceText(response.Attribution),
+		Source: placeSourceMapboxSearch, Attribution: cleanPlaceText(response.Attribution),
 	}, nil
+}
+
+type placeHTTPError int
+
+func (status placeHTTPError) Error() string {
+	return fmt.Sprintf("location service returned HTTP %d", status)
 }
 
 func (p *placeClient) getJSON(ctx context.Context, endpoint string, target any) error {
@@ -123,7 +131,7 @@ func (p *placeClient) getJSON(ctx context.Context, endpoint string, target any) 
 		return fmt.Errorf("rate limited; try again later")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("location service returned HTTP %d", resp.StatusCode)
+		return placeHTTPError(resp.StatusCode)
 	}
 	const limit = 1 << 20
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))

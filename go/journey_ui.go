@@ -24,6 +24,7 @@ type journeyUI struct {
 	searchID                    uint64
 	searchCancel                context.CancelFunc
 	searchBusy                  bool
+	savingFavourite             bool
 	showRevision                *uint64
 	collapsed                   bool
 	pickingStop                 bool
@@ -94,6 +95,7 @@ func (m *viewer) cancelPlaceSearch() {
 	}
 	m.planner.searchID++
 	m.planner.searchBusy = false
+	m.planner.savingFavourite = false
 	m.planner.suggestions = nil
 	m.planner.result = 0
 }
@@ -143,6 +145,7 @@ func (m *viewer) schedulePlaceSearch() tea.Cmd {
 	m.cancelPlaceSearch()
 	m.planner.query = strings.TrimSpace(m.ui.search.Value())
 	m.ui.notice = ""
+	m.ui.feedback = ""
 	_, coordinate, _ := coordinateLocation(m.planner.query)
 	searchAvailable := m.places.token != "" && len([]rune(m.planner.query)) >= 3
 	if !searchAvailable || coordinate || coordinatePrefix(m.planner.query) {
@@ -218,6 +221,7 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 	}
 	m.planner.suggestions = result.suggestions
 	m.planner.result = 0
+	m.loadFavourites()
 	if len(result.suggestions) == 0 {
 		m.ui.notice = "No matching places; try a town/country or coordinates"
 	}
@@ -377,6 +381,10 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 
 func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 	switch pressed {
+	case "ctrl+f":
+		return m.pushDialog(dialogFavourites)
+	case "alt+s":
+		return m.saveFavouritePrompt()
 	case "esc":
 		return m.backDialog()
 	case "ctrl+s":
@@ -388,9 +396,13 @@ func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 	case "ctrl+p":
 		return m.startJourneyPick()
 	case "alt+m":
+		// Reusing a searched centre retains its origin and storage restrictions.
+		if previous := m.searchLocation; previous != nil && m.camera.Center == project(previous.Lon, previous.Lat) {
+			return m.applyPlaceLocation(*previous)
+		}
 		geo := unproject(m.camera.Center)
 		return m.applyPlaceLocation(placeLocation{
-			Name: fmt.Sprintf("%.6f, %.6f", geo.Y, geo.X), Lon: geo.X, Lat: geo.Y, Source: "map centre",
+			Name: fmt.Sprintf("%.6f, %.6f", geo.Y, geo.X), Lon: geo.X, Lat: geo.Y, Source: placeSourceMapCentre,
 		})
 	case "up", "down":
 		if len(m.planner.suggestions) > 0 {
@@ -408,6 +420,9 @@ func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		if matched {
+			if m.ui.dialog == dialogJourneyLocation && !m.planner.addingWaypoint {
+				location = m.workspace.journeyCoordinateEdit(m.planner.ref, m.planner.stopID, location)
+			}
 			return m.applyPlaceLocation(location)
 		}
 		if len(m.planner.suggestions) > 0 && !m.planner.searchBusy {
@@ -580,6 +595,14 @@ func (m *viewer) journeyCredits(existing ...sourceCredit) string {
 		credits = append(credits, credit)
 	}
 	addCredit(m.searchCredit)
+	if m.favouritesDialogOpen() {
+		for _, entry := range m.favourites.entries {
+			addCredit(entry.Attribution)
+		}
+		if m.ui.dialog != dialogFavourites {
+			addCredit(m.favourites.pending.Attribution)
+		}
+	}
 	if m.placeSearchOpen() {
 		for _, suggestion := range m.planner.suggestions {
 			addCredit(suggestion.Attribution)

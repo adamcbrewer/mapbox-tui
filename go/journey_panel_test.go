@@ -282,7 +282,7 @@ func TestJourneyMousePlacesEndpointsAndWaypointAndRecalculates(t *testing.T) {
 		geo := unproject(m.camera.world(XY{float64((x-1)*2 + 1), float64((y-m.mapOriginY())*4 + 2)}))
 		cmd := clickJourneyMap(m, x, y)
 		location := j.Stops[tc.index].Location
-		if location == nil || location.Source != "map point" ||
+		if location == nil || location.Source != placeSourceMapPoint ||
 			math.Abs(location.Lon-geo.X)+math.Abs(location.Lat-geo.Y) > 1e-10 {
 			t.Fatal("mouse point did not commit the correct map coordinate", tc.label)
 		}
@@ -450,7 +450,7 @@ func TestJourneyLocationEntryIsImmediateAndUncommittedUntilChosen(t *testing.T) 
 	}
 	m.editJourneyLocation(0)
 	clickJourneyMap(m, 8, m.mapOriginY()+3)
-	if m.ui.dialog != dialogJourney || j.Stops[0].Location.Source != "map point" {
+	if m.ui.dialog != dialogJourney || j.Stops[0].Location.Source != placeSourceMapPoint {
 		t.Fatal("map click from the input did not update the start")
 	}
 }

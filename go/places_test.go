@@ -286,7 +286,7 @@ func TestPlaceClientAcceptsZeroCoordinates(t *testing.T) {
 	})
 	location, err := p.retrieve(t.Context(), placeSuggestion{ID: "id", Label: "Origin"}, "session")
 	if err != nil || location.Lon != 0 || location.Lat != 0 || location.Name != "Origin" ||
-		location.Source != "Mapbox Search Box" || location.Attribution != "Mapbox credit" {
+		location.Source != placeSourceMapboxSearch || location.Attribution != "Mapbox credit" {
 		t.Fatalf("zero coordinates: %+v, %v", location, err)
 	}
 }

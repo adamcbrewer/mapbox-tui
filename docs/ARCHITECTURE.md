@@ -53,6 +53,16 @@ Planned journeys use the same workspace and renderer. We keep the user's chosen
 stops separate from the path returned by a routing provider. Plans don't have
 recorded timestamps or elevation.
 
+The app-wide favourites library has its own JSON store and location validation,
+separate from `Workspace`. The viewer copies a favourite into a journey stop;
+there are no live links back to the library. Mutations lock a separate file,
+re-read the current entries and atomically replace the JSON. Stable IDs and
+expected values prevent stale rename/delete operations from changing another
+entry or overwriting an edit. Location origins use the shared `placeSource` type
+and constants in `go/place_source.go`. Favourites validate against that accepted
+set on both reads and writes. Persisted source strings are format values: changing
+one requires a file migration. Compatibility tests pin the existing spellings.
+
 ### Mapbox data and offline use
 
 We fetch and decode Mapbox vector tiles, then pass their features to the renderer

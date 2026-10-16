@@ -196,7 +196,7 @@ func TestJourneyViewerAutomaticSearchSessionsAndSupersededResults(t *testing.T) 
 	}
 	m.editJourneyLocation(1)
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if j.Stops[1].Location.Name != "Station, Brighton, UK" || j.Stops[1].Location.Source != "Mapbox Search Box" {
+	if j.Stops[1].Location.Name != "Station, Brighton, UK" || j.Stops[1].Location.Source != placeSourceMapboxSearch {
 		t.Fatal("accepting an unchanged location removed provider provenance")
 	}
 	enterJourneyCoordinate(m, 1, "51.6, -0.2")
@@ -350,7 +350,7 @@ func TestJourneyUnicodeLocationsSurviveGeometryAndEdits(t *testing.T) {
 	}
 	location := placeLocation{
 		Name: "Café Zürich\n東京\x1b", Lon: 8.54, Lat: 47.37,
-		Source: "Mapbox Search Box", Attribution: "© Mapbox\r\n© OpenStreetMap\x1b",
+		Source: placeSourceMapboxSearch, Attribution: "© Mapbox\r\n© OpenStreetMap\x1b",
 	}
 	if err := m.workspace.addJourneyWaypoint(m.planner.ref); err != nil {
 		t.Fatal(err)

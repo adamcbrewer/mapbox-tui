@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 func (m *viewer) journeyPanelOpen() bool {
@@ -47,11 +46,17 @@ func (m *viewer) journeyPanel() string {
 	innerWidth := max(1, width-4)
 	showNotice := m.ui.notice != "" && height >= 5
 	footerLines := 1
+	if m.ui.dialog == dialogJourneyLocation && height >= 8 {
+		footerLines = 2
+	}
 	if m.ui.dialog == dialogJourney {
 		footerLines = min(3, max(0, height-3))
 		if showNotice {
 			footerLines = min(footerLines, max(0, height-4))
 		}
+	}
+	if m.ui.feedback != "" && height >= 6 {
+		footerLines++
 	}
 	showLocationHeading := m.ui.dialog == dialogJourneyLocation && height >= 8
 	topPadding := 0
@@ -101,11 +106,11 @@ func (m *viewer) journeyPanel() string {
 	rows = append(rows, lipgloss.NewStyle().Background(surface).Width(innerWidth).
 		Height(bodyHeight).MaxHeight(bodyHeight).Render(body))
 	if !compactInput {
-		for i, hint := range strings.Split(hints, "\n") {
+		for i, hint := range m.dialogFooter(hints, innerWidth) {
 			if i >= footerLines {
 				break
 			}
-			rows = append(rows, m.styles.dialogMuted.Render(ansi.Truncate(hint, innerWidth, "…")))
+			rows = append(rows, hint)
 		}
 	}
 	border := m.boxBorder()
@@ -188,7 +193,7 @@ func (m *viewer) pickJourneyLocation(location XY) (tea.Cmd, bool) {
 	}
 	return m.applyJourneyLocation(placeLocation{
 		Name: fmt.Sprintf("%.6f, %.6f", location.Y, location.X),
-		Lon:  location.X, Lat: location.Y, Source: "map point",
+		Lon:  location.X, Lat: location.Y, Source: placeSourceMapPoint,
 	}), true
 }
 

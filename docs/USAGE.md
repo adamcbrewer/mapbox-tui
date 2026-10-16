@@ -107,6 +107,60 @@ return selection to a recorded point before restoring follow.
 `S` and `E` mark part endpoints, `W` marks waypoints and `@` marks the selected
 or interpolated position.
 
+## Favourite places
+
+Save commonly used locations in a local favourites library. In quick search (`/`)
+or a journey location editor, highlight an address or town with Up/Down and press
+**Alt-S**. It saves under the returned place name and gains a **★** (`*` in ASCII
+mode). The search stays open; saving does not move the map or change your journey.
+Use the favourites picker to rename it later. Press **Alt-S** again to remove it;
+the star disappears. Save/remove feedback appears at the bottom right.
+
+You can also enter latitude, longitude and press **Alt-S** to name and save it.
+An existing manually entered stop can be saved the same way.
+On the map, select a point and use **Save selected location as favourite** in the
+command palette (`Ctrl-K`).
+
+Press **Ctrl-F** in quick search or a location editor to open Favourites, or choose
+**Favourite places** in the command palette. Type to filter by name, use Up/Down
+to choose, then Enter to revisit the location or copy it into the edited journey
+stop. **Ctrl-R** renames the selected favourite. **Delete** or **Backspace** opens
+a confirmation with **Cancel** focused. Tab or Left/Right switches buttons; Enter
+activates the selected button, and Esc cancels. You can also click either button.
+Backspace edits the filter while typing; use Up/Down to focus a result before
+removing it with Backspace. Names must be non-blank and unique, ignoring case.
+
+Favourites work offline and survive restarts. They live in `favourites.json` next
+to `settings.json`: on Linux, `$XDG_CONFIG_HOME/mapbox-tui/favourites.json`, or
+`~/.config/mapbox-tui/favourites.json` when that variable is unset. The JSON stores
+names, coordinates, stable IDs and location origins. `source` identifies how the
+location was obtained. `provider_id` is the returned Mapbox place ID, used to
+recognise saved search results even after renaming; `id` is our own local ID.
+Provider display credits are derived from the source, not repeated in the JSON.
+
+`version` describes the whole file format. Version 1 files remain readable; the
+next save, rename or deletion writes version 2 without per-location attribution.
+Future breaking format changes will migrate the file as a unit. Unknown versions
+are left untouched.
+
+The library is independent of the workspace: clearing a workspace leaves favourites intact, and renaming or deleting
+a favourite leaves copied journey stops unchanged.
+
+Saving an address or town makes one Mapbox Permanent Geocoding request using the
+selected result’s ID. This is billed separately from search and requires a valid
+credit card on your Mapbox account or an enterprise contract. Only the permanent
+response supplies the stored place details. Mapbox credit is shown when reusing
+these locations offline. Named venues such as cafés are not supported by that
+endpoint; Save explains this without asking for coordinates.
+If Mapbox cannot return the exact selected place, nothing is saved.
+
+Opening and filtering Favourites makes no location lookup requests; basemaps and
+journey routing still follow their normal settings.
+
+If the file cannot be read or a save fails, the viewer reports the error and leaves
+existing data intact. Concurrent viewers preserve unrelated edits; if the same
+favourite has changed, reopen Favourites before editing it again.
+
 ## Search and journeys
 
 `/` searches for a place without changing your activity or journey. Ctrl-J

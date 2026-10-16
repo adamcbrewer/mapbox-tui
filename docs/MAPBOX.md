@@ -262,7 +262,7 @@ The quick-search viewport stays inside the renderable Mercator world rather than
 wrapping tiles or geometry. Near world edges it shifts inward, resetting north-up
 only if needed to keep the accepted location visible.
 Active autocomplete suggestions retain their returned attribution and show it in
-the location editor and footer until the suggestions are cleared or replaced by
+the context bar and credits dialog until the suggestions are cleared or replaced by
 retrieved location data. The map footer joins distinct credits on one line;
 the credits dialog lists them separately.
 Place names and credits retain printable Unicode through suggestions, workspace
@@ -275,8 +275,25 @@ and Europe.
 
 Search results and plans remain in memory for this session only. The
 [Search Box documentation](https://docs.mapbox.com/api/search/search-box/)
-restricts returned data to temporary use. No disk cache, favorites or export is
-added here. Provider-compatible persistence isn't implemented.
+restricts returned data to temporary use. The local [favourites library](USAGE.md#favourite-places)
+can save user-entered locations and explicit Permanent Geocoding results. Alt-S
+on a search suggestion sends its Mapbox ID to the Geocoding v6 forward endpoint
+with `permanent=true` and `autocomplete=false`. The returned ID must match the
+selected result. Only that permanent response’s name, coordinates and ID are
+persisted, along with the source. Saved favourites derive their Mapbox display
+credit from that source; response attribution notices are not repeated in the
+JSON. The Search Box response is never written to disk.
+Saving leaves the current search and journey unchanged and marks the result with
+a star. It does not retrieve a temporary Search Box feature or end its session.
+
+[Permanent geocoding](https://docs.mapbox.com/api/search/geocoding/#storing-geocoding-results)
+is billed separately from Search Box and requires a valid card on file or an
+enterprise contract. Geocoding v6 excludes POIs, so named venues/categories are
+rejected before making a save request. Missing/mismatched features, invalid data,
+account errors and cancelled requests leave the library unchanged. Query edits,
+closing the editor and credential changes cancel pending saves; only a response
+still owned by the active editor may write a favourite. No bulk search cache or
+automatic permanent lookup is added.
 
 ## Journey road/path routing
 

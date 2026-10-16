@@ -27,6 +27,7 @@ func (m *viewer) applyPlaceLocation(location placeLocation) tea.Cmd {
 	m.inspected = m.searchPosition
 	m.searchCredit = location.Attribution
 	m.searchName = location.Name
+	m.searchLocation = &location
 	m.moveCamera(localView(XY{location.Lon, location.Lat}, m.destination()))
 	return m.fetch()
 }
@@ -35,10 +36,6 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 	s := m.styles
 	m.ui.search.SetWidth(max(1, width-2))
 	rows := []string{m.ui.search.View()}
-	credit := ""
-	if len(m.planner.suggestions) > 0 {
-		credit = m.planner.suggestions[0].Attribution
-	}
 	hints := "enter choose / click map / esc"
 	switch {
 	case m.ui.dialog == dialogSearch && m.places.token == "":
@@ -48,23 +45,23 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 	case m.places.token == "":
 		hints = "enter coordinates / click map"
 	}
-	if height <= 2 && credit != "" {
-		hints = credit
-	}
-	if height > 2 {
+	if height > 2 && len(m.planner.suggestions) == 0 {
 		status := "Mapbox search · type a place"
 		style := s.dialogAccent
 		if m.places.token == "" {
 			status = "Mapbox search [disabled: not connected]"
 			style = s.dialogMuted
 		}
-		if credit != "" {
-			status = credit
-		}
 		if m.planner.searchBusy {
 			status = "Looking up location..."
+			if m.planner.savingFavourite {
+				status = "Saving favourite..."
+			}
 		}
 		rows = append(rows, style.Render(pad(status, width)))
+	}
+	if height > 3 {
+		hints = "ctrl+f favourites / alt+s toggle\n" + hints
 	}
 	count := max(1, height-len(rows))
 	start := max(0, m.planner.result-count+1)
@@ -73,7 +70,16 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 		if i == m.planner.result {
 			style = s.selected
 		}
-		rows = append(rows, style.Render(pad(m.planner.suggestions[i].Label, width)))
+		suggestion := m.planner.suggestions[i]
+		label := suggestion.Label
+		if m.savedSearchFavourite(suggestion.ID) {
+			marker := "★ "
+			if m.settings.ASCII {
+				marker = "* "
+			}
+			label = marker + label
+		}
+		rows = append(rows, style.Render(pad(label, width)))
 	}
 	return strings.Join(rows, "\n"), hints
 }
