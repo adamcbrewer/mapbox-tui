@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1068,5 +1069,50 @@ func TestChangedPublicNotesRequireNewConfirmation(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestPreparationPreservesIntentForPublishedNotes(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	commands.local, commands.remote = true, true
+	state.TagIntent = true
+	state.Notes = "Reviewed draft notes"
+	release, err := adapter.requireRelease(t.Context(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.AssetIdentity = assetIdentity(release)
+	// The maintainer publishes in GitHub before preparation first runs.
+	commands.published, commands.notes = true, "Changed published notes"
+	result, err := adapter.Execute(t.Context(), Request{State: state, Operation: PreparePublication}, func(string) {})
+	if _, changed := errors.AsType[*publicNotesChangedError](err); !changed || !result.State.PublishIntent {
+		t.Fatalf("preparation did not preserve intent for notes recovery: %+v %v", result, err)
+	}
+	saved, exists, err := adapter.Journal.Load()
+	if err != nil || !exists || !saved.PublishIntent || saved.Notes != state.Notes {
+		t.Fatalf("intent was not saved before returning for review: %+v %v", saved, err)
+	}
+	// A restart before the notes reload must still reconcile the public release.
+	adapter.Resume = true
+	result, err = adapter.Execute(t.Context(), Request{Operation: Inspect}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = adapter.Execute(t.Context(), Request{State: result.State, Operation: ReadNotes}, func(string) {})
+	if err != nil || !result.State.NotesPublic || result.State.Notes != commands.notes {
+		t.Fatalf("resume failed to reload public notes: %+v %v", result, err)
+	}
+}
+
+func TestPreparationStopsIfIntentCannotBeSaved(t *testing.T) {
+	adapter, commands, state := newReleaseHarness(t, Live)
+	adapter.Journal = &failingJournal{}
+	commands.calls = nil
+	_, err := adapter.Execute(t.Context(), Request{State: state, Operation: PreparePublication}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("journal failure was not reported: %v", err)
+	}
+	if len(commands.calls) != 0 {
+		t.Fatalf("commands ran before publication intent was saved: %+v", commands.calls)
 	}
 }

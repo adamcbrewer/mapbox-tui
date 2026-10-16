@@ -776,10 +776,13 @@ func (r *RealAdapter) download(ctx context.Context, state State) (State, error) 
 }
 func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 	state := q.State
-	if q.Operation == PublishRelease {
-		state.PublishIntent = true
-	}
+	state.PublishIntent = true
 	result := Result{State: state}
+	// The maintainer may publish in GitHub before preparation starts. Persist
+	// intent before lookup so both error recovery and resume can inspect it.
+	if err := r.Journal.Save(state); err != nil {
+		return result, fmt.Errorf("save publication intent: %w", err)
+	}
 	release, err := r.requireRelease(ctx, state)
 	if err != nil {
 		return result, err
@@ -801,11 +804,6 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 		return result, fmt.Errorf("release is still a draft; open %s and click Publish release, then retry", release.URL)
 	}
 	if q.Operation == PreparePublication && release.Draft && !sameReleaseNotes(release.Body, state.Notes) {
-		state.PublishIntent = true
-		if err = r.Journal.Save(state); err != nil {
-			return result, err
-		}
-		result.State = state
 		dir, err := r.freshDirectory("mapbox-release-notes-")
 		if err != nil {
 			return result, err
@@ -821,7 +819,6 @@ func (r *RealAdapter) publish(ctx context.Context, q Request) (Result, error) {
 		}
 	}
 	if q.Operation == PreparePublication {
-		state.PublishIntent = true
 		state.URL = release.URL
 		if !release.Draft && !sameReleaseNotes(release.Body, state.Notes) {
 			return result, &publicNotesChangedError{URL: release.URL}
