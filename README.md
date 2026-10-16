@@ -31,6 +31,9 @@ switching, journey planning and copying a command to reopen the journey.
 - **Journey planning.** Pick stops on the map and reorder waypoints. Manual plans
   work offline; Mapbox provides place search and walking, cycling and driving
   routes.
+- **Favourite places.** Save commonly used locations locally, then find, rename
+  or remove them. Reuse saved places offline in quick search or as journey stops.
+  See [favourites controls](docs/USAGE.md#favourite-places).
 - **Shareable plans, locations and preferances.** Planned journey cli arguments can be copied and shared or bookmarked: reopen stops, travel mode and loaded files.
  Road routes are recalculated when reopened.
 - **CLI and MCP.** Get JSON summaries, inspect points by distance and render
@@ -158,6 +161,9 @@ In the viewer, Ctrl-O opens files, Ctrl-L manages loaded items, `/` searches
 for places and Ctrl-J opens the journey planner. Ctrl-K opens the command
 palette from any panel or dialog; Esc returns to the previous view.
 
+In quick search or a journey location editor, Alt-S saves or removes the selected
+address or town from favourites. Ctrl-F opens saved favourites for offline reuse.
+
 `summary` and `inspect` return JSON. `render` gives you a text map; add `--json`
 for scene metadata too. CLI and MCP maps are ANSI-free.
 
@@ -181,6 +187,7 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Visual comparison of imported routes | ✓ | - | - | - |
 | Choose colours for individual imported activities | (proposed) | - | - | - |
 | Journey planning with waypoints | ✓ | - | - | - |
+| Saved favourite places / bookmarks | ✓ (offline reuse) | Not documented | [Saved views via bookmark plugin](https://github.com/Kohei-Wada/ttymap#bundled-plugins) | Not documented |
 | Walking, cycling and driving routes | Mapbox | - | - | - |
 | Copy a command to recreate a journey | ✓ | - | - | - |
 | Restore the last planned journey after restart | (proposed) | - | - | - |
@@ -197,6 +204,7 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Persistent disk tile cache | (in-memory only) | ✓ | ✓ | ✓ |
 
 This is just a comparison of documented workflows, checked **14 October 2026**, not a feature audit.
+The favourites/bookmarks row was checked **16 October 2026**.
 The linked project READMEs describe their current capabilities.
 
 ## Themes
