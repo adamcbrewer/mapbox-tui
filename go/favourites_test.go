@@ -103,6 +103,8 @@ func TestFavouriteStoreRejectsUnicodeNameCollisions(t *testing.T) {
 	for _, names := range [][2]string{
 		{"İstanbul", "istanbul"}, {"istanbul", "İstanbul"},
 		{"Σ", "ς"}, {"ς", "Σ"}, {"S", "ſ"}, {"ſ", "S"},
+		{"Straße", "STRASSE"}, {"STRASSE", "Straße"},
+		{"ﬃ", "FFI"}, {"FFI", "ﬃ"},
 	} {
 		for _, operation := range []string{"add", "rename"} {
 			t.Run(names[0]+"/"+operation, func(t *testing.T) {
@@ -148,6 +150,7 @@ func TestFavouriteStorePreservesBrokenFiles(t *testing.T) {
 		{name: "new version", data: `{"version":3,"favourites":[]}`},
 		{name: "null", data: `{"version":1,"favourites":null}`},
 		{name: "case-folded duplicates", data: `{"version":2,"favourites":[{"id":"x","name":"Σ","latitude":51,"longitude":0,"source":"coordinates"},{"id":"y","name":"ς","latitude":51,"longitude":0,"source":"coordinates"}]}`},
+		{name: "multi-rune case-folded duplicates", data: `{"version":2,"favourites":[{"id":"x","name":"Straße","latitude":51,"longitude":0,"source":"coordinates"},{"id":"y","name":"STRASSE","latitude":51,"longitude":0,"source":"coordinates"}]}`},
 		{name: "missing longitude", data: `{"version":1,"favourites":[{"id":"x","name":"Home","latitude":51,"source":"coordinates"}]}`},
 		{name: "invalid location", data: `{"version":1,"favourites":[{"id":"x","name":"Home","latitude":100,"source":"coordinates"}]}`},
 		{name: "unknown source", data: `{"version":2,"favourites":[{"id":"x","name":"Home","latitude":51,"longitude":0,"source":"mapbox"}]}`},

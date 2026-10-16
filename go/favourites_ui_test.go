@@ -104,7 +104,11 @@ func TestFavouritesOfflineReuseAndWorkspaceIndependence(t *testing.T) {
 }
 
 func TestFavouritesFilterUnicodeCaseVariants(t *testing.T) {
-	for _, pair := range [][2]string{{"Σ", "ς"}, {"ς", "Σ"}, {"S", "ſ"}, {"ſ", "S"}, {"İ", "i"}} {
+	for _, pair := range [][2]string{
+		{"Σ", "ς"}, {"ς", "Σ"}, {"S", "ſ"}, {"ſ", "S"}, {"İ", "i"},
+		{"Straße", "STRASSE"}, {"STRASSE", "Straße"},
+		{"ﬃ", "FFI"}, {"FFI", "ﬃ"},
+	} {
 		t.Run(pair[0]+"/"+pair[1], func(t *testing.T) {
 			m := journeyViewer(t)
 			m.favourites.entries = []favourite{{ID: "match", Name: "Place " + pair[0]}, {ID: "other", Name: "Other"}}

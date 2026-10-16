@@ -9,7 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode"
+
+	"golang.org/x/text/cases"
 )
 
 // Favourites belong to the application, independently of any workspace.
@@ -89,15 +90,9 @@ func validateFavourite(f favourite) error {
 }
 
 func favouriteNameKey(name string) string {
-	// Keep the existing dotted-I equivalence while also folding sigma and long S.
+	// Preserve the existing dotted-I equivalence before full Unicode folding.
 	name = strings.ToLower(strings.TrimSpace(name))
-	return strings.Map(func(r rune) rune {
-		key := r
-		for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
-			key = min(key, folded)
-		}
-		return key
-	}, name)
+	return cases.Fold().String(name)
 }
 
 func (s favouriteStore) read() ([]favourite, error) {
