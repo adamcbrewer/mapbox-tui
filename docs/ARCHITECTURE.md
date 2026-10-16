@@ -56,7 +56,9 @@ recorded timestamps or elevation.
 The app-wide favourites library has its own JSON store and location validation,
 separate from `Workspace`. The viewer copies a favourite into a journey stop;
 there are no live links back to the library. Mutations lock a separate file,
-re-read the current entries and atomically replace the JSON. Stable IDs and
+re-read the current entries and replace the JSON via a same-directory temporary
+file and rename. Replacement is atomic on Unix; native Windows behaviour remains
+unverified. Stable IDs and
 expected values prevent stale rename/delete operations from changing another
 entry or overwriting an edit. Location origins use the shared `placeSource` type
 and constants in `go/place_source.go`. Favourites validate against that accepted

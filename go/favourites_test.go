@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -99,6 +98,46 @@ func TestFavouriteStoreRejectsInvalidEdits(t *testing.T) {
 	}
 }
 
+func TestFavouriteStoreRejectsUnicodeNameCollisions(t *testing.T) {
+	t.Parallel()
+	for _, names := range [][2]string{{"İstanbul", "istanbul"}, {"istanbul", "İstanbul"}} {
+		for _, operation := range []string{"add", "rename"} {
+			t.Run(names[0]+"/"+operation, func(t *testing.T) {
+				store := favouriteStore{path: filepath.Join(t.TempDir(), "favourites.json")}
+				location := placeLocation{Lon: -0.1, Lat: 51.5, Source: placeSourceCoordinates}
+				first := newFavourite(names[0], location)
+				if err := store.change(nil, &first); err != nil {
+					t.Fatal(err)
+				}
+				candidate := newFavourite(names[1], location)
+				var expected *favourite
+				if operation == "rename" {
+					original := candidate
+					original.Name = "Other"
+					if err := store.change(nil, &original); err != nil {
+						t.Fatal(err)
+					}
+					expected = &original
+				}
+				before, err := os.ReadFile(store.path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := store.change(expected, &candidate); err == nil {
+					t.Fatal("accepted names that collide when reloading the library")
+				}
+				after, err := os.ReadFile(store.path)
+				if err != nil || string(after) != string(before) {
+					t.Fatal("rejected name collision changed the library", err)
+				}
+				if _, err := store.read(); err != nil {
+					t.Fatal("name collision made the library unreadable", err)
+				}
+			})
+		}
+	}
+}
+
 func TestFavouriteStorePreservesBrokenFiles(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct{ name, data string }{
@@ -139,13 +178,13 @@ func TestFavouriteStoreBusyAndFailedWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFavouriteFile(lock); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.change(&f, nil); err == nil || !strings.Contains(err.Error(), "busy") {
 		t.Fatal("concurrent writer was not blocked", err)
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+	if err := unlockFavouriteFile(lock); err != nil {
 		t.Fatal(err)
 	}
 	// A read-only directory permits the lock/read, but not the temporary write.

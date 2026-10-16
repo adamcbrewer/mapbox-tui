@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 )
 
 // Favourites belong to the application, independently of any workspace.
@@ -88,6 +87,10 @@ func validateFavourite(f favourite) error {
 	return nil
 }
 
+func favouriteNameKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
 func (s favouriteStore) read() ([]favourite, error) {
 	file, err := os.Open(s.path)
 	if os.IsNotExist(err) {
@@ -114,7 +117,7 @@ func (s favouriteStore) read() ([]favourite, error) {
 		if err := validateFavourite(f); err != nil {
 			return nil, fmt.Errorf("invalid favourites file: %w", err)
 		}
-		name := strings.ToLower(strings.TrimSpace(f.Name))
+		name := favouriteNameKey(f.Name)
 		if ids[f.ID] || names[name] {
 			return nil, fmt.Errorf("duplicate favourite ID or name; existing file left unchanged")
 		}
@@ -139,10 +142,10 @@ func (s favouriteStore) change(expected *favourite, replacement *favourite) erro
 		return fmt.Errorf("open favourites lock: %w", err)
 	}
 	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFavouriteFile(lock); err != nil {
 		return fmt.Errorf("favourites are busy; try again")
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer unlockFavouriteFile(lock)
 	entries, err := s.read()
 	if err != nil {
 		return err
@@ -155,12 +158,17 @@ func (s favouriteStore) change(expected *favourite, replacement *favourite) erro
 		}
 	}
 	if replacement != nil {
+		name := favouriteNameKey(replacement.Name)
 		for i, f := range entries {
-			samePlace := replacement.ProviderID != "" && f.ProviderID == replacement.ProviderID && f.Source == replacement.Source
-			if i != index && samePlace {
+			if i == index {
+				continue
+			}
+			samePlace := replacement.ProviderID != "" &&
+				f.ProviderID == replacement.ProviderID && f.Source == replacement.Source
+			if samePlace {
 				return fmt.Errorf("this place is already a favourite")
 			}
-			if i != index && (strings.EqualFold(strings.TrimSpace(f.Name), replacement.Name) || f.ID == replacement.ID) {
+			if favouriteNameKey(f.Name) == name || f.ID == replacement.ID {
 				return fmt.Errorf("a favourite with that name already exists")
 			}
 		}
