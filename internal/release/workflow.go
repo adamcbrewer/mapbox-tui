@@ -1,6 +1,9 @@
 package release
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type Mode string
 
@@ -95,6 +98,7 @@ type State struct {
 	DownloadIdentity    string
 	Binary              string
 	Notes               string
+	NotesPublic         bool
 	TagIntent           bool
 	PublishIntent       bool
 	Published           bool
@@ -117,4 +121,14 @@ type Result struct {
 // running; the UI schedules the next bounded poll without blocking input.
 type Adapter interface {
 	Execute(context.Context, Request, func(string)) (Result, error)
+}
+
+// A public notes change can be accepted by reviewing the current GitHub text.
+// It never authorizes skipping the other publication checks.
+type publicNotesChangedError struct {
+	URL string
+}
+
+func (e *publicNotesChangedError) Error() string {
+	return fmt.Sprintf("release is public but its notes differ from the reviewed notes; review the current notes at %s", e.URL)
 }

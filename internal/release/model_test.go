@@ -296,3 +296,29 @@ func TestEmptyNotesStayEditable(t *testing.T) {
 		t.Fatal("corrected notes did not advance")
 	}
 }
+
+func TestPublishedNotesCanBeRefreshedButNotEditedLocally(t *testing.T) {
+	s, err := NewSession("v0.2.0", "success")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Step, s.Status, s.NotesPublic = Notes, Confirmation, true
+	s.Notes = "Published release notes"
+	m := NewExecutingModel(s, FixtureAdapter{Scenario: "success"}, time.Second, true)
+	defer m.Shutdown()
+	view := m.View().Content
+	if !strings.Contains(view, "Accept the published notes") || strings.Contains(view, "e: edit") {
+		t.Fatalf("incorrect public notes prompt: %s", view)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	m = updated.(Model)
+	if m.editing {
+		t.Fatal("public notes editor should be on GitHub")
+	}
+	m.input.SetValue("")
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	m = updated.(Model)
+	if cmd == nil || !m.busy || m.session.Status != Running || m.session.Request().Operation != ReadNotes {
+		t.Fatal("refresh did not reload published notes")
+	}
+}

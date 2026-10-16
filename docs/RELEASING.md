@@ -102,6 +102,14 @@ saved source checked out while resuming; a newer `main` on origin is accepted on
 when the already-tagged source remains its ancestor. If GitHub reports altered
 attachments, restart with `--resume` and review them again before publication.
 
+Notes comparisons ignore LF versus CRLF line endings introduced by GitHub's web
+editor. If the published text actually changes, the tool returns to notes review
+and asks you to accept the current GitHub notes with `y`. You can edit published
+notes on GitHub and press `r` to refresh them in the tool. This also works when
+resuming an already published release. Accepting notes continues verification of
+the release title, tag, attachments, prerelease flag and latest status; it does
+not overwrite the published notes.
+
 ### Interactive tests and local rehearsal
 
 There is one command and one workflow. To exercise its UI without credentials,
@@ -116,8 +124,8 @@ The test mode uses the same steps, confirmations, version policy, asynchronous
 result handling and rendering. Repository and commit values are fictional. It
 substitutes deterministic operation results, including the viewer handoff and
 publication. Scenarios are `success`, `slow-checks`, `delayed-workflow`,
-`failed-checks`, `auth-error`, `checksum-mismatch`, `existing-draft` and
-`existing-tag`. Enter retries a failed fixture. `--version` seeds the editable tag;
+`failed-checks`, `auth-error`, `checksum-mismatch`, `existing-draft`,
+`existing-tag` and `changed-public-notes`. Enter retries a failed fixture. `--version` seeds the editable tag;
 `--delay` controls fixture timing. There is no separate release-demo command or target.
 
 To run real local checks, packaging and the offline viewer without creating a tag
@@ -149,8 +157,9 @@ publish a release.
 The interaction suite executes the same release command in test mode inside tmux.
 One happy path runs all nine sections, including delayed workflow discovery,
 version input, confirmations and notes editing. One failure path checks the error,
-retry and cancellation. Collapsed output, a six-row confirmation prompt and terminal restoration are
-checked within those two runs. It needs the terminal dependencies
+retry and cancellation. A third path reviews, refreshes and explicitly accepts
+changed published notes before completing verification. Collapsed output, a
+six-row confirmation prompt and terminal restoration are also checked. It needs the terminal dependencies
 from [Development](DEVELOPMENT.md). Text, SVG and PNG captures are saved under
 `reports/generated/release/` and retained by CI. To intentionally update text
 snapshots, run `UPDATE_RELEASE_SNAPSHOTS=1 go test ./internal/release` and review

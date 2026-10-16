@@ -55,7 +55,11 @@ func TestWorkflowScenarios(t *testing.T) {
 					break
 				}
 			}
-			if s.Status != Done || confirmations != 4 {
+			wantConfirmations := 4
+			if scenario == "changed-public-notes" {
+				wantConfirmations = 6
+			}
+			if s.Status != Done || confirmations != wantConfirmations {
 				t.Fatalf("incomplete flow: %+v", s)
 			}
 			wantFailure := scenario == "failed-checks" || scenario == "auth-error" || scenario == "checksum-mismatch"

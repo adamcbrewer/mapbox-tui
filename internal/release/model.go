@@ -137,7 +137,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
-		if msg.String() == "e" && m.session.Status == Confirmation && m.session.Step == Notes && m.input.Value() == "" {
+		reviewingNotes := m.session.Status == Confirmation && m.session.Step == Notes && m.input.Value() == ""
+		if msg.String() == "r" && reviewingNotes && m.session.NotesPublic {
+			m.session.reloadNotes()
+			m.follow = true
+			m.refresh()
+			cmd := m.command()
+			return m, cmd
+		}
+		if msg.String() == "e" && reviewingNotes && !m.session.NotesPublic {
 			m.editor = textarea.New()
 			m.editor.CharLimit = 128 * 1024
 			m.editor.SetValue(m.session.Notes)
@@ -289,16 +297,20 @@ func (m Model) promptForm() string {
 	case Confirmation:
 		if m.session.Step == Notes {
 			if strings.TrimSpace(m.session.Notes) == "" {
-				lines = append(lines, m.style("#FF6B6B").Render("Release notes cannot be empty. Press e to edit."))
+				lines = append(lines, m.style("#FF6B6B").Render(m.session.emptyNotesMessage()))
 			}
-			lines = append(lines, "↑/↓ or pgup/pgdown: scroll all notes · e: edit")
+			help := "↑/↓ or pgup/pgdown: scroll all notes · e: edit"
+			if m.session.NotesPublic {
+				help = "↑/↓ or pgup/pgdown: scroll all notes · r: refresh from GitHub"
+			}
+			lines = append(lines, help)
 		}
 		prompt := m.session.Prompt()
 		if m.height < 12 && m.session.Step == Tag {
 			action := "push tag"
 			prompt = fmt.Sprintf("Would you like to %s %s now?\n%s @ %s", action, m.session.Version, m.session.Repository, shortCommit(m.session.Commit))
 		}
-		if m.height < 12 && m.session.Step == Publish {
+		if m.height < 12 && m.session.Step == Publish && !m.session.NotesPublic {
 			prompt = fmt.Sprintf("Have you published %s on GitHub?\n%s", m.session.Version, m.session.URL)
 		}
 		question, context, hasContext := strings.Cut(prompt, "\n")

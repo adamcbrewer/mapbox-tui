@@ -3,6 +3,7 @@ package release
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -47,10 +48,10 @@ const (
 	Cancelled
 )
 
-const Scenarios = "success, slow-checks, delayed-workflow, failed-checks, auth-error, checksum-mismatch, existing-draft, existing-tag"
+const Scenarios = "success, slow-checks, delayed-workflow, failed-checks, auth-error, checksum-mismatch, existing-draft, existing-tag, changed-public-notes"
 
 var scenarios = []string{
-	"success", "slow-checks", "delayed-workflow", "failed-checks", "auth-error", "checksum-mismatch", "existing-draft", "existing-tag",
+	"success", "slow-checks", "delayed-workflow", "failed-checks", "auth-error", "checksum-mismatch", "existing-draft", "existing-tag", "changed-public-notes",
 }
 
 type ActivityStatus int
@@ -153,8 +154,15 @@ func (s Session) Prompt() string {
 	case Viewer:
 		return "Did the offline viewer open and quit correctly?" + suffix
 	case Notes:
+		if s.NotesPublic {
+			return "Release is already public. Accept the published notes shown above?\n" +
+				"Edit on GitHub, then press r to refresh: " + s.URL
+		}
 		return "Review notes: check installation instructions, breaking changes and limitations. Press e to edit." + suffix
 	case Publish:
+		if s.NotesPublic {
+			return "Verify the published release with these accepted notes?\n" + s.URL
+		}
 		return fmt.Sprintf("Have you published %s on GitHub?%s\nOpen the draft, review it, then click Publish release:\n%s", s.Version, suffix, s.URL)
 	}
 	return ""
@@ -166,7 +174,7 @@ func (s *Session) Confirm(answer string) {
 		return
 	}
 	if s.Step == Notes && strings.TrimSpace(s.Notes) == "" {
-		s.Detail = "Release notes cannot be empty. Press e to edit."
+		s.Detail = s.emptyNotesMessage()
 		return
 	}
 	if s.Step == Tag && !s.TagIntent {
@@ -198,9 +206,13 @@ func (s *Session) Accept(result Result, err error) {
 		if result.State.Version == s.Version {
 			s.State = result.State
 		}
-		s.Status = Failed
 		s.updateOperation(err.Error(), ActivityFailed)
 		s.Logs = append(s.Logs, err.Error())
+		if _, changed := errors.AsType[*publicNotesChangedError](err); changed && s.Step == Publish {
+			s.reloadNotes()
+			return
+		}
+		s.Status = Failed
 		return
 	}
 	s.State = result.State
@@ -294,4 +306,16 @@ func (s *Session) updateOperation(text string, status ActivityStatus) {
 func (s *Session) log(message string) {
 	s.Logs = append(s.Logs, message)
 	s.Activity[s.Step] = append(s.Activity[s.Step], ActivityEntry{Text: message, Status: ActivityNote})
+}
+
+func (s *Session) reloadNotes() {
+	s.Step, s.operation, s.approved = Notes, 0, false
+	s.enter()
+}
+
+func (s Session) emptyNotesMessage() string {
+	if s.NotesPublic {
+		return "Release notes cannot be empty. Edit on GitHub, then press r to refresh."
+	}
+	return "Release notes cannot be empty. Press e to edit."
 }

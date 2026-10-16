@@ -982,3 +982,91 @@ func TestReleaseHistoryDecodesFilteredPages(t *testing.T) {
 		t.Fatalf("filtered release pages: %+v %v", releases, err)
 	}
 }
+
+func TestPublicationAcceptsEquivalentLineEndings(t *testing.T) {
+	for _, notes := range []struct {
+		name, reviewed, published string
+	}{
+		{name: "web editor", reviewed: "# Release\n\nChanges  \nNext\n", published: "# Release\r\n\r\nChanges  \r\nNext\r\n"},
+		{name: "reverse", reviewed: "Changes\r\nNext", published: "Changes\nNext"},
+		{name: "mixed", reviewed: "Changes\r\nNext\nEnd", published: "Changes\nNext\r\nEnd"},
+	} {
+		t.Run(notes.name, func(t *testing.T) {
+			for _, op := range []Operation{ReadNotes, PreparePublication, PublishRelease} {
+				t.Run(string(op), func(t *testing.T) {
+					adapter, commands, state := newReleaseHarness(t, Live)
+					commands.remote, commands.published, commands.notes = true, true, notes.published
+					state.Notes, state.PublishIntent = notes.reviewed, true
+					release, err := adapter.requireRelease(t.Context(), state)
+					if err != nil {
+						t.Fatal(err)
+					}
+					state.AssetIdentity = assetIdentity(release)
+					result, err := adapter.Execute(t.Context(), Request{State: state, Operation: op}, func(string) {})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if op == PublishRelease && !result.State.Published {
+						t.Fatal("publication not verified")
+					}
+					if op == ReadNotes && (!result.State.NotesPublic || result.State.Notes != notes.published) {
+						t.Fatal("published notes were not loaded for review")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestChangedPublicNotesRequireNewConfirmation(t *testing.T) {
+	for _, operation := range []int{0, 1} {
+		for _, published := range []string{"Changed release notes", "Reviewed notes  \nNext", "Reviewed notes\n\nNext"} {
+			t.Run(fmt.Sprintf("%d/%q", operation, published), func(t *testing.T) {
+				adapter, commands, state := newReleaseHarness(t, Live)
+				commands.remote, commands.published, commands.notes = true, true, published
+				state.Notes, state.PublishIntent = "Reviewed notes\nNext", true
+				release, err := adapter.requireRelease(t.Context(), state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state.AssetIdentity = assetIdentity(release)
+				session := Session{State: state, Step: Publish, operation: operation, approved: true}
+				session.enter()
+				advance := func() {
+					t.Helper()
+					result, err := adapter.Execute(t.Context(), session.Request(), func(string) {})
+					session.Accept(result, err)
+				}
+				advance()
+				if session.Step != Notes || session.Status != Running || session.Published {
+					t.Fatalf("changed notes did not return to review: %+v", session)
+				}
+				advance()
+				if session.Status != Confirmation || session.Notes != published || !session.NotesPublic {
+					t.Fatalf("current public notes not presented for approval: %+v", session)
+				}
+				for _, answer := range []string{"", "n"} {
+					session.Confirm(answer)
+					if session.Step != Notes || session.Status != Confirmation {
+						t.Fatal("notes accepted without explicit approval")
+					}
+				}
+				session.Confirm("y")
+				advance()
+				if session.Step != Publish || session.Status != Confirmation {
+					t.Fatal("publication confirmation was skipped")
+				}
+				session.Confirm("y")
+				advance()
+				if session.Status != Done || !session.Published {
+					t.Fatalf("accepted notes did not complete publication: %+v", session)
+				}
+				for _, call := range commands.calls {
+					if slices.Contains(call.Args, "PATCH") {
+						t.Fatal("public notes were overwritten")
+					}
+				}
+			})
+		}
+	}
+}

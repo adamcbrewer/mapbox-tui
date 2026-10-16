@@ -55,11 +55,18 @@ func (d FixtureAdapter) Execute(ctx context.Context, request Request, emit func(
 		result.State.RunID = 42
 	case ReadNotes:
 		result.State.Notes = "Linux x86-64. Install: docs/INSTALL.md\n\nNo breaking changes. Known limitations: Linux only."
+		if d.Scenario == "changed-public-notes" && state.PublishIntent {
+			result.State.NotesPublic = true
+			result.State.Notes = "Published release notes updated on GitHub.\nLinux x86-64. Install: docs/INSTALL.md"
+		}
 		emit(result.State.Notes)
 	case PreparePublication:
 		result.State.PublishIntent = true
 		result.State.URL = "https://example.invalid/releases/" + state.Version
 	case PublishRelease:
+		if d.Scenario == "changed-public-notes" && !state.NotesPublic {
+			return result, &publicNotesChangedError{URL: state.URL}
+		}
 		result.State.Published = true
 		result.State.URL = "https://example.invalid/releases/" + state.Version
 	case FetchArtifact:
