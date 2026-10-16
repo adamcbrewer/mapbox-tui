@@ -100,7 +100,10 @@ func TestFavouriteStoreRejectsInvalidEdits(t *testing.T) {
 
 func TestFavouriteStoreRejectsUnicodeNameCollisions(t *testing.T) {
 	t.Parallel()
-	for _, names := range [][2]string{{"İstanbul", "istanbul"}, {"istanbul", "İstanbul"}} {
+	for _, names := range [][2]string{
+		{"İstanbul", "istanbul"}, {"istanbul", "İstanbul"},
+		{"Σ", "ς"}, {"ς", "Σ"}, {"S", "ſ"}, {"ſ", "S"},
+	} {
 		for _, operation := range []string{"add", "rename"} {
 			t.Run(names[0]+"/"+operation, func(t *testing.T) {
 				store := favouriteStore{path: filepath.Join(t.TempDir(), "favourites.json")}
@@ -124,7 +127,7 @@ func TestFavouriteStoreRejectsUnicodeNameCollisions(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err := store.change(expected, &candidate); err == nil {
-					t.Fatal("accepted names that collide when reloading the library")
+					t.Fatal("accepted case-equivalent favourite names")
 				}
 				after, err := os.ReadFile(store.path)
 				if err != nil || string(after) != string(before) {
@@ -144,6 +147,7 @@ func TestFavouriteStorePreservesBrokenFiles(t *testing.T) {
 		{name: "truncated", data: `{"version":1,"favourites":[`},
 		{name: "new version", data: `{"version":3,"favourites":[]}`},
 		{name: "null", data: `{"version":1,"favourites":null}`},
+		{name: "case-folded duplicates", data: `{"version":2,"favourites":[{"id":"x","name":"Σ","latitude":51,"longitude":0,"source":"coordinates"},{"id":"y","name":"ς","latitude":51,"longitude":0,"source":"coordinates"}]}`},
 		{name: "missing longitude", data: `{"version":1,"favourites":[{"id":"x","name":"Home","latitude":51,"source":"coordinates"}]}`},
 		{name: "invalid location", data: `{"version":1,"favourites":[{"id":"x","name":"Home","latitude":100,"source":"coordinates"}]}`},
 		{name: "unknown source", data: `{"version":2,"favourites":[{"id":"x","name":"Home","latitude":51,"longitude":0,"source":"mapbox"}]}`},

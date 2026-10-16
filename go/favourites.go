@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // Favourites belong to the application, independently of any workspace.
@@ -88,7 +89,15 @@ func validateFavourite(f favourite) error {
 }
 
 func favouriteNameKey(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	// Keep the existing dotted-I equivalence while also folding sigma and long S.
+	name = strings.ToLower(strings.TrimSpace(name))
+	return strings.Map(func(r rune) rune {
+		key := r
+		for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
+			key = min(key, folded)
+		}
+		return key
+	}, name)
 }
 
 func (s favouriteStore) read() ([]favourite, error) {

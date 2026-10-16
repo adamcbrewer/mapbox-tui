@@ -156,6 +156,9 @@ If Mapbox cannot return the exact selected place, nothing is saved.
 
 Opening and filtering Favourites makes no location lookup requests; basemaps and
 journey routing still follow their normal settings.
+Esc returns to the parent search with its results and selection intact while the
+search session is valid. Pending lookups are cancelled. If the session expires or
+the Mapbox connection changes, press **Ctrl-S** to refresh explicitly.
 
 If the file cannot be read or a save fails, the viewer reports the error and leaves
 existing data intact. Concurrent viewers preserve unrelated edits; if the same

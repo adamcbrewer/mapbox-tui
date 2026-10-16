@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -98,6 +100,129 @@ func TestFavouritesOfflineReuseAndWorkspaceIndependence(t *testing.T) {
 		if stop.Location.Name != "Home" {
 			t.Fatal("deleting favourite changed a copied journey stop")
 		}
+	}
+}
+
+func TestFavouritesCancelPreservesParentSearch(t *testing.T) {
+	for _, editor := range []string{"quick search", "journey"} {
+		for _, path := range []string{"direct", "commands"} {
+			t.Run(editor+"/"+path, func(t *testing.T) {
+				t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+				m := journeyViewer(t)
+				m.places.token = "token"
+				requests := 0
+				m.places.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+					requests++
+					return locationResponse(`{"suggestions":[{"mapbox_id":"first","name":"First"},{"mapbox_id":"second","name":"Second"}]}`), nil
+				})
+				if editor == "journey" {
+					m.openJourney()
+					m.editJourneyLocation(1)
+				} else {
+					m.openDialog(dialogSearch)
+				}
+				m.ui.search.SetValue("London")
+				m.schedulePlaceSearch()
+				m.Update(m.requestPlaceSearch(m.planner.searchID)())
+				m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+				m.ui.search.SetCursor(2)
+				dialog, owner := m.ui.dialog, m.ui.inputID
+				before := m.planner
+				if path == "commands" {
+					m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+					m.runCommand("favourites")
+				} else {
+					m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+				}
+				_, filter := m.Update(tea.PasteMsg{Content: "Home"})
+				deliverFavouriteSearchCommands(m, filter)
+				_, back := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				deliverFavouriteSearchCommands(m, back)
+				if path == "commands" {
+					_, back = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+					deliverFavouriteSearchCommands(m, back)
+				}
+				if requests != 1 {
+					t.Fatalf("favourites round trip made %d extra lookup requests", requests-1)
+				}
+				_, stale := m.Update(placeSearchReady{id: before.searchID})
+				deliverFavouriteSearchCommands(m, stale)
+				m.Update(placeSearchResult{
+					id: before.searchID, ref: before.ref, stopID: before.stopID,
+					suggestions: []placeSuggestion{{ID: "stale", Label: "Stale"}},
+				})
+				m.Update(placeSearchResult{
+					id: before.searchID, ref: before.ref, stopID: before.stopID,
+					location: &placeLocation{Name: "Stale", Lon: 1, Lat: 1},
+				})
+				m.Update(searchClipboardResult{owner: owner, dialog: dialog, msg: tea.PasteMsg{Content: "Stale"}})
+				if m.ui.dialog != dialog || m.ui.search.Value() != "London" || m.ui.search.Position() != 2 {
+					t.Fatal("favourites lost the parent input or cursor")
+				}
+				if !slices.Equal(m.planner.suggestions, before.suggestions) || m.planner.result != before.result {
+					t.Fatal("favourites lost the results or highlighted selection")
+				}
+				if m.planner.session != before.session || m.planner.sessionStarted != before.sessionStarted ||
+					m.planner.sessionRequests != before.sessionRequests || m.planner.query != before.query {
+					t.Fatal("favourites replaced the parent search session")
+				}
+				if m.planner.ref != before.ref || m.planner.stopID != before.stopID || m.ui.inputID == owner {
+					t.Fatal("favourites changed the stop target or reused stale input ownership")
+				}
+			})
+		}
+	}
+}
+
+func TestFavouritesReturnDoesNotReuseInvalidSearchSession(t *testing.T) {
+	for _, scenario := range []string{"expired", "credentials"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			m := journeyViewer(t)
+			m.places.token = "token"
+			requests := 0
+			transport := fakeTransport(func(*http.Request) (*http.Response, error) {
+				requests++
+				return locationResponse(`{"suggestions":[]}`), nil
+			})
+			m.places.client.Transport = transport
+			prepareFavouriteSearch(t, m)
+			m.planner.sessionStarted = time.Now()
+			if scenario == "expired" {
+				m.planner.sessionStarted = time.Now().Add(-3 * time.Minute)
+			}
+			m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+			if scenario == "credentials" {
+				m.places = newPlaceClient("new-token")
+				m.places.client.Transport = transport
+			}
+			_, back := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			deliverFavouriteSearchCommands(m, back)
+			if requests != 0 || len(m.planner.suggestions) != 0 || m.planner.session != "" {
+				t.Fatal("returning reused an invalid session or performed an implicit lookup")
+			}
+			_, refresh := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+			deliverFavouriteSearchCommands(m, refresh)
+			if requests != 1 || m.planner.session == "" {
+				t.Fatal("explicit refresh did not start a fresh search session")
+			}
+		})
+	}
+}
+
+// Follow lookup commands without running unrelated cursor/spinner tick loops.
+func deliverFavouriteSearchCommands(m *viewer, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, child := range msg {
+			deliverFavouriteSearchCommands(m, child)
+		}
+	case placeSearchReady, placeSearchResult, favouriteSearchResult:
+		_, next := m.Update(msg)
+		deliverFavouriteSearchCommands(m, next)
 	}
 }
 

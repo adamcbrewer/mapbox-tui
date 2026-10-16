@@ -79,6 +79,16 @@ type dialogFrame struct {
 	picker                      *filepicker.Model
 	journey                     *journeyDialogFrame
 	favouriteEdit               *favouritesUI
+	placeSearch                 *placeSearchDialogFrame
+}
+
+type placeSearchDialogFrame struct {
+	client          *placeClient
+	query, session  string
+	sessionStarted  time.Time
+	sessionRequests int
+	suggestions     []placeSuggestion
+	result          int
 }
 
 type journeyDialogFrame struct {
@@ -454,6 +464,16 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 			edit := m.favourites
 			frame.favouriteEdit = &edit
 		}
+		if m.placeSearchOpen() {
+			frame.placeSearch = &placeSearchDialogFrame{
+				client: m.places, query: m.planner.query, session: m.planner.session,
+				sessionStarted: m.planner.sessionStarted, sessionRequests: m.planner.sessionRequests,
+				suggestions: slices.Clone(m.planner.suggestions), result: m.planner.result,
+			}
+			if m.planner.savingFavourite {
+				frame.feedback = ""
+			}
+		}
 		if m.journeyPanelOpen() {
 			frame.journey = &journeyDialogFrame{
 				ref:            m.planner.ref,
@@ -521,10 +541,30 @@ func (m *viewer) backDialog() tea.Cmd {
 	if placeSearch {
 		m.ui.inputID = rand.Text()
 		m.ui.search.Blur()
-		if !m.planner.collapsed && !m.planner.pickingStop {
-			command = tea.Batch(command, m.ui.search.Focus(), m.schedulePlaceSearch())
-		}
 		m.ui.notice = frame.notice
+		if saved := frame.placeSearch; saved != nil {
+			m.planner.query = saved.query
+			validSession := saved.session != "" && time.Since(saved.sessionStarted) < 170*time.Second
+			if saved.client == m.places && validSession {
+				m.planner.session = saved.session
+				m.planner.sessionStarted, m.planner.sessionRequests = saved.sessionStarted, saved.sessionRequests
+				m.planner.suggestions, m.planner.result = saved.suggestions, saved.result
+			} else {
+				m.planner.session = ""
+				m.planner.sessionStarted, m.planner.sessionRequests = time.Time{}, 0
+				if len(saved.suggestions) > 0 && m.places.token != "" {
+					m.ui.notice = "Search session changed or expired; ctrl+s to refresh"
+				}
+			}
+		}
+		if !m.planner.collapsed && !m.planner.pickingStop {
+			var search tea.Cmd
+			if frame.placeSearch == nil {
+				search = m.schedulePlaceSearch()
+				m.ui.notice = frame.notice
+			}
+			command = tea.Batch(command, m.ui.search.Focus(), search)
+		}
 	}
 	if frame.picker != nil {
 		m.ui.picker = *frame.picker

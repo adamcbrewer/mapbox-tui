@@ -107,7 +107,9 @@ func TestSaveHighlightedSearchFavourite(t *testing.T) {
 }
 
 func TestSaveSearchFavouriteRejectsCancelledAndFailedLookups(t *testing.T) {
-	for _, scenario := range []string{"close", "new query", "reopen", "commands", "HTTP failure", "broken store", "venue"} {
+	for _, scenario := range []string{
+		"close", "new query", "reopen", "commands", "favourites", "HTTP failure", "broken store", "venue",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			m := journeyViewer(t)
@@ -142,6 +144,13 @@ func TestSaveSearchFavouriteRejectsCancelledAndFailedLookups(t *testing.T) {
 				m.openDialog(dialogSearch)
 			case "commands":
 				m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			case "favourites":
+				m.Update(tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+				_, back := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+				deliverFavouriteSearchCommands(m, back)
+				if m.planner.savingFavourite || m.planner.searchBusy || m.ui.feedback != "" {
+					t.Fatal("returning from favourites revived the cancelled save")
+				}
 			case "broken store":
 				store, _ := localFavouriteStore()
 				writeBrokenFavouriteFile(t, store.path)
