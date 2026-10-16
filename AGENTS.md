@@ -13,6 +13,10 @@ Public documentation examples use plain `go` and `make` commands with version re
 
 ## Pull requests
 
+When creating a branch for an issue, include the issue number in its name,
+for example `feat/10-local-favourites`. Include the issue number in the PR title
+too, for example `feat(favourites): Adds locally saved places (#10)`.
+
 Follow the [PR title guidelines](CONTRIBUTING.md#pull-request-titles) when opening
 or updating a PR, for example `feat(journeys): Adds route planning`.
 Keep the description aligned with the final changes and checks performed.
