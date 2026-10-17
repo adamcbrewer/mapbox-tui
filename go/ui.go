@@ -277,7 +277,16 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 }
 
 func (m *viewer) initUI() error {
-	preferences, err := loadAppSettings()
+	var preferences appSettings
+	var err error
+	if m.args.ResetView {
+		preferences, err = updateAppSettings(func(s *appSettings) { s.LastView = nil })
+		if err != nil {
+			return fmt.Errorf("could not reset saved view: %w", err)
+		}
+	} else {
+		preferences, err = loadAppSettings()
+	}
 	if err != nil {
 		preferences = appSettings{}
 		m.authMessage = "Could not load settings; telemetry is off and traffic is off: " + err.Error()

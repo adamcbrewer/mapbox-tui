@@ -1546,8 +1546,19 @@ def camera_restart(binary, width, height, ascii_mode=False):
 
         start("--reset-view")
         assert view() == (0, 0, 0), "reset did not use the default view"
+        cleared = json.loads(settings.read_bytes())
+        assert "last_view" not in cleared, "reset did not delete the saved view immediately"
+        assert cleared == {k: v for k, v in json.loads(saved).items() if k != "last_view"}
         stop()
-        assert settings.read_bytes() == saved, "reset launch erased the saved view"
+        assert json.loads(settings.read_bytes()) == cleared, "exit restored the deleted view"
+        start()
+        assert view() == (0, 0, 0), "reopening after reset restored the old view"
+        send("+")
+        expected = view()
+        stop()
+        start()
+        assert view() == expected, "navigation after reset was not saved"
+        stop()
         print(f"{binary.name} {width}×{height} ASCII={ascii_mode}: camera exit save, restart, track, overrides and reset passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)

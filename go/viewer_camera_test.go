@@ -47,13 +47,20 @@ func TestSavedViewStartupPrecedence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-			if err := saveAppSettings(appSettings{LastView: testSavedView(10, 20, 8)}); err != nil {
+			if err := saveAppSettings(appSettings{Theme: "noir", Traffic: true, LastView: testSavedView(10, 20, 8)}); err != nil {
 				t.Fatal(err)
 			}
 			before := settingsBytes(t)
 			m := preferenceViewer(t, tc.flags...)
 			if m.camera.Center != project(tc.lon, tc.lat) || m.camera.Zoom != tc.zoom {
 				t.Fatal("startup precedence incorrect", m.camera)
+			}
+			if m.args.ResetView {
+				saved, err := loadAppSettings()
+				if err != nil || saved.LastView != nil || saved.Theme != "noir" || !saved.Traffic {
+					t.Fatal("reset did not remove only the saved view", err)
+				}
+				before = settingsBytes(t)
 			}
 			if err := m.saveViewOnExit(); err != nil || !bytes.Equal(before, settingsBytes(t)) {
 				t.Fatal("launch without navigation changed settings", err)
@@ -62,6 +69,68 @@ func TestSavedViewStartupPrecedence(t *testing.T) {
 	}
 	if _, err := parseCLI([]string{"render", "--reset-view"}, io.Discard); err == nil {
 		t.Fatal("viewer-only reset flag accepted by static render")
+	}
+}
+
+func TestResetViewPersistsUntilNewNavigation(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := saveAppSettings(appSettings{LastView: testSavedView(10, 20, 8)}); err != nil {
+		t.Fatal(err)
+	}
+	m := preferenceViewer(t, "--reset-view", "--zoom=5")
+	if err := m.saveViewOnExit(); err != nil {
+		t.Fatal(err)
+	}
+	restarted := preferenceViewer(t)
+	if restarted.camera.Center != project(0, 0) || restarted.camera.Zoom != 0 {
+		t.Fatal("reopening after reset restored the old view or the launch override")
+	}
+	m.Update(tea.KeyPressMsg{Code: '+'})
+	if err := m.saveViewOnExit(); err != nil {
+		t.Fatal(err)
+	}
+	if preferenceViewer(t).camera.Zoom != m.camera.Zoom {
+		t.Fatal("reset prevented subsequent navigation from being saved")
+	}
+}
+
+func TestResetViewFailsWithoutOverwritingSettings(t *testing.T) {
+	for _, failure := range []string{"malformed", "incompatible", "busy"} {
+		t.Run(failure, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if err := saveAppSettings(appSettings{LastView: testSavedView(10, 20, 8)}); err != nil {
+				t.Fatal(err)
+			}
+			path, _ := appSettingsPath()
+			switch failure {
+			case "malformed", "incompatible":
+				data := []byte(`{"future_field":true}`)
+				if failure == "malformed" {
+					data = []byte(`{`)
+				}
+				if err := os.WriteFile(path, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "busy":
+				lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Close()
+				if err := lockLocalFile(lock); err != nil {
+					t.Fatal(err)
+				}
+				defer unlockLocalFile(lock)
+			}
+			before := settingsBytes(t)
+			m := &viewer{args: Args{ResetView: true}}
+			if err := m.initUI(); err == nil || !strings.Contains(err.Error(), "could not reset saved view") {
+				t.Fatal("failed reset was not reported", err)
+			}
+			if !bytes.Equal(before, settingsBytes(t)) {
+				t.Fatal("failed reset overwrote settings")
+			}
+		})
 	}
 }
 

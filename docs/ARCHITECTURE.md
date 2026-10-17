@@ -43,8 +43,9 @@ Theme fallback warnings remain separate from settings read/write errors, so savi
 an unrelated preference cannot dismiss an unresolved theme warning.
 The viewer also restores centre and zoom from `last_view`, beneath explicit CLI
 camera arguments. Startup imports and route results preserve that view;
-`--reset-view` bypasses it for one launch. Navigation marks the view for a single
-synchronous settings update after the UI exits successfully. There is no camera
+`--reset-view` deletes it through the locked settings store before opening the UI.
+Navigation marks the view for a single synchronous settings update after the UI
+exits successfully. There is no camera
 save worker or write on animation frames. The update merges only `last_view`, so
 it preserves preference changes from other processes.
 

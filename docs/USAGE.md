@@ -134,7 +134,7 @@ restores that view even when loading tracks or a startup journey. Explicit
 values. Automatic startup loading and launch overrides alone do not save a view.
 Bearing, loaded files and routes are not restored.
 
-For a clean starting view, ignore saved centre and zoom for one launch:
+To delete the saved centre and zoom and start with a clean view:
 
 ```sh
 mapbox-tui --reset-view
@@ -143,9 +143,11 @@ mapbox-tui --reset-view fixtures/example.gpx
 
 The first starts at the default view; the second fits the loaded track. Startup
 journeys are fitted too. Explicit camera flags still apply with `--reset-view`.
-The flag does not delete the saved view; navigating and exiting saves the new
-position. To forget it permanently, close viewers and remove `last_view` from
-`settings.json`. Crashes and forced termination retain the previous saved view.
+The flag immediately removes `last_view` from `settings.json`, preserving other
+settings. Reopening without the flag still starts clean. Navigating afterward and
+exiting saves the new position; launch overrides alone do not. If the reset cannot
+be saved, startup reports an error and leaves the settings file intact.
+Crashes and forced termination do not save subsequent navigation.
 If several viewers navigate, the last successful exit save wins. A failed exit
 save reports an error after the terminal is restored and leaves the prior file intact.
 
