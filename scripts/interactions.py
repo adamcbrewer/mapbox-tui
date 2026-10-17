@@ -1302,7 +1302,7 @@ def billing_usage(binary):
                         send("\r")
                     wait_for(lambda screen: "Offline maps" in screen and "billing risks" not in screen)
                     assert json.loads(settings.read_text())["offline"], "offline choice was not saved"
-                    assert not json.loads(settings.read_text())["mapbox_billing_accepted"], "offline accepted billing risks"
+                    assert not json.loads(settings.read_text())["mapbox_billing_accepted_version"], "offline accepted billing risks"
                     send("\x0bMapbox\r")
                     wait_for(lambda screen: "Mapbox settings" in screen)
                     # Both launches fetch account usage, including the persisted-offline launch.
@@ -1476,7 +1476,7 @@ def viewer_preferences(binary, width, height):
         stop()
         saved = settings.read_bytes()
         preferences = json.loads(saved)
-        assert preferences["theme"] == "noir" and preferences["ascii"] and preferences["no_animation"]
+        assert preferences["theme"] == "noir" and preferences["ascii"] and not preferences["camera_animation"]
         assert preferences["elevation"] == "hide", preferences
 
         start()

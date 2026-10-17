@@ -39,8 +39,8 @@ func (m *viewer) initViewerPreferences(saved appSettings) (int, error) {
 	if saved.ASCII != nil && !m.args.ASCIISet {
 		m.settings.ASCII = *saved.ASCII
 	}
-	if saved.NoAnimation != nil && !m.args.NoAnimationSet {
-		m.settings.NoAnimation = *saved.NoAnimation
+	if saved.CameraAnimation != nil && !m.args.NoAnimationSet {
+		m.settings.NoAnimation = !*saved.CameraAnimation
 	}
 	choice := m.args.Theme
 	fromSaved := saved.Theme != "" && !m.args.ThemeSet

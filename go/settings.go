@@ -11,15 +11,37 @@ import (
 )
 
 type appSettings struct {
-	MapboxCLITelemetry bool       `json:"mapbox_cli_telemetry"`
-	Traffic            bool       `json:"traffic"`
-	BillingAccepted    int        `json:"mapbox_billing_accepted"`
-	Offline            bool       `json:"offline"`
-	Theme              string     `json:"theme,omitempty"`
-	ASCII              *bool      `json:"ascii,omitempty"`
-	NoAnimation        *bool      `json:"no_animation,omitempty"`
-	Elevation          string     `json:"elevation,omitempty"`
-	LastView           *savedView `json:"last_view,omitempty"`
+	MapboxCLITelemetry     bool       `json:"mapbox_cli_telemetry"`
+	Traffic                bool       `json:"traffic"`
+	BillingAcceptedVersion int        `json:"mapbox_billing_accepted_version"`
+	Offline                bool       `json:"offline"`
+	Theme                  string     `json:"theme,omitempty"`
+	ASCII                  *bool      `json:"ascii,omitempty"`
+	CameraAnimation        *bool      `json:"camera_animation,omitempty"`
+	Elevation              string     `json:"elevation,omitempty"`
+	LastView               *savedView `json:"last_view,omitempty"`
+}
+
+// Legacy keys are read-only aliases. Writes use appSettings and emit only the
+// current names. Presence matters: an explicit new false/zero beats an old value.
+type settingsDocument struct {
+	appSettings
+	BillingVersion       *int  `json:"mapbox_billing_accepted_version"`
+	LegacyBillingVersion *int  `json:"mapbox_billing_accepted"`
+	LegacyNoAnimation    *bool `json:"no_animation"`
+}
+
+func (d settingsDocument) current() appSettings {
+	s := d.appSettings
+	if d.BillingVersion != nil {
+		s.BillingAcceptedVersion = *d.BillingVersion
+	} else if d.LegacyBillingVersion != nil {
+		s.BillingAcceptedVersion = *d.LegacyBillingVersion
+	}
+	if s.CameraAnimation == nil && d.LegacyNoAnimation != nil {
+		s.CameraAnimation = new(!*d.LegacyNoAnimation)
+	}
+	return s
 }
 
 func appSettingsPath() (string, error) {
@@ -54,17 +76,17 @@ func loadAppSettings() (appSettings, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	// Reject incompatible schemas rather than dropping fields on the next save.
-	var decoded *appSettings
+	var decoded *settingsDocument
 	if len(data) > 65536 || decoder.Decode(&decoded) != nil || decoded == nil {
 		return appSettings{}, fmt.Errorf("invalid or incompatible mapbox-tui settings at %q", path)
 	}
 	if decoder.Decode(new(any)) != io.EOF {
 		return appSettings{}, fmt.Errorf("invalid mapbox-tui settings at %q", path)
 	}
-	if err := decoded.validate(); err != nil {
+	settings = decoded.current()
+	if err := settings.validate(); err != nil {
 		return appSettings{}, fmt.Errorf("invalid mapbox-tui settings at %q: %w", path, err)
 	}
-	settings = *decoded
 	return settings, nil
 }
 

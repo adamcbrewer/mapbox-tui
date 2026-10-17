@@ -56,11 +56,11 @@ func billingGuidanceForOutput(output io.Writer) string {
 }
 
 func (s appSettings) billingAccepted() bool {
-	return s.BillingAccepted == billingNoticeVersion || os.Getenv("MAPBOX_TUI_ACCEPT_BILLING") == "1"
+	return s.BillingAcceptedVersion == billingNoticeVersion || os.Getenv("MAPBOX_TUI_ACCEPT_BILLING") == "1"
 }
 
 func recordBillingAcceptance() (appSettings, error) {
-	return updateAppSettings(func(settings *appSettings) { settings.BillingAccepted = billingNoticeVersion })
+	return updateAppSettings(func(settings *appSettings) { settings.BillingAcceptedVersion = billingNoticeVersion })
 }
 
 // Enabling services is separate from acknowledging terms. Login callers only

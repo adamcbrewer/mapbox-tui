@@ -83,7 +83,7 @@ func (m *viewer) setMapboxOffline(offline bool) tea.Cmd {
 	}
 	m.preferences.Offline = offline
 	if err == nil {
-		m.preferences.BillingAccepted = preferences.BillingAccepted
+		m.preferences.BillingAcceptedVersion = preferences.BillingAcceptedVersion
 	}
 	m.cancelAuth()
 	m.cancelPlaceSearch()
@@ -113,7 +113,7 @@ func (m *viewer) acceptBilling() tea.Cmd {
 		m.dirty = true
 		return nil
 	}
-	m.preferences.BillingAccepted = preferences.BillingAccepted
+	m.preferences.BillingAcceptedVersion = preferences.BillingAcceptedVersion
 	intent := m.billingIntent
 	m.billingIntent = billingNoIntent
 	m.backDialog()

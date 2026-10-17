@@ -128,6 +128,15 @@ immediately. Theme previews are saved only with Enter; dismissal restores the
 previous theme. Changing one preference does not save other launch overrides.
 Static CLI and MCP rendering do not use these viewer preferences.
 
+In the settings file, `camera_animation: true` enables transitions and `false`
+disables them. The CLI flag remains `--no-animation` (or `--no-animation=false`
+to enable transitions for one launch). `mapbox_billing_accepted_version` records
+the version of the billing notice acknowledged, rather than an on/off choice.
+Existing `no_animation` and `mapbox_billing_accepted` keys are still read; the next
+successful settings update writes the new names and inverts the old animation
+value. If both names exist, the new key wins, including explicit `false` or `0`.
+Reading settings alone does not rewrite the file.
+
 The viewer remembers centre and zoom on a clean exit after you navigate. Reopening
 restores that view even when loading tracks or a startup journey. Explicit
 `--center-lon`/`--center-lat` and `--zoom` flags override the corresponding saved
@@ -152,9 +161,10 @@ If several viewers navigate, the last successful exit save wins. A failed exit
 save reports an error after the terminal is restored and leaves the prior file intact.
 
 To reset only viewer preferences, close running viewers and remove the `theme`,
-`ascii`, `no_animation`, `elevation` and `last_view` fields from the JSON. Removing just
-`elevation` (or setting it to `"auto"`) restores automatic elevation. Removing the
-whole file resets **all** settings, including traffic, CLI telemetry, offline mode
+`ascii`, `camera_animation`, `elevation` and `last_view` fields from the JSON.
+Removing just `elevation` (or setting it to `"auto"`) restores automatic elevation. If the file
+still has the legacy `no_animation` key, remove that too when resetting animation.
+Removing the whole file resets **all** settings, including traffic, CLI telemetry, offline mode
 and billing acknowledgement; it does not remove favourites or Mapbox credentials.
 
 Settings reads are limited to 64 KiB. Malformed files, unknown fields or incompatible

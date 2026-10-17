@@ -78,7 +78,7 @@ func TestViewerPreferencesRestartAndLaunchOverrides(t *testing.T) {
 	// Save one deliberate change while all other values are overridden.
 	override.toggleMenuOption("profile")
 	saved, err := loadAppSettings()
-	if err != nil || !*saved.ASCII || !*saved.NoAnimation || saved.Theme != m.theme().ID ||
+	if err != nil || !*saved.ASCII || *saved.CameraAnimation || saved.Theme != m.theme().ID ||
 		!saved.Traffic || !saved.MapboxCLITelemetry {
 		t.Fatal("saving one preference leaked launch overrides or lost existing preferences", err)
 	}
@@ -273,7 +273,7 @@ func TestViewerStalePreferencesPreserveUnrelatedUpdates(t *testing.T) {
 	}
 	first.toggleMenuOption("profile")
 	saved, err := loadAppSettings()
-	if err != nil || saved.ASCII == nil || !*saved.ASCII || saved.NoAnimation == nil || !*saved.NoAnimation ||
+	if err != nil || saved.ASCII == nil || !*saved.ASCII || saved.CameraAnimation == nil || *saved.CameraAnimation ||
 		saved.Elevation != "show" || !saved.MapboxCLITelemetry || !saved.Traffic {
 		t.Fatal("stale viewer overwrote unrelated preferences", saved, err)
 	}

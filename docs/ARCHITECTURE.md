@@ -33,8 +33,10 @@ selection, playback or map layering to maintain.
 
 Global viewer preferences live in `settings.json`, outside `Workspace` and the
 favourites library. Viewer startup resolves defaults, saved preferences and explicit
-CLI overrides. User actions update only the changed field through the locked
-settings store; launch overrides and theme previews do not write. Workspaces,
+CLI overrides. Settings reads accept the legacy billing and animation keys; writes
+emit `mapbox_billing_accepted_version` and positive `camera_animation` values.
+Explicit current keys take precedence over legacy aliases. User actions update
+only the changed field through the locked settings store; launch overrides and theme previews do not write. Workspaces,
 CLI text renders and MCP scenes never inherit these presentation preferences.
 Elevation is one `auto`/`show`/`hide` choice in the viewer's resolved settings.
 Layout derives chart visibility from that choice and the workspace's visible

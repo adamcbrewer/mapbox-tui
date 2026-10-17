@@ -70,7 +70,7 @@ func TestViewerLoginOnlyEnablesOnlineAfterSuccess(t *testing.T) {
 func TestViewerLoginPersistenceFailureKeepsOfflineAndRefreshesUsage(t *testing.T) {
 	fakeMapbox(t, "good")
 	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
-	if err := saveAppSettings(appSettings{Offline: true, BillingAccepted: billingNoticeVersion}); err != nil {
+	if err := saveAppSettings(appSettings{Offline: true, BillingAcceptedVersion: billingNoticeVersion}); err != nil {
 		t.Fatal(err)
 	}
 	m := authTestViewer(t)
@@ -110,7 +110,7 @@ func TestBillingRegressionUnsuccessfulCLILoginPreservesOffline(t *testing.T) {
 			fakeMapbox(t, scenario)
 			t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
 			t.Setenv("MAPBOX_ACCESS_TOKEN", "")
-			if err := saveAppSettings(appSettings{BillingAccepted: billingNoticeVersion, Offline: true}); err != nil {
+			if err := saveAppSettings(appSettings{BillingAcceptedVersion: billingNoticeVersion, Offline: true}); err != nil {
 				t.Fatal(err)
 			}
 			var output bytes.Buffer
@@ -153,7 +153,7 @@ func TestBillingRegressionViewerTogglesPreserveSavedOffline(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
 			t.Setenv("MAPBOX_CLI_NO_TELEMETRY", "")
-			if err := saveAppSettings(appSettings{BillingAccepted: billingNoticeVersion, Traffic: true}); err != nil {
+			if err := saveAppSettings(appSettings{BillingAcceptedVersion: billingNoticeVersion, Traffic: true}); err != nil {
 				t.Fatal(err)
 			}
 			m := authTestViewer(t)
@@ -181,7 +181,7 @@ func TestBillingRegressionViewerTogglesPreserveSavedOffline(t *testing.T) {
 func TestBillingRegressionClosingSetupDoesNotLosePostLoginUsage(t *testing.T) {
 	fakeMapbox(t, "good")
 	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
-	if err := saveAppSettings(appSettings{BillingAccepted: billingNoticeVersion}); err != nil {
+	if err := saveAppSettings(appSettings{BillingAcceptedVersion: billingNoticeVersion}); err != nil {
 		t.Fatal(err)
 	}
 	m := authTestViewer(t)
@@ -234,7 +234,7 @@ func TestBillingRegressionStartupJourneyDoesNotRetainAcceptedBillingDialog(t *te
 func TestBillingRegressionOfflineStopsDespitePersistenceError(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
-	if err := saveAppSettings(appSettings{BillingAccepted: billingNoticeVersion}); err != nil {
+	if err := saveAppSettings(appSettings{BillingAcceptedVersion: billingNoticeVersion}); err != nil {
 		t.Fatal(err)
 	}
 	m := authTestViewer(t)

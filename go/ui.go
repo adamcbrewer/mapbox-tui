@@ -759,7 +759,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		m.saveViewerPreference(func(s *appSettings) { s.ASCII = new(m.settings.ASCII) })
 	case "motion":
 		m.settings.NoAnimation = !m.settings.NoAnimation
-		m.saveViewerPreference(func(s *appSettings) { s.NoAnimation = new(m.settings.NoAnimation) })
+		m.saveViewerPreference(func(s *appSettings) { s.CameraAnimation = new(!m.settings.NoAnimation) })
 		if m.settings.NoAnimation {
 			m.camera = m.destination()
 			m.motion.Active = false

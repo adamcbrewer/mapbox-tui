@@ -332,7 +332,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.fetchAccountUsage()
 		}
 		m.preferences.Offline = preferences.Offline
-		m.preferences.BillingAccepted = preferences.BillingAccepted
+		m.preferences.BillingAcceptedVersion = preferences.BillingAcceptedVersion
 		return m, tea.Batch(m.discoverCredentials(true, false), m.fetchAccountUsage())
 	case searchClipboardResult:
 		if v.owner == "" || v.owner != m.ui.inputID || v.dialog != m.ui.dialog {

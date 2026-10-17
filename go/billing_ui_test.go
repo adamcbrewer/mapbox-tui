@@ -83,7 +83,7 @@ func TestBillingDialogPersistsOfflineAndRetainsCoordinates(t *testing.T) {
 
 func TestGoOfflineKeepsMapboxSettingsOpen(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if err := saveAppSettings(appSettings{BillingAccepted: billingNoticeVersion}); err != nil {
+	if err := saveAppSettings(appSettings{BillingAcceptedVersion: billingNoticeVersion}); err != nil {
 		t.Fatal(err)
 	}
 	m := authTestViewer(t)

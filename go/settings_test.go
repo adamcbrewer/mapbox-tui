@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +11,83 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 )
+
+func TestSettingsRenamedKeysPreserveValuesAndMigrateOnSave(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fields    string
+		version   int
+		animation *bool
+	}{
+		{name: "absent"},
+		{name: "legacy enabled", fields: `,"mapbox_billing_accepted":1,"no_animation":false`,
+			version: 1, animation: new(true)},
+		{name: "legacy disabled", fields: `,"mapbox_billing_accepted":0,"no_animation":true`,
+			animation: new(false)},
+		{name: "current enabled", fields: `,"mapbox_billing_accepted_version":1,"camera_animation":true`,
+			version: 1, animation: new(true)},
+		{name: "current disabled", fields: `,"mapbox_billing_accepted_version":0,"camera_animation":false`,
+			animation: new(false)},
+		{name: "new false and zero win", fields: `,"mapbox_billing_accepted":1,"mapbox_billing_accepted_version":0,` +
+			`"no_animation":false,"camera_animation":false`, animation: new(false)},
+		{name: "new true and version win", fields: `,"mapbox_billing_accepted":0,"mapbox_billing_accepted_version":2,` +
+			`"no_animation":true,"camera_animation":true`, version: 2, animation: new(true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			path, _ := appSettingsPath()
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			data := []byte(`{"traffic":true,"theme":"noir",` +
+				`"last_view":{"center_lon":10,"center_lat":20,"zoom":8}` + tc.fields + `}`)
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := loadAppSettings()
+			if err != nil || saved.BillingAcceptedVersion != tc.version {
+				t.Fatal("billing notice version changed while reading", saved, err)
+			}
+			if (saved.CameraAnimation == nil) != (tc.animation == nil) {
+				t.Fatal("animation presence changed while reading")
+			}
+			if tc.animation != nil && *saved.CameraAnimation != *tc.animation {
+				t.Fatal("animation value was inverted incorrectly")
+			}
+			m := preferenceViewer(t)
+			if tc.animation != nil && m.settings.NoAnimation == *tc.animation {
+				t.Fatal("viewer ignored the migrated animation preference")
+			}
+			if !bytes.Equal(data, settingsBytes(t)) {
+				t.Fatal("reading settings or launching the viewer rewrote the file")
+			}
+			if _, err := updateAppSettings(func(s *appSettings) { s.ASCII = new(true) }); err != nil {
+				t.Fatal(err)
+			}
+			var written map[string]json.RawMessage
+			if err := json.Unmarshal(settingsBytes(t), &written); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := written["mapbox_billing_accepted"]; exists {
+				t.Fatal("save retained the old billing key")
+			}
+			if _, exists := written["no_animation"]; exists {
+				t.Fatal("save retained the old animation key")
+			}
+			saved, err = loadAppSettings()
+			if err != nil || saved.BillingAcceptedVersion != tc.version || !saved.Traffic ||
+				saved.Theme != "noir" || saved.LastView == nil || *saved.LastView.Zoom != 8 {
+				t.Fatal("migration lost existing settings", saved, err)
+			}
+			if (saved.CameraAnimation == nil) != (tc.animation == nil) {
+				t.Fatal("save changed animation presence")
+			}
+			if tc.animation != nil && *saved.CameraAnimation != *tc.animation {
+				t.Fatal("save changed animation value")
+			}
+		})
+	}
+}
 
 func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

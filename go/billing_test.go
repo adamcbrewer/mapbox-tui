@@ -94,8 +94,8 @@ func TestBillingBlocksCLIAndMCPProductRequests(t *testing.T) {
 		settings appSettings
 	}{
 		{name: "unacknowledged"},
-		{name: "old acknowledgement", settings: appSettings{BillingAccepted: billingNoticeVersion + 1}},
-		{name: "offline", settings: appSettings{BillingAccepted: billingNoticeVersion, Offline: true}},
+		{name: "old acknowledgement", settings: appSettings{BillingAcceptedVersion: billingNoticeVersion + 1}},
+		{name: "offline", settings: appSettings{BillingAcceptedVersion: billingNoticeVersion, Offline: true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -130,7 +130,7 @@ func TestAuthStatusDoesNotProbeBeforeAcknowledgementOrWhileOffline(t *testing.T)
 		t.Fatal("auth status made a billable probe")
 		return authSection{}
 	}
-	for _, settings := range []appSettings{{}, {BillingAccepted: billingNoticeVersion, Offline: true}} {
+	for _, settings := range []appSettings{{}, {BillingAcceptedVersion: billingNoticeVersion, Offline: true}} {
 		if err := saveAppSettings(settings); err != nil {
 			t.Fatal(err)
 		}
