@@ -78,12 +78,12 @@ func (m *viewer) saveViewerPreference(change func(*appSettings)) bool {
 }
 
 func (m *viewer) saveThemePreference() {
-	choice := m.theme().ID
-	if m.theme().Path != "" {
-		choice = m.theme().Path
+	theme := m.theme()
+	choice := theme.ID
+	if theme.Path != "" {
+		choice = theme.Path
 	}
-	saved := m.saveViewerPreference(func(s *appSettings) { s.Theme = choice })
-	if saved {
+	if m.saveViewerPreference(func(s *appSettings) { s.Theme = choice }) {
 		m.themeNotice = ""
 	}
 }
