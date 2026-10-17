@@ -34,6 +34,8 @@ type viewer struct {
 	workspace                 Workspace
 	pendingPaths              []string
 	startupCameraPending      bool
+	savedView                 *savedView
+	viewChanged               bool
 	startupJourneyRouting     bool
 	windowSizeKnown           bool
 	initialised               bool
@@ -249,6 +251,13 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 	return tea.Batch(commands...)
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Only navigation from input marks the view for saving. Startup imports,
+	// layout changes and animation frames must not persist launch overrides.
+	switch msg.(type) {
+	case tea.KeyPressMsg, tea.MouseMsg:
+		before := m.destination()
+		defer m.recordViewChange(before)
+	}
 	switch v := msg.(type) {
 	case accountUsageResult:
 		if v.id == m.usageID {
@@ -403,6 +412,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.selectionChanged()
 		a := Args{Aspect: m.args.Aspect}
+		startup := m.startupCameraPending
 		if m.startupCameraPending && len(m.pendingPaths) == 0 {
 			a = m.args
 			m.startupCameraPending = false
@@ -416,7 +426,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fatal = e
 			return m, tea.Quit
 		}
+		before := m.destination()
 		m.camera = c
+		if startup {
+			m.camera = m.restoreStartupView(c)
+		} else {
+			m.recordViewChange(before)
+		}
 		m.camera.Width, m.camera.Height = w, h
 		m.lastTick = time.Now()
 		m.lastMotionTick = m.lastTick
@@ -859,6 +875,7 @@ func (m *viewer) advancePlayback(now time.Time) {
 		if pos := m.position(); pos != nil && m.following {
 			target := m.destination()
 			if followPosition(&target, pos.World) {
+				m.viewChanged = true
 				m.moveCamera(target)
 			}
 		}
@@ -1240,5 +1257,8 @@ func openViewerFiles(paths []string, a Args) error {
 	if e != nil {
 		return e
 	}
-	return m.fatal
+	if m.fatal != nil {
+		return m.fatal
+	}
+	return m.saveViewOnExit()
 }

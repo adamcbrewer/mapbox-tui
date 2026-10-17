@@ -105,7 +105,7 @@ size is 30 columns by 12 rows.
 
 ## Saved viewer preferences
 
-Theme, ASCII mode, camera animation and elevation choices live in `settings.json`,
+Theme, ASCII mode, camera animation, elevation and the last map view live in `settings.json`,
 separate from workspaces and favourites. On Linux this is
 `$XDG_CONFIG_HOME/mapbox-tui/settings.json`, or
 `~/.config/mapbox-tui/settings.json` when `XDG_CONFIG_HOME` is unset. Other systems
@@ -128,8 +128,29 @@ immediately. Theme previews are saved only with Enter; dismissal restores the
 previous theme. Changing one preference does not save other launch overrides.
 Static CLI and MCP rendering do not use these viewer preferences.
 
+The viewer remembers centre and zoom on a clean exit after you navigate. Reopening
+restores that view even when loading tracks or a startup journey. Explicit
+`--center-lon`/`--center-lat` and `--zoom` flags override the corresponding saved
+values. Automatic startup loading and launch overrides alone do not save a view.
+Bearing, loaded files and routes are not restored.
+
+For a clean starting view, ignore saved centre and zoom for one launch:
+
+```sh
+mapbox-tui --reset-view
+mapbox-tui --reset-view fixtures/example.gpx
+```
+
+The first starts at the default view; the second fits the loaded track. Startup
+journeys are fitted too. Explicit camera flags still apply with `--reset-view`.
+The flag does not delete the saved view; navigating and exiting saves the new
+position. To forget it permanently, close viewers and remove `last_view` from
+`settings.json`. Crashes and forced termination retain the previous saved view.
+If several viewers navigate, the last successful exit save wins. A failed exit
+save reports an error after the terminal is restored and leaves the prior file intact.
+
 To reset only viewer preferences, close running viewers and remove the `theme`,
-`ascii`, `no_animation` and `elevation` fields from the JSON. Removing just
+`ascii`, `no_animation`, `elevation` and `last_view` fields from the JSON. Removing just
 `elevation` (or setting it to `"auto"`) restores automatic elevation. Removing the
 whole file resets **all** settings, including traffic, CLI telemetry, offline mode
 and billing acknowledgement; it does not remove favourites or Mapbox credentials.

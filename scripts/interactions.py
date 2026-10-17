@@ -1496,6 +1496,63 @@ def viewer_preferences(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
+def camera_restart(binary, width, height, ascii_mode=False):
+    settings = Path(os.environ["XDG_CONFIG_HOME"]) / "mapbox-tui/settings.json"
+
+    def start(*flags):
+        command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor",
+                              "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
+                              "--no-provider", "--no-animation", f"--ascii={str(ascii_mode).lower()}", *flags])
+        tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
+
+    def stop():
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        tmux("kill-session", "-t", "poc", check=False)
+
+    def view():
+        text = context_text()
+        return tuple(float(re.search(pattern, text).group(1)) for pattern in
+                     (r"Lon (-?[\d.]+)", r"Lat (-?[\d.]+)", r"Zoom (-?[\d.]+)"))
+
+    try:
+        start("--center-lon=12", "--center-lat=34", "--zoom=8")
+        send("l+")
+        expected = view()
+        assert not settings.exists(), "camera navigation saved before exit"
+        stop()
+        saved = settings.read_bytes()
+        last = json.loads(saved)["last_view"]
+        assert abs(last["center_lon"] - expected[0]) < 1e-6
+        assert abs(last["center_lat"] - expected[1]) < 1e-6
+        assert abs(last["zoom"] - expected[2]) < .01
+
+        start()
+        assert view() == expected, "reopening did not restore the last view"
+        stop()
+        assert settings.read_bytes() == saved, "unmoved restart rewrote settings"
+
+        start(str(ROOT / "fixtures/example.gpx"))
+        assert f"Zoom {expected[2]:.2f}" in context_text(), "track startup replaced saved zoom"
+        stop()
+        assert settings.read_bytes() == saved, "track startup rewrote saved view"
+
+        start("--zoom=0")
+        assert view() == (*expected[:2], 0), "explicit zoom did not override saved zoom"
+        stop()
+        assert settings.read_bytes() == saved, "launch override was saved"
+
+        start("--reset-view")
+        assert view() == (0, 0, 0), "reset did not use the default view"
+        stop()
+        assert settings.read_bytes() == saved, "reset launch erased the saved view"
+        print(f"{binary.name} {width}×{height} ASCII={ascii_mode}: camera exit save, restart, track, overrides and reset passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
@@ -1525,9 +1582,11 @@ if __name__ == "__main__":
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24)):
+                    camera_restart(ROOT / "bin" / name, width, height)
                     viewer_preferences(ROOT / "bin" / name, width, height)
                     theme_switching(ROOT / "bin" / name, width, height)
                     command_palette_access(ROOT / "bin" / name, width, height)
+                camera_restart(ROOT / "bin" / name, 70, 24, ascii_mode=True)
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)

@@ -66,6 +66,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider to hide the basemap")
 	}
 	if command.Name == "open" {
+		fs.BoolVar(&a.ResetView, "reset-view", false, "ignore saved centre and zoom for this launch")
 		fs.StringVar(&journeyStart, "start", "", "journey start as latitude,longitude; requires --end")
 		fs.StringVar(&journeyEnd, "end", "", "journey destination as latitude,longitude; requires --start")
 		fs.StringVar(&journeyModeName, "mode", "driving", "journey mode: offline, walking, cycling or driving")

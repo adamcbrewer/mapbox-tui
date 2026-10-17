@@ -54,6 +54,7 @@ func (m *viewer) calculateJourneyRoute() tea.Cmd {
 }
 
 func (m *viewer) showJourneyOnMap() tea.Cmd {
+	defer m.recordViewChange(m.destination())
 	j, err := m.workspace.journey(m.planner.ref)
 	if err != nil {
 		m.ui.notice = err.Error()

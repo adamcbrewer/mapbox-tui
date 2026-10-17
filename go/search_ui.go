@@ -18,6 +18,7 @@ func (m *viewer) clearTransientInspection() {
 }
 
 func (m *viewer) applyPlaceLocation(location placeLocation) tea.Cmd {
+	defer m.recordViewChange(m.destination())
 	if m.ui.dialog != dialogSearch {
 		return m.applyJourneyLocation(location)
 	}

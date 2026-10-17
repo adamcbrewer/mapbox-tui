@@ -33,6 +33,8 @@ func (m *viewer) profileEnabled() bool {
 // Resolve saved choices and launch overrides only into viewer state. Shared Args
 // and Workspace retain their own defaults and lifecycle.
 func (m *viewer) initViewerPreferences(saved appSettings) (int, error) {
+	m.savedView = saved.LastView
+	m.camera = m.restoreStartupView(m.camera)
 	m.settings = viewerSettings{ASCII: m.args.ASCII, NoAnimation: m.args.NoAnimation}
 	if saved.ASCII != nil && !m.args.ASCIISet {
 		m.settings.ASCII = *saved.ASCII

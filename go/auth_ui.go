@@ -159,7 +159,15 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 			if credential.token == "" {
 				m.workspace.cancelJourneyRoutes()
 			} else {
+				j, _ := m.workspace.journey(m.planner.ref)
+				revision := m.planner.preserveViewRevision
+				preserveView := j != nil && revision != nil && *revision == j.revision
 				m.workspace.invalidateJourneyRoutes()
+				if preserveView {
+					// Credential discovery changes route validity, not the startup stops.
+					revision := j.revision
+					m.planner.preserveViewRevision = &revision
+				}
 			}
 			m.directions = newDirectionsClient(credential.token)
 		}

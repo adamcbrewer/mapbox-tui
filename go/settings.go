@@ -11,14 +11,15 @@ import (
 )
 
 type appSettings struct {
-	MapboxCLITelemetry bool   `json:"mapbox_cli_telemetry"`
-	Traffic            bool   `json:"traffic"`
-	BillingAccepted    int    `json:"mapbox_billing_accepted"`
-	Offline            bool   `json:"offline"`
-	Theme              string `json:"theme,omitempty"`
-	ASCII              *bool  `json:"ascii,omitempty"`
-	NoAnimation        *bool  `json:"no_animation,omitempty"`
-	Elevation          string `json:"elevation,omitempty"`
+	MapboxCLITelemetry bool       `json:"mapbox_cli_telemetry"`
+	Traffic            bool       `json:"traffic"`
+	BillingAccepted    int        `json:"mapbox_billing_accepted"`
+	Offline            bool       `json:"offline"`
+	Theme              string     `json:"theme,omitempty"`
+	ASCII              *bool      `json:"ascii,omitempty"`
+	NoAnimation        *bool      `json:"no_animation,omitempty"`
+	Elevation          string     `json:"elevation,omitempty"`
+	LastView           *savedView `json:"last_view,omitempty"`
 }
 
 func appSettingsPath() (string, error) {
@@ -68,6 +69,11 @@ func loadAppSettings() (appSettings, error) {
 }
 
 func (s appSettings) validate() error {
+	if s.LastView != nil {
+		if err := s.LastView.validate(); err != nil {
+			return fmt.Errorf("last_view: %w", err)
+		}
+	}
 	if _, err := parseElevationMode(s.Elevation); err != nil {
 		return err
 	}

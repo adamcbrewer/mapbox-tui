@@ -27,6 +27,7 @@ type journeyUI struct {
 	searchPending               bool // Debounce or suggest request awaiting completion.
 	savingFavourite             bool
 	showRevision                *uint64
+	preserveViewRevision        *uint64
 	collapsed                   bool
 	pickingStop                 bool
 	addingWaypoint              bool
@@ -234,6 +235,7 @@ func (m *viewer) acceptPlaceSearch(result placeSearchResult) tea.Cmd {
 }
 
 func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
+	defer m.recordViewChange(m.destination())
 	j, err := m.workspace.journey(m.planner.ref)
 	if err != nil {
 		m.ui.notice = err.Error()

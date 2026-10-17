@@ -224,6 +224,9 @@ func (m *viewer) fitPlannerJourney(ref ItemRef) {
 		return
 	}
 	item := entry.document.Items[i]
+	if revision := m.planner.preserveViewRevision; revision != nil && *revision == item.Journey.revision {
+		return
+	}
 	m.following = false
 	viewport := m.camera
 	if m.journeySidebar() {

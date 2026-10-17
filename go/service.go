@@ -39,6 +39,7 @@ type Args struct {
 	ThemeSet       bool            `json:"-"`
 	ElevationSet   bool            `json:"-"`
 	Elevation      string          `json:"-"`
+	ResetView      bool            `json:"-"`
 }
 
 type Service struct {

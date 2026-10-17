@@ -71,6 +71,13 @@ func (m *viewer) startJourneyFromArgs() tea.Cmd {
 	m.planner.row = 0
 	m.layout()
 	m.fitPlannerJourney(m.planner.ref)
+	if m.hasStartupView() {
+		m.camera = m.restoreStartupView(m.destination())
+		m.motion.Active = false
+		// A late route result for these same startup stops must not refit the view.
+		revision := j.revision
+		m.planner.preserveViewRevision = &revision
+	}
 	m.dirty = true
 	if j.Mode != journeyManual && m.directions.token == "" {
 		m.startupJourneyRouting = true

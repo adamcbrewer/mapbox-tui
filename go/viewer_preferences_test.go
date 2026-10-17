@@ -17,7 +17,12 @@ func preferenceViewer(t *testing.T, flags ...string) *viewer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &viewer{args: command.Args, ctx: t.Context(), provider: newProvider("none"), width: 120, height: 40}
+	camera, err := viewport(nil, command.Args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &viewer{args: command.Args, ctx: t.Context(), provider: newProvider("none"),
+		camera: camera, width: 120, height: 40}
 	if err := m.initUI(); err != nil {
 		t.Fatal(err)
 	}
