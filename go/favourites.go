@@ -42,8 +42,8 @@ func (f *favourite) UnmarshalJSON(data []byte) error {
 	*f = favourite(decoded.fields)
 	f.Lon, f.Lat = *decoded.Lon, *decoded.Lat
 	f.Attribution = decoded.Attribution
-	if f.Source == placeSourceMapboxPermanent {
-		f.Attribution = permanentGeocodingCredit
+	if f.Source.mapboxGeocoded() {
+		f.Attribution = geocodingCredit
 	}
 	return nil
 }
@@ -82,8 +82,8 @@ func validateFavourite(f favourite) error {
 	if !validLocation(f.Lon, f.Lat) {
 		return fmt.Errorf("coordinates must be latitude -90..90, longitude -180..180")
 	}
-	permanent := f.Source == placeSourceMapboxPermanent && f.ProviderID != "" && f.Attribution != ""
-	if !f.location().userEntered() && !permanent {
+	geocoded := f.Source.mapboxGeocoded() && f.ProviderID != "" && f.Attribution != ""
+	if !f.location().userEntered() && !geocoded {
 		return fmt.Errorf("this location cannot be saved; save an address or town from the search results")
 	}
 	return nil
@@ -167,8 +167,10 @@ func (s favouriteStore) change(expected *favourite, replacement *favourite) erro
 			if i == index {
 				continue
 			}
+			sameProvider := f.Source == replacement.Source ||
+				(f.Source.mapboxGeocoded() && replacement.Source.mapboxGeocoded())
 			samePlace := replacement.ProviderID != "" &&
-				f.ProviderID == replacement.ProviderID && f.Source == replacement.Source
+				f.ProviderID == replacement.ProviderID && sameProvider
 			if samePlace {
 				return fmt.Errorf("this place is already a favourite")
 			}
@@ -217,8 +219,8 @@ func (s favouriteStore) change(expected *favourite, replacement *favourite) erro
 }
 
 func newFavourite(name string, location placeLocation) favourite {
-	if location.Source == placeSourceMapboxPermanent {
-		location.Attribution = permanentGeocodingCredit
+	if location.Source.mapboxGeocoded() {
+		location.Attribution = geocodingCredit
 	}
 	return favourite{
 		ID: rand.Text(), Name: strings.TrimSpace(name), Lon: location.Lon, Lat: location.Lat,

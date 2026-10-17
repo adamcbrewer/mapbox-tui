@@ -81,7 +81,7 @@ func (m *viewer) saveFavouritePrompt() tea.Cmd {
 		err = validateFavourite(newFavourite("Favourite", location))
 	}
 	if err != nil && location.Source == placeSourceMapboxSearch {
-		err = fmt.Errorf("this result is temporary; save the place from the search results")
+		err = fmt.Errorf("save the place from the search results")
 	}
 	if err != nil {
 		m.ui.notice = err.Error()

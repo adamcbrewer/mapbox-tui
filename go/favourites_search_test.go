@@ -36,10 +36,10 @@ func TestSaveHighlightedSearchFavourite(t *testing.T) {
 				var requests int
 				m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
 					requests++
-					if r.URL.Query().Get("q") != "village-id" || r.URL.Query().Get("permanent") != "true" {
-						t.Fatal("Alt-S saved the typed query or the wrong result")
+					if r.URL.Query().Get("q") != "village-id" || r.URL.Query().Has("permanent") {
+						t.Fatal("Alt-S did not request the selected result using the default geocoding mode")
 					}
-					return locationResponse(permanentPlaceFixture), nil
+					return locationResponse(geocodedPlaceFixture), nil
 				})
 				prepareFavouriteSearch(t, m)
 				camera := m.camera
@@ -68,7 +68,10 @@ func TestSaveHighlightedSearchFavourite(t *testing.T) {
 				}
 				store, _ := localFavouriteStore()
 				entries, err := store.read()
-				if err != nil || len(entries) != 1 || entries[0].ProviderID != "village-id" {
+				if err != nil || len(entries) != 1 {
+					t.Fatal("selected result was not persisted", entries, err)
+				}
+				if entries[0].ProviderID != "village-id" || entries[0].Source != placeSourceMapboxTemporary {
 					t.Fatal("selected result was not persisted", entries, err)
 				}
 				fresh := journeyViewer(t)
@@ -117,7 +120,7 @@ func TestSaveSearchFavouriteRejectsCancelledAndFailedLookups(t *testing.T) {
 			var requestContext context.Context
 			m.places.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
 				requestContext = r.Context()
-				response := locationResponse(permanentPlaceFixture)
+				response := locationResponse(geocodedPlaceFixture)
 				if scenario == "HTTP failure" {
 					response.StatusCode = http.StatusForbidden
 				}

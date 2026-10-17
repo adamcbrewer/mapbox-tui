@@ -143,6 +143,31 @@ func TestFavouriteStoreRejectsUnicodeNameCollisions(t *testing.T) {
 	}
 }
 
+func TestFavouriteStoreRejectsDuplicateGeocodingOrigins(t *testing.T) {
+	t.Parallel()
+	for _, source := range []placeSource{placeSourceMapboxPermanent, placeSourceMapboxTemporary} {
+		t.Run(string(source), func(t *testing.T) {
+			store := favouriteStore{path: filepath.Join(t.TempDir(), "favourites.json")}
+			location := placeLocation{Lon: -0.1, Lat: 51.5, Source: source, ProviderID: "place-id"}
+			first := newFavourite("Home", location)
+			if err := store.change(nil, &first); err != nil {
+				t.Fatal(err)
+			}
+			for _, candidateSource := range []placeSource{placeSourceMapboxPermanent, placeSourceMapboxTemporary} {
+				location.Source = candidateSource
+				candidate := newFavourite("Other name", location)
+				if err := store.change(nil, &candidate); err == nil {
+					t.Fatalf("accepted duplicate place from %q", candidateSource)
+				}
+			}
+			entries, err := store.read()
+			if err != nil || len(entries) != 1 || entries[0] != first {
+				t.Fatal("rejected duplicate changed the library", entries, err)
+			}
+		})
+	}
+}
+
 func TestFavouriteStorePreservesBrokenFiles(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct{ name, data string }{
@@ -273,6 +298,7 @@ func TestFavouriteSourceCompatibility(t *testing.T) {
 		{source: placeSourceMapPoint, wire: "map point", storable: true},
 		{source: placeSourceMapboxSearch, wire: "Mapbox Search Box", storable: false},
 		{source: placeSourceMapboxPermanent, wire: "Mapbox Geocoding (permanent)", storable: true},
+		{source: placeSourceMapboxTemporary, wire: "Mapbox Geocoding (temporary)", storable: true},
 	} {
 		t.Run(test.wire, func(t *testing.T) {
 			store := favouriteStore{path: filepath.Join(t.TempDir(), "favourites.json")}
@@ -289,7 +315,7 @@ func TestFavouriteSourceCompatibility(t *testing.T) {
 			err = store.change(nil, &entry)
 			if !test.storable {
 				if err == nil {
-					t.Fatal("temporary source became storable")
+					t.Fatal("unresolved search source accepted")
 				}
 				return
 			}

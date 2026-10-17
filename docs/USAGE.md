@@ -146,12 +146,12 @@ are left untouched.
 The library is independent of the workspace: clearing a workspace leaves favourites intact, and renaming or deleting
 a favourite leaves copied journey stops unchanged.
 
-Saving an address or town makes one Mapbox Permanent Geocoding request using the
-selected result’s ID. This is billed separately from search and requires a valid
-credit card on your Mapbox account or an enterprise contract. Only the permanent
-response supplies the stored place details. Mapbox credit is shown when reusing
-these locations offline. Named venues such as cafés are not supported by that
-endpoint; Save explains this without asking for coordinates.
+Saving an address or town makes one Mapbox Geocoding request using the selected
+result’s ID, using the API’s default geocoding mode. The returned place details
+are saved in `favourites.json`. Geocoding is billed separately from Search Box.
+Mapbox credit is shown when reusing these locations offline. Named venues such
+as cafés are not supported by that endpoint; Save explains this without asking
+for coordinates.
 If Mapbox cannot return the exact selected place, nothing is saved.
 
 Opening and filtering Favourites makes no location lookup requests; basemaps and

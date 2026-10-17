@@ -273,27 +273,24 @@ Mapbox Search Box is billed by search session for suggest/retrieve; this is sepa
 from Directions' free allowance. Its documentation lists coverage in the US, Canada
 and Europe.
 
-Search results and plans remain in memory for this session only. The
-[Search Box documentation](https://docs.mapbox.com/api/search/search-box/)
-restricts returned data to temporary use. The local [favourites library](USAGE.md#favourite-places)
-can save user-entered locations and explicit Permanent Geocoding results. Alt-S
-on a search suggestion sends its Mapbox ID to the Geocoding v6 forward endpoint
-with `permanent=true` and `autocomplete=false`. The returned ID must match the
-selected result. Only that permanent response’s name, coordinates and ID are
-persisted, along with the source. Saved favourites derive their Mapbox display
-credit from that source; response attribution notices are not repeated in the
-JSON. The Search Box response is never written to disk.
+Search results and plans remain in memory for this session only. The local
+[favourites library](USAGE.md#favourite-places) saves user-entered locations and
+Geocoding results. Alt-S on a search suggestion sends its Mapbox ID to the
+Geocoding v6 forward endpoint with `autocomplete=false`, using the API’s default
+geocoding mode for all requests, including saves. The returned ID must match the
+selected result. Its name, coordinates and ID are persisted, along with the source.
+Saved favourites derive their Mapbox display credit from that source; response
+attribution notices are not repeated in the JSON. Existing favourites remain
+readable.
 Saving leaves the current search and journey unchanged and marks the result with
-a star. It does not retrieve a temporary Search Box feature or end its session.
+a star. It does not retrieve a Search Box feature or end its session.
 
-[Permanent geocoding](https://docs.mapbox.com/api/search/geocoding/#storing-geocoding-results)
-is billed separately from Search Box and requires a valid card on file or an
-enterprise contract. Geocoding v6 excludes POIs, so named venues/categories are
-rejected before making a save request. Missing/mismatched features, invalid data,
-account errors and cancelled requests leave the library unchanged. Query edits,
+Geocoding is billed separately from Search Box. Geocoding v6 excludes POIs, so
+named venues/categories are rejected before making a save request.
+Missing/mismatched features, invalid data, account errors and cancelled requests
+leave the library unchanged. Query edits,
 closing the editor and credential changes cancel pending saves; only a response
-still owned by the active editor may write a favourite. No bulk search cache or
-automatic permanent lookup is added.
+still owned by the active editor may write a favourite.
 
 ## Journey road/path routing
 

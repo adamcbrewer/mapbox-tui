@@ -19,7 +19,7 @@ func (m *viewer) savedSearchFavourite(id string) bool {
 
 func (m *viewer) searchFavourite(id string) *favourite {
 	for i, entry := range m.favourites.entries {
-		if entry.Source == placeSourceMapboxPermanent && entry.ProviderID == id {
+		if entry.Source.mapboxGeocoded() && entry.ProviderID == id {
 			return &m.favourites.entries[i]
 		}
 	}
@@ -64,7 +64,7 @@ func (m *viewer) saveSearchFavourite() tea.Cmd {
 	m.ui.feedback = "Saving favourite..."
 	id, owner, client := m.planner.searchID, m.ui.inputID, m.places
 	return func() tea.Msg {
-		location, err := client.permanentLocation(ctx, suggestion)
+		location, err := client.geocodedLocation(ctx, suggestion)
 		return favouriteSearchResult{id: id, owner: owner, location: location, err: err}
 	}
 }

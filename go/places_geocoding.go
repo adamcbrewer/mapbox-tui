@@ -8,11 +8,10 @@ import (
 	"strings"
 )
 
-const permanentGeocodingCredit = "© Mapbox"
+const geocodingCredit = "© Mapbox"
 
-// Resolve the exact feature by ID. Never replace an unmatched selection with a
-// similarly named place, or persist the temporary Search Box response itself.
-func (p *placeClient) permanentLocation(ctx context.Context, suggestion placeSuggestion) (placeLocation, error) {
+// Resolve the exact feature by ID without substituting a similarly named place.
+func (p *placeClient) geocodedLocation(ctx context.Context, suggestion placeSuggestion) (placeLocation, error) {
 	if p.token == "" {
 		return placeLocation{}, fmt.Errorf("%s", mapboxTokenMissing)
 	}
@@ -23,7 +22,7 @@ func (p *placeClient) permanentLocation(ctx context.Context, suggestion placeSug
 		return placeLocation{}, fmt.Errorf("this search result has no location ID")
 	}
 	query := url.Values{
-		"q": {suggestion.ID}, "access_token": {p.token}, "permanent": {"true"},
+		"q": {suggestion.ID}, "access_token": {p.token},
 		"autocomplete": {"false"}, "limit": {"1"},
 	}
 	var response struct {
@@ -46,12 +45,12 @@ func (p *placeClient) permanentLocation(ctx context.Context, suggestion placeSug
 	endpoint := "https://api.mapbox.com/search/geocode/v6/forward?" + query.Encode()
 	if err := p.getJSON(ctx, endpoint, &response); err != nil {
 		if status, ok := err.(placeHTTPError); ok && status == http.StatusForbidden {
-			return placeLocation{}, fmt.Errorf("saving needs Mapbox Permanent Geocoding access (HTTP 403)")
+			return placeLocation{}, fmt.Errorf("saving needs Mapbox Geocoding access (HTTP 403)")
 		}
 		return placeLocation{}, fmt.Errorf("save failed: %w", err)
 	}
 	if len(response.Features) != 1 {
-		return placeLocation{}, fmt.Errorf("Mapbox could not provide a storable version of this result")
+		return placeLocation{}, fmt.Errorf("Mapbox could not resolve this result")
 	}
 	feature := response.Features[0]
 	id := feature.Properties.ID
@@ -86,6 +85,6 @@ func (p *placeClient) permanentLocation(ctx context.Context, suggestion placeSug
 	}
 	return placeLocation{
 		Name: name, Lon: *coords[0], Lat: *coords[1],
-		Source: placeSourceMapboxPermanent, ProviderID: id, Attribution: credit,
+		Source: placeSourceMapboxTemporary, ProviderID: id, Attribution: credit,
 	}, nil
 }

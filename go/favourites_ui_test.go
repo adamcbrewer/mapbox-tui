@@ -314,20 +314,21 @@ func deliverFavouriteSearchCommands(m *viewer, cmd tea.Cmd) {
 	}
 }
 
-func TestFavouritesProviderLocationsRemainTemporary(t *testing.T) {
+func TestFavouritesSearchLocationsRequireResultSelection(t *testing.T) {
+	const notice = "save the place from the search results"
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := journeyViewer(t)
 	provider := placeLocation{Name: "Cafe", Lon: -0.1, Lat: 51.5, Source: placeSourceMapboxSearch}
 	m.openDialog(dialogSearch)
 	m.applyPlaceLocation(provider)
 	m.runCommand("save-favourite")
-	if m.ui.dialog == dialogFavouriteName || !strings.Contains(m.ui.notice, "temporary") {
+	if m.ui.dialog == dialogFavouriteName || !strings.Contains(m.ui.notice, notice) {
 		t.Fatal("selected provider result could be saved", m.ui.notice)
 	}
 	m.openDialog(dialogSearch)
 	m.Update(tea.KeyPressMsg{Code: 'm', Mod: tea.ModAlt})
 	m.runCommand("save-favourite")
-	if m.ui.dialog == dialogFavouriteName || !strings.Contains(m.ui.notice, "temporary") {
+	if m.ui.dialog == dialogFavouriteName || !strings.Contains(m.ui.notice, notice) {
 		t.Fatal("reusing searched map centre removed its origin", m.ui.notice)
 	}
 	m.openJourney()
@@ -337,14 +338,14 @@ func TestFavouritesProviderLocationsRemainTemporary(t *testing.T) {
 		m.editJourneyLocation(0)
 		m.ui.search.SetValue(input)
 		m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModAlt})
-		if m.ui.dialog != dialogJourneyLocation || !strings.Contains(m.ui.notice, "temporary") {
+		if m.ui.dialog != dialogJourneyLocation || !strings.Contains(m.ui.notice, notice) {
 			t.Fatal("editing provider coordinates removed their origin", m.ui.notice)
 		}
 		m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	}
 	m.editJourneyLocation(0)
 	m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModAlt})
-	if m.ui.dialog != dialogJourneyLocation || !strings.Contains(m.ui.notice, "temporary") {
+	if m.ui.dialog != dialogJourneyLocation || !strings.Contains(m.ui.notice, notice) {
 		t.Fatal("accepted coordinate edit removed provider origin", m.ui.notice)
 	}
 }
@@ -390,7 +391,7 @@ func TestFavouriteReplacesStopWithItsOwnNameAndOrigin(t *testing.T) {
 	m.openJourney()
 	m.editJourneyLocation(0)
 	m.applyJourneyLocation(placeLocation{
-		Name: "Temporary cafe", Lon: -0.1, Lat: 51.5, Source: placeSourceMapboxSearch, Attribution: "Search credits",
+		Name: "Cafe", Lon: -0.1, Lat: 51.5, Source: placeSourceMapboxSearch, Attribution: "Search credits",
 	})
 	m.editJourneyLocation(0)
 	m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
