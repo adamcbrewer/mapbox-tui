@@ -23,6 +23,7 @@ func (m *viewer) dialogAncestors() []string {
 		dialogSpeed: "Playback speed", dialogInspect: "Selected position",
 		dialogWorkspace: "Loaded files", dialogThemes: "Colour theme",
 		dialogMapbox: "Mapbox", dialogMapboxHelp: "Installation",
+		dialogMapboxBilling: "Billing", dialogMapboxUsage: "Usage",
 		dialogSearch: "Quick search", dialogJourney: "Journey Planner",
 		dialogJourneyLocation: "Location", dialogJourneyRouting: "Routing",
 		dialogJourneyRoutingHelp: "Routing help",

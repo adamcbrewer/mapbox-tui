@@ -14,6 +14,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 SOCKET = f"mapbox-tui-{os.getpid()}"
 ANSI = re.compile(r"\x1b\[([0-9;]*)m")
+HYPERLINK = re.compile(r"\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)")
 
 
 def tmux(*args, check=True):
@@ -84,6 +85,8 @@ def xterm_color(n):
 
 
 def styled_runs(screen, width, background="#1e1e2e", foreground="#cdd6f4"):
+    # OSC 8 metadata occupies no terminal cells and must not enter SVG text.
+    screen = HYPERLINK.sub("", screen)
     fg = foreground
     bg = background
     bold = False
@@ -960,7 +963,7 @@ def journey_controls(binary, width, height):
         send("\x07")
         assert "Context · Files · Journey" not in settled(), "removed Journey Planner shortcut still opened the planner"
         send("\x0a")
-        wait_for(lambda s: "Journey · Manual" in s and "A Start" in s)
+        wait_for(lambda s: "Journey · Offline" in s and "A Start" in s)
         send("\x0a")
         assert "Context · Files · Journey" in settled(), "repeated shortcut closed planner"
         tmux("send-keys", "-t", "poc:0.0", "Escape")
@@ -1026,7 +1029,7 @@ def journey_controls(binary, width, height):
         folder = ROOT / "reports/generated"
         folder.mkdir(exist_ok=True, parents=True)
         screen = settled()
-        assert "Journey · Manual" in screen and "A" in screen and "B" in screen, "planner hid the live map or current travel mode"
+        assert "Journey · Offline" in screen and "A" in screen and "B" in screen, "planner hid the live map or current travel mode"
         save_svg(folder / f"{binary.name}-journey-sidebar-{width}x{height}.svg", width, height)
         tmux("send-keys", "-t", "poc:0.0", "C-b")
         wait_for(lambda s: "ctrl+b planner" in s)
@@ -1051,7 +1054,7 @@ def journey_controls(binary, width, height):
         wait_for(lambda s: "Context · Files · Journey" in s and "A Start" in s)
         assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "ASCII journey rendered Braille"
         tmux("send-keys", "-t", "poc:0.0", "End", "Up", "Up", "Up", "Up", "Enter")
-        wait_for(lambda s: "Travel mode" in s and "Manual" in s)
+        wait_for(lambda s: "Travel mode" in s and "Offline" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
         wait_for(lambda s: "Mapbox not connected" in s)
         tmux("send-keys", "-t", "poc:0.0", "C-u")
@@ -1062,7 +1065,7 @@ def journey_controls(binary, width, height):
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Travel mode" in s and "Walking" in s and "Mapbox not connected" in s)
         tmux("send-keys", "-t", "poc:0.0", "Home", "Enter")
-        wait_for(lambda s: "Journey · Manual" in s)
+        wait_for(lambda s: "Journey · Offline" in s)
         tmux("send-keys", "-t", "poc:0.0", "Home")
         wait_for(lambda s: "1 Waypoint:" in s)
         screen = settled().splitlines()
@@ -1081,17 +1084,26 @@ def journey_controls(binary, width, height):
         wait_for(lambda s: "Journey command sent to clipboard" in s)
         command = shlex.split(tmux("show-buffer"))
         assert command[0] == "mapbox-tui", command
-        assert "--mode=manual" in command and not any(arg.startswith("--file=") for arg in command), command
+        assert "--mode=offline" in command and not any(arg.startswith("--file=") for arg in command), command
         assert any(value.startswith("--waypoint=") for value in command), command
         assert "--start=51.5,-0.1" in command and "--end=51.6,-0.2" in command, command
         send("q")
         wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
-        print(f"{binary.name} {width}×{height}: docked planner/live map, keyboard focus, mouse zoom/point placement, waypoints, reversal/undo, ASCII, visible travel mode, routing feedback, manual fallback and terminal restoration passed")
+        print(f"{binary.name} {width}×{height}: docked planner/live map, keyboard focus, mouse zoom/point placement, waypoints, reversal/undo, ASCII, visible travel mode, routing feedback, offline fallback and terminal restoration passed")
     finally:
         tmux("kill-session", "-t", "poc", check=False)
 
 
-def auth_setup(binary):
+def select_mapbox_action(label):
+    for _ in range(12):
+        screen = settled()
+        if "> " + label[:17] in screen:
+            return
+        tmux("send-keys", "-t", "poc:0.0", "Down")
+    raise AssertionError(f"Mapbox action {label!r} was not reachable:\n{capture()}")
+
+
+def mapbox_test_schema():
     operations = {
         "auth login": [], "auth logout": [], "auth whoami": [],
         "accounts list-tokens": ["--default", "--usage"], "accounts retrieve-token": [],
@@ -1106,6 +1118,11 @@ def auth_setup(binary):
                                     for flag in flags]}
                      for name, flags in operations.items()],
     })
+    return schema
+
+
+def auth_setup(binary):
+    schema = mapbox_test_schema()
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         helper, marker = folder / "mapbox", folder / "terminal-handoff.json"
@@ -1131,9 +1148,12 @@ def auth_setup(binary):
                 wait_for(lambda s: "Mapbox account" in s)
                 send("\r")
                 wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
-                tmux("send-keys", "-t", "poc:0.0", "Up")
+                select_mapbox_action("Sign in to Mapbox")
                 wait_for(lambda s: "Mapbox setup" in s and "Sign in" in s)
                 send("\r")
+                if not (folder / "settings/mapbox-tui/settings.json").exists():
+                    wait_for(lambda s: "billing risks" in s)
+                    tmux("send-keys", "-t", "poc:0.0", "Tab", "Enter")
                 wait_for(lambda s: "Mapbox setup" in s and marker.exists())
                 assert json.loads(marker.read_text()) == [True, True, True], "login did not inherit terminal streams"
                 send("\x1b")
@@ -1173,6 +1193,7 @@ def auth_setup(binary):
                     screenshots = ROOT / "reports/generated"
                     screenshots.mkdir(parents=True, exist_ok=True)
                     save_svg(screenshots / f"{binary.name}-mapbox-setup-120x40.svg", 120, 40)
+                select_mapbox_action("Installation help")
                 send("\r")
                 wait_for(lambda s: ("Installation ─" in s or "Installation -" in s) and "official installation instructions" in s)
                 send("\x1b")
@@ -1180,25 +1201,118 @@ def auth_setup(binary):
                 if not with_file:
                     pending.write_bytes(helper.read_bytes())
                     pending.chmod(0o755)
-                    tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
-                    wait_for(lambda s: "Mapbox setup" in s and "Sign in to Mapbox" in s)
+                    select_mapbox_action("Check again")
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
+                    select_mapbox_action("Sign in to Mapbox")
                 else:
-                    tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
+                    select_mapbox_action("Check again")
+                    tmux("send-keys", "-t", "poc:0.0", "Enter")
                     wait_for(lambda s: "Mapbox setup" in s and "Check again" in s)
-                for _ in range(6):
-                    if "> Continue offline" in settled():
-                        break
-                    tmux("send-keys", "-t", "poc:0.0", "Down")
-                else:
-                    raise AssertionError("Mapbox setup did not reach Continue offline")
-                tmux("send-keys", "-t", "poc:0.0", "Enter")
+                tmux("send-keys", "-t", "poc:0.0", "Escape")
                 wait_for(lambda s: "Mapbox setup" not in s and "Mapbox not connected" in s)
+                if with_file:
+                    wait_for(lambda s: active_modal(s, "Commands") and "Mapbox account" in s)
+                    send("\x1b")
+                    wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
                 send("q")
                 wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
                 assert capture().count("No basemap · Mapbox not connected") == 1, "missing CLI notice wasn't echoed once"
             finally:
                 tmux("kill-session", "-t", "poc", check=False)
     print(f"{binary.name}: dependency-aware setup actions, installation help/recheck, palette login, stdout notice and terminal restoration passed")
+
+
+def billing_usage(binary):
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        helper, calls, link = folder / "mapbox", folder / "calls.jsonl", folder / "link.txt"
+        helper.write_text(
+            "#!/usr/bin/env python3\nimport json, sys\nfrom pathlib import Path\n"
+            "from datetime import datetime, timezone\n"
+            "args = sys.argv[1:]\n"
+            "if '--version' in args:\n    print('mapbox 0.3.0'); sys.exit(0)\n"
+            f"if '--schema' in args:\n    print({mapbox_test_schema()!r}); sys.exit(0)\n"
+            f"with Path({str(calls)!r}).open('a') as file:\n    file.write(json.dumps(args) + '\\n')\n"
+            "if 'whoami' in args:\n    print(json.dumps({'account': 'fixtureaccount'}))\n"
+            "elif 'usage' in args:\n"
+            "    start = args[args.index('--period-start') + 1]\n"
+            "    end = args[args.index('--period-end') + 1]\n"
+            "    counts = {'Vector Tiles API': 123, 'Search Box API - Sessions': 8, 'Directions API': 3, "
+            "'Permanent Geocoding API': 2, 'Map Loads for Web': 999}\n"
+            "    products = {name: {'daily': [{'date': end, 'usage': total}]} for name, total in counts.items()}\n"
+            "    print(json.dumps({'data': {'period': {'start': start, 'end': end}, 'products': products}, "
+            "'generated_at': datetime.now(timezone.utc).isoformat()}))\n"
+            "else:\n    sys.exit(1)\n"
+        )
+        helper.chmod(0o755)
+        opener = folder / "xdg-open"
+        opener.write_text("#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n"
+                          f"Path({str(link)!r}).write_text(sys.argv[1])\n")
+        opener.chmod(0o755)
+        for width, height in ((120, 40), (70, 24), (30, 12)):
+            config = folder / f"settings-{width}"
+            settings = config / "mapbox-tui/settings.json"
+            environment = ["env", "MAPBOX_ACCESS_TOKEN=pk.fixture", "MAPBOX_TUI_ACCEPT_BILLING=",
+                           f"MAPBOX_TUI_CLI={helper}", f"XDG_CONFIG_HOME={config}",
+                           f"PATH={folder}:{os.environ['PATH']}", "HTTPS_PROXY=http://127.0.0.1:1",
+                           "TERM=xterm-256color", "COLORTERM=truecolor"]
+            command = shlex.join([*environment, "python3", str(ROOT / "scripts/terminal_runner.py"),
+                                  str(binary), str(ROOT / "fixtures/example.gpx")])
+            for launch in range(2):
+                before = len(calls.read_text().splitlines()) if calls.exists() else 0
+                tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+                try:
+                    if launch == 0:
+                        wait_for(lambda screen: "billing risks" in screen and "Continue offline" in screen)
+                        if width >= 120:
+                            assert "Accept risks and continue online" in capture()
+                        save_svg(ROOT / "reports/generated" / f"mapbox-tui-billing-{width}x{height}.svg", width, height)
+                        send("\r")
+                    wait_for(lambda screen: "Offline maps" in screen and "billing risks" not in screen)
+                    assert json.loads(settings.read_text())["offline"], "offline choice was not saved"
+                    assert not json.loads(settings.read_text())["mapbox_billing_accepted"], "offline accepted billing risks"
+                    send("\x0bMapbox\r")
+                    wait_for(lambda screen: "Mapbox settings" in screen)
+                    # Both launches fetch account usage, including the persisted-offline launch.
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        recorded = [json.loads(line) for line in calls.read_text().splitlines()[before:]] if calls.exists() else []
+                        if any("usage" in args for args in recorded):
+                            break
+                        time.sleep(.03)
+                    assert sum("usage" in args for args in recorded) == 1, "startup usage missing or repeated"
+                    assert all("whoami" in args or "usage" in args for args in recorded), recorded
+                    if width >= 70:
+                        wait_for(lambda screen: "Vector Tiles API: 123" in screen)
+                        assert "Map Loads for Web" not in capture(), "unrelated product was displayed"
+                    save_svg(ROOT / "reports/generated" / f"mapbox-tui-usage-menu-{width}x{height}.svg", width, height)
+                    select_mapbox_action("Usage details")
+                    send("\r")
+                    wait_for(lambda screen: "Mapbox usage" in screen)
+                    if width >= 70:
+                        wait_for(lambda screen: "123 requests" in screen and "days reported" in screen)
+                    save_svg(ROOT / "reports/generated" / f"mapbox-tui-usage-{width}x{height}.svg", width, height)
+                    send("\r")
+                    wait_for(lambda screen: link.exists())
+                    assert link.read_text() == "https://console.mapbox.com/account/statistics/"
+                    link.unlink()
+                    send("\x1b")
+                    wait_for(lambda screen: "Mapbox settings" in screen and "> Usage details" in screen)
+                    send("\x1b")
+                    wait_for(lambda screen: active_modal(screen, "Commands"))
+                    send("\x1b")
+                    wait_for(lambda screen: "Commands" not in screen)
+                    send("/")
+                    wait_for(lambda screen: "Quick search" in screen)
+                    if height >= 24:
+                        wait_for(lambda screen: "Go online in Mapbox settings" in screen)
+                    send("51.3,-2.5\r")
+                    wait_for(lambda screen: "Quick search" not in screen and "Offline maps" in screen)
+                    send("q")
+                    wait_for(lambda screen: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", screen))
+                finally:
+                    tmux("kill-session", "-t", "poc", check=False)
+    print(f"{binary.name}: billing confirmation, persisted offline mode, startup usage, product filtering, web link and offline coordinates passed")
 
 
 def traffic_menu(binary):
@@ -1253,6 +1367,7 @@ def nested_modals(binary):
                 wait_for(lambda s: "Paused 1x" in s)
                 send("\x0bMapbox\r")
                 wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                select_mapbox_action("Installation help")
                 send("\r")
                 screen = wait_for(lambda s: ("Installation ─" in s or "Installation -" in s) and "esc back" in s)
                 assert "› Installation" in screen and screen.count("╭") <= 2, f"nested modal lost breadcrumbs or added parent frames:\n{screen}"
@@ -1265,6 +1380,7 @@ def nested_modals(binary):
                 wait_for(lambda s: "Commands" not in s)
                 send("a\x0bMapbox\r")
                 wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                select_mapbox_action("Installation help")
                 send("\r")
                 wait_for(lambda s: ("Installation ─" in s or "Installation -" in s) and "esc back" in s and "╭" not in s)
                 tmux("send-keys", "-t", "poc:0.0", "Escape")
@@ -1283,6 +1399,10 @@ def nested_modals(binary):
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
+    if "--mapbox" not in sys.argv:
+        # Startup statistics must not touch the developer's real account.
+        os.environ["MAPBOX_TUI_CLI"] = str(Path(settings.name) / "missing-mapbox")
+        os.environ.pop("MAPBOX_TUI_ACCEPT_BILLING", None)
     try:
         tmux("start-server", ";", "set-option", "-g", "exit-empty", "off")
         for name in ("mapbox-tui",):
@@ -1299,6 +1419,7 @@ if __name__ == "__main__":
                 live_playback(ROOT / "bin" / name)
             else:
                 auth_setup(ROOT / "bin" / name)
+                billing_usage(ROOT / "bin" / name)
                 traffic_menu(ROOT / "bin" / name)
                 nested_modals(ROOT / "bin" / name)
                 dense_profile(ROOT / "bin" / name)

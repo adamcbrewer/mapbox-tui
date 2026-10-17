@@ -210,13 +210,13 @@ func TestFavouriteStoreBusyAndFailedWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := lockFavouriteFile(lock); err != nil {
+	if err := lockLocalFile(lock); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.change(&f, nil); err == nil || !strings.Contains(err.Error(), "busy") {
 		t.Fatal("concurrent writer was not blocked", err)
 	}
-	if err := unlockFavouriteFile(lock); err != nil {
+	if err := unlockLocalFile(lock); err != nil {
 		t.Fatal(err)
 	}
 	// A read-only directory permits the lock/read, but not the temporary write.

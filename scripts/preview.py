@@ -37,7 +37,7 @@ def main():
     files.add_argument('--file', type=Path, action='append', help='loaded file; repeat for multiple imports')
     files.add_argument('--no-file', action='store_true', help='preview a journey without imported files')
     parser.add_argument('--waypoint', type=coordinates, action='append', default=[], metavar='LAT,LON')
-    parser.add_argument('--mode', choices=['manual', 'walking', 'cycling', 'driving'])
+    parser.add_argument('--mode', choices=['offline', 'manual', 'walking', 'cycling', 'driving'])
     parser.add_argument('--start', type=coordinates, default='51.309174, -2.583389', metavar='LAT,LON')
     parser.add_argument('--end', type=coordinates, default='51.297454, -2.532641', metavar='LAT,LON')
     parser.add_argument('--width', type=int, default=120)
@@ -73,10 +73,10 @@ def main():
         terminal.wait_for(lambda screen: 'Context · Files · Journey' in screen and 'loading' not in screen.lower(), timeout=45)
         routing_started = time.monotonic()
         screen = terminal.wait_for(
-            lambda screen: 'est ' in screen or 'Manual' in screen or 'ctrl+u error' in screen or (time.monotonic() - routing_started > 5 and 'Mapbox connection needed' in screen),
+            lambda screen: 'est ' in screen or 'Offline' in screen or 'ctrl+u error' in screen or (time.monotonic() - routing_started > 5 and 'Mapbox connection needed' in screen),
             timeout=45,
         )
-        if args.mode != 'manual' and 'est ' not in screen:
+        if args.mode not in ('offline', 'manual') and 'est ' not in screen:
             print('The plan is open, but routed estimates are unavailable. Check the viewer’s Mapbox connection/routing details.')
         if args.capture:
             args.capture.mkdir(parents=True, exist_ok=True)

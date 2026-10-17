@@ -88,7 +88,7 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	}
 	showJourneyFromMenu(m)
 	m.rebuild()
-	if !strings.Contains(ansi.Strip(m.content), "Manual") || m.activePlayback() != nil || m.profileHeight != 0 {
+	if !strings.Contains(ansi.Strip(m.content), "Offline") || m.activePlayback() != nil || m.profileHeight != 0 {
 		t.Fatal("manual journey became a recorded activity or elevation profile")
 	}
 	ref := m.planner.ref
@@ -107,7 +107,7 @@ func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T)
 	m.openJourney()
 	m.editJourneyLocation(0)
 	_, content, _ := m.journeyDialogContent(70, 12)
-	if !strings.Contains(ansi.Strip(content), "disabled: not connected") {
+	if !strings.Contains(ansi.Strip(content), "Place search unavailable: not connected") {
 		t.Fatal("unavailable Mapbox search was not visibly disabled")
 	}
 	_, cmd := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})

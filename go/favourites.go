@@ -146,10 +146,10 @@ func (s favouriteStore) change(expected *favourite, replacement *favourite) erro
 		return fmt.Errorf("open favourites lock: %w", err)
 	}
 	defer lock.Close()
-	if err := lockFavouriteFile(lock); err != nil {
+	if err := lockLocalFile(lock); err != nil {
 		return fmt.Errorf("favourites are busy; try again")
 	}
-	defer unlockFavouriteFile(lock)
+	defer unlockLocalFile(lock)
 	entries, err := s.read()
 	if err != nil {
 		return err

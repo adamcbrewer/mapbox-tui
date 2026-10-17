@@ -120,6 +120,10 @@ func TestMapboxCLIProcess(t *testing.T) {
 	case strings.Contains(joined, "auth login"):
 		fmt.Println("Logged in successfully.")
 	case strings.Contains(joined, "usage"):
+		if response := os.Getenv("MAPBOX_TUI_TEST_USAGE_RESPONSE"); response != "" {
+			fmt.Println(response)
+			os.Exit(0)
+		}
 		if scenario == "usage-forbidden" {
 			fail("forbidden")
 		}

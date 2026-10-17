@@ -307,7 +307,7 @@ func TestJourneyMousePlacesEndpointsAndWaypointAndRecalculates(t *testing.T) {
 		t.Fatal("mouse workflow routed more than once per completed plan", requests)
 	}
 	clickJourneyRow(t, m, "Travel mode:")
-	clickJourneyRow(t, m, "Manual · offline")
+	clickJourneyRow(t, m, "Offline · straight lines")
 	if j.Mode != journeyManual {
 		t.Fatal("travel mode was not mouse-selectable")
 	}

@@ -35,6 +35,8 @@ const (
 	dialogThemes
 	dialogMapbox
 	dialogMapboxHelp
+	dialogMapboxUsage
+	dialogMapboxBilling
 	dialogSearch
 	dialogFavourites
 	dialogFavouriteName
@@ -281,6 +283,12 @@ func (m *viewer) initUI() error {
 		m.authMessage = "Could not load settings; telemetry is off and traffic is off: " + err.Error()
 	}
 	m.preferences = preferences
+	if m.provider != nil {
+		m.credential = renderingCredential{token: m.provider.token, guidance: m.provider.guidance}
+		if !preferences.mapboxOnline() && (m.provider.token != "" || preferences.Offline) {
+			m.provider = providerForCredential("none", renderingCredential{guidance: preferences.mapboxBlockedReason()})
+		}
+	}
 	if m.places == nil {
 		token := ""
 		if m.provider != nil {
@@ -595,7 +603,8 @@ func (m *viewer) backDialog() tea.Cmd {
 }
 
 func (m *viewer) dialogHints(hints string) string {
-	if len(m.ui.parents) == 0 || m.ui.dialog == dialogFavouriteDelete {
+	billingConfirmation := m.ui.dialog == dialogMapboxBilling && m.billingAction != "help"
+	if len(m.ui.parents) == 0 || m.ui.dialog == dialogFavouriteDelete || billingConfirmation {
 		return hints
 	}
 	lines := strings.Split(hints, "\n")
@@ -767,12 +776,19 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	}
 	if v, ok := msg.(tea.KeyPressMsg); ok {
 		pressed := v.String()
+		if m.ui.dialog == dialogMapboxBilling {
+			return m.updateBillingDialog(msg)
+		}
 		if pressed == "esc" {
 			return m.backDialog()
 		}
 		switch m.ui.dialog {
 		case dialogMapbox:
 			return m.updateMapboxDialog(pressed)
+		case dialogMapboxUsage:
+			if pressed == "enter" {
+				return openMapboxLink(mapboxUsageURL)
+			}
 		case dialogWorkspace:
 			return m.updateWorkspaceDialog(pressed)
 		case dialogCommands:
@@ -861,7 +877,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			m.ui.selected = 0
 			m.ui.menuNavigated = false
 		}
-	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp:
+	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp, dialogMapboxUsage, dialogMapboxBilling:
 		m.ui.page, cmd = m.ui.page.Update(msg)
 	}
 	return cmd
@@ -879,6 +895,10 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		return m.mapboxDialogContent(width, height)
 	case dialogMapboxHelp:
 		return m.mapboxHelpContent(width, height)
+	case dialogMapboxUsage:
+		return m.usageDialogContent(width, height)
+	case dialogMapboxBilling:
+		return m.billingDialogContent(width, height)
 	case dialogJourney, dialogJourneyLocation, dialogJourneyRouting, dialogJourneyRoutingHelp:
 		return m.journeyDialogContent(width, height)
 	case dialogWorkspace:
@@ -1064,9 +1084,6 @@ func (m *viewer) overlay() {
 	height := max(1, min(17, m.height-10, m.height-8))
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
-	}
-	if m.ui.dialog == dialogMapbox {
-		height = min(height, 8)
 	}
 	if m.ui.dialog == dialogFavouriteDelete {
 		height = min(6, m.height-8)

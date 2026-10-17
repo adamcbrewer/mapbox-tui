@@ -6,7 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func lockFavouriteFile(file *os.File) error {
+func lockLocalFile(file *os.File) error {
 	// All viewers lock the same byte of the persistent lock file, even when empty.
 	return windows.LockFileEx(
 		windows.Handle(file.Fd()),
@@ -18,7 +18,7 @@ func lockFavouriteFile(file *os.File) error {
 	)
 }
 
-func unlockFavouriteFile(file *os.File) error {
+func unlockLocalFile(file *os.File) error {
 	return windows.UnlockFileEx(
 		windows.Handle(file.Fd()),
 		0,

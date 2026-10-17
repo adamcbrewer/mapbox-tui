@@ -26,6 +26,115 @@ token copy. Auth commands report the resolved credential path. See
 [runtime configuration](#runtime-configuration) for setup and overrides. Synthetic basemap geometry is internal to
 the rendering benchmark.
 
+## Free usage and billing
+
+We aim to make Mapbox TUI usable for personal use within Mapbox's free allowances.
+That is an aim, not a guarantee: online features, background refreshes and bugs
+can generate billable usage. Users are responsible for monitoring their accounts
+and any resulting charges. The app cannot enforce a cap on the Mapbox account.
+
+CLI login (`mapbox-tui auth login`) and in-app login use the same risk notice and
+explicit acknowledgement. Existing saved logins and environment tokens also need
+acknowledgement before billable features run. Acceptance is versioned and saved
+locally; rotating a token does not repeat the same warning. Billing guidance
+remains available in Mapbox settings.
+
+Billing and usage links in the viewer and interactive CLI notice use terminal
+hyperlinks (OSC 8). Open them with your terminal's link-opening gesture; the exact
+click/modifier depends on the terminal. The billing confirmation keeps only the
+offline/acceptance choices; its links are inline. The main Mapbox usage action and
+usage details still support Enter to open the web page. CLI output redirected to a file or
+pipe, and output under `TERM=dumb`, keeps plain URLs without escape sequences.
+
+Before accepting:
+
+- Review your account's [usage](https://console.mapbox.com/account/statistics/),
+  [invoices](https://console.mapbox.com/account/invoices/) and
+  [current product pricing](https://www.mapbox.com/pricing/).
+- Set [usage alerts](https://console.mapbox.com/account/settings/usage-thresholds/)
+  below the free allowance actually shown for your account. For example, choose
+  50%, 80% and 90% of that allowance, in the product's own units. Do not assume
+  every product has a free allowance.
+- Remember that alerts do not stop requests or charges. Standard pay-as-you-go
+  accounts have [no configurable spending cap](https://docs.mapbox.com/accounts/faq/can-i-set-up-a-cap-for-monthly-spending/).
+  Demo accounts have different restrictions; check the console for your terms.
+- Consider other applications using the same account. Traffic adds Vector Tiles
+  requests; Search Box sessions, Geocoding and Directions are separate products.
+  Stationary maps and traffic can refresh automatically while online.
+
+**Continue offline** and **Go offline** persistently disable online maps, traffic,
+place lookup and routing. Imported geometry, playback, coordinate entry and local
+favourites remain available. An authenticated account still checks account usage
+once at every viewer startup, including offline. This is an explicit exception
+for statistics; it does not probe tiles, search or routes. Going online again is
+an explicit action in Mapbox settings or `mapbox-tui auth online`.
+
+For unattended use, review the notice before recording acceptance:
+
+```sh
+mapbox-tui auth online --accept-billing
+# Or acknowledge and sign in through the optional official CLI:
+mapbox-tui auth login --accept-billing
+# Persist offline mode:
+mapbox-tui auth offline
+```
+
+`MAPBOX_TUI_ACCEPT_BILLING=1` acknowledges the notice for a process, including
+headless render and MCP. It does not override saved offline mode. An interactive
+login or `auth online` also saves acceptance. Both commands always display the
+billing guidance, including when acceptance is already saved or supplied through
+a flag or environment variable; they only prompt when acceptance is missing. Unacknowledged CLI/MCP online renders
+return an actionable error, without making a tile request. Offline renders using
+`--no-provider` or MCP `provider: "none"` remain available without acceptance.
+
+### In-app account usage
+
+Mapbox settings shows current-month, account-wide product totals. **Usage details**
+adds days with reported usage, latest reported date, UTC reporting period, report
+generation time and fetch time. The saved-login account is named in the details:
+an environment rendering token may belong to a different account. Only app-related
+products are displayed; the web usage link shows the full account.
+
+Counts are kept in their original units. Search sessions cannot be added to tile
+or Directions requests. Geocoding product variants remain separate. A missing
+product is not a confirmed zero. Days reported describes the returned daily rows,
+not the number of complete days in the month.
+
+The viewer attempts one asynchronous statistics load at startup and after a new
+login, with no periodic polling or cache carried across launches. It queries the
+saved login even if an environment token is selected or explicitly empty. Missing
+login, unsupported accounts, permission failures and malformed/incomplete responses
+show usage as unavailable. They do not block otherwise acknowledged online use.
+Reports older than 24 hours or from a previous UTC month are labelled stale;
+a report generated recently may still omit delayed usage. Restart to fetch again.
+
+The reporting period is the first day of the current UTC month through today,
+matching the [standard billing calendar](https://docs.mapbox.com/accounts/guides/invoices/#billing-period).
+A newly created/reactivated account may have a shortened first billing period.
+Statistics can lag by 24 hours and are not an invoice or remaining allowance.
+
+### Supported interfaces and limitations
+
+Checked on 17 October 2026: the official CLI's
+[`usage` command](https://docs.mapbox.com/cli/reference/usage/) documents a private
+preview Statistics API requiring account enablement and `statistics:read`.
+It worked for the tested account, but access cannot be assumed for other accounts.
+The general Statistics guide still says there is no programmatic API, so the
+CLI's preview documentation is the more specific source for this integration.
+
+A live query returned daily product usage, reporting period and generation
+metadata. It did not return free allowances, prices, remaining allowance,
+configured alert thresholds or notification events. No documented supported
+account-plan/allowance API or notification webhook was found in the public
+Accounts API or CLI. Email alerts are configured in the console; we do not retrieve
+or subscribe to them. Statistics request pricing and freshness guarantees beyond
+the published guidance remain unverified. No product probes are used for refresh.
+
+This version deliberately shows counts and console links, without inferred free
+quotas, allowance percentages, cost estimates, local request accounting or
+app-generated threshold alerts. Public pricing alone does not identify an
+account's contracted terms.
+
 ## Runtime configuration
 
 The [README](../README.md#mapbox) covers the usual saved-login setup.
@@ -50,11 +159,12 @@ routing still use available credentials independently of basemap visibility.
 Imports, inspection, playback and manual journey coordinates work offline.
 
 `auth status` reports login, rendering-token source, validity and Streets
-access; `--usage` adds eligible account/token statistics. Completed reports exit
+access; a Streets probe only runs when online use is acknowledged and enabled.
+`--usage` adds current-month account/token statistics for app-related products. Completed reports exit
 zero even when sections are unavailable. `auth logout` removes the shared CLI
 profile without revoking public tokens or clearing other running processes.
 
-The viewer saves traffic and CLI-telemetry preferences in
+The viewer saves billing acknowledgement, offline mode, traffic and CLI-telemetry preferences in
 `~/.config/mapbox-tui/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it).
 Theme, camera, workspace and travel-mode choices last for the session. CLI
 telemetry is opt-in and an explicit environment opt-out takes precedence.
@@ -207,8 +317,11 @@ Status separates login/storage, rendering credentials, token validation (includi
 the verdict carried in HTTP 200) and Streets access. Login/status Streets probes
 are actual tile requests. `--usage` uses the logged-in account, validates the
 active public token's account/ID before token-specific statistics, and passes
-matching explicit UTC dates to both unfiltered reports. Vector Tiles is selected
-inside `mapbox-tui`; no matching usage is an empty report. Statistics permissions,
+matching explicit UTC dates to both unfiltered reports. App-related products are selected
+inside `mapbox-tui`; no matching usage is an empty report. The `products` array
+includes counts, units, reported days and latest reported date. Legacy Vector Tiles
+fields remain available when nonzero; absent counts must be interpreted with the
+report state, rather than assumed to be zero. Statistics permissions,
 delayed counts and trial-account access are independent of map access.
 
 Logout removes the shared login rather than revoking the account's public token
@@ -223,8 +336,8 @@ Quick search (`/`) and the journey planner share user-triggered location lookups
 
 - **Mapbox Search Box** supplies address/place/named-POI autocomplete and selected
   coordinates. It is automatically available in quick search and location editors
-  when the shared runtime token is present, including saved-login discovery; no
-  separate permission or confirmation is stored. Typing three characters schedules
+  when the shared runtime token is present, including saved-login discovery, after
+  accepting the billing notice and enabling online mode. Typing three characters schedules
   a debounced lookup; Ctrl-S retries. An empty editor and credential discovery without a query make no
   search calls. If credentials arrive while a query is being edited, lookup starts
   after the usual pause. `--no-provider` disables only the basemap; search availability
@@ -295,10 +408,10 @@ still owned by the active editor may write a favourite.
 ## Journey road/path routing
 
 The planner defaults to **Driving** when a Mapbox token is connected, otherwise
-**Manual** (offline straight lines). **Travel mode** shows the current selection
-in the planner's action list and offers Walking, Cycling, Driving and Manual.
+**Offline** (offline straight lines). **Travel mode** shows the current selection
+in the planner's action list and offers Walking, Cycling, Driving and Offline.
 Late credential discovery enables the default Driving plan without overriding an
-explicit Manual choice. Search, routing and basemap selection are independent; `--no-provider`
+explicit Offline choice. Search, routing and basemap selection are independent; `--no-provider`
 only disables tiles. Routing consumes the same environment/saved-login token,
 including explicit-empty environment opt-out. Streets/auth success is not treated
 as proof of Directions access.
@@ -324,12 +437,12 @@ as proof of Directions access.
   different item or resets its playback. While the planner is open, committed
   locations and resolved geometry fit the live map; closed planners don't move
   the camera on completion.
-- Edits retain the previous result as stale but display a current manual preview
-  without its obsolete estimates. Failures preserve stop intent and manual geometry;
+- Edits retain the previous result as stale but display a current straight-line preview
+  without its obsolete estimates. Failures preserve stop intent and straight-line geometry;
   full cause/remedy is available through Ctrl-U's scrollable routing details.
   Static usage explanations live here rather than in the planner action list.
   A failed recalculation also marks a previously current result stale and restores
-  the manual preview, even when the stops and mode have not changed.
+  the straight-line preview, even when the stops and mode have not changed.
 - Validate 2–25 locations and total geodesic distance between stops before HTTP:
   walking 1,000 km, cycling 1,500 km and driving 10,000 km. Limits reject the whole
   plan with its locations intact; no silent splitting/truncation. Provider rejection

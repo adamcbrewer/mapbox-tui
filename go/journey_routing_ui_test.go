@@ -159,7 +159,7 @@ func TestJourneyDrivingDefaultAfterCredentialDiscoveryRespectsManualChoice(t *te
 			j, _ := m.workspace.journey(m.planner.ref)
 			if explicitManual {
 				if j.Mode != journeyManual || cmd != nil || j.Busy {
-					t.Fatal("credential discovery overrode explicit Manual")
+					t.Fatal("credential discovery overrode explicit Offline")
 				}
 				return
 			}
@@ -196,12 +196,12 @@ func TestJourneyShowFailureOffersFeedbackInsteadOfStraightLines(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_, content, _ := m.journeyDialogContent(64, 17)
-	if !strings.Contains(ansi.Strip(content), "Travel mode: Manual") {
+	if !strings.Contains(ansi.Strip(content), "Travel mode: Offline") {
 		t.Fatal("explicit manual choice was not reflected in the main menu")
 	}
 	showJourneyFromMenu(m)
 	if m.ui.dialog != dialogNone || *requests != 1 {
-		t.Fatal("explicit Manual did not provide a usable offline Show action")
+		t.Fatal("explicit Offline did not provide a usable offline Show action")
 	}
 }
 
@@ -513,7 +513,7 @@ func TestJourneyRoutingFeedbackAndLayouts(t *testing.T) {
 			m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 			m.journeyRoutingDialogContent(22, 4)
 			page := strings.Join(strings.Fields(m.ui.page.GetContent()), " ")
-			if !strings.Contains(page, j.Error) || !strings.Contains(page, "remove stops or choose Manual") {
+			if !strings.Contains(page, j.Error) || !strings.Contains(page, "remove stops or choose Offline") {
 				t.Fatal("full error and cause not available in scrollable feedback")
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})

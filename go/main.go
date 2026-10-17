@@ -68,6 +68,9 @@ func run() error {
 		}
 		if kind != "none" {
 			credential = resolveCredential(ctx)
+			if err := requireMapboxOnline(credential.token); err != nil {
+				return err
+			}
 		}
 		provider := providerForCredential(kind, credential)
 		provider.quiet = kind == "none"

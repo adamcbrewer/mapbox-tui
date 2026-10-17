@@ -131,6 +131,9 @@ func (s *Service) render(ctx context.Context, a Args) (any, error) {
 	}
 	if kind != "none" {
 		p, err = s.mapboxProvider(ctx)
+		if err == nil {
+			err = requireMapboxOnline(p.token)
+		}
 		if err != nil {
 			return nil, err
 		}

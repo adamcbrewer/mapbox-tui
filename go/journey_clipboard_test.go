@@ -9,7 +9,9 @@ import (
 )
 
 func TestJourneyCommandPreservesStopsModeAndFiles(t *testing.T) {
-	for _, mode := range journeyModes {
+	for mode, argument := range map[journeyMode]string{
+		journeyManual: "offline", journeyWalking: "walking", journeyCycling: "cycling", journeyDriving: "driving",
+	} {
 		t.Run(mode.label(), func(t *testing.T) {
 			m := journeyViewer(t)
 			m.openJourney()
@@ -25,7 +27,7 @@ func TestJourneyCommandPreservesStopsModeAndFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, part := range []string{
-				"mapbox-tui ", "'--mode=" + strings.ToLower(mode.label()) + "'",
+				"mapbox-tui ", "'--mode=" + argument + "'",
 				"'--start=-33.123456789,18.1'",
 				"'--waypoint=-33.2,18.2'", "'--end=-33.3,18.3'",
 			} {

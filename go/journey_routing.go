@@ -23,7 +23,7 @@ func (mode journeyMode) label() string {
 	case journeyDriving:
 		return "Driving"
 	default:
-		return "Manual"
+		return "Offline"
 	}
 }
 
@@ -115,7 +115,7 @@ func routingLocations(stops []journeyStop, mode journeyMode) ([]placeLocation, e
 		return nil, fmt.Errorf("choose Walking, Cycling or Driving to calculate a route")
 	}
 	if len(stops) < 2 || len(stops) > 25 {
-		return nil, fmt.Errorf("Mapbox accepts 2–25 locations; this plan has %d; remove stops or choose Manual", len(stops))
+		return nil, fmt.Errorf("Mapbox accepts 2–25 locations; this plan has %d; remove stops or choose Offline", len(stops))
 	}
 	locations := make([]placeLocation, 0, len(stops))
 	var distance float64
@@ -125,7 +125,7 @@ func routingLocations(stops []journeyStop, mode journeyMode) ([]placeLocation, e
 		}
 		location := *stop.Location
 		if !validLocation(location.Lon, location.Lat) {
-			return nil, fmt.Errorf("%s has invalid coordinates; edit it or choose Manual", journeyStopLabel(i, len(stops)))
+			return nil, fmt.Errorf("%s has invalid coordinates; edit it or choose Offline", journeyStopLabel(i, len(stops)))
 		}
 		if i > 0 {
 			previous := locations[i-1]
@@ -135,7 +135,7 @@ func routingLocations(stops []journeyStop, mode journeyMode) ([]placeLocation, e
 	}
 	if distance/1000 > limit {
 		return nil, fmt.Errorf(
-			"%s plan spans %.0f km between stops; Mapbox limit is %.0f km; shorten it or choose Manual",
+			"%s plan spans %.0f km between stops; Mapbox limit is %.0f km; shorten it or choose Offline",
 			mode.label(),
 			distance/1000,
 			limit,
@@ -212,6 +212,6 @@ func (w *Workspace) invalidateJourneyRoutes() {
 		if err == nil {
 			w.replaceJourneyTrack(item.Ref, track)
 		}
-		j.Error = "Mapbox connection changed; calculate again or choose Manual"
+		j.Error = "Mapbox connection changed; calculate again or choose Offline"
 	}
 }

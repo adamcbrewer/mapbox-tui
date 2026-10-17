@@ -1,0 +1,18 @@
+{
+  "data": {
+    "activeDays": ["2026-10-01", "2026-10-02"],
+    "next_period_start": null,
+    "period": {"start": "2026-10-01", "end": "2026-10-17"},
+    "token_id": null,
+    "products": {
+      "Vector Tiles API": {"daily": [{"date": "2026-10-01", "usage": 100}, {"date": "2026-10-02", "usage": 23}], "dimensions": {}},
+      "Search Box API - Sessions": {"daily": [{"date": "2026-10-02", "usage": 8}], "dimensions": {}},
+      "Directions API": {"daily": [{"date": "2026-10-02", "usage": 3}], "dimensions": {}},
+      "Temporary Geocoding API": {"daily": [{"date": "2026-10-01", "usage": 0}], "dimensions": {}},
+      "Permanent Geocoding API": {"daily": [{"date": "2026-10-02", "usage": 2}], "dimensions": {}},
+      "Map Loads for Web": {"daily": [{"date": "2026-10-01", "usage": 900}], "dimensions": {}},
+      "Tileset Hosting Days": {"daily": [{"date": "2026-10-01", "usage": 12}], "dimensions": {}}
+    }
+  },
+  "generated_at": "2026-10-17T08:00:00Z"
+}

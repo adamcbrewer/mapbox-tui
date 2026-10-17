@@ -7,10 +7,10 @@ import (
 	"syscall"
 )
 
-func lockFavouriteFile(file *os.File) error {
+func lockLocalFile(file *os.File) error {
 	return syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 }
 
-func unlockFavouriteFile(file *os.File) error {
+func unlockLocalFile(file *os.File) error {
 	return syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 }

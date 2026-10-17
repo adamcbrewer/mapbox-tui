@@ -355,7 +355,7 @@ func TestNestedCommandsReturnToFilteredMenu(t *testing.T) {
 }
 
 func TestCompletedNestedActionsReturnToMap(t *testing.T) {
-	for _, action := range []string{"speed", "workspace", "theme", "auth"} {
+	for _, action := range []string{"speed", "workspace", "theme"} {
 		t.Run(action, func(t *testing.T) {
 			m := authTestViewer(t)
 			if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
@@ -367,12 +367,6 @@ func TestCompletedNestedActionsReturnToMap(t *testing.T) {
 			switch action {
 			case "speed", "theme":
 				m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-			case "auth":
-				for i, command := range m.mapboxActions() {
-					if command.action == "continue" {
-						m.ui.selected = i
-					}
-				}
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			if m.ui.dialog != dialogNone {
@@ -411,6 +405,7 @@ func TestNestedPopupUsesBreadcrumbsWithoutBackFrames(t *testing.T) {
 				if !strings.Contains(ansi.Strip(m.content), "Check failed:") {
 					t.Fatal("nested setup lost connection feedback", ansi.Strip(m.content))
 				}
+				selectMapboxAction(t, m, "install")
 				m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 				if m.ui.dialog != dialogMapboxHelp {
 					t.Fatal("menu/setup/help chain did not open")

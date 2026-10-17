@@ -30,6 +30,17 @@ func authTestViewer(t *testing.T) *viewer {
 	return m
 }
 
+func selectMapboxAction(t *testing.T, m *viewer, name string) {
+	t.Helper()
+	for i, action := range m.mapboxActions() {
+		if action.action == name {
+			m.ui.selected = i
+			return
+		}
+	}
+	t.Fatalf("Mapbox action %q missing", name)
+}
+
 type loginExecTestModel struct {
 	command tea.Cmd
 	err     error
@@ -136,6 +147,7 @@ func TestViewerLoginResultPreservesNestedSetupContext(t *testing.T) {
 			m.ui.search.SetValue("Mapbox")
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			key := tea.KeyPressMsg{Code: tea.KeyEnter}
+			selectMapboxAction(t, m, "install")
 			if kind == dialogCredits {
 				key = tea.KeyPressMsg{Code: 'v', Text: "v"}
 			}
@@ -367,6 +379,7 @@ func TestViewerSetupFitsCompactAndWideTerminals(t *testing.T) {
 		}
 		m.openDialog(dialogMapbox)
 		m.authCLI = mapboxDependencyStatus{State: "missing", Checked: "PATH"}
+		selectMapboxAction(t, m, "install")
 		m.rebuild()
 		plain := ansi.Strip(m.content)
 		if !strings.Contains(plain, "Mapbox setup") || !strings.Contains(plain, "Installation help") {
@@ -383,10 +396,11 @@ func TestViewerMapboxSetupActionsAndInstallationHelp(t *testing.T) {
 	m := authTestViewer(t)
 	m.authCLI = mapboxDependencyStatus{State: "missing", Checked: "PATH", Guidance: mapboxCLIUnavailable}
 	m.openDialog(dialogMapbox)
+	selectMapboxAction(t, m, "install")
 	_, content, _ := m.mapboxDialogContent(64, 17)
 	plain := ansi.Strip(content)
 	if strings.Contains(plain, "Sign in") || strings.Contains(plain, "https://") ||
-		!strings.Contains(plain, "Actions") || !strings.Contains(plain, "> Installation help") {
+		!strings.Contains(plain, "Usage details") || !strings.Contains(plain, "> Installation help") {
 		t.Fatal("missing CLI setup mixed inert instructions with actions")
 	}
 	m.updateMapboxDialog("enter")
@@ -401,26 +415,25 @@ func TestViewerMapboxSetupActionsAndInstallationHelp(t *testing.T) {
 	if m.ui.dialog != dialogMapbox {
 		t.Fatal("Escape did not return to setup actions")
 	}
-	m.updateMapboxDialog("down")
+	selectMapboxAction(t, m, "check")
 	if m.mapboxActions()[m.ui.selected].action != "check" {
 		t.Fatal("Check again was not selectable")
 	}
-	m.updateMapboxDialog("down")
-	m.updateMapboxDialog("down")
-	m.updateMapboxDialog("down")
-	m.updateMapboxDialog("enter")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.ui.dialog != dialogNone {
-		t.Fatal("Continue offline did not close setup")
+		t.Fatal("Escape did not close setup")
 	}
 	m.authCLI.State = "ready"
 	m.openDialog(dialogMapbox)
-	if m.mapboxActions()[0].action != "login" {
+	selectMapboxAction(t, m, "login")
+	if m.mapboxActions()[m.ui.selected].action != "login" {
 		t.Fatal("validated CLI did not enable sign-in")
 	}
 	m.provider.token = "pk.connected"
+	selectMapboxAction(t, m, "check")
 	title, content, _ := m.mapboxDialogContent(52, 8)
 	if title != "Mapbox settings" || !strings.Contains(ansi.Strip(content), "Mapbox: connected") ||
-		strings.Contains(ansi.Strip(content), "Sign in") || m.mapboxActions()[0].action != "check" {
+		strings.Contains(ansi.Strip(content), "Sign in") || m.mapboxActions()[m.ui.selected].action != "check" {
 		t.Fatal("connected account was still prompted to sign in")
 	}
 }
@@ -512,7 +525,7 @@ func TestViewerConnectionCheckReportsFinalCredentialsAndStreets(t *testing.T) {
 }
 
 func TestViewerCredentialDiscoveryPreservesSelectedSetupAction(t *testing.T) {
-	for _, action := range []string{"install", "telemetry", "continue"} {
+	for _, action := range []string{"install", "telemetry", "credits"} {
 		t.Run(action, func(t *testing.T) {
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			m := authTestViewer(t)
@@ -529,11 +542,9 @@ func TestViewerCredentialDiscoveryPreservesSelectedSetupAction(t *testing.T) {
 			if m.mapboxActions()[m.ui.selected].action != action {
 				t.Fatal("credential discovery changed the selected action")
 			}
-			if action == "continue" {
-				m.updateMapboxDialog("enter")
-				if m.ui.dialog != dialogNone || m.preferences.MapboxCLITelemetry {
-					t.Fatal("Continue offline opted into telemetry instead of closing")
-				}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			if m.ui.dialog != dialogNone || m.preferences.MapboxCLITelemetry {
+				t.Fatal("Escape changed telemetry or did not close setup")
 			}
 		})
 	}

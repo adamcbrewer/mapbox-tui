@@ -9,6 +9,12 @@ import (
 )
 
 func TestNativeJourneyArguments(t *testing.T) {
+	for _, mode := range []string{"offline", "manual"} {
+		command, err := parseCLI([]string{"--mode=" + mode, "--start=1,2", "--end=3,4"}, io.Discard)
+		if err != nil || command.Args.Journey == nil || command.Args.Journey.Mode != journeyManual {
+			t.Fatal("offline journey mode or compatibility alias was rejected", mode, err)
+		}
+	}
 	command, err := parseCLI([]string{"--mode=cycling", "--start=-33.123456789,18.1",
 		"--end=-33.3,18.3", "--waypoint=-33.2,18.2", "--file=first.gpx", "--file=second.gpx"}, io.Discard)
 	if err != nil {
@@ -20,7 +26,7 @@ func TestNativeJourneyArguments(t *testing.T) {
 		t.Fatal("native journey options lost stops, precision, mode or files", command)
 	}
 	for _, args := range [][]string{
-		{"--start=1,2"}, {"--end=1,2"}, {"--mode=manual"}, {"--waypoint=1,2"},
+		{"--start=1,2"}, {"--end=1,2"}, {"--mode=offline"}, {"--waypoint=1,2"},
 		{"--start=91,0", "--end=1,2"}, {"--start=London", "--end=1,2"},
 		{"--start=1,2", "--end=1,2", "--mode=flying"},
 		{"render", "--start=1,2", "--end=1,2"},
@@ -35,7 +41,7 @@ func TestNativeJourneyArguments(t *testing.T) {
 
 func TestNativeJourneyStartsAfterImportsAndOnlyOnce(t *testing.T) {
 	m := journeyViewer(t)
-	command, err := parseCLI([]string{"--mode=manual", "--start=51.3,-2.5", "--end=51.4,-2.6",
+	command, err := parseCLI([]string{"--mode=offline", "--start=51.3,-2.5", "--end=51.4,-2.6",
 		"--waypoint=51.35,-2.55"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)

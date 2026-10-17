@@ -70,9 +70,20 @@ Results contain plain map text and scene metadata. `active_item` and
 `visible_items` use `document_id` and `item_id`; match the document ID to the
 file returned by `load_track` or `list_tracks`.
 
-Mapbox is used when credentials are available. `provider: "none"` keeps a
+Mapbox is used when credentials are available, billing risks have been acknowledged
+and saved offline mode is disabled. `provider: "none"` keeps a
 render offline. Provider failures appear in `scene.status`; importing and
 inspecting files don't need Mapbox.
+
+Before enabling Mapbox rendering, review the
+[billing guidance](MAPBOX.md#free-usage-and-billing). Use `mapbox-tui auth online`
+to acknowledge it interactively, or `mapbox-tui auth online --accept-billing` to
+record explicit acceptance without a prompt. `MAPBOX_TUI_ACCEPT_BILLING=1` is a
+process-level alternative for unattended use; it does not override offline mode.
+MCP never prompts or acknowledges billing on a caller's behalf. Unacknowledged or
+offline Mapbox renders return an actionable tool error before requesting tiles.
+Local imports/inspection and `provider: "none"` continue to work.
+The viewer's startup account-usage check does not add a polling loop to MCP.
 
 ## Beyond MCP: terminal control
 

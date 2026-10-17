@@ -49,7 +49,13 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 		status := "Mapbox search · type a place"
 		style := s.dialogAccent
 		if m.places.token == "" {
-			status = "Mapbox search [disabled: not connected]"
+			status = "Place search unavailable: not connected"
+			if m.preferences.Offline {
+				status = "Place search unavailable while offline"
+			}
+			if m.credential.token != "" && !m.preferences.billingAccepted() && !m.preferences.Offline {
+				status = "Place search paused: review billing risks"
+			}
 			style = s.dialogMuted
 		}
 		if m.planner.searchBusy {
@@ -59,6 +65,19 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 			}
 		}
 		rows = append(rows, style.Render(pad(status, width)))
+		if m.places.token == "" && height > 3 {
+			rows = append(rows, s.dialogMuted.Render(pad("Enter latitude, longitude coordinates", width)))
+			if height > 4 {
+				guidance := "Connect Mapbox in Mapbox settings"
+				if m.preferences.Offline {
+					guidance = "Go online in Mapbox settings"
+				}
+				if m.credential.token != "" && !m.preferences.billingAccepted() && !m.preferences.Offline {
+					guidance = "Review billing risks in Mapbox settings"
+				}
+				rows = append(rows, s.dialogMuted.Render(pad(guidance, width)))
+			}
+		}
 	}
 	if height > 3 {
 		hints = "ctrl+f favourites / alt+s toggle\n" + hints

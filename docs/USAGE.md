@@ -18,6 +18,25 @@ metadata removed. It has no timestamps, so playback uses estimated timing.
 Both work offline; a configured Mapbox account adds the basemap. Add
 `--no-provider` to disable it.
 
+## Mapbox usage and offline mode
+
+Before enabling online features, CLI and in-app login show the same
+[billing-risk confirmation](MAPBOX.md#free-usage-and-billing). Review your account
+allowances and configure usage alerts; alerts do not prevent charges.
+
+Ctrl-K → Mapbox settings shows current-month usage for the products this app uses.
+**Usage details** shows totals, units, days reported, latest reported date and
+report/fetch timestamps. **View usage on Mapbox** opens your full account usage.
+Figures include other apps on the saved-login account, may lag and do not show
+remaining allowances. Usage loads once at startup and after login, without polling.
+
+**Go offline** persists until you choose **Go online**. Maps, traffic, place lookup
+and routing are disabled; coordinate input, local favourites and imported files
+remain usable. Place search explains how to connect or go online in Mapbox settings.
+Authenticated accounts still check usage at viewer startup, even while offline.
+`--no-provider` only disables the basemap; it is separate from this offline mode.
+The CLI equivalents are `mapbox-tui auth offline` and `mapbox-tui auth online`.
+
 ## Controls
 
 | Action | Keyboard | Mouse |
@@ -215,7 +234,7 @@ Each stop shows coordinates once. Ctrl-U contains current routing diagnostics an
 snapped road/path coordinates; usage and request behaviour are documented in
 [Mapbox routing notes](MAPBOX.md#journey-roadpath-routing).
 
-Manual mode plots straight lines between resolved locations. Connected plans
+Offline mode plots straight lines between resolved locations. Connected plans
 default to Driving and recalculate after location or mode edits. Routed distance
 and travel time come from Mapbox; planned geometry has no recorded timestamps
 or elevation. Plans last for the viewer session.
@@ -259,7 +278,8 @@ mapbox-tui --file fixtures/country-ride.gpx --mode cycling \
 
 Repeat `--waypoint LAT,LON` in travel order and `--file PATH` for additional files.
 Omit files for a journey-only session. Both endpoints are required; `--mode`
-defaults to `driving`, with `manual`, `walking` and `cycling` also supported.
-These are interactive viewer options; manual geometry works offline, while routed
+defaults to `driving`, with `offline`, `walking` and `cycling` also supported.
+The `offline` option plots straight lines. `manual` remains a compatibility alias.
+These are interactive viewer options; offline geometry works locally, while routed
 modes use your normal Mapbox connection. Named-place search remains available
 inside the planner; startup arguments accept resolved coordinates.

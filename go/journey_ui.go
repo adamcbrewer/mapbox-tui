@@ -394,7 +394,10 @@ func (m *viewer) updatePlaceLocation(pressed string, msg tea.Msg) tea.Cmd {
 		return m.backDialog()
 	case "ctrl+s":
 		if m.places.token == "" {
-			m.ui.notice = "Place search unavailable · connect Mapbox in settings"
+			m.ui.notice = "Place search unavailable; enter coordinates. Connect in Mapbox settings"
+			if m.preferences.Offline {
+				m.ui.notice = "Place search unavailable while offline; enter coordinates. Go online in Mapbox settings"
+			}
 			return nil
 		}
 		return m.schedulePlaceSearch()
@@ -555,7 +558,7 @@ func (m *viewer) journeyDetails() []string {
 			lines = append(lines, "Recalculating route...", "")
 		}
 	} else if j.Mode == journeyManual {
-		lines = append(lines, "Manual straight-line geometry", "No estimated travel time", "")
+		lines = append(lines, "Offline straight-line geometry", "No estimated travel time", "")
 	}
 	if j.Error != "" {
 		lines = append(lines, j.Error, "ctrl+u in planner: feedback", "")

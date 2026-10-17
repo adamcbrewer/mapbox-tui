@@ -68,6 +68,8 @@ and `q` to quit.
 
 On Linux x86-64, `make install` puts the binary in `~/.local/bin`.
 For basemaps, place search and road routing, [connect Mapbox](#mapbox).
+Before authenticating, [review billing risks](#free-usage-and-billing) and set up
+usage alerts. Monitoring usage and charges is your responsibility.
 
 ## Agent workflow
 
@@ -125,9 +127,10 @@ The [tool schemas](shared/tools.json) describe the available calls.
 ## Mapbox
 
 You'll need a Mapbox account for online maps, place search and road routing.
-Mapbox has a generous free tier with fair usage for personal use. See Mapbox's [signup guide](https://docs.mapbox.com/accounts/guides/signup/).
+Mapbox offers product-specific free allowances. See the
+[signup guide](https://docs.mapbox.com/accounts/guides/signup/) and the billing guidance below.
 
-You can either sign up directlythrough the [Mapbox Console](https://console.mapbox.com/)
+You can either sign up directly through the [Mapbox Console](https://console.mapbox.com/)
  or during a [Mapbox MCP server connection](https://docs.mapbox.com/accounts/guides/signup/#sign-up-with-mapbox-mcp-server-connection).
 
 If you install the optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install) you can then sign in via:
@@ -137,7 +140,8 @@ If you install the optional [official Mapbox CLI](https://github.com/mapbox/mapb
 ./bin/mapbox-tui auth status
 ```
 
-The viewer, CLI and MCP reuse that login.
+The viewer, CLI and MCP reuse that login and your saved billing-risk acknowledgement.
+CLI login and in-app login present the same confirmation before enabling online features.
 
 You can also supply a public token through `MAPBOX_ACCESS_TOKEN` for scripts. `--no-provider` disables the basemap, even having authed;
 local file inspection and manual journey planning work without Mapbox.
@@ -145,6 +149,34 @@ local file inspection and manual journey planning work without Mapbox.
 Mapbox requests use your account and may incur charges. See the
 [Mapbox notes](docs/MAPBOX.md) for configuration, usage, caching and
 attribution.
+
+## Free usage and billing
+
+Mapbox TUI aims to support personal use within Mapbox's free allowances, but free
+use is not guaranteed. Online features, background refreshes and bugs can make
+billable requests. Use online features at your own discretion: you are responsible
+for monitoring your account and any charges. The app does not enforce a spending cap.
+
+Check the [current pricing](https://www.mapbox.com/pricing/) for each product and
+[set up usage alerts](https://console.mapbox.com/account/settings/usage-thresholds/)
+before continuing online. Alerts send notifications; they do not stop requests or
+charges. Maps and traffic, search sessions, geocoding and routing can use separate
+allowances, and some products may have no free allowance.
+
+Mapbox settings shows current-month usage for products used by this app, with a
+**Usage details** view and a link to your
+[account usage](https://console.mapbox.com/account/statistics/). These are
+account-wide figures, including other applications. Statistics can be delayed or
+unavailable; they are not an invoice or a remaining free allowance.
+
+Choose **Continue offline** in the confirmation, or **Go offline** in Mapbox
+settings, to disable online maps, traffic, place lookup and routing. Coordinates,
+local favourites and imported files remain usable. This choice persists until
+you choose **Go online**. An authenticated account still makes one account-usage
+check at viewer startup, including in offline mode.
+
+See [Mapbox billing and usage guidance](docs/MAPBOX.md#free-usage-and-billing)
+for recommendations, statistics limitations and unattended CLI/MCP setup.
 
 ## Terminal and CLI
 

@@ -51,8 +51,10 @@ type usageReport struct {
 	TokenID     string           `json:"token_id,omitempty"`
 	Period      *usagePeriod     `json:"period_utc,omitempty"`
 	GeneratedAt *time.Time       `json:"generated_at,omitempty"`
-	Requests    int64            `json:"vector_tile_requests"`
+	Requests    int64            `json:"vector_tile_requests,omitempty"`
 	Daily       map[string]int64 `json:"daily,omitempty"`
+	Products    []productUsage   `json:"products"`
+	FetchedAt   *time.Time       `json:"fetched_at,omitempty"`
 	Guidance    string           `json:"guidance,omitempty"`
 }
 
@@ -179,65 +181,6 @@ func streetsAccess(ctx context.Context, p *Provider) authSection {
 	return authSection{State: "ready"}
 }
 
-func (c *mapboxCLI) usage(ctx context.Context, account, tokenID string, period usagePeriod) usageReport {
-	report := usageReport{State: "unavailable", Account: account, TokenID: tokenID}
-	args := []string{"usage", "--period-start", period.Start, "--period-end", period.End}
-	if tokenID != "" {
-		args = append(args, "--token-id", tokenID)
-	}
-	var result struct {
-		GeneratedAt time.Time `json:"generated_at"`
-		Data        *struct {
-			Period   usagePeriod `json:"period"`
-			TokenID  string      `json:"token_id"`
-			Products map[string]struct {
-				Daily []struct {
-					Date  string `json:"date"`
-					Usage int64  `json:"usage"`
-				} `json:"daily"`
-			} `json:"products"`
-		} `json:"data"`
-	}
-	if err := c.query(ctx, args, nil, &result); err != nil {
-		report.Guidance = err.Error() + "; statistics access is separate from map access"
-		return report
-	}
-	if result.Data == nil || result.Data.Period != period {
-		report.Guidance = "Mapbox usage response is missing the requested UTC period"
-		return report
-	}
-	if tokenID != "" && result.Data.TokenID != tokenID {
-		report.Guidance = "Mapbox usage response does not match the active token ID"
-		return report
-	}
-	if result.GeneratedAt.IsZero() {
-		report.Guidance = "Mapbox usage response is missing its generation timestamp"
-		return report
-	}
-	report.State, report.Period = "empty", &result.Data.Period
-	report.GeneratedAt = &result.GeneratedAt
-	report.Daily = map[string]int64{}
-	for name, product := range result.Data.Products {
-		if !strings.Contains(strings.ToLower(name), "vector tiles") {
-			continue
-		}
-		for _, day := range product.Daily {
-			date, err := time.Parse(time.DateOnly, day.Date)
-			inPeriod := err == nil && date.Format(time.DateOnly) >= period.Start && day.Date <= period.End
-			if !inPeriod || day.Usage < 0 {
-				report.State, report.Guidance = "unavailable", "Mapbox usage response has invalid daily figures"
-				return report
-			}
-			report.Daily[day.Date] += day.Usage
-			report.Requests += day.Usage
-		}
-	}
-	if report.Requests > 0 {
-		report.State = "available"
-	}
-	return report
-}
-
 func collectAuthStatus(ctx context.Context, usage bool) (authStatus, error) {
 	return collectAuthStatusWith(ctx, usage, streetsAccess)
 }
@@ -301,19 +244,23 @@ func collectAuthStatusWith(
 		if cli != nil {
 			cli.tokenMetadata(ctx, credential.token, &status.Rendering)
 		}
-		status.Rendering.Streets = probe(ctx, providerForCredential("mapbox", credential))
+		if err := requireMapboxOnline(credential.token); err != nil {
+			status.Rendering.Streets.Guidance = err.Error()
+		} else {
+			status.Rendering.Streets = probe(ctx, providerForCredential("mapbox", credential))
+		}
 	}
 	if usage {
 		status.Usage = &authUsage{
-			Account: usageReport{State: "unavailable", Account: status.Login.Account,
+			Account: usageReport{State: "unavailable", Account: status.Login.Account, Products: []productUsage{},
 				Guidance: "Usage reporting requires a Mapbox CLI login with statistics access"},
-			Token: usageReport{State: "unavailable", TokenID: status.Rendering.TokenID,
+			Token: usageReport{State: "unavailable", TokenID: status.Rendering.TokenID, Products: []productUsage{},
 				Guidance: "No verified active public token for the logged-in account"},
 			Note: "Statistics can lag 24 hours and include other apps using this token; not an invoice or remaining allowance",
 		}
 		if cli != nil && status.Login.Account != "" {
 			end := time.Now().UTC()
-			period := usagePeriod{Start: end.AddDate(0, 0, -30).Format(time.DateOnly), End: end.Format(time.DateOnly)}
+			period := currentUsagePeriod(end)
 			status.Usage.Account = cli.usage(ctx, status.Login.Account, "", period)
 			sameAccount := status.Rendering.Account == status.Login.Account
 			publicToken := strings.HasPrefix(credential.token, "pk.") && status.Rendering.TokenID != ""
@@ -384,7 +331,10 @@ func (s authStatus) text() string {
 			r := entry.report
 			fmt.Fprintf(&out, "%s usage: %s; account %s; token ID %s\n", entry.label, r.State, r.Account, r.TokenID)
 			if r.State != "unavailable" {
-				fmt.Fprintf(&out, "  Vector Tiles requests: %d\n", r.Requests)
+				for _, product := range r.Products {
+					fmt.Fprintf(&out, "  %s: %d %s; %d reported days; latest %s\n",
+						product.Name, product.Total, product.Unit, product.ReportedDays, product.LatestDay)
+				}
 			}
 			if r.Period != nil {
 				fmt.Fprintf(&out, "  UTC period: %s through %s (inclusive)\n", r.Period.Start, r.Period.End)
@@ -402,6 +352,26 @@ func (s authStatus) text() string {
 }
 
 func runAuth(ctx context.Context, command cliCommand, streams authStreams) error {
+	if command.AuthAction == "offline" {
+		_, err := updateAppSettings(func(settings *appSettings) { settings.Offline = true })
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(streams.out, "Offline mode saved. Authenticated accounts still check usage at viewer startup.")
+		return err
+	}
+	if command.AuthAction == "login" || command.AuthAction == "online" {
+		if err := confirmMapboxBilling(ctx, streams, command.AcceptBilling); err != nil {
+			return err
+		}
+		if command.AuthAction == "online" {
+			if _, err := updateAppSettings(func(settings *appSettings) { settings.Offline = false }); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(streams.out, "Billing risks acknowledged; online mode saved.")
+			return err
+		}
+	}
 	if command.AuthAction == "status" {
 		status, err := collectAuthStatus(ctx, command.Usage)
 		if err != nil {
@@ -437,6 +407,9 @@ func runAuth(ctx context.Context, command cliCommand, streams authStreams) error
 		return nil
 	}
 	if err := cli.login(ctx, streams); err != nil {
+		return err
+	}
+	if _, err := updateAppSettings(func(settings *appSettings) { settings.Offline = false }); err != nil {
 		return err
 	}
 	fmt.Fprintf(streams.out, "Mapbox login saved by the CLI at %s\n", file)

@@ -80,14 +80,15 @@ func (m *viewer) toggleTraffic() tea.Cmd {
 		m.dirty = true
 		return nil
 	}
-	preferences := m.preferences
-	preferences.Traffic = !preferences.Traffic
-	if err := saveAppSettings(preferences); err != nil {
+	preferences, err := updateAppSettings(func(settings *appSettings) {
+		settings.Traffic = !m.preferences.Traffic
+	})
+	if err != nil {
 		m.ui.notice = "Could not save traffic setting: " + err.Error()
 		m.dirty = true
 		return nil
 	}
-	m.preferences = preferences
+	m.preferences.Traffic = preferences.Traffic
 	return m.fetch()
 }
 

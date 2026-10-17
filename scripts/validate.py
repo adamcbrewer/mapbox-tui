@@ -177,7 +177,7 @@ def validate_cli(binary):
     assert "Mapbox not connected" not in run("render", path, "--no-provider").stdout
     with tempfile.TemporaryDirectory() as folder:
         credentials = Path(folder) / "credentials"
-        env = {**ENV, "MAPBOX_TUI_CLI": str(Path(folder) / "missing-mapbox"), "MAPBOX_CONFIG_DIR": str(credentials)}
+        env = {**ENV, "MAPBOX_TUI_CLI": str(Path(folder) / "missing-mapbox"), "MAPBOX_CONFIG_DIR": str(credentials), "XDG_CONFIG_HOME": str(Path(folder) / "settings"), "MAPBOX_TUI_ACCEPT_BILLING": ""}
         status = run("auth", "status", "--usage", "--json", env=env)
         report = json.loads(status.stdout)
         assert report["cli"]["state"] == "missing" and report["rendering"]["source"] == "disabled"
@@ -186,6 +186,8 @@ def validate_cli(binary):
         text = run("auth", "status", env=env).stdout
         assert str(credentials) in text and "official instructions" in text and "\x1b" not in text and "curl " not in text
         failure = run("auth", "login", success=False, env=env)
+        assert "free use is not guaranteed" in failure.stdout and "acknowledgement" in failure.stderr
+        failure = run("auth", "login", "--accept-billing", success=False, env=env)
         assert str(credentials) in failure.stdout and "install" in failure.stderr
         assert not credentials.exists(), "mapbox-tui wrote its own credential copy"
     run("auth", "login", "--json", success=False)

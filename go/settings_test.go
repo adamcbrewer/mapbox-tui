@@ -41,6 +41,38 @@ func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
 	}
 }
 
+func TestSettingsUpdateDoesNotOverwriteConcurrentWriter(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := saveAppSettings(appSettings{Offline: true}); err != nil {
+		t.Fatal(err)
+	}
+	path, err := appSettingsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := lockLocalFile(lock); err != nil {
+		t.Fatal(err)
+	}
+	defer unlockLocalFile(lock)
+	called := false
+	_, err = updateAppSettings(func(settings *appSettings) {
+		called = true
+		settings.Offline = false
+	})
+	if err == nil || called {
+		t.Fatal("settings update bypassed another writer's lock", err)
+	}
+	settings, err := loadAppSettings()
+	if err != nil || !settings.Offline {
+		t.Fatal("blocked settings update changed the saved preference", settings, err)
+	}
+}
+
 func TestMapboxTelemetryToggleSavesSelection(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := authTestViewer(t)

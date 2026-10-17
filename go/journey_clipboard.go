@@ -13,7 +13,11 @@ func (m *viewer) journeyCommand() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	args := []string{"mapbox-tui", "--mode=" + strings.ToLower(j.Mode.label())}
+	mode := string(j.Mode)
+	if j.Mode == journeyManual {
+		mode = "offline"
+	}
+	args := []string{"mapbox-tui", "--mode=" + mode}
 	for _, entry := range m.workspace.documents {
 		if entry.document.Path != "" {
 			args = append(args, "--file="+entry.document.Path)

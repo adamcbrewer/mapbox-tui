@@ -135,7 +135,7 @@ func (m *viewer) updateJourneyRoutingDialog(pressed string, msg tea.Msg) tea.Cmd
 		}
 		mode := journeyModes[m.ui.selected]
 		if mode != journeyManual && m.directions.token == "" {
-			m.ui.notice = "Mapbox not connected; connect in settings or choose Manual; ctrl+u for details"
+			m.ui.notice = "Mapbox not connected; connect in settings or choose Offline; ctrl+u for details"
 			return nil
 		}
 		j, err := m.workspace.journey(m.planner.ref)
@@ -184,7 +184,7 @@ func (m *viewer) journeyRoutingDialogContent(width, height int) (string, string,
 		return "Routing details", m.ui.page.View(), "up/down scroll / esc close"
 	}
 	labels := []string{
-		"Manual · offline", "Walking · Mapbox", "Cycling · Mapbox", "Driving · Mapbox", "Routing details",
+		"Offline · straight lines", "Walking · Mapbox", "Cycling · Mapbox", "Driving · Mapbox", "Routing details",
 	}
 	if j, err := m.workspace.journey(m.planner.ref); err == nil {
 		labels[slices.Index(journeyModes, j.Mode)] += " (current)"
@@ -207,7 +207,7 @@ func (m *viewer) journeyRoutingDialogContent(width, height int) (string, string,
 
 func journeyRoutingStatus(j *Journey, track *Track) string {
 	if j.Mode == journeyManual {
-		return fmt.Sprintf("Manual · works offline | %.2f km plotted", track.Distance/1000)
+		return fmt.Sprintf("Offline · straight lines | %.2f km plotted", track.Distance/1000)
 	}
 	if j.routeCurrent() {
 		status := fmt.Sprintf(
@@ -229,14 +229,14 @@ func journeyRoutingStatus(j *Journey, track *Track) string {
 			return j.Mode.label() + " · set all locations to route"
 		}
 	}
-	status := "manual preview; no estimate"
+	status := "straight-line preview; no estimate"
 	switch {
 	case j.Busy && j.Route != nil:
-		status = "stale; calculating · manual preview"
+		status = "stale; calculating · straight-line preview"
 	case j.Busy:
-		status = "calculating; manual preview"
+		status = "calculating; straight-line preview"
 	case j.Route != nil:
-		status = "stale route; manual preview"
+		status = "stale route; straight-line preview"
 	}
 	return j.Mode.label() + " · " + status
 }

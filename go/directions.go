@@ -66,7 +66,7 @@ func (p *directionsClient) resolve(
 		return nil, err
 	}
 	if p.token == "" {
-		return nil, fmt.Errorf("Mapbox Directions not connected; use Mapbox settings or choose Manual")
+		return nil, fmt.Errorf("Mapbox Directions not connected; use Mapbox settings or choose Offline")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (p *directionsClient) resolve(
 	p.mu.Unlock()
 	if remaining := retryAt.Sub(p.now()); remaining > 0 {
 		return nil, fmt.Errorf(
-			"Mapbox Directions rate limited; retry in %.0f seconds or choose Manual",
+			"Mapbox Directions rate limited; retry in %.0f seconds or choose Offline",
 			math.Ceil(remaining.Seconds()),
 		)
 	}
@@ -102,7 +102,7 @@ func (p *directionsClient) resolve(
 			return nil, ctx.Err()
 		}
 		// Transport errors contain the request URL, including the token and stop coordinates.
-		return nil, fmt.Errorf("Mapbox Directions request failed; check connection, retry or choose Manual")
+		return nil, fmt.Errorf("Mapbox Directions request failed; check connection, retry or choose Offline")
 	}
 	defer resp.Body.Close()
 	if err := ctx.Err(); err != nil {
@@ -113,18 +113,18 @@ func (p *directionsClient) resolve(
 	}
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
-		return nil, fmt.Errorf("Mapbox Directions rejected the token (HTTP 401); reconnect or choose Manual")
+		return nil, fmt.Errorf("Mapbox Directions rejected the token (HTTP 401); reconnect or choose Offline")
 	case http.StatusForbidden:
 		return nil, fmt.Errorf("Mapbox Directions access denied (HTTP 403); " +
-			"check account limits/token permissions or choose Manual")
+			"check account limits/token permissions or choose Offline")
 	case http.StatusUnprocessableEntity:
 		return nil, fmt.Errorf(
-			"Mapbox rejected this %s plan (HTTP 422); check locations and limits: 25 stops, %.0f km; choose Manual if needed",
+			"Mapbox rejected this %s plan (HTTP 422); check locations and limits: 25 stops, %.0f km; choose Offline if needed",
 			mode.label(), mode.limitKM(),
 		)
 	case http.StatusOK:
 	default:
-		return nil, fmt.Errorf("Mapbox Directions returned HTTP %d; retry or choose Manual", resp.StatusCode)
+		return nil, fmt.Errorf("Mapbox Directions returned HTTP %d; retry or choose Offline", resp.StatusCode)
 	}
 	const limit = 8 << 20
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
@@ -132,29 +132,29 @@ func (p *directionsClient) resolve(
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("cannot read Directions response; retry or choose Manual")
+		return nil, fmt.Errorf("cannot read Directions response; retry or choose Offline")
 	}
 	if len(data) > limit {
-		return nil, fmt.Errorf("Directions response exceeds 8 MiB; shorten the plan or choose Manual")
+		return nil, fmt.Errorf("Directions response exceeds 8 MiB; shorten the plan or choose Offline")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	var response directionsResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("invalid Directions response; retry or choose Manual")
+		return nil, fmt.Errorf("invalid Directions response; retry or choose Offline")
 	}
 	switch response.Code {
 	case "NoRoute":
 		return nil, fmt.Errorf(
-			"Mapbox found no %s route connecting these stops; check access/water crossings or choose Manual",
+			"Mapbox found no %s route connecting these stops; check access/water crossings or choose Offline",
 			mode.label(),
 		)
 	case "NoSegment":
-		return nil, fmt.Errorf("Mapbox could not match a stop to a road/path; move that location or choose Manual")
+		return nil, fmt.Errorf("Mapbox could not match a stop to a road/path; move that location or choose Offline")
 	case "Ok":
 	default:
-		return nil, fmt.Errorf("Mapbox could not calculate this plan; check locations/profile limits or choose Manual")
+		return nil, fmt.Errorf("Mapbox could not calculate this plan; check locations/profile limits or choose Offline")
 	}
 	return response.route(mode, locations)
 }
@@ -174,13 +174,13 @@ func (p *directionsClient) rateLimited(header string) error {
 	retryAt = p.retryAt
 	p.mu.Unlock()
 	return fmt.Errorf(
-		"Mapbox Directions rate limited (HTTP 429); retry in %.0f seconds or choose Manual",
+		"Mapbox Directions rate limited (HTTP 429); retry in %.0f seconds or choose Offline",
 		retryAt.Sub(now).Seconds(),
 	)
 }
 
 func (response directionsResponse) route(mode journeyMode, locations []placeLocation) (*journeyRoute, error) {
-	invalid := fmt.Errorf("Mapbox returned invalid route geometry/estimates; retry or choose Manual")
+	invalid := fmt.Errorf("Mapbox returned invalid route geometry/estimates; retry or choose Offline")
 	if len(response.Routes) == 0 || len(response.Waypoints) != len(locations) {
 		return nil, invalid
 	}
@@ -213,7 +213,7 @@ func (response directionsResponse) route(mode journeyMode, locations []placeLoca
 		}
 	}
 	if err := prepareTrackWithNameCleaner(track, cleanPlaceText); err != nil {
-		return nil, fmt.Errorf("Mapbox route cannot be displayed: %w; choose Manual", err)
+		return nil, fmt.Errorf("Mapbox route cannot be displayed: %w; choose Offline", err)
 	}
 	for _, location := range locations {
 		extendBounds(&track.Bounds, [4]float64{location.Lon, location.Lat, location.Lon, location.Lat})

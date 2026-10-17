@@ -8,14 +8,15 @@ import (
 )
 
 type cliCommand struct {
-	Name, Path string
-	Paths      []string
-	Args       Args
-	JSON       bool
-	Items      bool
-	Frames     int
-	AuthAction string
-	Usage      bool
+	Name, Path    string
+	Paths         []string
+	Args          Args
+	JSON          bool
+	Items         bool
+	Frames        int
+	AuthAction    string
+	Usage         bool
+	AcceptBilling bool
 }
 
 func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
@@ -61,13 +62,13 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.Float64Var(&bearing, "bearing", 0, "bearing in degrees (-360..360)")
 	}
 	if command.Name == "open" || command.Name == "render" {
-		fs.BoolVar(&noProvider, "no-provider", false, "disable the Mapbox basemap and automatic account discovery")
-		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider for offline viewing")
+		fs.BoolVar(&noProvider, "no-provider", false, "disable the Mapbox basemap (search and traffic are separate)")
+		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider to hide the basemap")
 	}
 	if command.Name == "open" {
 		fs.StringVar(&journeyStart, "start", "", "journey start as latitude,longitude; requires --end")
 		fs.StringVar(&journeyEnd, "end", "", "journey destination as latitude,longitude; requires --start")
-		fs.StringVar(&journeyModeName, "mode", "driving", "journey mode: manual, walking, cycling or driving")
+		fs.StringVar(&journeyModeName, "mode", "driving", "journey mode: offline, walking, cycling or driving")
 		fs.Func("waypoint", "journey waypoint as latitude,longitude; repeat in travel order", func(value string) error {
 			journeyWaypoints = append(journeyWaypoints, value)
 			journeyRequested = true
@@ -306,15 +307,18 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	command.AuthAction, argv = argv[0], argv[1:]
 	switch command.AuthAction {
-	case "login", "logout", "status":
+	case "login", "logout", "status", "online", "offline":
 	default:
-		return command, fmt.Errorf("choose 'mapbox-tui auth login', 'logout' or 'status'; see 'mapbox-tui auth --help'")
+		return command, fmt.Errorf("choose 'mapbox-tui auth login', 'logout', 'status', 'online' or 'offline'; see 'mapbox-tui auth --help'")
 	}
 	fs := flag.NewFlagSet("auth "+command.AuthAction, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	if command.AuthAction == "login" || command.AuthAction == "online" {
+		fs.BoolVar(&command.AcceptBilling, "accept-billing", false, "acknowledge billing risks and enable online features")
+	}
 	if command.AuthAction == "status" {
 		fs.BoolVar(&command.JSON, "json", false, "output the status report as token-free JSON")
-		fs.BoolVar(&command.Usage, "usage", false, "include optional account/active-token Vector Tiles statistics")
+		fs.BoolVar(&command.Usage, "usage", false, "include current-month account/active-token product statistics")
 	}
 	paths, err := parseOptions(fs, argv)
 	if err == flag.ErrHelp {
@@ -328,14 +332,14 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 }
 
 func printAuthHelp(output io.Writer) {
-	fmt.Fprintln(output, "Usage: mapbox-tui auth login\n       mapbox-tui auth logout\n"+
-		"       mapbox-tui auth status [--json] [--usage]\n\n"+
+	fmt.Fprintln(output, "Usage: mapbox-tui auth login [--accept-billing]\n       mapbox-tui auth logout\n"+
+		"       mapbox-tui auth status [--json] [--usage]\n       mapbox-tui auth online [--accept-billing]\n       mapbox-tui auth offline\n\n"+
 		"Login opens Mapbox's browser flow to sign in or create an account. The optional\n"+
 		"Mapbox CLI owns OAuth, saved credentials and refresh. Credentials live in\n"+
 		"~/.mapbox/credentials.json for the shared default profile; MAPBOX_CONFIG_DIR\n"+
 		"can relocate them. Login/logout/status report the resolved path on your machine.\n"+
 		"Logout removes that shared login; it doesn't revoke public or environment tokens.\n\n"+
-		"Offline imports, measurements, playback and manual journeys need no account.\n"+
+		"Offline imports, measurements, playback and offline journeys need no account.\n"+
 		"Mapbox maps and place search need your account's public token. A configured\n"+
 		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise mapbox-tui retrieves a public\n"+
 		"token through the saved login. An empty variable disables automatic discovery.\n\n"+
@@ -343,8 +347,13 @@ func printAuthHelp(output io.Writer) {
 		"mapbox-tui finds mapbox on PATH; MAPBOX_TUI_CLI can select its executable explicitly.\n"+
 		"Create an account/email verification: "+mapboxSignupURL+"\n"+
 		"Current pricing/trial limits: https://www.mapbox.com/pricing/\n\n"+
+		"Online use requires billing-risk acknowledgement. Login and auth online always show\n"+
+		"the guidance and prompt in a terminal if acceptance is missing. --accept-billing\n"+
+		"records acceptance without a prompt. Unattended\n"+
+		"render/MCP use can set MAPBOX_TUI_ACCEPT_BILLING=1 after reviewing: "+billingDocsURL+"\n"+
+		"auth offline persists offline mode; authenticated accounts still check usage at viewer startup.\n\n"+
 		"The official CLI requests general-purpose account permissions, including write\n"+
-		"scopes mapbox-tui doesn't use; v0.3.0 cannot narrow them. Status probes Streets with a\n"+
+		"scopes mapbox-tui doesn't use; v0.3.0 cannot narrow them. Status probes Streets only when online and acknowledged, with a\n"+
 		"tile request. Usage requires statistics access, may lag 24 hours, and may include\n"+
 		"other apps using your token. --help shows this help.")
 }

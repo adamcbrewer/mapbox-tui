@@ -12,6 +12,8 @@ import (
 type appSettings struct {
 	MapboxCLITelemetry bool `json:"mapbox_cli_telemetry"`
 	Traffic            bool `json:"traffic"`
+	BillingAccepted    int  `json:"mapbox_billing_accepted"`
+	Offline            bool `json:"offline"`
 }
 
 func appSettingsPath() (string, error) {
@@ -78,6 +80,33 @@ func saveAppSettings(settings appSettings) error {
 		return fmt.Errorf("replace mapbox-tui settings: %w", err)
 	}
 	return nil
+}
+
+// Reload before changing a preference so a long-lived viewer does not overwrite
+// unrelated choices saved by a later CLI invocation or another viewer.
+func updateAppSettings(change func(*appSettings)) (appSettings, error) {
+	path, err := appSettingsPath()
+	if err != nil {
+		return appSettings{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return appSettings{}, fmt.Errorf("create mapbox-tui settings directory: %w", err)
+	}
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return appSettings{}, fmt.Errorf("open mapbox-tui settings lock: %w", err)
+	}
+	defer lock.Close()
+	if err := lockLocalFile(lock); err != nil {
+		return appSettings{}, fmt.Errorf("mapbox-tui settings are busy; try again")
+	}
+	defer unlockLocalFile(lock)
+	settings, err := loadAppSettings()
+	if err != nil {
+		return settings, err
+	}
+	change(&settings)
+	return settings, saveAppSettings(settings)
 }
 
 func mapboxTelemetryOptOut() bool {

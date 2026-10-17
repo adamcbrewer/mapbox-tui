@@ -17,11 +17,11 @@ func parseStartupJourney(start, end string, waypoints []string, mode string) (*s
 	}
 	j := &startupJourney{Mode: journeyMode(mode)}
 	switch mode {
-	case "manual":
+	case "offline", "manual":
 		j.Mode = journeyManual
 	case "walking", "cycling", "driving":
 	default:
-		return nil, fmt.Errorf("unknown journey mode %q; choose manual, walking, cycling or driving", mode)
+		return nil, fmt.Errorf("unknown journey mode %q; choose offline, walking, cycling or driving", mode)
 	}
 	values := append([]string{start}, waypoints...)
 	values = append(values, end)
@@ -41,7 +41,15 @@ func (m *viewer) startJourneyFromArgs() tea.Cmd {
 		return nil
 	}
 	m.args.Journey = nil
+	billingOpen := m.ui.dialog == dialogMapboxBilling
+	billingAction := m.billingAction
+	if billingOpen {
+		m.backDialog()
+	}
 	m.openJourney()
+	if billingOpen {
+		defer m.openBilling(billingAction)
+	}
 	j, err := m.workspace.journey(m.planner.ref)
 	if err != nil {
 		m.ui.notice = err.Error()
