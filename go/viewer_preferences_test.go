@@ -53,15 +53,18 @@ func TestViewerPreferencesRestartAndLaunchOverrides(t *testing.T) {
 	m.updateDialog(tea.KeyPressMsg{Code: tea.KeyEnter})
 	before := settingsBytes(t)
 	restarted := preferenceViewer(t)
-	if !restarted.settings.ASCII || !restarted.settings.NoAnimation || !restarted.profileExplicit ||
-		!restarted.showProfile || restarted.theme().ID != m.theme().ID {
+	settingsRestored := restarted.settings.ASCII && restarted.settings.NoAnimation &&
+		restarted.settings.Elevation == elevationShow && restarted.theme().ID == m.theme().ID
+	if !settingsRestored {
 		t.Fatal("viewer choices did not survive restart")
 	}
 	if restarted.profileHeight != 0 {
 		t.Fatal("saved show reserved an empty chart")
 	}
 	override := preferenceViewer(t, "--ascii=false", "--no-animation=false", "--theme=paper", "--elevation=auto")
-	if override.settings.ASCII || override.settings.NoAnimation || override.profileExplicit || override.theme().ID != "paper" {
+	overridesApplied := !override.settings.ASCII && !override.settings.NoAnimation &&
+		override.settings.Elevation == elevationAuto && override.theme().ID == "paper"
+	if !overridesApplied {
 		t.Fatal("explicit false/default overrides did not win")
 	}
 	if !bytes.Equal(before, settingsBytes(t)) {
@@ -75,7 +78,7 @@ func TestViewerPreferencesRestartAndLaunchOverrides(t *testing.T) {
 		t.Fatal("saving one preference leaked launch overrides or lost existing preferences", err)
 	}
 	override.clearWorkspace()
-	if override.settings.ASCII || override.theme().ID != "paper" || !override.profileExplicit {
+	if override.settings.ASCII || override.theme().ID != "paper" || override.settings.Elevation != elevationShow {
 		t.Fatal("empty workspace reset global session preferences")
 	}
 	command, err := parseCLI([]string{"render", "--no-provider"}, io.Discard)
@@ -151,7 +154,7 @@ func TestViewerCustomThemePersistsAbsolutePathAndFallsBack(t *testing.T) {
 			}
 		}
 		restarted := preferenceViewer(t)
-		if restarted.theme().ID != "catppuccin" || !strings.Contains(restarted.settingsNotice, "Saved theme unavailable") {
+		if restarted.theme().ID != "catppuccin" || !strings.Contains(restarted.preferenceNotice(), "Saved theme unavailable") {
 			t.Fatal("missing/invalid saved theme did not fall back with feedback")
 		}
 		restarted.rebuild()
@@ -162,7 +165,7 @@ func TestViewerCustomThemePersistsAbsolutePathAndFallsBack(t *testing.T) {
 	restarted := preferenceViewer(t)
 	restarted.openDialog(dialogThemes)
 	restarted.updateDialog(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if restarted.settingsNotice != "" || preferenceViewer(t).theme().ID != "catppuccin" {
+	if restarted.preferenceNotice() != "" || preferenceViewer(t).theme().ID != "catppuccin" {
 		t.Fatal("confirming the fallback did not replace the broken saved theme and clear its warning")
 	}
 }
@@ -199,7 +202,58 @@ func TestViewerSavedElevationLifecycle(t *testing.T) {
 			if m.profileHeight != 0 || m.camera.Height != fullHeight {
 				t.Fatal("removing last elevation data left reserved chart space")
 			}
+			m.clearWorkspace()
+			if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
+				t.Fatal(err)
+			}
+			m.layout()
+			if (m.visibleProfile() != nil) != (mode != "hide") {
+				t.Fatal("clearing the workspace changed the elevation preference")
+			}
+			saved, err := loadAppSettings()
+			if err != nil || saved.Elevation != mode {
+				t.Fatal("workspace changes rewrote the saved elevation preference", saved.Elevation, err)
+			}
 		})
+	}
+}
+
+func TestViewerThemeWarningSurvivesUnrelatedSaveRecovery(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := saveAppSettings(appSettings{Theme: "missing-theme"}); err != nil {
+		t.Fatal(err)
+	}
+	m := preferenceViewer(t)
+	path, _ := appSettingsPath()
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := lockLocalFile(lock); err != nil {
+		t.Fatal(err)
+	}
+	defer unlockLocalFile(lock)
+	m.toggleMenuOption("ascii")
+	m.rebuild()
+	if !strings.Contains(m.content, "Preference not saved") {
+		t.Fatal("failed save did not display its warning")
+	}
+	unlockLocalFile(lock)
+	m.toggleMenuOption("motion")
+	m.rebuild()
+	if !strings.Contains(m.content, "Saved theme unavailable") {
+		t.Fatal("unrelated save recovery lost the saved-theme warning")
+	}
+	saved, err := loadAppSettings()
+	if err != nil || saved.Theme != "missing-theme" {
+		t.Fatal("unrelated save replaced the unavailable theme", saved.Theme, err)
+	}
+	m.openDialog(dialogThemes)
+	m.updateDialog(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.rebuild()
+	if strings.Contains(m.content, "Saved theme unavailable") || preferenceViewer(t).theme().ID != "catppuccin" {
+		t.Fatal("confirming the fallback did not replace the saved theme and clear its warning")
 	}
 }
 

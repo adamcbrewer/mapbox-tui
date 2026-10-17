@@ -65,7 +65,6 @@ func TestViewerRefreshesStationaryDataWhileLoadingFilesAndKeepsImportsOnFailure(
 			34,
 			2,
 		),
-		showProfile: true,
 	}
 	m.initUI()
 	t.Cleanup(m.sources.close)

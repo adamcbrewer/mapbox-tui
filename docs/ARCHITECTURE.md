@@ -36,6 +36,11 @@ favourites library. Viewer startup resolves defaults, saved preferences and expl
 CLI overrides. User actions update only the changed field through the locked
 settings store; launch overrides and theme previews do not write. Workspaces,
 CLI text renders and MCP scenes never inherit these presentation preferences.
+Elevation is one `auto`/`show`/`hide` choice in the viewer's resolved settings.
+Layout derives chart visibility from that choice and the workspace's visible
+recorded elevation; loading, hiding or clearing files never mutates the choice.
+Theme fallback warnings remain separate from settings read/write errors, so saving
+an unrelated preference cannot dismiss an unresolved theme warning.
 
 Each front end has its own session. The viewer keeps a workspace while it's open,
 multi-file CLI rendering creates a temporary one, and MCP keeps one for the

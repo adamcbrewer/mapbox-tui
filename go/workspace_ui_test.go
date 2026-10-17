@@ -45,8 +45,7 @@ func TestViewerLoadsMultipleFilesAndFitsOnlyVisibleItems(t *testing.T) {
 			15,
 			2,
 		),
-		args:        Args{NoAnimation: true},
-		showProfile: true,
+		args: Args{NoAnimation: true},
 	}
 	m.initUI()
 	first := importFile(
@@ -125,7 +124,6 @@ func TestViewerStartupCameraOverridesApplyAfterAllFilesAndOnlyOnce(t *testing.T)
 					34,
 					2,
 				),
-				showProfile:  true,
 				args:         Args{Zoom: &zoom, Bearing: &bearing, Lon: &lon, Lat: &lat},
 				pendingPaths: []string{paths[1]},
 			}
@@ -220,7 +218,6 @@ func TestLoadedFilesDialogShowsOwnershipAndClearsRemovedActiveState(t *testing.T
 			34,
 			2,
 		),
-		showProfile: true,
 	}
 	m.initUI()
 	path := importFile(t, "my-courses.tcx", []byte(coursesWithGapTCX))
@@ -322,8 +319,7 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 				size[1],
 				2,
 			),
-			args:        Args{NoAnimation: true},
-			showProfile: true,
+			args: Args{NoAnimation: true},
 		}
 		m.initUI()
 		runLoadCommand(m, m.load(first))

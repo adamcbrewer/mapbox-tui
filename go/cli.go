@@ -178,7 +178,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			a.ProviderSet = true
 		}
 	})
-	if !validElevation(a.Elevation) || (a.ElevationSet && a.Elevation == "") {
+	if _, err := parseElevationMode(a.Elevation); err != nil || (a.ElevationSet && a.Elevation == "") {
 		return command, fmt.Errorf("elevation must be auto, show or hide")
 	}
 	if journeyRequested {

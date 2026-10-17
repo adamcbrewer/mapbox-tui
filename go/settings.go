@@ -67,13 +67,9 @@ func loadAppSettings() (appSettings, error) {
 	return settings, nil
 }
 
-func validElevation(choice string) bool {
-	return choice == "" || choice == "auto" || choice == "show" || choice == "hide"
-}
-
 func (s appSettings) validate() error {
-	if !validElevation(s.Elevation) {
-		return fmt.Errorf("elevation must be auto, show or hide")
+	if _, err := parseElevationMode(s.Elevation); err != nil {
+		return err
 	}
 	if len(s.Theme) > 4096 || strings.ContainsAny(s.Theme, "\x00\r\n") {
 		return fmt.Errorf("theme must be a built-in ID or a path of at most 4096 bytes")

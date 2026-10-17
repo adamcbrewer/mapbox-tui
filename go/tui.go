@@ -25,6 +25,7 @@ type pulse time.Time
 type viewerSettings struct {
 	ASCII, NoAnimation bool
 	Theme              int
+	Elevation          elevationMode
 }
 type viewer struct {
 	path                      string
@@ -53,8 +54,6 @@ type viewer struct {
 	fatal                     error
 	wheel                     wheelZoom
 	lastTick                  time.Time
-	showProfile               bool
-	profileExplicit           bool
 	profileHeight             int
 	progress                  *progress.Model
 	ui                        uiState
@@ -81,6 +80,7 @@ type viewer struct {
 	authCLI                   mapboxDependencyStatus
 	preferences               appSettings
 	settingsNotice            string
+	themeNotice               string
 	connectionEcho            string
 	credential                renderingCredential
 	billingIntent             billingIntent
@@ -827,11 +827,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *viewer) layout() {
-	hasElevation := m.workspace.hasVisibleElevation()
-	if !m.profileExplicit {
-		m.showProfile = hasElevation
-	}
-	profileVisible := m.showProfile && hasElevation
+	profileVisible := m.settings.Elevation != elevationHide && m.workspace.hasVisibleElevation()
 	w, h := mapSize(m.width, m.height)
 	if m.hasJourneyContext() {
 		h--

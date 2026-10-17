@@ -62,11 +62,10 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 		m := &viewer{
-			camera:      c,
-			provider:    newProvider("none"),
-			ctx:         context.Background(),
-			args:        Args{NoAnimation: true},
-			showProfile: true,
+			camera:   c,
+			provider: newProvider("none"),
+			ctx:      context.Background(),
+			args:     Args{NoAnimation: true},
 		}
 		m.initUI()
 		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
@@ -104,7 +103,7 @@ func TestFreeRoamNavigationInspectionAndLayout(t *testing.T) {
 		routeControlsChangedState := m.ui.dialog != dialogNone ||
 			m.activePlayback() != nil ||
 			m.selectedPoint() != -1 ||
-			m.showProfile
+			m.profileEnabled()
 		if routeControlsChangedState {
 			t.Fatal("route-only controls changed free roam state")
 		}
@@ -143,13 +142,12 @@ func TestFreeRoamRouteTransitionsAndFailedLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &viewer{
-		camera:      c,
-		args:        a,
-		provider:    newProvider("none"),
-		ctx:         context.Background(),
-		width:       120,
-		height:      40,
-		showProfile: true,
+		camera:   c,
+		args:     a,
+		provider: newProvider("none"),
+		ctx:      context.Background(),
+		width:    120,
+		height:   40,
 	}
 	m.initUI()
 	m.Init()

@@ -21,12 +21,11 @@ func themeViewer(t *testing.T, width, height int, ascii bool) *viewer {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	m := &viewer{
-		provider:    newProvider("none"),
-		ctx:         context.Background(),
-		width:       width,
-		height:      height,
-		showProfile: true,
-		args:        Args{ASCII: ascii, NoAnimation: true},
+		provider: newProvider("none"),
+		ctx:      context.Background(),
+		width:    width,
+		height:   height,
+		args:     Args{ASCII: ascii, NoAnimation: true},
 	}
 	if err := m.initUI(); err != nil {
 		t.Fatal(err)

@@ -373,11 +373,10 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := &viewer{
-				provider:    newProvider("none"),
-				ctx:         context.Background(),
-				width:       120,
-				height:      40,
-				showProfile: true,
+				provider: newProvider("none"),
+				ctx:      context.Background(),
+				width:    120,
+				height:   40,
 			}
 			m.initUI()
 			batch := m.load(path)().(tea.BatchMsg)

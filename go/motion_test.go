@@ -133,11 +133,10 @@ func TestCommandActionsAndSidebarFocusKeepPlaybackControlsWorking(t *testing.T) 
 			34,
 			2,
 		),
-		width:       120,
-		height:      40,
-		following:   true,
-		showProfile: true,
-		lastTick:    time.Now(),
+		width:     120,
+		height:    40,
+		following: true,
+		lastTick:  time.Now(),
 	}
 	m.initUI()
 	m.activePlayback().toggle()
@@ -151,7 +150,7 @@ func TestCommandActionsAndSidebarFocusKeepPlaybackControlsWorking(t *testing.T) 
 	m.openDialog(dialogCommands)
 	m.ui.search.SetValue("elevation")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if m.showProfile || !m.activePlayback().Playing {
+	if m.profileEnabled() || !m.activePlayback().Playing {
 		t.Fatal("command palette did not hide the default profile while playing")
 	}
 	m.ui.detailsOpen = true

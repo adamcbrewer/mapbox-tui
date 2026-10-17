@@ -19,7 +19,7 @@ func authTestViewer(t *testing.T) *viewer {
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	m := &viewer{
 		ctx: t.Context(), provider: newProvider("none"), width: 120, height: 40,
-		camera: fit(nil, 88, 34, 2), showProfile: true,
+		camera: fit(nil, 88, 34, 2),
 	}
 	if err := m.initUI(); err != nil {
 		t.Fatal(err)

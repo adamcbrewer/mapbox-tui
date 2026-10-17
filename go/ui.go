@@ -647,7 +647,7 @@ func (m *viewer) commands() []viewerCommand {
 	}
 	if len(m.workspace.profileItems()) > 0 {
 		toggles = append(toggles, viewerCommand{
-			title: "Toggle elevation profiles", shortcut: "e", action: "profile", toggle: true, checked: m.showProfile,
+			title: "Toggle elevation profiles", shortcut: "e", action: "profile", toggle: true, checked: m.profileEnabled(),
 		})
 	}
 	if m.activeTrack() != nil {
@@ -756,12 +756,12 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 			m.motion.Active = false
 		}
 	case "profile":
-		m.profileExplicit = true
-		m.showProfile = !m.showProfile
-		choice := "hide"
-		if m.showProfile {
+		choice, mode := "hide", elevationHide
+		if !m.profileEnabled() {
 			choice = "show"
+			mode = elevationShow
 		}
+		m.settings.Elevation = mode
 		m.saveViewerPreference(func(s *appSettings) { s.Elevation = choice })
 		m.layout()
 	case "play":

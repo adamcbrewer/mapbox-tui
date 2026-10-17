@@ -26,7 +26,7 @@ func journeyViewer(t *testing.T) *viewer {
 	}
 	m := &viewer{
 		ctx: t.Context(), provider: newProvider("none"), camera: c,
-		width: 120, height: 40, args: Args{NoAnimation: true}, showProfile: true,
+		width: 120, height: 40, args: Args{NoAnimation: true},
 	}
 	if err := m.initUI(); err != nil {
 		t.Fatal(err)

@@ -1,9 +1,37 @@
 package main
 
-import "strings"
+import "fmt"
 
-// Viewer preferences never enter Args or Workspace: static rendering and workspace
-// lifecycle operations keep their own defaults and state.
+type elevationMode uint8
+
+const (
+	elevationAuto elevationMode = iota
+	elevationShow
+	elevationHide
+)
+
+func parseElevationMode(choice string) (elevationMode, error) {
+	switch choice {
+	case "", "auto":
+		return elevationAuto, nil
+	case "show":
+		return elevationShow, nil
+	case "hide":
+		return elevationHide, nil
+	default:
+		return elevationAuto, fmt.Errorf("elevation must be auto, show or hide")
+	}
+}
+
+// A saved show choice remains enabled even when the workspace has no elevation.
+// Layout separately requires visible recorded elevation before reserving space.
+func (m *viewer) profileEnabled() bool {
+	return m.settings.Elevation == elevationShow ||
+		(m.settings.Elevation == elevationAuto && m.workspace.hasVisibleElevation())
+}
+
+// Resolve saved choices and launch overrides only into viewer state. Shared Args
+// and Workspace retain their own defaults and lifecycle.
 func (m *viewer) initViewerPreferences(saved appSettings) (int, error) {
 	m.settings = viewerSettings{ASCII: m.args.ASCII, NoAnimation: m.args.NoAnimation}
 	if saved.ASCII != nil && !m.args.ASCIISet {
@@ -19,7 +47,7 @@ func (m *viewer) initViewerPreferences(saved appSettings) (int, error) {
 	}
 	themes, selected, err := loadThemes(choice)
 	if err != nil && fromSaved {
-		m.settingsNotice = "Saved theme unavailable; using Catppuccin: " + err.Error()
+		m.themeNotice = "Saved theme unavailable; using Catppuccin: " + err.Error()
 		themes, selected, err = loadThemes("")
 	}
 	if err != nil {
@@ -30,16 +58,15 @@ func (m *viewer) initViewerPreferences(saved appSettings) (int, error) {
 	if m.args.ElevationSet {
 		elevation = m.args.Elevation
 	}
-	m.profileExplicit = elevation == "show" || elevation == "hide"
-	m.showProfile = elevation == "show" || (!m.profileExplicit && m.workspace.hasVisibleElevation())
-	return selected, nil
+	m.settings.Elevation, err = parseElevationMode(elevation)
+	return selected, err
 }
 
 func (m *viewer) saveViewerPreference(change func(*appSettings)) bool {
 	_, err := updateAppSettings(change)
 	if err != nil {
 		m.settingsNotice = "Preference not saved: " + err.Error()
-	} else if strings.HasPrefix(m.settingsNotice, "Preference not saved:") {
+	} else {
 		m.settingsNotice = ""
 	}
 	// A failed save still leaves the deliberate change usable for this session.
@@ -54,7 +81,14 @@ func (m *viewer) saveThemePreference() {
 		choice = m.theme().Path
 	}
 	saved := m.saveViewerPreference(func(s *appSettings) { s.Theme = choice })
-	if saved && strings.HasPrefix(m.settingsNotice, "Saved theme unavailable;") {
-		m.settingsNotice = ""
+	if saved {
+		m.themeNotice = ""
 	}
+}
+
+func (m *viewer) preferenceNotice() string {
+	if m.settingsNotice != "" {
+		return m.settingsNotice
+	}
+	return m.themeNotice
 }

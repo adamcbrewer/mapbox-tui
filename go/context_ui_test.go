@@ -15,8 +15,7 @@ func TestContextDrawerKeepsCameraAndCapturesCoveredMouseEvents(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := themeViewer(t, size[0], size[1], false)
-			m.profileExplicit = true
-			m.showProfile = false
+			m.settings.Elevation = elevationHide
 			m.layout()
 			m.rebuild()
 			before, selection := m.camera, m.workspace.selection
@@ -61,8 +60,7 @@ func TestContextSurfacesInheritEveryThemeAndFitTerminal(t *testing.T) {
 		for _, ascii := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%dx%d/ascii=%v", size[0], size[1], ascii), func(t *testing.T) {
 				m := themeViewer(t, size[0], size[1], ascii)
-				m.profileExplicit = true
-				m.showProfile = false
+				m.settings.Elevation = elevationHide
 				m.layout()
 				m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 				for i := range m.themes {
@@ -123,8 +121,7 @@ func TestContextDrawerPersistsDuringMapNavigation(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := themeViewer(t, size[0], size[1], false)
 			m.settings.NoAnimation = true
-			m.profileExplicit = true
-			m.showProfile = false
+			m.settings.Elevation = elevationHide
 			m.layout()
 			m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 			m.rebuild()
@@ -174,8 +171,7 @@ func TestSelectedPositionMarkerFollowsMapAndTheme(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		m := themeViewer(t, 120, 40, ascii)
 		m.settings.NoAnimation = true
-		m.profileExplicit = true
-		m.showProfile = false
+		m.settings.Elevation = elevationHide
 		m.layout()
 		m.openDialog(dialogSearch)
 		m.applyPlaceLocation(placeLocation{Name: "Selected place", Lon: 8.54, Lat: 47.37})
@@ -220,8 +216,7 @@ func TestSelectedPositionMarkerFollowsMapAndTheme(t *testing.T) {
 
 func TestPlannerPreservesImportedContextAndDrawer(t *testing.T) {
 	m := themeViewer(t, 120, 40, false)
-	m.profileExplicit = true
-	m.showProfile = false
+	m.settings.Elevation = elevationHide
 	m.layout()
 	m.openDialog(dialogSearch)
 	m.applyPlaceLocation(placeLocation{Name: "Country viewpoint", Lon: -2.58, Lat: 51.31})
@@ -392,8 +387,7 @@ func TestPlannerInsetPreservesOuterMapBorder(t *testing.T) {
 func TestSharedPanelSwitchesViewsWithoutLosingContext(t *testing.T) {
 	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
 		m := themeViewer(t, size[0], size[1], false)
-		m.profileExplicit = true
-		m.showProfile = false
+		m.settings.Elevation = elevationHide
 		m.layout()
 		selection := m.workspace.selection
 		m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
@@ -538,8 +532,7 @@ func TestJourneyShortcutPreservesNestedEditor(t *testing.T) {
 
 func TestSidebarVisibilityAndTabCycle(t *testing.T) {
 	m := themeViewer(t, 120, 40, false)
-	m.profileExplicit = true
-	m.showProfile = false
+	m.settings.Elevation = elevationHide
 	m.layout()
 	selection, camera := m.workspace.selection, m.camera
 	m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
@@ -660,9 +653,9 @@ func TestHiddenSidebarUsesMapKeysWithoutChangingFiles(t *testing.T) {
 		if !m.activePlayback().Playing || !reflect.DeepEqual(rows, m.workspaceRows()) {
 			t.Fatal("hidden panel swallowed playback or toggled file visibility", kind)
 		}
-		beforeProfile := m.showProfile
+		beforeProfile := m.profileEnabled()
 		m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-		if m.showProfile == beforeProfile {
+		if m.profileEnabled() == beforeProfile {
 			t.Fatal("hidden panel swallowed the profile toggle", kind)
 		}
 	}
