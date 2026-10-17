@@ -57,7 +57,7 @@ func TestBillingDialogPersistsOfflineAndRetainsCoordinates(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
 	m := authTestViewer(t)
-	m.openBilling("login")
+	m.openBilling(billingSignIn)
 	if billingActions[m.ui.selected].action != "offline" {
 		t.Fatal("confirmation defaulted to accepting risks")
 	}
@@ -133,10 +133,49 @@ func TestBillingAndUsageDialogsFitAndRetainMenuSelection(t *testing.T) {
 	}
 }
 
+func TestUsageIdentifiesSavedAccountAndPreservesEnvironmentProvenance(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
+	credential := renderingCredential{token: "pk.environment", source: "environment"}
+	m := &viewer{
+		ctx: t.Context(), provider: providerForCredential("mapbox", credential), credential: credential,
+		width: 120, height: 40, camera: fit(nil, 88, 34, 2),
+	}
+	if err := m.initUI(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.sources.close)
+	if m.credential.source != "environment" || m.provider.token != "" {
+		t.Fatal("startup lost the environment source or enabled products without consent")
+	}
+	period := currentUsagePeriod(time.Now())
+	m.usage = usageReport{State: "available", Account: "saved-account", Period: &period,
+		Products: []productUsage{{Name: "Vector Tiles API", Unit: "requests", Total: 123}}}
+	summary := strings.Join(m.usageSummary(), "\n")
+	for _, text := range []string{"Usage: saved-account (saved login)", "account may differ", "123 requests"} {
+		if !strings.Contains(summary, text) {
+			t.Fatal("usage summary lost account identity, scope or counts", summary)
+		}
+	}
+	for _, size := range [][2]int{{120, 40}, {70, 24}, {30, 12}} {
+		m.width, m.height = size[0], size[1]
+		m.layout()
+		m.openDialog(dialogMapbox)
+		m.rebuild()
+		if lipgloss.Width(m.content) > size[0] || lipgloss.Height(m.content) > size[1] {
+			t.Fatal("account identity overflowed the settings dialog", size)
+		}
+	}
+	m.credential = renderingCredential{source: "login", token: "pk.saved"}
+	if strings.Contains(strings.Join(m.usageSummary(), "\n"), "may differ") {
+		t.Fatal("saved-login rendering showed an unsupported account mismatch")
+	}
+}
+
 func TestViewerAndCLIBillingUseSameNotice(t *testing.T) {
 	m := authTestViewer(t)
 	m.openDialog(dialogMapbox)
-	m.openBilling("login")
+	m.openBilling(billingSignIn)
 	if hints := m.dialogHints("tab action   esc offline"); !strings.Contains(hints, "esc offline") {
 		t.Fatal("nested confirmation mislabelled Escape as back", hints)
 	}

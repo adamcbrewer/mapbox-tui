@@ -44,10 +44,11 @@ type viewerMapboxLogin struct {
 }
 
 func (m *viewer) connectionNotice() string {
-	if m.preferences.Offline {
+	access := m.preferences.productAccess(m.credential.token)
+	if access == mapboxOffline {
 		return "Offline maps · account usage checked at startup"
 	}
-	if m.credential.token != "" && !m.preferences.billingAccepted() {
+	if access == mapboxNeedsConsent {
 		return "Mapbox online features paused · review billing in Mapbox settings"
 	}
 	if m.loading || m.authBusy {
@@ -102,11 +103,11 @@ func (m *viewer) discoverCredentialsWith(
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.authCancel, m.authBusy = cancel, true
 	id := m.authID
-	online := m.preferences.mapboxOnline()
+	preferences := m.preferences
 	return func() tea.Msg {
 		credential := resolveCredential(ctx)
 		var access authSection
-		if online && (afterLogin || checkConnection) && credential.token != "" {
+		if preferences.productAccess(credential.token) == mapboxAllowed && (afterLogin || checkConnection) {
 			access = probe(ctx, providerForCredential("mapbox", credential))
 		}
 		return credentialResult{
@@ -130,11 +131,8 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 		m.authCancel = nil
 	}
 	m.credential = result.credential
-	credential := result.credential
-	if !m.preferences.mapboxOnline() && (credential.token != "" || m.preferences.Offline) {
-		credential.token = ""
-		credential.guidance = m.preferences.mapboxBlockedReason()
-	}
+	access := m.preferences.productAccess(m.credential.token)
+	credential := access.effectiveCredential(m.credential)
 	switch {
 	case credential.token == "":
 		m.setMapboxVerified(false)
@@ -152,7 +150,7 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	if !m.args.ProviderSet {
 		kind = defaultProvider(credential.token)
 	}
-	if !m.preferences.mapboxOnline() {
+	if access == mapboxOffline || access == mapboxNeedsConsent {
 		kind = "none"
 	}
 	if credential.token != m.provider.token || kind != m.provider.Kind {
@@ -189,10 +187,10 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 			m.configureTraffic()
 		}
 		switch {
-		case m.preferences.Offline:
+		case access == mapboxOffline:
 			m.authMessage = "You're offline. Choose 'Go online' to use Mapbox."
-		case !m.preferences.mapboxOnline() && m.credential.token != "":
-			m.authMessage = m.preferences.mapboxBlockedReason()
+		case access == mapboxNeedsConsent:
+			m.authMessage = access.guidance()
 		case credential.token == "":
 			m.authMessage = "Check failed: " + credential.guidance
 		case result.access.State != "ready":
@@ -246,15 +244,15 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	if m.placeSearchOpen() && m.places.token != "" {
 		search = m.schedulePlaceSearch()
 	}
-	if m.credential.token != "" && !m.preferences.billingAccepted() && !m.preferences.Offline {
-		m.openBilling("online")
+	if access == mapboxNeedsConsent {
+		m.openBilling(billingEnableOnline)
 	}
 	return tea.Batch(m.fetch(), routing, search)
 }
 
 func (m *viewer) beginMapboxLogin() tea.Cmd {
-	if !m.preferences.mapboxOnline() {
-		return m.openBilling("login")
+	if !m.preferences.billingAccepted() {
+		return m.openBilling(billingSignIn)
 	}
 	m.cancelPlaceSearch()
 	m.cancelAuth()
@@ -291,7 +289,11 @@ func (m *viewer) mapboxConnected() bool {
 }
 
 func (m *viewer) mapboxVerified() bool {
-	return m.preferences.mapboxOnline() && m.mapboxConnected() && m.authVerified
+	token := m.credential.token
+	if token == "" && m.provider != nil {
+		token = m.provider.token
+	}
+	return m.preferences.productAccess(token) == mapboxAllowed && m.authVerified
 }
 
 func (m *viewer) setMapboxVerified(verified bool) {
@@ -358,12 +360,11 @@ func (m *viewer) updateMapboxDialog(key string) tea.Cmd {
 		case "usage":
 			return m.pushDialog(dialogMapboxUsage)
 		case "billing":
-			return m.openBilling("help")
+			return m.openBilling(billingShowGuidance)
 		case "online":
 			if !m.preferences.billingAccepted() {
-				return m.openBilling("online")
+				return m.openBilling(billingEnableOnline)
 			}
-			m.billingAction = "online"
 			return m.setMapboxOffline(false)
 		case "offline":
 			return m.setMapboxOffline(true)

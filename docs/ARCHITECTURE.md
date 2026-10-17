@@ -78,6 +78,23 @@ optional official Mapbox CLI. The CLI is installed separately and handles login
 and credential storage. Mapbox TUI uses the token to make its own data requests.
 The helper doesn't render anything.
 
+Product access has one shared decision: offline preference, billing acceptance,
+and the presence of a rendering credential determine whether requests are allowed.
+Viewer startup and credential updates apply that decision when building clients;
+search and connection messages use the same reason. CLI/MCP render entry points
+apply it before making product requests. Endpoint permissions remain separate:
+verifying Streets access does not prove Directions access.
+
+Billing acceptance and the online preference are separate saved transitions.
+Login enables online mode only after successful authentication; explicit Go online
+enables it immediately after acceptance. The viewer owns dialog navigation and a
+typed pending confirmation intent, consumed when the user responds or dismisses it.
+
+Account usage has a separate lifecycle and comes from the saved-login account,
+which can differ from the account behind an environment rendering token. The
+viewer attempts usage once at startup, even offline, and after successful login.
+Missing statistics access never disables otherwise permitted product requests.
+
 Local files already contain the geometry we need to draw them, calculate
 measurements and play back recordings. None of that needs a token or a network
 connection. Without provider data, we draw the imports on an empty canvas.

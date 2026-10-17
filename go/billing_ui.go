@@ -57,8 +57,17 @@ func (m *viewer) fetchAccountUsage() tea.Cmd {
 	}
 }
 
-func (m *viewer) openBilling(action string) tea.Cmd {
-	m.billingAction = action
+type billingIntent uint8
+
+const (
+	billingNoIntent billingIntent = iota
+	billingShowGuidance
+	billingEnableOnline
+	billingSignIn
+)
+
+func (m *viewer) openBilling(intent billingIntent) tea.Cmd {
+	m.billingIntent = intent
 	if m.ui.dialog == dialogMapboxBilling {
 		return nil
 	}
@@ -66,12 +75,7 @@ func (m *viewer) openBilling(action string) tea.Cmd {
 }
 
 func (m *viewer) setMapboxOffline(offline bool) tea.Cmd {
-	preferences, err := updateAppSettings(func(settings *appSettings) {
-		settings.Offline = offline
-		if !offline {
-			settings.BillingAccepted = billingNoticeVersion
-		}
-	})
+	preferences, err := saveMapboxOffline(offline)
 	if err != nil && !offline {
 		m.ui.notice = "Could not save Mapbox setting: " + err.Error()
 		m.dirty = true
@@ -99,14 +103,24 @@ func (m *viewer) setMapboxOffline(offline bool) tea.Cmd {
 		}
 		return cmd
 	}
-	if m.ui.dialog == dialogMapboxBilling {
-		m.backDialog()
+	return m.discoverCredentials(false, false)
+}
+
+func (m *viewer) acceptBilling() tea.Cmd {
+	preferences, err := recordBillingAcceptance()
+	if err != nil {
+		m.ui.notice = "Could not save billing acknowledgement: " + err.Error()
+		m.dirty = true
+		return nil
 	}
-	if m.billingAction == "login" {
-		m.billingAction = ""
+	m.preferences.BillingAccepted = preferences.BillingAccepted
+	intent := m.billingIntent
+	m.billingIntent = billingNoIntent
+	m.backDialog()
+	if intent == billingSignIn {
 		return m.beginMapboxLogin()
 	}
-	return m.discoverCredentials(false, false)
+	return m.setMapboxOffline(false)
 }
 
 var billingActions = []viewerCommand{
@@ -118,9 +132,11 @@ func (m *viewer) updateBillingDialog(msg tea.Msg) tea.Cmd {
 	if key, ok := msg.(tea.KeyPressMsg); ok {
 		switch key.String() {
 		case "esc":
-			if m.billingAction == "help" {
+			if m.billingIntent == billingShowGuidance {
+				m.billingIntent = billingNoIntent
 				return m.backDialog()
 			}
+			m.billingIntent = billingNoIntent
 			return m.setMapboxOffline(true)
 		case "tab", "right":
 			m.ui.selected = menuStep(m.ui.selected, 1, len(billingActions))
@@ -131,8 +147,9 @@ func (m *viewer) updateBillingDialog(msg tea.Msg) tea.Cmd {
 		case "enter":
 			switch billingActions[m.ui.selected].action {
 			case "online":
-				return m.setMapboxOffline(false)
+				return m.acceptBilling()
 			case "offline":
+				m.billingIntent = billingNoIntent
 				return m.setMapboxOffline(true)
 			}
 		}
@@ -169,7 +186,7 @@ func (m *viewer) billingDialogContent(width, height int) (string, string, string
 	}
 	rows = append(rows, actions...)
 	hints := "↑/↓ read   tab choice   enter choose   esc offline"
-	if m.billingAction == "help" {
+	if m.billingIntent == billingShowGuidance {
 		hints = "↑/↓ read   tab choice   enter choose   esc back"
 	}
 	return "Mapbox billing risks", strings.Join(rows, "\n"), hints
@@ -181,10 +198,12 @@ func (m *viewer) usageSummary() []string {
 	case "loading":
 		return []string{"Account usage: checking…"}
 	case "available", "empty":
-		rows := []string{"Account usage · " + r.Period.Start + " to " + r.Period.End + " UTC"}
+		rows := m.usageAccountSummary()
+		period := r.Period.Start + " to " + r.Period.End + " UTC"
 		if r.stale(time.Now()) {
-			rows[0] = "Stale " + rows[0]
+			period = "Stale · " + period
 		}
+		rows = append(rows, period)
 		for _, product := range r.Products {
 			rows = append(rows, fmt.Sprintf("%s: %d %s", product.Name, product.Total, product.Unit))
 		}
@@ -197,11 +216,24 @@ func (m *viewer) usageSummary() []string {
 	}
 }
 
+func (m *viewer) usageAccountSummary() []string {
+	account := "Account usage"
+	if m.usage.Account != "" {
+		account = "Usage: " + m.usage.Account + " (saved login)"
+	}
+	rows := []string{account}
+	if m.credential.source == "environment" && m.credential.token != "" {
+		rows = append(rows, "Map token: environment; account may differ")
+	}
+	return rows
+}
+
 func (m *viewer) usageDialogContent(width, height int) (string, string, string) {
 	var content strings.Builder
 	r := m.usage
 	if r.Period != nil {
-		fmt.Fprintf(&content, "Account usage · %s to %s UTC\n", r.Period.Start, r.Period.End)
+		fmt.Fprintln(&content, strings.Join(m.usageAccountSummary(), "\n"))
+		fmt.Fprintf(&content, "%s to %s UTC\n", r.Period.Start, r.Period.End)
 		if r.stale(time.Now()) {
 			content.WriteString("Stale report; restart to fetch current usage.\n")
 		}
@@ -221,7 +253,7 @@ func (m *viewer) usageDialogContent(width, height int) (string, string, string) 
 	if r.FetchedAt != nil {
 		fmt.Fprintf(&content, "Fetched: %s\n", r.FetchedAt.UTC().Format(time.RFC3339))
 	}
-	if r.Account != "" {
+	if r.Account != "" && r.Period == nil {
 		fmt.Fprintf(&content, "Account: %s (saved login)\n", r.Account)
 	}
 	if r.Guidance != "" {

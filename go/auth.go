@@ -353,7 +353,7 @@ func (s authStatus) text() string {
 
 func runAuth(ctx context.Context, command cliCommand, streams authStreams) error {
 	if command.AuthAction == "offline" {
-		_, err := updateAppSettings(func(settings *appSettings) { settings.Offline = true })
+		_, err := saveMapboxOffline(true)
 		if err != nil {
 			return err
 		}
@@ -365,7 +365,7 @@ func runAuth(ctx context.Context, command cliCommand, streams authStreams) error
 			return err
 		}
 		if command.AuthAction == "online" {
-			if _, err := updateAppSettings(func(settings *appSettings) { settings.Offline = false }); err != nil {
+			if _, err := saveMapboxOffline(false); err != nil {
 				return err
 			}
 			_, err := fmt.Fprintln(streams.out, "Billing risks acknowledged; online mode saved.")
@@ -409,7 +409,7 @@ func runAuth(ctx context.Context, command cliCommand, streams authStreams) error
 	if err := cli.login(ctx, streams); err != nil {
 		return err
 	}
-	if _, err := updateAppSettings(func(settings *appSettings) { settings.Offline = false }); err != nil {
+	if _, err := saveMapboxOffline(false); err != nil {
 		return err
 	}
 	fmt.Fprintf(streams.out, "Mapbox login saved by the CLI at %s\n", file)

@@ -42,13 +42,13 @@ func (m *viewer) startJourneyFromArgs() tea.Cmd {
 	}
 	m.args.Journey = nil
 	billingOpen := m.ui.dialog == dialogMapboxBilling
-	billingAction := m.billingAction
+	billingIntent := m.billingIntent
 	if billingOpen {
 		m.backDialog()
 	}
 	m.openJourney()
 	if billingOpen {
-		defer m.openBilling(billingAction)
+		defer m.openBilling(billingIntent)
 	}
 	j, err := m.workspace.journey(m.planner.ref)
 	if err != nil {

@@ -284,9 +284,12 @@ func (m *viewer) initUI() error {
 	}
 	m.preferences = preferences
 	if m.provider != nil {
-		m.credential = renderingCredential{token: m.provider.token, guidance: m.provider.guidance}
-		if !preferences.mapboxOnline() && (m.provider.token != "" || preferences.Offline) {
-			m.provider = providerForCredential("none", renderingCredential{guidance: preferences.mapboxBlockedReason()})
+		if m.credential.source == "" {
+			m.credential = renderingCredential{token: m.provider.token, guidance: m.provider.guidance}
+		}
+		access := preferences.productAccess(m.credential.token)
+		if access == mapboxOffline || access == mapboxNeedsConsent {
+			m.provider = providerForCredential("none", access.effectiveCredential(m.credential))
 		}
 	}
 	if m.places == nil {
@@ -339,6 +342,9 @@ func (m *viewer) gradient(s string, background color.Color) string {
 	return out.String()
 }
 func (m *viewer) closeDialog() {
+	if m.ui.dialog == dialogMapboxBilling {
+		m.billingIntent = billingNoIntent
+	}
 	wasPlanner := m.journeyPanelOpen()
 	if m.ui.dialog == dialogWorkspace {
 		m.ui.filesSelected = m.ui.selected
@@ -517,6 +523,9 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 }
 
 func (m *viewer) backDialog() tea.Cmd {
+	if m.ui.dialog == dialogMapboxBilling {
+		m.billingIntent = billingNoIntent
+	}
 	if len(m.ui.parents) == 0 {
 		m.closeDialog()
 		return nil
@@ -603,7 +612,7 @@ func (m *viewer) backDialog() tea.Cmd {
 }
 
 func (m *viewer) dialogHints(hints string) string {
-	billingConfirmation := m.ui.dialog == dialogMapboxBilling && m.billingAction != "help"
+	billingConfirmation := m.ui.dialog == dialogMapboxBilling && m.billingIntent != billingShowGuidance
 	if len(m.ui.parents) == 0 || m.ui.dialog == dialogFavouriteDelete || billingConfirmation {
 		return hints
 	}

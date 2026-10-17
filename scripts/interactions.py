@@ -1283,14 +1283,18 @@ def billing_usage(binary):
                     assert sum("usage" in args for args in recorded) == 1, "startup usage missing or repeated"
                     assert all("whoami" in args or "usage" in args for args in recorded), recorded
                     if width >= 70:
-                        wait_for(lambda screen: "Vector Tiles API: 123" in screen)
+                        wait_for(lambda screen: "Vector Tiles API: 123" in screen
+                                 and "Usage: fixtureaccount (saved login)" in screen
+                                 and "account may differ" in screen)
                         assert "Map Loads for Web" not in capture(), "unrelated product was displayed"
                     save_svg(ROOT / "reports/generated" / f"mapbox-tui-usage-menu-{width}x{height}.svg", width, height)
                     select_mapbox_action("Usage details")
                     send("\r")
                     wait_for(lambda screen: "Mapbox usage" in screen)
                     if width >= 70:
-                        wait_for(lambda screen: "123 requests" in screen and "days reported" in screen)
+                        wait_for(lambda screen: "123 requests" in screen and "days reported" in screen
+                                 and "Usage: fixtureaccount (saved login)" in screen
+                                 and "account may differ" in screen)
                     save_svg(ROOT / "reports/generated" / f"mapbox-tui-usage-{width}x{height}.svg", width, height)
                     send("\r")
                     wait_for(lambda screen: link.exists())

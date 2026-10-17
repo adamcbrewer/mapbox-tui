@@ -25,6 +25,7 @@ const billingNotice = "Mapbox TUI aims to support personal use within Mapbox's f
 	"Review your allowances and set up usage alerts before continuing. " +
 	"Alerts do not stop usage or charges. Different products have separate allowances; some have no free allowance.\n\n" +
 	"By choosing Accept risks and continue online, you acknowledge these risks.\n\n" +
+	"When signing in, online features are enabled only after login succeeds.\n\n" +
 	"Offline mode keeps coordinates and local files usable. " +
 	"An authenticated account still checks usage once at startup, including offline."
 
@@ -58,19 +59,14 @@ func (s appSettings) billingAccepted() bool {
 	return s.BillingAccepted == billingNoticeVersion || os.Getenv("MAPBOX_TUI_ACCEPT_BILLING") == "1"
 }
 
-func (s appSettings) mapboxOnline() bool {
-	return s.billingAccepted() && !s.Offline
+func recordBillingAcceptance() (appSettings, error) {
+	return updateAppSettings(func(settings *appSettings) { settings.BillingAccepted = billingNoticeVersion })
 }
 
-func (s appSettings) mapboxBlockedReason() string {
-	if s.Offline {
-		return "Mapbox offline mode is enabled; go online in Mapbox settings or run 'mapbox-tui auth online'"
-	}
-	if !s.billingAccepted() {
-		return "Mapbox billing risks must be acknowledged; open Mapbox settings or run 'mapbox-tui auth online'. " +
-			"For unattended use, review " + billingDocsURL + " then set MAPBOX_TUI_ACCEPT_BILLING=1"
-	}
-	return ""
+// Enabling services is separate from acknowledging terms. Login callers only
+// enable them after successful authentication; an explicit Go online is immediate.
+func saveMapboxOffline(offline bool) (appSettings, error) {
+	return updateAppSettings(func(settings *appSettings) { settings.Offline = offline })
 }
 
 func requireMapboxOnline(token string) error {
@@ -81,7 +77,7 @@ func requireMapboxOnline(token string) error {
 	if err != nil {
 		return err
 	}
-	if reason := settings.mapboxBlockedReason(); reason != "" {
+	if reason := settings.productAccess(token).guidance(); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
 	return nil
@@ -117,12 +113,12 @@ func confirmMapboxBilling(ctx context.Context, streams authStreams, accepted boo
 		}
 		answer = strings.ToLower(strings.TrimSpace(answer))
 		if answer != "y" && answer != "yes" {
-			if _, err := updateAppSettings(func(settings *appSettings) { settings.Offline = true }); err != nil {
+			if _, err := saveMapboxOffline(true); err != nil {
 				return err
 			}
 			return fmt.Errorf("continuing offline; coordinates and imported files remain available")
 		}
 	}
-	_, err = updateAppSettings(func(settings *appSettings) { settings.BillingAccepted = billingNoticeVersion })
+	_, err = recordBillingAcceptance()
 	return err
 }

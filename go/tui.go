@@ -82,7 +82,7 @@ type viewer struct {
 	preferences               appSettings
 	connectionEcho            string
 	credential                renderingCredential
-	billingAction             string
+	billingIntent             billingIntent
 	usage                     usageReport
 	usageID                   uint64
 	usageCancel               context.CancelFunc
@@ -97,8 +97,8 @@ func (m *viewer) Init() tea.Cmd {
 	_, explicit := environmentCredential()
 	if !explicit {
 		credentials = m.discoverCredentials(false, false)
-	} else if m.credential.token != "" && !m.preferences.billingAccepted() && !m.preferences.Offline {
-		m.openBilling("online")
+	} else if m.preferences.productAccess(m.credential.token) == mapboxNeedsConsent {
+		m.openBilling(billingEnableOnline)
 	}
 	if m.path == "" {
 		navigation := m.freeRoam()
@@ -315,6 +315,14 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirty = true
 			return m, nil
 		}
+		preferences, err := saveMapboxOffline(false)
+		if err != nil {
+			m.authMessage = "Login succeeded; could not save online mode: " + err.Error()
+			m.dirty = true
+			return m, m.fetchAccountUsage()
+		}
+		m.preferences.Offline = preferences.Offline
+		m.preferences.BillingAccepted = preferences.BillingAccepted
 		return m, tea.Batch(m.discoverCredentials(true, false), m.fetchAccountUsage())
 	case searchClipboardResult:
 		if v.owner == "" || v.owner != m.ui.inputID || v.dialog != m.ui.dialog {
@@ -1206,6 +1214,7 @@ func openViewerFiles(paths []string, a Args) error {
 	m := &viewer{
 		args:         a,
 		provider:     p,
+		credential:   credential,
 		ctx:          ctx,
 		camera:       c,
 		width:        120,

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,96 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 )
+
+func TestViewerLoginOnlyEnablesOnlineAfterSuccess(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		failure   error
+		dismissed bool
+	}{
+		{name: "success"},
+		{name: "failure", failure: errors.New("login failed")},
+		{name: "cancelled", failure: context.Canceled},
+		{name: "obsolete completion", dismissed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fakeMapbox(t, "good")
+			t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
+			if err := saveAppSettings(appSettings{Offline: true}); err != nil {
+				t.Fatal(err)
+			}
+			m := authTestViewer(t)
+			t.Cleanup(m.cancelAccountUsage)
+			m.openDialog(dialogMapbox)
+			m.beginMapboxLogin()
+			m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+			_, prepare := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			settings, err := loadAppSettings()
+			if err != nil || !settings.billingAccepted() || !settings.Offline || !m.preferences.Offline {
+				t.Fatal("consent enabled online mode before login succeeded", settings, err)
+			}
+			if prepare == nil || m.billingIntent != billingNoIntent {
+				t.Fatal("login continuation was missing or not consumed")
+			}
+			ready := prepare().(mapboxLoginReady)
+			if ready.err != nil {
+				t.Fatal(ready.err)
+			}
+			if test.dismissed {
+				m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			}
+			_, completed := m.Update(mapboxLoginDone{id: ready.id, err: test.failure})
+			settings, err = loadAppSettings()
+			wantOffline := test.failure != nil || test.dismissed
+			if err != nil || settings.Offline != wantOffline || m.preferences.Offline != wantOffline {
+				t.Fatal("login completion did not preserve the intended online state", settings, err)
+			}
+			if !wantOffline && completed == nil {
+				t.Fatal("successful login did not refresh credentials and usage")
+			}
+			if wantOffline && (m.provider.token != "" || m.places.token != "" || m.directions.token != "") {
+				t.Fatal("unsuccessful login enabled product services")
+			}
+		})
+	}
+}
+
+func TestViewerLoginPersistenceFailureKeepsOfflineAndRefreshesUsage(t *testing.T) {
+	fakeMapbox(t, "good")
+	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
+	if err := saveAppSettings(appSettings{Offline: true, BillingAccepted: billingNoticeVersion}); err != nil {
+		t.Fatal(err)
+	}
+	m := authTestViewer(t)
+	t.Cleanup(m.cancelAccountUsage)
+	m.openDialog(dialogMapbox)
+	ready := m.beginMapboxLogin()().(mapboxLoginReady)
+	if ready.err != nil {
+		t.Fatal(ready.err)
+	}
+	settingsDirectory := os.Getenv("XDG_CONFIG_HOME")
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", blocked)
+	_, usage := m.Update(mapboxLoginDone{id: ready.id})
+	if !m.preferences.Offline || m.provider.token != "" || m.places.token != "" || m.directions.token != "" {
+		t.Fatal("login enabled product services despite failing to save online mode")
+	}
+	if !strings.Contains(m.authMessage, "could not save online mode") || usage == nil {
+		t.Fatal("login persistence failure hid feedback or skipped statistics", m.authMessage)
+	}
+	t.Setenv("XDG_CONFIG_HOME", settingsDirectory)
+	m.Update(usage())
+	if m.usage.State != "available" {
+		t.Fatal("post-login account usage depended on enabling product access", m.usage.State)
+	}
+	settings, err := loadAppSettings()
+	if err != nil || !settings.Offline {
+		t.Fatal("failed persistence changed the saved offline preference", settings, err)
+	}
+}
 
 func TestBillingRegressionUnsuccessfulCLILoginPreservesOffline(t *testing.T) {
 	for _, scenario := range []string{"failure", "hang"} {
@@ -127,7 +218,7 @@ func TestBillingRegressionStartupJourneyDoesNotRetainAcceptedBillingDialog(t *te
 	m := authTestViewer(t)
 	m.args.Journey, _ = parseStartupJourney("51.3,-2.5", "51.4,-2.6", nil, "manual")
 	m.windowSizeKnown = true
-	m.openBilling("online")
+	m.openBilling(billingEnableOnline)
 	m.startJourneyFromArgs()
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

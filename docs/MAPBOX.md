@@ -39,6 +39,11 @@ acknowledgement before billable features run. Acceptance is versioned and saved
 locally; rotating a token does not repeat the same warning. Billing guidance
 remains available in Mapbox settings.
 
+Acknowledging the notice saves acceptance separately from the online preference.
+CLI and in-app login enable online features only after login succeeds. Failed or
+cancelled login preserves the previous offline choice. An explicit **Go online**
+or `auth online` enables services immediately once acceptance is recorded.
+
 Billing and usage links in the viewer and interactive CLI notice use terminal
 hyperlinks (OSC 8). Open them with your terminal's link-opening gesture; the exact
 click/modifier depends on the terminal. The billing confirmation keeps only the
@@ -91,8 +96,9 @@ return an actionable error, without making a tile request. Offline renders using
 
 Mapbox settings shows current-month, account-wide product totals. **Usage details**
 adds days with reported usage, latest reported date, UTC reporting period, report
-generation time and fetch time. The saved-login account is named in the details:
-an environment rendering token may belong to a different account. Only app-related
+generation time and fetch time. The saved-login account is named above the totals
+in both views. When maps use an environment token, a note explains that its account
+may differ; we do not make extra requests to determine ownership. Only app-related
 products are displayed; the web usage link shows the full account.
 
 Counts are kept in their original units. Search sessions cannot be added to tile

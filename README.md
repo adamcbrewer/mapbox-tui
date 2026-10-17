@@ -166,13 +166,16 @@ allowances, and some products may have no free allowance.
 Mapbox settings shows current-month usage for products used by this app, with a
 **Usage details** view and a link to your
 [account usage](https://console.mapbox.com/account/statistics/). These are
-account-wide figures, including other applications. Statistics can be delayed or
+account-wide figures for the named saved-login account, including other applications.
+An environment token used for maps may belong to a different account.
+Statistics can be delayed or
 unavailable; they are not an invoice or a remaining free allowance.
 
 Choose **Continue offline** in the confirmation, or **Go offline** in Mapbox
 settings, to disable online maps, traffic, place lookup and routing. Coordinates,
 local favourites and imported files remain usable. This choice persists until
-you choose **Go online**. An authenticated account still makes one account-usage
+you choose **Go online** or successfully sign in again. Failed or cancelled login
+keeps your previous offline choice. An authenticated account still makes one account-usage
 check at viewer startup, including in offline mode.
 
 See [Mapbox billing and usage guidance](docs/MAPBOX.md#free-usage-and-billing)
