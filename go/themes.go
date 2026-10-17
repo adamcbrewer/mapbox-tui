@@ -144,7 +144,14 @@ func loadThemes(choice string) ([]presentationTheme, int, error) {
 		return nil, 0, fmt.Errorf("open theme %q: %w", choice, err)
 	}
 	defer file.Close()
-	theme, err := decodeTheme(file)
+	data, err := io.ReadAll(io.LimitReader(file, 65537))
+	if err != nil {
+		return nil, 0, fmt.Errorf("read theme %q: %w", choice, err)
+	}
+	if len(data) > 65536 {
+		return nil, 0, fmt.Errorf("theme %q exceeds 64 KiB", choice)
+	}
+	theme, err := decodeTheme(bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, fmt.Errorf("theme %q: %w", choice, err)
 	}
@@ -152,6 +159,10 @@ func loadThemes(choice string) ([]presentationTheme, int, error) {
 		if existing.ID == theme.ID {
 			return nil, 0, fmt.Errorf("custom theme id %q matches a built-in; choose a unique id", theme.ID)
 		}
+	}
+	theme.Path, err = filepath.Abs(choice)
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolve theme path: %w", err)
 	}
 	return append(themes, theme), len(themes), nil
 }

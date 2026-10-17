@@ -188,3 +188,97 @@ func TestBrokenTelemetrySettingsDoNotBlockMapboxCLI(t *testing.T) {
 		t.Fatal("broken optional settings blocked the CLI or enabled telemetry")
 	}
 }
+
+func TestInvalidSettingsAreNeverReplacedByViewerChanges(t *testing.T) {
+	for name, data := range map[string]string{
+		"malformed":         `{"traffic":true,`,
+		"oversized":         strings.Repeat(" ", 65537),
+		"incompatible":      `{"version":99,"ascii":true}`,
+		"unknown field":     `{"future_preference":true}`,
+		"null":              `null`,
+		"wrong type":        `{"ascii":"true"}`,
+		"invalid elevation": `{"elevation":"sometimes"}`,
+		"trailing data":     `{} {}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			path, err := appSettingsPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			m := preferenceViewer(t)
+			if m.settings.ASCII || m.settingsNotice == "" {
+				t.Fatal("invalid settings did not use defaults with feedback")
+			}
+			m.toggleMenuOption("ascii")
+			if !m.settings.ASCII || !strings.Contains(m.settingsNotice, "Preference not saved") {
+				t.Fatal("failed save did not leave viewer usable with feedback")
+			}
+			if string(settingsBytes(t)) != data {
+				t.Fatal("viewer replaced invalid settings")
+			}
+		})
+	}
+}
+
+func TestSettingsFailedWritesPreserveValidFile(t *testing.T) {
+	for _, failure := range []string{"validation", "unwritable directory", "unreadable file", "busy"} {
+		t.Run(failure, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if err := saveAppSettings(appSettings{Traffic: true}); err != nil {
+				t.Fatal(err)
+			}
+			before := settingsBytes(t)
+			path, _ := appSettingsPath()
+			// Create the lock before restricting the directory so failure occurs at replacement preparation.
+			if err := os.WriteFile(path+".lock", nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			var restore func()
+			switch failure {
+			case "unwritable directory", "unreadable file":
+				target, mode := filepath.Dir(path), os.FileMode(0500)
+				if failure == "unreadable file" {
+					target, mode = path, 0000
+				}
+				info, err := os.Stat(target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(target, mode); err != nil {
+					t.Fatal(err)
+				}
+				restore = func() { _ = os.Chmod(target, info.Mode().Perm()) }
+				t.Cleanup(restore)
+			case "busy":
+				lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Close()
+				if err := lockLocalFile(lock); err != nil {
+					t.Fatal(err)
+				}
+				defer unlockLocalFile(lock)
+			}
+			_, err := updateAppSettings(func(s *appSettings) {
+				s.Traffic = false
+				if failure == "validation" {
+					s.Elevation = "invalid"
+				}
+			})
+			if restore != nil {
+				restore()
+			}
+			if err == nil || string(settingsBytes(t)) != string(before) {
+				t.Fatal("failed write lost previous valid settings", err)
+			}
+		})
+	}
+}

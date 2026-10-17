@@ -10,6 +10,7 @@ import (
 )
 
 type presentationTheme struct {
+	Path           string            `toml:"-"`
 	ID             string            `toml:"id"`
 	Name           string            `toml:"name"`
 	Background     string            `toml:"background"`

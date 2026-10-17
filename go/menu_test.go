@@ -8,6 +8,7 @@ import (
 )
 
 func TestMainMenuLabelsOrderAndToggleTicks(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := authTestViewer(t)
 	m.provider.token, m.authVerified = "pk.checked", true
 	wanted := map[string]string{

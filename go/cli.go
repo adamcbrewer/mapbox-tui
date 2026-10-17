@@ -80,6 +80,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			}
 			return nil
 		})
+		fs.StringVar(&a.Elevation, "elevation", "auto", "elevation profiles: auto, show or hide (launch only)")
 		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
 		fs.StringVar(
 			&a.Theme,
@@ -165,10 +166,21 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			a.Zoom = &zoom
 		case "bearing":
 			a.Bearing = &bearing
+		case "elevation":
+			a.ElevationSet = true
+		case "ascii":
+			a.ASCIISet = true
+		case "no-animation":
+			a.NoAnimationSet = true
+		case "theme":
+			a.ThemeSet = true
 		case "provider":
 			a.ProviderSet = true
 		}
 	})
+	if !validElevation(a.Elevation) || (a.ElevationSet && a.Elevation == "") {
+		return command, fmt.Errorf("elevation must be auto, show or hide")
+	}
 	if journeyRequested {
 		journey, err := parseStartupJourney(journeyStart, journeyEnd, journeyWaypoints, journeyModeName)
 		if err != nil {

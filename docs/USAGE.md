@@ -92,7 +92,7 @@ Elevation profiles appear automatically when any visible imported activity has
 recorded elevation, including files opened later. They stay hidden without
 elevation data and disappear when the last elevation-bearing activity is hidden
 or removed. Use `e` or the command palette to toggle them; your explicit choice
-lasts for the viewer session, including later loads and selection changes.
+is saved globally, including for later launches, loads and selection changes.
 Attribution stays in the footer.
 
 Menus wrap. Rounded modal borders contain the current title and a breadcrumb
@@ -102,6 +102,50 @@ unloading files or journeys. If a panel is open, the first Esc closes it; press
 Esc again to clear the location.
 Use `--ascii` if your terminal doesn't render Braille well. The minimum viewer
 size is 30 columns by 12 rows.
+
+## Saved viewer preferences
+
+Theme, ASCII mode, camera animation and elevation choices live in `settings.json`,
+separate from workspaces and favourites. On Linux this is
+`$XDG_CONFIG_HOME/mapbox-tui/settings.json`, or
+`~/.config/mapbox-tui/settings.json` when `XDG_CONFIG_HOME` is unset. Other systems
+use Go's user configuration directory. Starting an empty workspace keeps these
+preferences.
+
+The viewer applies defaults, saved preferences, then explicitly supplied CLI
+options. Defaults are Catppuccin, Braille, animated camera transitions and automatic
+elevation. Flags override only that launch, including explicit false values:
+
+```sh
+mapbox-tui --ascii=false --no-animation=false --theme=catppuccin --elevation=auto
+```
+
+`--elevation` accepts `auto`, `show` or `hide`. Automatic mode follows visible
+recorded elevation; show remembers your intent but still leaves the chart hidden
+when no visible activity has elevation. The `e` key saves an explicit show/hide
+choice. The `a` and `m` keys, and their command-palette actions, save their choices
+immediately. Theme previews are saved only with Enter; dismissal restores the
+previous theme. Changing one preference does not save other launch overrides.
+Static CLI and MCP rendering do not use these viewer preferences.
+
+To reset only viewer preferences, close running viewers and remove the `theme`,
+`ascii`, `no_animation` and `elevation` fields from the JSON. Removing just
+`elevation` (or setting it to `"auto"`) restores automatic elevation. Removing the
+whole file resets **all** settings, including traffic, CLI telemetry, offline mode
+and billing acknowledgement; it does not remove favourites or Mapbox credentials.
+
+Settings reads are limited to 64 KiB. Malformed files, unknown fields or incompatible
+values produce a visible warning and defaults; the viewer leaves the file intact.
+Full warning details appear in the Context panel (Ctrl-B). Repair or move the file
+aside before saving preferences again. Missing or invalid saved palettes fall back
+to Catppuccin without rewriting the saved path. Failed writes keep the prior file
+and report that the change applies only to the current session.
+
+Updates lock `settings.json.lock`, reread the file, change only the requested
+field, then sync and atomically replace it with a temporary file in the same
+directory. Concurrent changes preserve unrelated fields; a busy writer produces
+an error instead of overwriting another update. Atomic replacement is verified on
+Unix; native Windows behaviour remains unverified.
 
 ## Loaded files and playback
 

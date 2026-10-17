@@ -18,6 +18,7 @@ import (
 
 func themeViewer(t *testing.T, width, height int, ascii bool) *viewer {
 	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
 	m := &viewer{
 		provider:    newProvider("none"),

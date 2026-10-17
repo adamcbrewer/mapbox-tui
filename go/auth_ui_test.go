@@ -209,6 +209,7 @@ func TestViewerClosingDialogStackCancelsSuspendedMapboxSetup(t *testing.T) {
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			m := authTestViewer(t)
 			m.openDialog(dialogMapbox)
 			pending, login := pendingViewerAuthResult(t, m, true)

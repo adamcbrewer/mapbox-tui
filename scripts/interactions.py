@@ -1,6 +1,7 @@
 from pathlib import Path
 import difflib
 import html
+import functools
 import json
 import os
 import re
@@ -200,6 +201,22 @@ def wait_context(predicate, timeout=10):
     raise AssertionError(f"Context assertion timed out:\n{text}")
 
 
+def isolated_settings(scenario):
+    @functools.wraps(scenario)
+    def run(*args, **kwargs):
+        previous = os.environ["XDG_CONFIG_HOME"]
+        with tempfile.TemporaryDirectory() as directory:
+            os.environ["XDG_CONFIG_HOME"] = directory
+            tmux("set-environment", "-g", "XDG_CONFIG_HOME", directory)
+            try:
+                return scenario(*args, **kwargs)
+            finally:
+                os.environ["XDG_CONFIG_HOME"] = previous
+                tmux("set-environment", "-g", "XDG_CONFIG_HOME", previous)
+    return run
+
+
+@isolated_settings
 def scenario(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -325,6 +342,7 @@ def live_capture(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def tiny_start(binary):
     command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),"open",str(ROOT / "fixtures/example.gpx")])
     tmux("new-session","-d","-s","poc","-x","25","-y","10",command)
@@ -340,6 +358,7 @@ def tiny_start(binary):
         tmux("kill-session","-t","poc",check=False)
 
 
+@isolated_settings
 def profile_playback(binary, width, height):
     command=shlex.join(["env","MAPBOX_ACCESS_TOKEN=","TERM=xterm-256color","COLORTERM=truecolor","python3",str(ROOT / "scripts/terminal_runner.py"),str(binary),str(ROOT / "fixtures/example.gpx")])
     tmux("new-session","-d","-s","poc","-x",str(width),"-y",str(height),command)
@@ -419,6 +438,7 @@ def live_playback(binary):
         tmux("kill-session","-t","poc",check=False)
 
 
+@isolated_settings
 def dense_profile(binary):
     path=ROOT / "fixtures/dense-100000.gpx"
     if not path.exists():
@@ -440,6 +460,7 @@ def dense_profile(binary):
         tmux("kill-session","-t","poc",check=False)
 
 
+@isolated_settings
 def dialogs(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
@@ -460,7 +481,8 @@ def dialogs(binary):
             raise AssertionError(f"File picker did not reach {name}")
 
         select_file("fixtures", "Right")
-        wait_for(lambda s: "example.gpx" in s and "/fixtures" in s)
+        # Long worktree paths may truncate the directory header. Check its entries instead.
+        wait_for(lambda s: "example.gpx" in s and "country-ride.gpx" in s)
         folder = ROOT / "reports/generated"
         save_svg(folder / f"{binary.name}-filepicker-120x40.svg", 120, 40)
         select_file("example.gpx")
@@ -518,6 +540,7 @@ def dialogs(binary):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def free_roam(binary, live=False):
     env = ["env", "TERM=xterm-256color", "COLORTERM=truecolor"]
     args = ["--center-lon", "-0.1065", "--center-lat", "51.505", "--zoom", "13"] if live else []
@@ -570,6 +593,7 @@ def free_roam(binary, live=False):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def theme_switching(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), "--theme", "catppuccin"])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -665,6 +689,7 @@ def theme_switching(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def command_palette_access(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -745,6 +770,7 @@ def command_palette_access(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def workspace_controls(binary):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx"), str(ROOT / "fixtures/waypoints.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
@@ -788,6 +814,7 @@ def workspace_controls(binary):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def workspace_profiles(binary, width, height):
     folder = ROOT / "reports/generated"
     folder.mkdir(exist_ok=True, parents=True)
@@ -843,6 +870,7 @@ def workspace_profiles(binary, width, height):
             tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def quick_search(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -888,6 +916,7 @@ def quick_search(binary, width, height):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
 def favourite_controls(binary, width, height):
     with tempfile.TemporaryDirectory() as config:
         command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"XDG_CONFIG_HOME={config}",
@@ -955,6 +984,7 @@ def favourite_controls(binary, width, height):
     print(f"{binary.name} {width}×{height}: save favourite, offline restart/reuse, rename, cancel/confirm delete, ASCII and terminal restoration passed")
 
 
+@isolated_settings
 def journey_controls(binary, width, height):
     command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor", "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary)])
     tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -1121,6 +1151,7 @@ def mapbox_test_schema():
     return schema
 
 
+@isolated_settings
 def auth_setup(binary):
     schema = mapbox_test_schema()
     with tempfile.TemporaryDirectory() as folder:
@@ -1222,6 +1253,7 @@ def auth_setup(binary):
     print(f"{binary.name}: dependency-aware setup actions, installation help/recheck, palette login, stdout notice and terminal restoration passed")
 
 
+@isolated_settings
 def billing_usage(binary):
     with tempfile.TemporaryDirectory() as directory:
         folder = Path(directory)
@@ -1319,12 +1351,13 @@ def billing_usage(binary):
     print(f"{binary.name}: billing confirmation, persisted offline mode, startup usage, product filtering, web link and offline coordinates passed")
 
 
+@isolated_settings
 def traffic_menu(binary):
     with tempfile.TemporaryDirectory() as folder:
         folder = Path(folder)
         for width, height in ((120, 40), (70, 18), (30, 12)):
             command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={folder / 'missing'}",
-                                  f"XDG_CONFIG_HOME={folder}", "TERM=xterm-256color", "COLORTERM=truecolor",
+                                  f"XDG_CONFIG_HOME={folder / str(width)}", "TERM=xterm-256color", "COLORTERM=truecolor",
                                   "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
                                   str(ROOT / "fixtures/example.gpx")])
             tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
@@ -1341,7 +1374,7 @@ def traffic_menu(binary):
                 wait_for(lambda s: active_modal(s, "Commands") and "Verify Mapbox" in s)
                 send("\r")
                 wait_for(lambda s: active_modal(s, "Commands") and "Verify Mapbox" in s)
-                settings = folder / "mapbox-tui/settings.json"
+                settings = folder / str(width) / "mapbox-tui/settings.json"
                 assert not settings.exists(), "disabled traffic changed the saved preference"
                 send("\x1b")
                 wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
@@ -1359,10 +1392,11 @@ def traffic_menu(binary):
     print(f"{binary.name}: main-menu traffic entry, greyed-out unverified access, disabled action, ASCII, compact layouts and preserved imports passed")
 
 
+@isolated_settings
 def nested_modals(binary):
     with tempfile.TemporaryDirectory() as folder:
         for width, height in ((120, 40), (70, 18), (30, 12)):
-            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={folder}/missing",
+            command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", f"MAPBOX_TUI_CLI={folder}/missing", f"XDG_CONFIG_HOME={folder}/{width}",
                                   "TERM=xterm-256color", "COLORTERM=truecolor", "python3",
                                   str(ROOT / "scripts/terminal_runner.py"), str(binary),
                                   str(ROOT / "fixtures/example.gpx")])
@@ -1400,6 +1434,68 @@ def nested_modals(binary):
     print(f"{binary.name}: breadcrumb modal titles, differing sizes, ASCII, filtered-menu return and compact layouts passed")
 
 
+@isolated_settings
+def viewer_preferences(binary, width, height):
+    settings = Path(os.environ["XDG_CONFIG_HOME"]) / "mapbox-tui/settings.json"
+
+    def start(*flags):
+        command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor",
+                              "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
+                              str(ROOT / "fixtures/example.gpx"), *flags])
+        tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+        wait_for(lambda s: "ctrl+b sidebar" in s)
+
+    def stop():
+        send("q")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        tmux("kill-session", "-t", "poc", check=False)
+
+    def theme_picker():
+        send("\x0b")
+        wait_for(lambda s: active_modal(s, "Commands"))
+        send("theme")
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Colour theme"))
+
+    try:
+        start()
+        assert not settings.exists(), "startup wrote defaults"
+        theme_picker()
+        tmux("send-keys", "-t", "poc:0.0", "Down")
+        wait_for(lambda s: "Theme: Noir" in s)
+        assert not settings.exists(), "preview wrote settings"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: active_modal(s, "Commands") and not active_modal(s, "Colour theme"))
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Theme: Catppuccin" in s and not active_modal(s, "Commands"))
+        theme_picker()
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
+        wait_for(lambda s: "Theme: Noir" in s and not active_modal(s, "Colour theme"))
+        send("ame")
+        wait_for(lambda s: "Elevation profile" not in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))
+        stop()
+        saved = settings.read_bytes()
+        preferences = json.loads(saved)
+        assert preferences["theme"] == "noir" and preferences["ascii"] and preferences["no_animation"]
+        assert preferences["elevation"] == "hide", preferences
+
+        start()
+        screen = settled()
+        assert "Theme: Noir" in screen and "Elevation profile" not in screen
+        assert not any(0x2800 <= ord(c) <= 0x28ff for c in screen), "saved ASCII ignored"
+        stop()
+        assert settings.read_bytes() == saved, "restart rewrote settings"
+
+        start("--ascii=false", "--no-animation=false", "--theme=catppuccin", "--elevation=auto")
+        screen = wait_for(lambda s: "Elevation profile" in s and any(0x2800 <= ord(c) <= 0x28ff for c in s))
+        assert "Theme: Catppuccin" in screen
+        stop()
+        assert settings.read_bytes() == saved, "launch overrides changed preferences"
+        print(f"{binary.name} {width}×{height}: preference restart, ASCII, preview cancellation and launch-only false overrides passed")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
@@ -1429,6 +1525,7 @@ if __name__ == "__main__":
                 dense_profile(ROOT / "bin" / name)
                 dialogs(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24)):
+                    viewer_preferences(ROOT / "bin" / name, width, height)
                     theme_switching(ROOT / "bin" / name, width, height)
                     command_palette_access(ROOT / "bin" / name, width, height)
                 workspace_controls(ROOT / "bin" / name)

@@ -281,6 +281,7 @@ func (m *viewer) initUI() error {
 	if err != nil {
 		preferences = appSettings{}
 		m.authMessage = "Could not load settings; telemetry is off and traffic is off: " + err.Error()
+		m.settingsNotice = "Settings unavailable; using defaults: " + err.Error()
 	}
 	m.preferences = preferences
 	if m.provider != nil {
@@ -302,12 +303,10 @@ func (m *viewer) initUI() error {
 	if m.directions == nil {
 		m.directions = newDirectionsClient(m.places.token)
 	}
-	themes, selected, err := loadThemes(m.args.Theme)
+	selected, err := m.initViewerPreferences(preferences)
 	if err != nil {
 		return err
 	}
-	m.themes = themes
-	m.settings = viewerSettings{ASCII: m.args.ASCII, NoAnimation: m.args.NoAnimation}
 	m.ui.help = help.New()
 	m.ui.details = pager.New()
 	m.ui.details.SoftWrap = true
@@ -748,8 +747,10 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		return m.toggleTraffic()
 	case "ascii":
 		m.settings.ASCII = !m.settings.ASCII
+		m.saveViewerPreference(func(s *appSettings) { s.ASCII = new(m.settings.ASCII) })
 	case "motion":
 		m.settings.NoAnimation = !m.settings.NoAnimation
+		m.saveViewerPreference(func(s *appSettings) { s.NoAnimation = new(m.settings.NoAnimation) })
 		if m.settings.NoAnimation {
 			m.camera = m.destination()
 			m.motion.Active = false
@@ -757,6 +758,11 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 	case "profile":
 		m.profileExplicit = true
 		m.showProfile = !m.showProfile
+		choice := "hide"
+		if m.showProfile {
+			choice = "show"
+		}
+		m.saveViewerPreference(func(s *appSettings) { s.Elevation = choice })
 		m.layout()
 	case "play":
 		m.advancePlayback(time.Now())
@@ -838,6 +844,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 				if m.ui.dialog == dialogThemes {
 					m.ui.themeBefore = m.ui.selected
 					m.applyTheme(m.ui.selected)
+					m.saveThemePreference()
 				} else if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
 					p.speed = m.ui.selected

@@ -31,6 +31,12 @@ We use the same workspace model and scene renderer for the viewer, CLI and MCP.
 They live in one Go executable, so we don't have separate implementations of
 selection, playback or map layering to maintain.
 
+Global viewer preferences live in `settings.json`, outside `Workspace` and the
+favourites library. Viewer startup resolves defaults, saved preferences and explicit
+CLI overrides. User actions update only the changed field through the locked
+settings store; launch overrides and theme previews do not write. Workspaces,
+CLI text renders and MCP scenes never inherit these presentation preferences.
+
 Each front end has its own session. The viewer keeps a workspace while it's open,
 multi-file CLI rendering creates a temporary one, and MCP keeps one for the
 server process. Single-file CLI/MCP snapshots use the same renderer without

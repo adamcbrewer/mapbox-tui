@@ -80,6 +80,7 @@ func TestPlaybackSkipsSegmentGapsAndFinishesWithoutLooping(t *testing.T) {
 }
 
 func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	track, e := loadTrack("../fixtures/example.gpx")
 	if e != nil {
 		t.Fatal(e)
@@ -100,7 +101,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 		following: true,
 	}
 	m.initUI()
-	m.Update(tea.KeyPressMsg{Code: 'e'})
+	m.layout()
 	if m.profileHeight != 7 || m.camera.Height != 29 {
 		t.Fatal("profile did not reserve viewport space")
 	}

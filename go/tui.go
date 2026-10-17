@@ -80,6 +80,7 @@ type viewer struct {
 	authMessage               string
 	authCLI                   mapboxDependencyStatus
 	preferences               appSettings
+	settingsNotice            string
 	connectionEcho            string
 	credential                renderingCredential
 	billingIntent             billingIntent
@@ -826,17 +827,19 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *viewer) layout() {
+	hasElevation := m.workspace.hasVisibleElevation()
 	if !m.profileExplicit {
-		m.showProfile = m.workspace.hasVisibleElevation()
+		m.showProfile = hasElevation
 	}
+	profileVisible := m.showProfile && hasElevation
 	w, h := mapSize(m.width, m.height)
 	if m.hasJourneyContext() {
 		h--
 	}
-	if len(m.workspace.items()) > 1 && m.showProfile {
+	if len(m.workspace.items()) > 1 && profileVisible {
 		h--
 	}
-	m.profileHeight = profileRows(h, m.showProfile && len(m.workspace.profileItems()) > 0)
+	m.profileHeight = profileRows(h, profileVisible)
 	m.camera.Width, m.camera.Height = max(1, w), max(1, h-m.profileHeight)
 	m.motion.Target.Width, m.motion.Target.Height = m.camera.Width, m.camera.Height
 }
@@ -1090,7 +1093,7 @@ func (m *viewer) rebuild() {
 		Render(strings.Join(mapRows, "\n"))
 	rows = append(rows, frame)
 	profile := m.visibleProfile()
-	if len(m.workspace.items()) > 1 && m.showProfile {
+	if len(m.workspace.items()) > 1 && m.profileHeight > 0 {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
 	}
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +11,14 @@ import (
 )
 
 type appSettings struct {
-	MapboxCLITelemetry bool `json:"mapbox_cli_telemetry"`
-	Traffic            bool `json:"traffic"`
-	BillingAccepted    int  `json:"mapbox_billing_accepted"`
-	Offline            bool `json:"offline"`
+	MapboxCLITelemetry bool   `json:"mapbox_cli_telemetry"`
+	Traffic            bool   `json:"traffic"`
+	BillingAccepted    int    `json:"mapbox_billing_accepted"`
+	Offline            bool   `json:"offline"`
+	Theme              string `json:"theme,omitempty"`
+	ASCII              *bool  `json:"ascii,omitempty"`
+	NoAnimation        *bool  `json:"no_animation,omitempty"`
+	Elevation          string `json:"elevation,omitempty"`
 }
 
 func appSettingsPath() (string, error) {
@@ -45,13 +50,42 @@ func loadAppSettings() (appSettings, error) {
 	if closeErr != nil {
 		return settings, fmt.Errorf("close mapbox-tui settings: %w", closeErr)
 	}
-	if len(data) > 65536 || json.Unmarshal(data, &settings) != nil {
-		return settings, fmt.Errorf("invalid mapbox-tui settings at %q", path)
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	// Reject incompatible schemas rather than dropping fields on the next save.
+	var decoded *appSettings
+	if len(data) > 65536 || decoder.Decode(&decoded) != nil || decoded == nil {
+		return appSettings{}, fmt.Errorf("invalid or incompatible mapbox-tui settings at %q", path)
 	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return appSettings{}, fmt.Errorf("invalid mapbox-tui settings at %q", path)
+	}
+	if err := decoded.validate(); err != nil {
+		return appSettings{}, fmt.Errorf("invalid mapbox-tui settings at %q: %w", path, err)
+	}
+	settings = *decoded
 	return settings, nil
 }
 
+func validElevation(choice string) bool {
+	return choice == "" || choice == "auto" || choice == "show" || choice == "hide"
+}
+
+func (s appSettings) validate() error {
+	if !validElevation(s.Elevation) {
+		return fmt.Errorf("elevation must be auto, show or hide")
+	}
+	if len(s.Theme) > 4096 || strings.ContainsAny(s.Theme, "\x00\r\n") {
+		return fmt.Errorf("theme must be a built-in ID or a path of at most 4096 bytes")
+	}
+	return nil
+}
+
+// Call through updateAppSettings for mutations; callers must hold the settings lock.
 func saveAppSettings(settings appSettings) error {
+	if err := settings.validate(); err != nil {
+		return err
+	}
 	path, err := appSettingsPath()
 	if err != nil {
 		return err
@@ -69,6 +103,9 @@ func saveAppSettings(settings appSettings) error {
 	}
 	defer os.Remove(file.Name())
 	_, writeErr := file.Write(append(data, '\n'))
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
 	closeErr := file.Close()
 	if writeErr != nil {
 		return fmt.Errorf("save mapbox-tui settings: %w", writeErr)

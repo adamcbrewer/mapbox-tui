@@ -182,6 +182,9 @@ func (m *viewer) contextDrawerY() int { return m.mapOriginY() }
 
 func (m *viewer) contextDetails() []string {
 	lines := m.details()
+	if m.settingsNotice != "" {
+		lines = append(lines, "", m.settingsNotice)
+	}
 	section := "Selected position"
 	if m.inspected == nil && m.activeTrack() == nil {
 		section = "Map center"
@@ -236,6 +239,9 @@ func (m *viewer) hasJourneyContext() bool {
 
 func (m *viewer) contextFooter() []string {
 	rows := m.contextSummaryRows()
+	if m.settingsNotice != "" {
+		rows[0] = m.styles.accent.Render(pad(m.settingsNotice, m.width))
+	}
 	if !m.hasJourneyContext() {
 		return rows
 	}

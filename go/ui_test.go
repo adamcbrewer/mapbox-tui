@@ -357,6 +357,7 @@ func TestNestedCommandsReturnToFilteredMenu(t *testing.T) {
 func TestCompletedNestedActionsReturnToMap(t *testing.T) {
 	for _, action := range []string{"speed", "workspace", "theme"} {
 		t.Run(action, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			m := authTestViewer(t)
 			if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
 				t.Fatal(err)

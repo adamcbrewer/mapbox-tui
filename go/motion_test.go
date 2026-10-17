@@ -120,6 +120,7 @@ func TestDialogsCaptureNavigationAndStayInsideTerminal(t *testing.T) {
 }
 
 func TestCommandActionsAndSidebarFocusKeepPlaybackControlsWorking(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	track, err := loadTrack("../fixtures/example.gpx")
 	if err != nil {
 		t.Fatal(err)

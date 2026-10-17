@@ -479,6 +479,7 @@ func TestViewerAutomaticElevationLifecycle(t *testing.T) {
 		{name: "elevation last", paths: []string{flat, elevated}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			m := &viewer{
 				provider: newProvider("none"), ctx: context.Background(),
 				width: 120, height: 40, args: Args{NoAnimation: true},

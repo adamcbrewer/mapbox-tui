@@ -9,7 +9,7 @@ source loading and geometry do not own presentation colours.
 `--theme` accepts a built-in ID or a local TOML path. The default is `catppuccin`.
 Ctrl-K's **Colour theme** opens the session's palette list, with the current theme
 selected and marked. Arrows or `j`/`k` preview the highlighted palette across the
-viewer; Enter keeps it and returns to the map. Esc restores the theme active when
+viewer; Enter keeps it, saves the preference and returns to the map. Esc restores the theme active when
 the picker opened and returns to the command menu. Closing or replacing the
 picker without confirmation also restores that theme. Dialogs overlay the viewer
 without dimming the map, activities or panels, so previews retain their full colours.
@@ -45,8 +45,12 @@ yellow and red for traffic. The six slots remain stable as themes change.
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme noir
 ```
 
-Theme choices last for the current session. A new launch starts in Catppuccin
-unless you supply `--theme`. Palettes are embedded when building; restart an
+Confirmed theme choices survive restarts. A new launch uses the saved theme,
+falling back to Catppuccin when none is saved or the saved palette is unavailable.
+`--theme` overrides the saved choice for one launch; open the picker and press
+Enter to save it. Built-ins are saved by stable ID, custom palettes by absolute
+path so they resolve from another working directory. See [saved preferences](USAGE.md#saved-viewer-preferences)
+for storage and reset instructions. Palettes are embedded when building; restart an
 already-running viewer after a rebuild to see added or changed themes.
 
 For a custom palette, copy any file in [`go/themes/`](../go/themes/), change `id`
@@ -60,7 +64,7 @@ Swap in `fixtures/country-ride.gpx` to preview the palette on a longer recorded
 ride with elevation data.
 
 The custom palette joins the built-ins for that viewer session. It is read
-once at startup. To bundle another theme, place its TOML file in `go/themes/` and
+once at startup, with a 64 KiB size limit. To bundle another theme, place its TOML file in `go/themes/` and
 rebuild. The embed pattern discovers it automatically; no registry entry, renderer
 change or widget implementation is needed. `make dev` watches bundled palettes.
 
@@ -118,7 +122,8 @@ With gradient borders, modal titles also blend from `accent` to `highlight`.
 Gradient effects change colours only; ASCII mode retains its plain box glyphs.
 
 Unknown fields/roles, missing or invalid colours, incorrect activity palette sizes,
-invalid metadata and duplicate IDs fail at startup with an error. Custom palettes
+invalid metadata and duplicate IDs fail with an error when explicitly supplied through `--theme`. An invalid saved
+palette instead produces a warning and falls back to Catppuccin. Custom palettes
 must have IDs distinct from built-ins.
 
 ## API and ownership
