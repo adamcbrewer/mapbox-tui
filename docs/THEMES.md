@@ -6,14 +6,14 @@ source loading and geometry do not own presentation colours.
 
 ## Use and add a palette
 
-`--theme` accepts a built-in ID or a local TOML path. The default is `catppuccin`.
-Ctrl-K's **Colour theme** opens the session's palette list, with the current theme
-selected and marked. Arrows or `j`/`k` preview the highlighted palette across the
-viewer; Enter keeps it, saves the preference and returns to the map. Esc restores the theme active when
-the picker opened and returns to the command menu. Closing or replacing the
-picker without confirmation also restores that theme. Dialogs overlay the viewer
-without dimming the map, activities or panels, so previews retain their full colours.
-The bottom context bar shows the current theme, including live previews.
+`--theme` accepts a built-in ID or local TOML path. We use the saved theme, or
+Catppuccin if none is saved. The flag overrides that choice for one launch.
+
+Open **Colour theme** in Ctrl-K. Arrows or `j`/`k` preview a palette; Enter saves
+it and returns to the map. Esc returns to the command menu and restores the
+previous theme. Closing or replacing the picker also cancels the preview.
+Dialogs don't dim the map, so you can judge the full colours. The context bar
+shows the current theme, including previews.
 
 Built-ins are `catppuccin`, `noir`, `nord`, `paper`,
 `synthwave` and `tokyo-night`.
@@ -45,13 +45,10 @@ yellow and red for traffic. The six slots remain stable as themes change.
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme noir
 ```
 
-Confirmed theme choices survive restarts. A new launch uses the saved theme,
-falling back to Catppuccin when none is saved or the saved palette is unavailable.
-`--theme` overrides the saved choice for one launch; open the picker and press
-Enter to save it. Built-ins are saved by stable ID, custom palettes by absolute
-path so they resolve from another working directory. See [saved preferences](USAGE.md#saved-viewer-preferences)
-for storage and reset instructions. Palettes are embedded when building; restart an
-already-running viewer after a rebuild to see added or changed themes.
+Confirmed choices survive restarts. We save built-ins by ID and custom palettes
+by absolute path, so changing directories won't break them. Unavailable saved
+palettes warn and fall back to Catppuccin. See [saved preferences](USAGE.md#saved-viewer-preferences)
+for storage and reset. Rebuild and restart to see changes to bundled palettes.
 
 For a custom palette, copy any file in [`go/themes/`](../go/themes/), change `id`
 and `name`, then edit colours and pass the file to the viewer:
@@ -63,10 +60,9 @@ and `name`, then edit colours and pass the file to the viewer:
 Swap in `fixtures/country-ride.gpx` to preview the palette on a longer recorded
 ride with elevation data.
 
-The custom palette joins the built-ins for that viewer session. It is read
-once at startup, with a 64 KiB size limit. To bundle another theme, place its TOML file in `go/themes/` and
-rebuild. The embed pattern discovers it automatically; no registry entry, renderer
-change or widget implementation is needed. `make dev` watches bundled palettes.
+Custom palettes join the built-ins for that session. We read them once at startup,
+with a 64 KiB limit. To bundle one, put its TOML file in `go/themes/` and rebuild.
+The embed pattern picks it up; `make dev` watches that directory.
 
 ## File format
 
@@ -121,10 +117,9 @@ at the end for a smooth loop. Themes without it retain solid `border` colours.
 With gradient borders, modal titles also blend from `accent` to `highlight`.
 Gradient effects change colours only; ASCII mode retains its plain box glyphs.
 
-Unknown fields/roles, missing or invalid colours, incorrect activity palette sizes,
-invalid metadata and duplicate IDs fail with an error when explicitly supplied through `--theme`. An invalid saved
-palette instead produces a warning and falls back to Catppuccin. Custom palettes
-must have IDs distinct from built-ins.
+Unknown fields or roles, invalid colours or metadata, and wrong activity palette
+sizes fail validation. Custom IDs must differ from built-ins. An invalid explicit
+`--theme` stops startup; an invalid saved palette warns and uses Catppuccin.
 
 ## API and ownership
 

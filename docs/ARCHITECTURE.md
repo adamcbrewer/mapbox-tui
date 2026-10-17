@@ -31,25 +31,26 @@ We use the same workspace model and scene renderer for the viewer, CLI and MCP.
 They live in one Go executable, so we don't have separate implementations of
 selection, playback or map layering to maintain.
 
-Global viewer preferences live in `settings.json`, outside `Workspace` and the
-favourites library. Viewer startup resolves defaults, saved preferences and explicit
-CLI overrides. Settings reads accept the legacy billing and animation keys; writes
-emit `mapbox_billing_accepted_version` and positive `camera_animation` values.
-Explicit current keys take precedence over legacy aliases. User actions update
-only the changed field through the locked settings store; launch overrides and theme previews do not write. Workspaces,
-CLI text renders and MCP scenes never inherit these presentation preferences.
-Elevation is one `auto`/`show`/`hide` choice in the viewer's resolved settings.
-Layout derives chart visibility from that choice and the workspace's visible
-recorded elevation; loading, hiding or clearing files never mutates the choice.
-Theme fallback warnings remain separate from settings read/write errors, so saving
-an unrelated preference cannot dismiss an unresolved theme warning.
-The viewer also restores centre and zoom from `last_view`, beneath explicit CLI
-camera arguments. Startup imports and route results preserve that view;
-`--reset-view` deletes it through the locked settings store before opening the UI.
-Navigation marks the view for a single synchronous settings update after the UI
-exits successfully. There is no camera
-save worker or write on animation frames. The update merges only `last_view`, so
-it preserves preference changes from other processes.
+Viewer preferences live in `settings.json`, separate from `Workspace` and
+favourites. We apply defaults, saved choices, then explicit CLI flags. User actions
+save only the changed field. Theme previews and launch overrides don't save.
+CLI renders and MCP keep their own defaults.
+
+Elevation stores `auto`, `show` or `hide`; layout decides whether the visible data
+can produce a chart. Theme fallback warnings stay separate from save errors.
+Centre and zoom restore from `last_view` across startup imports and route results.
+Navigation marks the view for one synchronous save after a clean exit.
+`--reset-view` deletes it before the UI opens.
+
+Reads are capped at 64 KiB and reject unknown or invalid fields. Updates lock
+`settings.json.lock`, reread, merge the changed field, then sync and rename a
+same-directory temporary file. Busy or failed writes leave the previous file
+intact. Replacement is verified on Unix; native Windows remains unverified.
+
+We read legacy keys but write `mapbox_billing_accepted_version`, `camera_animation`
+and `last_view` with `zoom`, `lat`, `long`. These replace `mapbox_billing_accepted`,
+inverted `no_animation`, and `center_lat`/`center_lon`. Explicit new keys win,
+including zero and false. Reading alone doesn't migrate the file.
 
 Each front end has its own session. The viewer keeps a workspace while it's open,
 multi-file CLI rendering creates a temporary one, and MCP keeps one for the

@@ -32,7 +32,7 @@ make interactions
 ```
 
 `make dev` rebuilds and restarts the viewer on changes. It needs an interactive
-Unix-like terminal; workspace state resets on restart; saved viewer preferences survive.
+Unix-like terminal. Restarts clear the workspace but keep saved preferences.
 
 `make check` runs formatting, build, tests, vet, CLI/MCP parity and race checks
 offline. Run `make interactions` after viewer changes; it needs tmux,
