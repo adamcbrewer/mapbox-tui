@@ -4,9 +4,9 @@ import "fmt"
 
 // Pointer fields distinguish a complete saved view from missing coordinates.
 type savedView struct {
-	Lon  *float64 `json:"center_lon"`
-	Lat  *float64 `json:"center_lat"`
 	Zoom *float64 `json:"zoom"`
+	Lat  *float64 `json:"lat"`
+	Lon  *float64 `json:"long"`
 }
 
 func (v savedView) validate() error {

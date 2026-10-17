@@ -26,9 +26,16 @@ type appSettings struct {
 // current names. Presence matters: an explicit new false/zero beats an old value.
 type settingsDocument struct {
 	appSettings
-	BillingVersion       *int  `json:"mapbox_billing_accepted_version"`
-	LegacyBillingVersion *int  `json:"mapbox_billing_accepted"`
-	LegacyNoAnimation    *bool `json:"no_animation"`
+	BillingVersion       *int               `json:"mapbox_billing_accepted_version"`
+	LegacyBillingVersion *int               `json:"mapbox_billing_accepted"`
+	LegacyNoAnimation    *bool              `json:"no_animation"`
+	View                 *savedViewDocument `json:"last_view"`
+}
+
+type savedViewDocument struct {
+	savedView
+	LegacyLon *float64 `json:"center_lon"`
+	LegacyLat *float64 `json:"center_lat"`
 }
 
 func (d settingsDocument) current() appSettings {
@@ -40,6 +47,16 @@ func (d settingsDocument) current() appSettings {
 	}
 	if s.CameraAnimation == nil && d.LegacyNoAnimation != nil {
 		s.CameraAnimation = new(!*d.LegacyNoAnimation)
+	}
+	if d.View != nil {
+		view := d.View.savedView
+		if view.Lon == nil {
+			view.Lon = d.View.LegacyLon
+		}
+		if view.Lat == nil {
+			view.Lat = d.View.LegacyLat
+		}
+		s.LastView = &view
 	}
 	return s
 }

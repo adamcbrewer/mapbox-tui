@@ -1525,8 +1525,8 @@ def camera_restart(binary, width, height, ascii_mode=False):
         stop()
         saved = settings.read_bytes()
         last = json.loads(saved)["last_view"]
-        assert abs(last["center_lon"] - expected[0]) < 1e-6
-        assert abs(last["center_lat"] - expected[1]) < 1e-6
+        assert abs(last["long"] - expected[0]) < 1e-6
+        assert abs(last["lat"] - expected[1]) < 1e-6
         assert abs(last["zoom"] - expected[2]) < .01
 
         start()

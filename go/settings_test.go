@@ -89,6 +89,54 @@ func TestSettingsRenamedKeysPreserveValuesAndMigrateOnSave(t *testing.T) {
 	}
 }
 
+func TestSavedViewCoordinateNamesMigrateOnSave(t *testing.T) {
+	for _, tc := range []struct {
+		name, view string
+		lon, lat   float64
+	}{
+		{name: "legacy", view: `{"zoom":8,"center_lat":20,"center_lon":10}`, lon: 10, lat: 20},
+		{name: "current", view: `{"zoom":8,"lat":20,"long":10}`, lon: 10, lat: 20},
+		{name: "mixed", view: `{"zoom":8,"lat":20,"center_lon":10}`, lon: 10, lat: 20},
+		{name: "new zero wins", view: `{"zoom":8,"lat":0,"long":0,"center_lat":20,"center_lon":10}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			path, _ := appSettingsPath()
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			original := []byte(`{"traffic":true,"last_view":` + tc.view + `}`)
+			if err := os.WriteFile(path, original, 0600); err != nil {
+				t.Fatal(err)
+			}
+			m := preferenceViewer(t)
+			if m.camera.Center != project(tc.lon, tc.lat) || m.camera.Zoom != 8 {
+				t.Fatal("saved view changed during migration", m.camera)
+			}
+			if !bytes.Equal(original, settingsBytes(t)) {
+				t.Fatal("reading the view rewrote settings")
+			}
+			if _, err := updateAppSettings(func(s *appSettings) { s.Theme = "noir" }); err != nil {
+				t.Fatal(err)
+			}
+			var written struct {
+				Traffic bool               `json:"traffic"`
+				View    map[string]float64 `json:"last_view"`
+			}
+			if err := json.Unmarshal(settingsBytes(t), &written); err != nil {
+				t.Fatal(err)
+			}
+			view := written.View
+			_, hasLat := view["lat"]
+			_, hasLong := view["long"]
+			if !written.Traffic || len(view) != 3 || !hasLat || !hasLong ||
+				view["zoom"] != 8 || view["lat"] != tc.lat || view["long"] != tc.lon {
+				t.Fatal("save lost coordinates or retained legacy keys", written)
+			}
+		})
+	}
+}
+
 func TestMapboxTelemetryPreferenceIsOptInAndPersistent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MAPBOX_CLI_NO_TELEMETRY", "")

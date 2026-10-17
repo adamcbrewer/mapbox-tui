@@ -141,7 +141,10 @@ The viewer remembers centre and zoom on a clean exit after you navigate. Reopeni
 restores that view even when loading tracks or a startup journey. Explicit
 `--center-lon`/`--center-lat` and `--zoom` flags override the corresponding saved
 values. Automatic startup loading and launch overrides alone do not save a view.
-Bearing, loaded files and routes are not restored.
+Bearing, loaded files and routes are not restored. The saved view uses
+`last_view: {"zoom": 8, "lat": 51.3, "long": -2.6}`. Existing `center_lat` and
+`center_lon` fields remain readable and become `lat` and `long` on the next save.
+If both spellings exist, the shorter names take precedence, including zero.
 
 To delete the saved centre and zoom and start with a clean view:
 
