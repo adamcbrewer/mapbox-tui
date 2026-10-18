@@ -646,7 +646,7 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Open saved workspace", action: "open-workspace"},
 		{title: "Repair missing workspace files", action: "repair-workspace", disabled: len(m.workspace.unresolved) == 0},
 	}
-	if len(m.workspace.documents) > 0 {
+	if len(m.workspace.documents) > 0 || len(m.workspace.unresolved) > 0 {
 		commands = append(commands, viewerCommand{title: "Clear workspace (remove all files)", action: "clear"})
 	}
 	commands = append(commands,

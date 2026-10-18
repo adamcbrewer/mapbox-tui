@@ -168,14 +168,9 @@ func (w *Workspace) attachSavedImport(saved savedImport, d *Document) error {
 		items = append(items, d.Items[i])
 	}
 	if selection := w.deferredSelection; selection != nil {
-		for _, state := range saved.Items {
-			if state.ID != selection.Item {
-				continue
-			}
-			for _, item := range items {
-				if item.ID == state.Key && selection.Point >= len(item.Track.Points) {
-					return fmt.Errorf("saved playback position is outside the imported item")
-				}
+		for i, state := range saved.Items {
+			if state.ID == selection.Item && selection.Point >= len(items[i].Track.Points) {
+				return fmt.Errorf("saved playback position is outside the imported item")
 			}
 		}
 	}

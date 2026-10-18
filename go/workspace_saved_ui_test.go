@@ -150,6 +150,38 @@ func TestSavedWorkspaceRepairUIAndDraftAccess(t *testing.T) {
 	}
 }
 
+func TestSavedWorkspaceClearMissingOnlyImports(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	m.workspace.clear()
+	source := importFile(t, "missing.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
+	openWorkspaceFile(t, &m.workspace, source)
+	store := workspaceStore{directory: t.TempDir()}
+	cp := saveTestWorkspace(t, &m.workspace, store, false)
+	if err := os.Remove(source); err != nil {
+		t.Fatal(err)
+	}
+	m.openSavedWorkspaceDialog("open")
+	m.savedWork.mode = "open"
+	m.Update(m.beginSavedOpen(cp.path)())
+	savedKey(m, tea.KeyEnter)
+	savedKey(m, tea.KeyEscape)
+	if len(m.workspace.documents) != 0 || len(m.workspace.unresolved) != 1 {
+		t.Fatal("expected only an unresolved import")
+	}
+	for _, command := range m.commands() {
+		if command.action != "clear" {
+			continue
+		}
+		m.runCommand(command.action)
+		saved := saveTestWorkspace(t, &m.workspace, store, false)
+		if len(saved.manifest.Imports) != 0 || saved.manifest.Selection != nil {
+			t.Fatal("Clear retained missing imports or their selection")
+		}
+		return
+	}
+	t.Fatal("Clear workspace is unavailable for missing-only imports")
+}
+
 func TestSavedWorkspaceViewerConflictOffersSaveAs(t *testing.T) {
 	m := themeViewer(t, 70, 24, false)
 	m.openSavedWorkspaceDialog("save")

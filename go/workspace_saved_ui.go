@@ -222,12 +222,11 @@ func (m *viewer) acceptSavedImport(result savedImportReady) tea.Cmd {
 	}
 	m.savedWork.busy = false
 	m.dirty = true
-	if result.err != nil {
-		m.savedWork.repairError = result.err.Error()
-		m.savedWork.mode = "locate"
-		return m.ui.search.Focus()
+	err := result.err
+	if err == nil {
+		err = m.workspace.completeImportRepair(result.reference.ID, result.document)
 	}
-	if err := m.workspace.completeImportRepair(result.reference.ID, result.document); err != nil {
+	if err != nil {
 		m.savedWork.repairError = err.Error()
 		m.savedWork.mode = "locate"
 		return m.ui.search.Focus()
@@ -258,8 +257,11 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 			if key == "enter" {
 				return m.saveWorkspaceFromDialog()
 			}
-		case "saved":
+		case "saved", "confirm-open":
 			if key == "enter" {
+				if m.savedWork.mode == "confirm-open" {
+					return m.applySavedWorkspace()
+				}
 				m.closeDialog()
 				return nil
 			}
@@ -296,20 +298,6 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 				return m.beginSavedOpen(m.workspace.checkpoint.path)
 			}
 			return nil
-		case "confirm-open":
-			switch key {
-			case "enter":
-				return m.applySavedWorkspace()
-			case "home":
-				m.ui.page.GotoTop()
-				return nil
-			case "end":
-				m.ui.page.GotoBottom()
-				return nil
-			}
-			var cmd tea.Cmd
-			m.ui.page, cmd = m.ui.page.Update(msg)
-			return cmd
 		case "remove-reference":
 			if key == "enter" {
 				if err := m.workspace.removeUnresolved(m.savedWork.repairID); err != nil {
