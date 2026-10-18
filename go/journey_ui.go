@@ -98,6 +98,7 @@ func (m *viewer) clearJourney() tea.Cmd {
 		m.ui.notice = "No journey to clear."
 		return nil
 	}
+	selection := m.workspace.selection
 	if err := m.workspace.removeItem(ref); err != nil {
 		m.ui.notice = err.Error()
 		return nil
@@ -105,7 +106,11 @@ func (m *viewer) clearJourney() tea.Cmd {
 	m.closeDialog()
 	m.planner = journeyUI{searchID: m.planner.searchID}
 	m.args.Journey = nil
-	m.selectionChanged()
+	if m.workspace.selection != selection {
+		m.selectionChanged()
+	} else {
+		m.layout()
+	}
 	m.ui.notice = "Journey cleared. Save workspace to keep this change."
 	return nil
 }

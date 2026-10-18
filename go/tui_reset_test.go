@@ -79,6 +79,8 @@ func TestClearJourneyPreservesActivityOtherJourneyAndManualSave(t *testing.T) {
 			before, _ := os.ReadFile(cp.path)
 			m.openJourney()
 			oldSearch, oldLoad := m.planner.searchID, m.loadID
+			m.following = true
+			activity.playback.Playing = true
 			if action == "palette" {
 				m.runCommand("clear-journey")
 			} else {
@@ -98,6 +100,9 @@ func TestClearJourneyPreservesActivityOtherJourneyAndManualSave(t *testing.T) {
 			}
 			if m.workspace.selection != activity || m.loadID != oldLoad {
 				t.Fatal("unrelated activity or import changed")
+			}
+			if !m.following || !activity.playback.Playing {
+				t.Fatal("clearing another journey interrupted activity playback or following")
 			}
 			m.Update(placeSearchResult{id: oldSearch, ref: target})
 			m.Update(journeyRouteResult{ref: target})
