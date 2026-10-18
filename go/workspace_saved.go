@@ -53,6 +53,12 @@ func (w *Workspace) snapshot(name string, camera Camera, saveAs bool) (savedWork
 			v.Journeys = append(v.Journeys, journey)
 		}
 		if len(imported.Items) > 0 {
+			if slices.ContainsFunc(v.Imports, func(saved savedImport) bool {
+				return filepath.Clean(saved.Path) == filepath.Clean(imported.Path)
+			}) {
+				return savedWorkspace{}, fmt.Errorf("import path is also an unresolved reference; " +
+					"remove that reference or remove the loaded file and repair it before saving")
+			}
 			v.Imports = append(v.Imports, imported)
 		}
 	}
@@ -175,11 +181,7 @@ func (w *Workspace) attachSavedImport(saved savedImport, d *Document) error {
 		}
 	}
 	d.Items = items
-	ref := w.addDocument(d)
-	entry, _, err := w.lookup(ref)
-	if err != nil {
-		return err
-	}
+	entry := w.appendDocument(d)
 	entry.saveID = saved.ID
 	entry.hidden = make(map[int]bool)
 	for _, state := range saved.Items {
@@ -283,14 +285,12 @@ func (w *Workspace) completeImportRepair(id string, document *Document) error {
 		return fmt.Errorf("file changed; locate the original or remove this reference and import the replacement")
 	}
 	saved.Path = document.Path
-	selection, deferred := w.selection, w.deferredSelection
 	if err := w.attachSavedImport(saved, document); err != nil {
 		return err
 	}
-	w.selection, w.deferredSelection = selection, deferred
 	w.unresolved = slices.Delete(w.unresolved, index, index+1)
 	w.orderSavedDocuments()
-	if selection == nil {
+	if w.selection == nil {
 		return w.restoreSelection(w.deferredSelection)
 	}
 	return nil

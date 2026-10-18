@@ -496,3 +496,64 @@ func TestCompleteImportRepairValidatesBeforeChangingWorkspace(t *testing.T) {
 		t.Fatal("stale completion installed a duplicate import")
 	}
 }
+
+func TestSavedWorkspaceRejectsReopenedUnresolvedPath(t *testing.T) {
+	var w Workspace
+	source := importFile(t, "original.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
+	openWorkspaceFile(t, &w, source)
+	store := workspaceStore{directory: t.TempDir()}
+	cp := saveTestWorkspace(t, &w, store, false)
+	moved := source + ".moved"
+	if err := os.Rename(source, moved); err != nil {
+		t.Fatal(err)
+	}
+	candidate, _, err := prepareWorkspace(cp.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(moved, source); err != nil {
+		t.Fatal(err)
+	}
+	openWorkspaceFile(t, candidate, source)
+	for _, saveAs := range []bool{false, true} {
+		if _, err := candidate.snapshot("Duplicate", fit(nil, 80, 24, 2), saveAs); err == nil {
+			t.Fatal("save accepted loaded and unresolved imports with the same path")
+		}
+	}
+	unchanged, err := readWorkspace(cp.path)
+	if err != nil || unchanged.digest != cp.digest || len(candidate.unresolved) != 1 || len(candidate.documents) != 1 {
+		t.Fatal("rejected save changed the checkpoint or working copy")
+	}
+	if err := candidate.removeUnresolved(candidate.unresolved[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	saveTestWorkspace(t, candidate, store, false)
+}
+
+func TestCompleteImportRepairPreservesActivePlayback(t *testing.T) {
+	var w Workspace
+	source := importFile(t, "missing.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
+	openWorkspaceFile(t, &w, source)
+	openWorkspaceFile(t, &w, "../fixtures/example.gpx")
+	cp := saveTestWorkspace(t, &w, workspaceStore{directory: t.TempDir()}, false)
+	moved := source + ".moved.gpx"
+	if err := os.Rename(source, moved); err != nil {
+		t.Fatal(err)
+	}
+	candidate, _, err := prepareWorkspace(cp.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := candidate.seek(3); err != nil {
+		t.Fatal(err)
+	}
+	candidate.selection.playback.toggle()
+	selection := candidate.selection
+	before := *selection.playback
+	if err := candidate.locateUnresolved(candidate.unresolved[0].ID, moved); err != nil {
+		t.Fatal(err)
+	}
+	if candidate.selection != selection || !reflect.DeepEqual(*selection.playback, before) {
+		t.Fatal("repair changed the active selection or playback")
+	}
+}

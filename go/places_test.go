@@ -43,7 +43,7 @@ func TestPlaceSearchAndRetrievalShareSession(t *testing.T) {
 	}
 	location, err := p.retrieve(t.Context(), suggestions[0], "session")
 	if err != nil || location.Name != suggestions[0].Label || location.Lat != 51.6 ||
-		location.Lon != -.2 || location.Attribution != "Mapbox credit" {
+		location.Lon != -.2 || location.Attribution != "Mapbox credit" || location.ProviderID != "place-id" {
 		t.Fatalf("retrieve: %+v, %v", location, err)
 	}
 	if requests != 2 {

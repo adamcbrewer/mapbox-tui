@@ -590,7 +590,7 @@ func (m *viewer) journeyDetails() []string {
 		}
 		lines = append(lines, "")
 	}
-	return append(lines, "Session only; no locations saved")
+	return append(lines, "Use Save workspace to keep this journey")
 }
 
 func (m *viewer) journeyCredits(existing ...sourceCredit) string {

@@ -391,6 +391,9 @@ manifest, independently of the process working directory. This isn't a portable
 bundle: retain the original GPX/FIT/TCX/KML files.
 
 Missing or changed imports appear in **Repair missing workspace files**.
+Repair preserves playback of another selected activity. If you reopen a missing
+file through **Open track file**, remove its unresolved reference before saving;
+one path cannot be saved as both a loaded import and an unresolved reference.
 Press Enter to edit the replacement path, Ctrl-U to clear it, or Tab to browse
 for the original file. Home/End and arrow keys move through long paths; `~/`
 paths resolve from your home directory. **Skip

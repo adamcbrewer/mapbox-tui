@@ -67,6 +67,12 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 	if entry := w.documentAtPath(d.Path); entry != nil {
 		return w.activateDocument(entry)
 	}
+	return w.activateDocument(w.appendDocument(d))
+}
+
+// appendDocument installs a new document without changing selection or playback.
+// Callers check for an already loaded path before transferring ownership.
+func (w *Workspace) appendDocument(d *Document) *workspaceDocument {
 	w.nextID++
 	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor), saveID: rand.Text(), itemIDs: make(map[int]string)}
 	for _, item := range d.Items {
@@ -75,7 +81,7 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 		w.nextColor++
 	}
 	w.documents = append(w.documents, entry)
-	return w.activateDocument(entry)
+	return entry
 }
 
 func (w *Workspace) documentAtPath(path string) *workspaceDocument {
