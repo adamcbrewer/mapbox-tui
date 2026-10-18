@@ -58,6 +58,7 @@ type controlError struct {
 func (e *controlError) Error() string { return e.Message }
 
 type controlResponse struct {
+	TransitionID string          `json:"transition_id,omitempty"`
 	OutcomeKnown bool            `json:"outcome_known"`
 	Version      int             `json:"version"`
 	RequestID    string          `json:"request_id"`

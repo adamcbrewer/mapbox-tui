@@ -758,13 +758,8 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		m.settings.ASCII = !m.settings.ASCII
 		m.saveViewerPreference(func(s *appSettings) { s.ASCII = new(m.settings.ASCII) })
 	case "motion":
-		m.settings.NoAnimation = !m.settings.NoAnimation
-		m.workspace.edited()
+		m.setCameraAnimation(m.settings.NoAnimation)
 		m.saveViewerPreference(func(s *appSettings) { s.CameraAnimation = new(!m.settings.NoAnimation) })
-		if m.settings.NoAnimation {
-			m.camera = m.destination()
-			m.motion.Active = false
-		}
 	case "profile":
 		choice, mode := "hide", elevationHide
 		if !m.profileEnabled() {
@@ -777,8 +772,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 	case "play":
 		m.advancePlayback(time.Now())
 		if playback := m.activePlayback(); playback != nil {
-			playback.toggle()
-			m.workspace.edited()
+			m.workspace.setPlaybackPlaying(!playback.Playing)
 			m.clearTransientInspection()
 		}
 	}
@@ -858,9 +852,9 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 					m.saveThemePreference()
 				} else if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
-					if p.speed != m.ui.selected {
-						p.speed = m.ui.selected
-						m.workspace.edited()
+					if err := m.workspace.setPlaybackSpeed(m.ui.selected); err != nil {
+						m.ui.notice = err.Error()
+						return nil
 					}
 				}
 				m.closeDialog()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -14,6 +15,7 @@ import (
 const operationRetention = 15 * time.Minute
 const operationCapacity = 256
 const pendingCapacity = 16
+const recoveryCapacity = pendingCapacity*2 + 1
 
 type controlOperation struct {
 	request       controlRequest
@@ -24,6 +26,7 @@ type controlOperation struct {
 	routeID       uint64
 	routeRevision uint64
 	cancel        context.CancelFunc
+	transition    string
 }
 
 type viewerControl struct {
@@ -190,15 +193,26 @@ func (m *viewer) applyControl(request controlRequest) (controlResponse, tea.Cmd)
 		r.Result = controlJSON(map[string]any{"expected_revision": *request.Revision, "current_revision": m.workspace.liveRevision})
 		return r, nil
 	}
-	pending := 0
+	pending, ordinary, recovery := 0, 0, 0
 	for id, op := range m.control.operations {
-		if op.response.State == "pending" {
-			pending++
-		} else if time.Since(op.created) > operationRetention {
+		if op.response.State != "pending" && time.Since(op.created) > operationRetention {
 			delete(m.control.operations, id)
+			continue
+		}
+		if recoveryControl(op.request.Action) {
+			recovery++
+		} else {
+			ordinary++
+		}
+		if op.response.State == "pending" && op.transition == "" {
+			pending++
 		}
 	}
-	if len(m.control.operations) >= operationCapacity || pending >= pendingCapacity {
+	full := ordinary >= operationCapacity || (m.startsControlWork(request.Action, args) && pending >= pendingCapacity)
+	if recoveryControl(request.Action) {
+		full = recovery >= recoveryCapacity
+	}
+	if full {
 		return m.fail(
 			request,
 			"busy",
@@ -213,6 +227,15 @@ func (m *viewer) applyControl(request controlRequest) (controlResponse, tea.Cmd)
 	r.Changed = r.Changed || m.workspace.liveRevision != before
 	r.Generation, r.Revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 	r.OperationID = request.ID
+	if cameraControl(request.Action) && r.Error == nil {
+		op.transition = m.motion.ID
+		r.TransitionID = op.transition
+		if m.motion.Active {
+			r.State, r.Message = "pending", "camera destination accepted; transition in progress"
+		} else {
+			r.Message = "camera transition settled"
+		}
+	}
 	op.response = r
 	return r, cmd
 }
@@ -228,6 +251,20 @@ func (m *viewer) reconcileOperations() {
 		state, message := "", ""
 		if op.request.Generation != m.workspace.liveIdentity() {
 			state, message = "superseded", "workspace was replaced or cleared"
+		}
+		if op.transition != "" && state == "" {
+			switch {
+			case op.transition != m.motion.ID:
+				state, message = "superseded", "camera transition was replaced"
+			case !m.motion.Active:
+				target := m.motion.Target
+				settled := m.camera.Center == target.Center && m.camera.Zoom == target.Zoom && m.camera.Bearing == target.Bearing
+				if settled {
+					op.response.State, op.response.Message = "applied", "camera transition settled"
+					continue
+				}
+				state, message = "superseded", "camera transition was interrupted"
+			}
 		}
 		if op.ref != (ItemRef{}) {
 			j, err := m.workspace.journey(op.ref)
@@ -335,9 +372,9 @@ func (m *viewer) controlStatus() map[string]any {
 		session = m.control.server.info
 	}
 	return map[string]any{"session": session, "generation": m.workspace.liveIdentity(), "revision": m.workspace.liveRevision,
-		"unsaved_changes": m.workspace.liveRevision > 0, "tracks": tracks, "journeys": journeys, "active_item": active,
+		"persistence_dirty_available": false, "tracks": tracks, "journeys": journeys, "active_item": active,
 		"camera": controlCamera(m.destination()), "camera_current": controlCamera(m.camera),
-		"camera_animating": m.motion.Active, "camera_animation": !m.settings.NoAnimation,
+		"camera_transition_id": m.motion.ID, "camera_animating": m.motion.Active, "camera_animation": !m.settings.NoAnimation,
 		"theme": m.controlThemeID(), "playback": playback}
 }
 
@@ -395,6 +432,11 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		if target.response.State == "pending" {
 			if target.cancel != nil {
 				target.cancel()
+			}
+			if target.transition != "" && target.transition == m.motion.ID {
+				before := m.destination()
+				m.motion.Active = false
+				m.recordViewChange(before)
 			}
 			if target.ref != (ItemRef{}) {
 				if j, e := m.workspace.journey(target.ref); e == nil {
@@ -460,14 +502,7 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		}
 		response.Result = controlJSON(map[string]any{"theme": a.Theme})
 	case "camera.animation":
-		if m.settings.NoAnimation == *a.Enabled {
-			m.settings.NoAnimation = !*a.Enabled
-			m.workspace.edited()
-		}
-		if !*a.Enabled {
-			m.camera = m.destination()
-			m.motion.Active = false
-		}
+		m.setCameraAnimation(*a.Enabled)
 		response.Result = controlJSON(map[string]any{"enabled": *a.Enabled})
 	case "camera.set", "camera.pan", "camera.fit":
 		before := m.destination()
@@ -534,30 +569,23 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 			break
 		}
 		p := m.activePlayback()
-		wasPlaying := p.Playing
 		switch r.Action {
 		case "playback.play":
-			if !p.Playing {
-				p.toggle()
-			}
+			m.workspace.setPlaybackPlaying(true)
 		case "playback.pause":
-			p.Playing = false
+			m.workspace.setPlaybackPlaying(false)
 		case "playback.seek":
 			err = m.workspace.seek(*a.PointIndex)
 		case "playback.speed":
 			m.advancePlayback(time.Now())
 			for index, speed := range playbackSpeeds {
-				if speed == a.Speed && p.speed != index {
-					p.speed = index
-					m.workspace.edited()
+				if speed == a.Speed {
+					err = m.workspace.setPlaybackSpeed(index)
 				}
 			}
 			response.Result = controlJSON(map[string]any{"speed": p.multiplier(), "playing": p.Playing})
 		}
 		m.lastTick = time.Now()
-		if wasPlaying != p.Playing {
-			m.workspace.edited()
-		}
 	default:
 		return m.executeJourneyControl(r, a, op)
 	}
@@ -619,4 +647,31 @@ func (m *viewer) controlThemes() any {
 		themes = append(themes, map[string]string{"id": theme.ID, "name": theme.Name})
 	}
 	return map[string]any{"themes": themes, "selected": m.controlThemeID()}
+}
+
+func recoveryControl(action string) bool {
+	return action == "operation.cancel" || action == "workspace.clear"
+}
+
+// Camera transitions share a single viewer animation, not the worker budget.
+func (m *viewer) startsControlWork(action string, args controlArgs) bool {
+	if action == "load" {
+		return true
+	}
+	if !strings.HasPrefix(action, "journey.") || action == "journey.show" {
+		return false
+	}
+	if action == "journey.create" || action == "journey.mode" {
+		return args.Mode != "offline"
+	}
+	j, err := m.workspace.journey(args.Ref)
+	return err == nil && j.Mode != journeyManual
+}
+
+func cameraControl(action string) bool {
+	switch action {
+	case "camera.set", "camera.pan", "camera.fit", "journey.show":
+		return true
+	}
+	return false
 }

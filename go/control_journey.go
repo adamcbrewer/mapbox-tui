@@ -106,10 +106,7 @@ func (m *viewer) executeJourneyControl(
 				"correct the stops",
 			), nil
 		}
-		selection := m.workspace.selection
-		m.workspace.selection = nil
-		ref = m.workspace.newJourney()
-		m.workspace.selection = selection
+		ref = m.workspace.createJourney()
 		j, _ = m.workspace.journey(ref)
 		err = m.workspace.editJourneyIntent(ref, journeyIntent{Stops: stops, Mode: mode})
 		j.nextID, j.modeChosen = len(stops), true

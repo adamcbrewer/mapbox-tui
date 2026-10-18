@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/lucasb-eyer/go-colorful v1.4.1
+	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/muesli/cancelreader v0.2.2
 	github.com/muktihari/fit v0.28.4
@@ -29,7 +30,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/mattn/go-runewidth v0.0.27 // indirect
 	github.com/paulmach/protoscan v0.2.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

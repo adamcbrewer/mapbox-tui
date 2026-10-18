@@ -132,6 +132,12 @@ status immediately before sending unless you provide `--generation` and
 `--expected-revision`. This catches changes between that read and application;
 for an agent acting on an earlier observation, supply that observation's values.
 MCP requires explicit preconditions. Stale requests fail without applying changes.
+
+Live revision counts edits for concurrency control, including presentation and
+playback edits. It is not a saved-workspace dirty flag. Until #79 supplies its
+shared persistence model, status reports `persistence_dirty_available: false`
+and omits `unsaved_changes`.
+
 The live revision is monotonic and may advance more than once per command. It is
 not a saved checkpoint revision or a playback-frame counter.
 
@@ -152,8 +158,13 @@ edits intact. Edits/removal or workspace clearing can supersede pending work.
 
 Reuse a request ID only with the same action, arguments and preconditions. The
 viewer retains mutation results for 15 minutes from acceptance, with a maximum
-of 256 retained operations and 16 pending operations. It rejects new work when
-full rather than evicting unexpired outcomes. Completed results become eligible
+of 256 ordinary retained operations and 16 pending import/routing operations.
+Synchronous edits and camera transitions do not consume the worker allowance.
+Cancel and clear commands have a separate allowance of 33 retained results, so
+saturating ordinary work does not block recovery. Recovery results keep the same
+retry guarantees; exhausting that separate allowance requires waiting for expiry.
+The viewer rejects new work when its relevant allowance is full rather than
+evicting unexpired outcomes. Completed results become eligible
 for removal after the retention period. Deduplication is session-local and ends
 when the viewer exits. After expiry or an unknown outcome, inspect the workspace
 before issuing a new mutation; replaying an expired key can apply it again.
@@ -196,18 +207,27 @@ loaded when that viewer started.
 Camera set, pan, fit and journey show follow the viewer's animation setting by
 default. An explicit `animate` boolean overrides it for that command only.
 Transitions use the same spring motion as keyboard navigation; duration is not
-configurable. The applied response means the destination was accepted.
-`--wait` does not wait for visual settling. Status reports `camera` (destination),
-`camera_current`, `camera_animating`, `camera_animation`, `theme` and playback
-`speed`/`available_speeds`. Poll status until `camera_animating` is false if visual
-completion matters. Later camera commands or human navigation can redirect motion.
+configurable. Every camera command returns a `transition_id`. Animated moves
+return a `pending` operation until that particular transition settles; it then
+becomes `applied`. A replacement move or human navigation makes it `superseded`.
+Use `--wait-visual` (or `--wait`) to wait for its outcome, or query
+`operation status OPERATION_ID`. Cancel stops the transition at its current
+position; it does not undo earlier motion.
+
+Status reports `camera` (destination), `camera_current`, `camera_transition_id`,
+`camera_animating`, `camera_animation`, `theme` and playback
+`speed`/`available_speeds`. For scripted tours, wait for the operation, not just
+the global animation flag, which could refer to a later move.
 
 MCP exposes `viewer_theme_list`, `viewer_theme_set`, `viewer_playback_speed`
-and `viewer_camera_animation`, alongside the camera tools. For example, ask:
+and `viewer_camera_animation`, alongside the camera tools. Camera tools accept
+`wait_visual: true` in the MCP wrapper to await the specific transition.
+For example, ask:
 
 > Find the session named main. Set its theme to nord, set the active recording's
 > playback speed to 20x, then smoothly move to King's Cross at 51.5308, -0.1238,
-> zoom 14. Read current generation/revision before each mutation.
+> zoom 14 and wait for that transition to settle. Read current generation/revision
+> before each mutation.
 
 ## MCP session discovery and control
 

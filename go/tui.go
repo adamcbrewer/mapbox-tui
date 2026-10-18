@@ -478,6 +478,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.motion.advance(&m.camera, seconds) {
 			m.dirty = true
 		}
+		m.reconcileOperations()
 		command := m.fetchAt(now)
 		if !m.sources.busy() && !m.loading {
 			m.ui.spinning = false
@@ -720,8 +721,10 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					direction = -1
 				}
 				m.advancePlayback(time.Now())
-				p.cycle(direction)
-				m.workspace.edited()
+				index := (p.speed + direction + len(playbackSpeeds)) % len(playbackSpeeds)
+				if err := m.workspace.setPlaybackSpeed(index); err != nil {
+					m.settingsNotice = err.Error()
+				}
 			}
 		case "a":
 			return m, m.toggleMenuOption("ascii")

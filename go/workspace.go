@@ -60,8 +60,13 @@ func (w *Workspace) open(path string) (ItemRef, error) {
 
 // addDocument takes ownership of a successfully prepared import.
 func (w *Workspace) addDocument(d *Document) ItemRef {
+	return w.activateDocument(w.storeDocument(d))
+}
+
+// storeDocument adds content without changing the active item or its playback.
+func (w *Workspace) storeDocument(d *Document) *workspaceDocument {
 	if entry := w.documentAtPath(d.Path); entry != nil {
-		return w.activateDocument(entry)
+		return entry
 	}
 	w.edited()
 	w.nextID++
@@ -71,7 +76,7 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 		w.nextColor++
 	}
 	w.documents = append(w.documents, entry)
-	return w.activateDocument(entry)
+	return entry
 }
 
 func (w *Workspace) documentAtPath(path string) *workspaceDocument {
@@ -456,4 +461,31 @@ func extendBounds(bounds *[4]float64, other [4]float64) {
 	bounds[1] = math.Min(bounds[1], other[1])
 	bounds[2] = math.Max(bounds[2], other[2])
 	bounds[3] = math.Max(bounds[3], other[3])
+}
+
+// setPlaybackSpeed and setPlaybackPlaying are shared by viewer and agent commands.
+func (w *Workspace) setPlaybackSpeed(index int) error {
+	if index < 0 || index >= len(playbackSpeeds) {
+		return fmt.Errorf("invalid playback speed index")
+	}
+	if w.selection == nil || w.selection.playback == nil {
+		return fmt.Errorf("no active recording")
+	}
+	p := w.selection.playback
+	if p.speed != index {
+		p.speed = index
+		w.edited()
+	}
+	return nil
+}
+
+func (w *Workspace) setPlaybackPlaying(playing bool) {
+	if w.selection == nil || w.selection.playback == nil {
+		return
+	}
+	p := w.selection.playback
+	if p.Playing != playing {
+		p.toggle()
+		w.edited()
+	}
 }

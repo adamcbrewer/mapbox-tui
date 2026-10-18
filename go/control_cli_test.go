@@ -13,6 +13,8 @@ func TestControlCLICommands(t *testing.T) {
 		action string
 		bad    bool
 	}{
+		{name: "visual wait", argv: []string{"remote", "--session", "main", "camera", "set", "--zoom", "12", "--animate", "--wait-visual"}, action: "camera.set"},
+		{name: "irrelevant visual wait", argv: []string{"remote", "--session", "main", "theme", "list", "--wait-visual"}, bad: true},
 		{name: "theme", argv: []string{"remote", "--session", "main", "theme", "set", "--theme", "nord"}, action: "theme.set"},
 		{name: "speed", argv: []string{"remote", "--session", "main", "playback", "speed", "--ref", "1:1", "--speed", "20"}, action: "playback.speed"},
 		{name: "bad speed", argv: []string{"remote", "--session", "main", "playback", "speed", "--ref", "1:1", "--speed", "7"}, bad: true},

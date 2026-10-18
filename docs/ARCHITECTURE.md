@@ -309,3 +309,18 @@ history. We don't have a baseline for claiming Rust is faster here. If results
 turn up, record the prototype/revision and setup above. Compare directly only
 where workload, pipeline, build optimisation, hardware and sampling match;
 otherwise keep them as separate historical observations.
+
+
+### Shared live commands
+
+The viewer update loop owns agent commands and human input. Workspace content
+insertion is separate from activation: creating a journey does not need to
+temporarily replace the active recording. UI and agent playback commands share
+the same workspace setters and revision tracking; camera animation settings
+share a viewer setter while preference persistence remains a UI choice.
+
+CLI and MCP validate action arguments against the same embedded JSON schemas.
+Live concurrency revisions are separate from persistence dirtiness, which will
+come from the saved-workspace model. Bounded recovery capacity keeps cancellation
+available when ordinary work saturates. Camera transitions carry identities and
+use the operation lifecycle for settled, cancelled and superseded outcomes.

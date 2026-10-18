@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -436,5 +437,212 @@ func TestControlPlaybackSpeed(t *testing.T) {
 	response, _ = m.applyControl(controlTestRequest(m, "playback.speed", map[string]any{"ref": ref, "speed": 7}))
 	if response.Error == nil || response.Changed || p.multiplier() != 5 || m.workspace.liveRevision != before {
 		t.Fatal("invalid speed changed playback", response)
+	}
+}
+
+func TestControlRecoverySurvivesSaturation(t *testing.T) {
+	for _, kind := range []string{"import", "route"} {
+		t.Run(kind, func(t *testing.T) {
+			m := journeyViewer(t)
+			var target string
+			var route *Journey
+			for range pendingCapacity {
+				if kind == "route" && target == "" {
+					ref := routedTestJourney(t, &m.workspace)
+					route, _ = m.workspace.journey(ref)
+					_, cancel := context.WithCancel(t.Context())
+					route.Busy = true
+					route.cancel = cancel
+					request := controlTestRequest(m, "journey.calculate", map[string]any{"ref": ref})
+					target = request.ID
+					m.control = &viewerControl{operations: map[string]*controlOperation{
+						target: {request: request, created: time.Now(), ref: ref,
+							routeID: route.requestID, routeRevision: route.revision, cancel: cancel,
+							response: controlResponse{State: "pending"}},
+					}}
+					t.Cleanup(cancel)
+					continue
+				}
+				path, _ := filepath.Abs("../fixtures/example.gpx")
+				request := controlTestRequest(m, "load", map[string]any{"path": path})
+				result, _ := m.applyControl(request)
+				if result.State != "pending" {
+					t.Fatal(result)
+				}
+				if target == "" {
+					target = request.ID
+				}
+			}
+			t.Cleanup(m.cancelControlOperations)
+			// The worker budget must not reject synchronous settings commands.
+			result, _ := m.applyControl(controlTestRequest(m, "theme.set", map[string]any{"theme": "nord"}))
+			if result.Error != nil {
+				t.Fatal("pending worker limit blocked synchronous edit", result)
+			}
+			for len(m.control.operations) < operationCapacity {
+				m.control.operations[newSessionID()] = &controlOperation{
+					created: time.Now(), response: controlResponse{State: "applied"},
+				}
+			}
+			cancelRequest := controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": target})
+			result, _ = m.applyControl(cancelRequest)
+			if result.Error != nil || m.control.operations[target].response.State != "cancelled" {
+				t.Fatal("saturated operation table blocked cancellation", result)
+			}
+			if route != nil && route.Busy {
+				t.Fatal("route cancellation did not stop routing")
+			}
+			duplicate, _ := m.applyControl(cancelRequest)
+			if !reflect.DeepEqual(result, duplicate) {
+				t.Fatal("reserved cancellation lost idempotency")
+			}
+			result, _ = m.applyControl(controlTestRequest(m, "workspace.clear", map[string]any{"discard": true}))
+			if result.Error != nil {
+				t.Fatal("saturation blocked clear", result)
+			}
+			m.reconcileOperations()
+			for _, op := range m.control.operations {
+				if op.response.State == "pending" {
+					t.Fatal("clear retained pending operations")
+				}
+			}
+		})
+	}
+}
+
+func TestControlPersistenceDirtinessUnavailable(t *testing.T) {
+	m := journeyViewer(t)
+	for _, action := range []string{"theme.set", "workspace.clear"} {
+		args := map[string]any{"theme": "nord"}
+		if action == "workspace.clear" {
+			args = map[string]any{"discard": true}
+		}
+		result, _ := m.applyControl(controlTestRequest(m, action, args))
+		if result.Error != nil {
+			t.Fatal(result)
+		}
+		state := m.controlStatus()
+		if _, exists := state["unsaved_changes"]; exists || state["persistence_dirty_available"] != false {
+			t.Fatal("live revision must not imply persistence dirtiness", state)
+		}
+	}
+}
+
+func TestControlCameraTransitionOutcomes(t *testing.T) {
+	m := journeyViewer(t)
+	start := func(zoom float64) controlResponse {
+		t.Helper()
+		response, _ := m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": zoom, "animate": true}))
+		if response.Error != nil || response.State != "pending" || response.TransitionID == "" {
+			t.Fatal(response)
+		}
+		return response
+	}
+	status := func(id string) controlResponse {
+		t.Helper()
+		response, _ := m.applyControl(controlTestRequest(m, "operation.status", map[string]any{"operation_id": id}))
+		return response
+	}
+	first := start(13)
+	second := start(10)
+	if result := status(first.OperationID); result.State != "superseded" || result.TransitionID != first.TransitionID {
+		t.Fatal("replacement was not attributed to original transition", result)
+	}
+	for range 300 {
+		m.motion.advance(&m.camera, 1.0/60)
+	}
+	if result := status(second.OperationID); result.State != "applied" || result.TransitionID != second.TransitionID {
+		t.Fatal("settled transition did not complete", result)
+	}
+	third := start(15)
+	m.panCamera(20, 0)
+	if result := status(third.OperationID); result.State != "superseded" {
+		t.Fatal("human navigation did not supersede transition", result)
+	}
+	fourth := start(9)
+	_, _ = m.applyControl(controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": fourth.OperationID}))
+	if result := status(fourth.OperationID); result.State != "cancelled" || m.motion.Active {
+		t.Fatal("cancel did not stop transition", result)
+	}
+}
+
+func TestControlSchemasMatchArgumentValidation(t *testing.T) {
+	for _, test := range []struct {
+		action, args string
+		valid        bool
+	}{
+		{"select", `{"ref":{"document_id":1,"item_id":0}}`, false},
+		{"visibility", `{"ref":{"document_id":1,"item_id":0},"visible":false}`, true},
+		{"camera.set", `{"lat":90,"lon":0}`, false},
+		{"camera.set", `{"lat":85.05112878,"lon":0}`, true},
+		{"camera.set", `{"lat":20}`, false},
+		{"camera.set", `{"zoom":21}`, false},
+		{"camera.set", `{"animate":null}`, false},
+		{"playback.speed", `{"ref":{"document_id":1,"item_id":1},"speed":7}`, false},
+	} {
+		t.Run(test.action+test.args, func(t *testing.T) {
+			var value any
+			if err := json.Unmarshal([]byte(test.args), &value); err != nil {
+				t.Fatal(err)
+			}
+			advertised := controlSpecs[test.action].resolved.Validate(value)
+			_, actual := decodeControlArgs(test.action, []byte(test.args))
+			if (advertised == nil) != test.valid || (actual == nil) != test.valid {
+				t.Fatalf("schema=%v handler=%v valid=%v", advertised, actual, test.valid)
+			}
+		})
+	}
+}
+
+func TestCreateJourneyPreservesActiveRecording(t *testing.T) {
+	m := journeyViewer(t)
+	ref, err := m.workspace.open("../fixtures/example.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.workspace.setPlaybackPlaying(true)
+	if err := m.workspace.setPlaybackSpeed(2); err != nil {
+		t.Fatal(err)
+	}
+	selection := m.workspace.selection
+	response, _ := m.applyControl(controlTestRequest(m, "journey.create", map[string]any{
+		"mode": "offline", "stops": []controlStop{{Lat: 51, Lon: 0}, {Lat: 52, Lon: 1}},
+	}))
+	if response.Error != nil || m.workspace.selection != selection || m.workspace.selection.ref != ref {
+		t.Fatal("journey creation replaced active recording", response)
+	}
+	if !m.activePlayback().Playing || m.activePlayback().multiplier() != 20 {
+		t.Fatal("journey creation altered playback")
+	}
+}
+
+func TestSettledTransitionIsNotSupersededByLaterHumanMove(t *testing.T) {
+	m := journeyViewer(t)
+	first, _ := m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": 12, "animate": true}))
+	// Disabling animation completes it immediately, even before the next pulse.
+	m.setCameraAnimation(false)
+	m.panCamera(10, 0)
+	status, _ := m.applyControl(controlTestRequest(m, "operation.status", map[string]any{"operation_id": first.OperationID}))
+	if status.State != "applied" {
+		t.Fatal("a completed transition was retrospectively superseded", status)
+	}
+}
+
+func TestRecoveryAllowanceRemainsBoundedAndIndependent(t *testing.T) {
+	m := journeyViewer(t)
+	for range recoveryCapacity {
+		response, _ := m.applyControl(controlTestRequest(m, "workspace.clear", map[string]any{"discard": true}))
+		if response.Error != nil {
+			t.Fatal(response)
+		}
+	}
+	generation := m.workspace.liveIdentity()
+	response, _ := m.applyControl(controlTestRequest(m, "workspace.clear", map[string]any{"discard": true}))
+	if response.Error == nil || response.Error.Code != "busy" || m.workspace.liveIdentity() != generation {
+		t.Fatal("recovery budget was unbounded or rejected after mutating", response)
+	}
+	response, _ = m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": 12, "animate": false}))
+	if response.Error != nil {
+		t.Fatal("recovery budget consumed ordinary capacity", response)
 	}
 }

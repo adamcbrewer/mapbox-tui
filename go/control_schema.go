@@ -3,7 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"math"
+
+	"github.com/google/jsonschema-go/jsonschema"
 
 	"mapbox-tui/shared"
 )
@@ -38,13 +39,9 @@ type controlStop struct {
 }
 
 type controlSpec struct {
-	Description string `json:"description"`
-	Schema      struct {
-		Type                 string                     `json:"type"`
-		Properties           map[string]json.RawMessage `json:"properties"`
-		Required             []string                   `json:"required"`
-		AdditionalProperties bool                       `json:"additionalProperties"`
-	} `json:"inputSchema"`
+	Description string             `json:"description"`
+	Schema      *jsonschema.Schema `json:"inputSchema"`
+	resolved    *jsonschema.Resolved
 }
 
 var controlSpecs = func() map[string]controlSpec {
@@ -52,13 +49,21 @@ var controlSpecs = func() map[string]controlSpec {
 	if err := json.Unmarshal(shared.ControlTools, &specs); err != nil {
 		panic(err)
 	}
+	for action, spec := range specs {
+		resolved, err := spec.Schema.Resolve(nil)
+		if err != nil {
+			panic(fmt.Sprintf("invalid schema for %s: %v", action, err))
+		}
+		spec.resolved = resolved
+		specs[action] = spec
+	}
 	return specs
 }()
 
 func controlCapabilities() any {
 	return map[string]any{"protocol_version": controlVersion, "actions": controlSpecs,
 		"operation_retention_seconds": operationRetention.Seconds(), "operation_capacity": operationCapacity,
-		"pending_capacity": pendingCapacity, "persistence_available": false}
+		"pending_capacity": pendingCapacity, "recovery_capacity": recoveryCapacity, "persistence_available": false}
 }
 
 func decodeControlArgs(action string, data json.RawMessage) (controlArgs, error) {
@@ -66,77 +71,19 @@ func decodeControlArgs(action string, data json.RawMessage) (controlArgs, error)
 	if len(data) == 0 {
 		data = json.RawMessage(`{}`)
 	}
-	var fields map[string]json.RawMessage
-	if err := strictJSON(data, &fields); err != nil || fields == nil {
-		return args, fmt.Errorf("args must be an object")
+	var value any
+	if err := strictJSON(data, &value); err != nil {
+		return args, err
 	}
-	spec := controlSpecs[action]
-	for key, value := range fields {
-		if _, ok := spec.Schema.Properties[key]; !ok {
-			return args, fmt.Errorf("unknown argument %q for %s", key, action)
-		}
-		if string(value) == "null" {
-			return args, fmt.Errorf("argument %q cannot be null", key)
-		}
+	spec, ok := controlSpecs[action]
+	if !ok {
+		return args, fmt.Errorf("unknown action %q", action)
 	}
-	for _, key := range spec.Schema.Required {
-		if _, ok := fields[key]; !ok {
-			return args, fmt.Errorf("%s is required", key)
-		}
+	if err := spec.resolved.Validate(value); err != nil {
+		return args, fmt.Errorf("invalid %s arguments: %w", action, err)
 	}
 	if err := strictJSON(data, &args); err != nil {
 		return args, err
-	}
-	if value, ok := fields["ref"]; ok {
-		var ref map[string]json.RawMessage
-		if err := json.Unmarshal(value, &ref); err != nil {
-			return args, err
-		}
-		if args.Ref.DocumentID < 1 {
-			return args, fmt.Errorf("ref.document_id must be positive")
-		}
-		_, hasItem := ref["item_id"]
-		if !hasItem || string(ref["item_id"]) == "null" || args.Ref.ItemID < 0 {
-			return args, fmt.Errorf("ref.item_id is required; use 0 only for whole-document visibility/removal")
-		}
-		if args.Ref.ItemID == 0 && action != "visibility" && action != "remove" {
-			return args, fmt.Errorf("ref.item_id must be positive")
-		}
-	}
-	if action == "playback.speed" {
-		valid := false
-		for _, speed := range playbackSpeeds {
-			valid = valid || args.Speed == speed
-		}
-		if !valid {
-			return args, fmt.Errorf("speed must be one of 1, 5, 20, 60, 120")
-		}
-	}
-	if args.Path == "" && action == "load" {
-		return args, fmt.Errorf("path must not be empty")
-	}
-	if len(args.Stops) > 1000 {
-		return args, fmt.Errorf("at most 1000 stops are supported")
-	}
-	if raw, ok := fields["stops"]; ok {
-		var stops []map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &stops); err != nil {
-			return args, err
-		}
-		for i, stop := range stops {
-			if _, ok := stop["lat"]; !ok {
-				return args, fmt.Errorf("stop latitude is required")
-			}
-			if _, ok := stop["lon"]; !ok {
-				return args, fmt.Errorf("stop longitude is required")
-			}
-			if string(stop["lat"]) == "null" || string(stop["lon"]) == "null" || !validLocation(args.Stops[i].Lon, args.Stops[i].Lat) {
-				return args, fmt.Errorf("invalid stop coordinates")
-			}
-		}
-	}
-	if math.Abs(args.DX) > 10000 || math.Abs(args.DY) > 10000 {
-		return args, fmt.Errorf("pan is limited to 10000 terminal cells per command")
 	}
 	return args, nil
 }

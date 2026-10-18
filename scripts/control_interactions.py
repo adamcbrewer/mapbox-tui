@@ -77,8 +77,9 @@ def main():
             assert any(theme["id"] == "nord" for theme in themes), themes
             remote(env, identity, "theme", "set", "--theme", "nord")
             assert remote(env, identity, "status")["result"]["theme"] == "nord"
-            remote(env, identity, "camera", "set", "--lat", "51.5", "--lon", "-0.1",
-                   "--zoom", "12", "--animate")
+            animated = remote(env, identity, "camera", "set", "--lat", "51.5", "--lon", "-0.1",
+                              "--zoom", "12", "--animate", "--wait-visual")
+            assert animated["state"] == "applied" and animated["transition_id"], animated
             settled = wait_for(lambda: (state if not state["camera_animating"] else None)
                                if (state := remote(env, identity, "status")["result"]) else None)
             assert settled["camera_current"]["zoom"] == 12, settled
@@ -99,6 +100,12 @@ def main():
                     updated = mcp.call(action, {"args": args, "request_id": action,
                         "generation": current["generation"], "expected_revision": current["revision"]})
                     assert not updated["result"].get("isError", False), updated
+                current = mcp.call("viewer_status", {"args": {}})["result"]["structuredContent"]
+                animated = mcp.call("viewer_camera_set", {
+                    "args": {"zoom": 13, "animate": True}, "wait_visual": True,
+                    "request_id": "mcp-visual-wait", "generation": current["generation"],
+                    "expected_revision": current["revision"]})["result"]["structuredContent"]
+                assert animated["state"] == "applied" and animated["transition_id"], animated
                 observed_settings = remote(env, identity, "status")["result"]
                 assert observed_settings["theme"] == "paper", observed_settings
                 assert observed_settings["playback"]["speed"] == 60, observed_settings

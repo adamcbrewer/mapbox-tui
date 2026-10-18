@@ -16,6 +16,7 @@ type attachedToolArgs struct {
 	Generation     string          `json:"generation"`
 	Revision       *uint64         `json:"expected_revision"`
 	Args           json.RawMessage `json:"args"`
+	WaitVisual     bool            `json:"wait_visual"`
 	Wait           bool            `json:"wait"`
 	TimeoutSeconds *float64        `json:"timeout_seconds"`
 }
@@ -38,6 +39,9 @@ func addViewerTools(server *mcp.Server, pinned sessionInfo) {
 			required = append(required, "generation", "expected_revision", "request_id")
 			description += " Read viewer_status first and supply its generation/revision. Reuse request_id only with identical arguments and preconditions."
 		}
+		if cameraControl(action) {
+			description += " Animated moves return a transition_id and pending operation; use wait_visual=true to await this transition, or inspect viewer_operation_status."
+		}
 		schema := map[string]any{"type": "object", "additionalProperties": false, "required": required,
 			"properties": map[string]any{
 				"session_id":        map[string]any{"type": "string", "minLength": 1, "description": "Live session UUID from viewer_sessions. In pinned mode, must match the attached UUID if supplied."},
@@ -47,11 +51,17 @@ func addViewerTools(server *mcp.Server, pinned sessionInfo) {
 				"args":              spec.Schema, "wait": map[string]any{"type": "boolean"},
 				"timeout_seconds": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 300},
 			}}
+		if cameraControl(action) {
+			schema["properties"].(map[string]any)["wait_visual"] = map[string]any{"type": "boolean"}
+		}
 		server.AddTool(&mcp.Tool{Name: "viewer_" + strings.ReplaceAll(action, ".", "_"), Description: description, InputSchema: schema},
 			func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				var args attachedToolArgs
 				if err := strictJSON(request.Params.Arguments, &args); err != nil {
 					return controlMCPResult(controlFailure("invalid_arguments", err.Error(), "use the advertised tool schema")), nil
+				}
+				if args.WaitVisual && !cameraControl(action) {
+					return controlMCPResult(controlFailure("invalid_arguments", "wait_visual requires a camera command", "use a camera tool")), nil
 				}
 				info := pinned
 				if pinned.ID == "" {
@@ -78,7 +88,7 @@ func addViewerTools(server *mcp.Server, pinned sessionInfo) {
 				ctx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
 				response, err := callRemote(ctx, info, controlRequest{ID: args.RequestID, Action: action,
-					Generation: args.Generation, Revision: args.Revision, Args: args.Args}, args.Wait, false)
+					Generation: args.Generation, Revision: args.Revision, Args: args.Args}, args.Wait || args.WaitVisual, false)
 				if err != nil {
 					previous := response
 					response = controlFailure(

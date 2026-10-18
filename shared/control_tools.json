@@ -63,7 +63,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -159,14 +159,14 @@
     }
   },
   "camera.set": {
-    "description": "Set camera coordinates, zoom or bearing. lat/lon must be supplied together within Mercator range. Uses the viewer animation setting unless animate is supplied. Applied means the destination is set; inspect status.camera_animating for visual completion.",
+    "description": "Set camera coordinates, zoom or bearing. lat/lon must be supplied together within Mercator range. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "lat": {
           "type": "number",
-          "minimum": -90,
-          "maximum": 90
+          "minimum": -85.05112878,
+          "maximum": 85.05112878
         },
         "lon": {
           "type": "number",
@@ -189,11 +189,19 @@
         }
       },
       "required": [],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
     }
   },
   "camera.pan": {
-    "description": "Pan by terminal cells as if dragging the map: positive dx drags right, positive dy drags down. Uses the viewer animation setting unless animate is supplied. Applied means the destination is set; inspect status.camera_animating for visual completion.",
+    "description": "Pan by terminal cells as if dragging the map: positive dx drags right, positive dy drags down. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -220,7 +228,7 @@
     }
   },
   "camera.fit": {
-    "description": "Fit visible geometry. Uses the viewer animation setting unless animate is supplied. Applied means the destination is set; inspect status.camera_animating for visual completion.",
+    "description": "Fit visible geometry. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -247,7 +255,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -277,7 +285,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -307,7 +315,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -389,7 +397,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -419,7 +427,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -449,7 +457,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -489,7 +497,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -545,7 +553,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -575,7 +583,15 @@
         "lat",
         "lon"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
     }
   },
   "journey.stop.set": {
@@ -592,7 +608,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -622,7 +638,15 @@
         "lat",
         "lon"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
     }
   },
   "journey.stop.remove": {
@@ -639,7 +663,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -674,7 +698,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -717,7 +741,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -734,7 +758,7 @@
     }
   },
   "journey.show": {
-    "description": "Select, reveal and fit this journey without changing its stops. Uses the viewer animation setting unless animate is supplied. Applied means the destination is set; inspect status.camera_animating for visual completion.",
+    "description": "Select, reveal and fit this journey without changing its stops. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -747,7 +771,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [
@@ -837,7 +861,7 @@
             },
             "item_id": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 1
             }
           },
           "required": [

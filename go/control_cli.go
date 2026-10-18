@@ -72,6 +72,8 @@ func parseControlCLI(argv []string, output io.Writer) (cliCommand, error) {
 		30*time.Second,
 		"maximum wait, e.g. 30s or 2m",
 	)
+	var waitVisual bool
+	fs.BoolVar(&waitVisual, "wait-visual", false, "wait for this camera transition to settle or be superseded")
 	var ref, raw, start, end string
 	var waypoints []string
 	a := controlArgs{}
@@ -265,6 +267,12 @@ routing too. Use capabilities --json for exact action schemas.
 	if action == "load" {
 		options.Wait = true
 	}
+	if waitVisual {
+		if !cameraControl(action) && action != "fit" {
+			return command, fmt.Errorf("--wait-visual requires camera set/pan/fit or journey show")
+		}
+		options.Wait = true
+	}
 	if action == "fit" {
 		action = "camera.fit"
 	}
@@ -332,7 +340,7 @@ routing too. Use capabilities --json for exact action schemas.
 			supplied["ref"] = true
 		case "start", "end", "waypoint":
 			supplied["stops"] = true
-		case "session", "request-id", "generation", "json", "wait", "timeout", "args":
+		case "session", "request-id", "generation", "json", "wait", "wait-visual", "timeout", "args":
 		default:
 			supplied[strings.ReplaceAll(f.Name, "-", "_")] = true
 		}
