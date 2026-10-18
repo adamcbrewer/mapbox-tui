@@ -1724,26 +1724,27 @@ def manual_workspace_restart(binary, width, height, ascii_mode=False):
     original = b'{malformed preferences'
     settings.write_bytes(original)
     folder = settings.parent / "workspaces"
+    pid_file = settings.parent / "viewer.pid"
 
     def start(*flags):
+        pid_file.unlink(missing_ok=True)
         argv = ["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor",
-                str(binary), "--safe-start", "--no-provider", "--no-animation",
+                f"MAPBOX_TUI_TEST_PID_FILE={pid_file}",
+                "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), "--safe-start", "--no-provider", "--no-animation",
                 *(["--ascii"] if ascii_mode else []), *flags]
         tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height),
              "exec " + shlex.join(argv))
         wait_for(lambda s: "ctrl+b sidebar" in s or "A Start:" in s)
 
     def stop(crash=False):
-        pid = int(tmux("display-message", "-p", "-t", "poc:0.0", "#{pane_pid}"))
         if crash:
+            pid = int(pid_file.read_text())
             assert Path(f"/proc/{pid}/exe").resolve() == binary.resolve()
             os.kill(pid, signal.SIGKILL)
+            wait_for(lambda s: "EXIT=-9" in s)
         else:
             tmux("send-keys", "-t", "poc:0.0", "C-c")
-        until = time.monotonic() + 10
-        while Path(f"/proc/{pid}").exists() and time.monotonic() < until:
-            time.sleep(.03)
-        assert not Path(f"/proc/{pid}").exists(), "viewer did not exit"
+            wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
         tmux("kill-session", "-t", "poc", check=False)
 
     try:
