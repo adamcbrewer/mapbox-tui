@@ -238,7 +238,7 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Headless map rendering | ANSI-free text via CLI/MCP | - | ANSI snapshots via CLI | ANSI frames via Rust SDK |
 | JSON activity summaries and point inspection | ✓ | - | - | - |
 | Local MCP server with a session workspace | ✓ | - | - | - |
-| Session steering from a separate CLI process | (proposed) | - | - | - |
+| Remote access to a running viewer through CLI and MCP | [✓](docs/REMOTE_ACCESS.md) | - | - | - |
 | Lua plugins and scripted scenes | - | - | ✓ | - |
 | Embeddable map SDK | - | - | - | Rust SDK |
 | Multiple independent map views | - | - | - | Via SDK |
