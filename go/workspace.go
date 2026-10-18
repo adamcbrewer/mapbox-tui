@@ -254,6 +254,8 @@ func (w *Workspace) clear() {
 	w.unresolved = nil
 	w.deferredSelection = nil
 	w.elevation = nil
+	w.checkpoint = nil
+	w.nextColor = 0
 }
 
 func (w *Workspace) cancelJourneyRoutes() {

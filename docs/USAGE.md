@@ -412,3 +412,40 @@ checkpoint is not silently recreated. Unsupported formats, oversized files and
 failed writes leave existing saves intact. Clearing the working workspace or
 `--reset-view` does not delete checkpoints, preferences or favourites. Automatic
 recovery and a searchable save library are separate features.
+
+## Start clean, clear journeys and safe start
+
+Use **Ctrl-K → Start clean** to empty the workspace. This clears imports,
+journeys, missing-file references and selection, and cancels pending workspace
+work. Your preferences, favourites and saved files stay as they are.
+**Save workspace** then asks for a new name, so you won't overwrite the
+checkpoint you had open.
+
+Choose **Clear journey** in the Journey panel or command palette to remove the
+journey you're editing. It still targets that journey when an imported activity
+is selected on the map. Other journeys and imports stay in place. Save the
+workspace if you want to keep the change. If you reopen the unchanged checkpoint,
+its journey comes back.
+
+Workspace saving is manual. Unsaved edits are lost when you close the viewer or
+it crashes. Starting without files, journey options or `--workspace` opens an
+empty workspace. Viewer preferences, including the last view saved on normal
+exit, are separate from workspace saves.
+
+If saved preferences are causing problems, bypass them for one launch:
+
+```sh
+mapbox-tui --safe-start
+mapbox-tui --safe-start --ascii --no-provider fixtures/example.gpx
+mapbox-tui --safe-start --workspace /path/to/workspace.json
+```
+
+Safe start uses defaults and your explicit launch flags. It doesn't read the
+settings file or save the last view when you exit, so it also works when settings
+are malformed. Files, journey options and saved workspaces work as usual. An
+opened workspace supplies its camera unless you override it with camera flags.
+
+Credentials and favourites stay untouched. If you change a preference in the UI,
+the app still tries to save that change and reports any error. Safe start doesn't
+repair or delete the settings file. You can't combine it with `--reset-view`,
+which deliberately changes saved settings.

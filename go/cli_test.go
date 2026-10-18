@@ -221,3 +221,28 @@ func TestCLIMultipleFilesAndItemSelectors(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeStartPreservesStartupContentRules(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		flags []string
+		valid bool
+	}{
+		{"empty", nil, true},
+		{"import", []string{"ride.gpx"}, true},
+		{"journey", []string{"--start", "51,0", "--end", "52,1"}, true},
+		{"workspace", []string{"--workspace", "saved.json"}, true},
+		{"workspace and import", []string{"--workspace", "saved.json", "ride.gpx"}, false},
+		{"workspace and journey", []string{"--workspace", "saved.json", "--start", "51,0", "--end", "52,1"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command, err := parseCLI(append([]string{"--safe-start"}, test.flags...), io.Discard)
+			if (err == nil) != test.valid {
+				t.Fatalf("unexpected startup validation: %v", err)
+			}
+			if test.valid && !command.Args.SafeStart {
+				t.Fatal("lost safe-start flag")
+			}
+		})
+	}
+}

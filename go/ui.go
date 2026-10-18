@@ -280,12 +280,15 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 func (m *viewer) initUI() error {
 	var preferences appSettings
 	var err error
-	if m.args.ResetView {
+	switch {
+	case m.args.SafeStart:
+		// Bypass even malformed settings without changing the original file.
+	case m.args.ResetView:
 		preferences, err = updateAppSettings(func(s *appSettings) { s.LastView = nil })
 		if err != nil {
 			return fmt.Errorf("could not reset saved view: %w", err)
 		}
-	} else {
+	default:
 		preferences, err = loadAppSettings()
 	}
 	if err != nil {
@@ -655,13 +658,13 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Open saved workspace", action: "open-workspace"},
 		{title: "Repair missing workspace files", action: "repair-workspace", disabled: len(m.workspace.unresolved) == 0},
 	}
-	if len(m.workspace.documents) > 0 || len(m.workspace.unresolved) > 0 {
-		commands = append(commands, viewerCommand{title: "Clear workspace (remove all files)", action: "clear"})
-	}
+	_, journeyErr := m.workspace.journey(m.planner.ref)
 	commands = append(commands,
+		viewerCommand{title: "Start clean (empty workspace)", action: "clear"},
 		viewerCommand{title: "Open track file", shortcut: "ctrl+o", action: "open"},
 		viewerCommand{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
 		viewerCommand{title: "Journey Planner", shortcut: "ctrl+j", action: "journey"},
+		viewerCommand{title: "Clear journey", action: "clear-journey", disabled: journeyErr != nil},
 		viewerCommand{title: "Colour theme", action: "theme"},
 	)
 	toggles := []viewerCommand{
@@ -741,6 +744,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return m.pushDialog(dialogSearch)
 	case "workspace":
 		return m.pushDialog(dialogWorkspace)
+	case "clear-journey":
+		return m.clearJourney()
 	case "journey":
 		return m.openJourney()
 	case "open":

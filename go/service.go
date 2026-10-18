@@ -40,6 +40,7 @@ type Args struct {
 	ThemeSet       bool            `json:"-"`
 	ElevationSet   bool            `json:"-"`
 	Elevation      string          `json:"-"`
+	SafeStart      bool            `json:"-"`
 	ResetView      bool            `json:"-"`
 }
 

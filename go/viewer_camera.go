@@ -58,7 +58,7 @@ func (m *viewer) recordViewChange(before Camera) {
 
 // Run synchronously after the UI has stopped, so no camera writer can race it.
 func (m *viewer) saveViewOnExit() error {
-	if !m.viewChanged {
+	if m.args.SafeStart || !m.viewChanged {
 		return nil
 	}
 	c := m.destination()

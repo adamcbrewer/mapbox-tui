@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import time
 import sys
@@ -800,7 +801,7 @@ def workspace_controls(binary):
         wait_for(lambda s: "Loaded files" not in s and "Optional spur" in s)
         send("\x0b")
         wait_for(lambda s: active_modal(s, "Commands"))
-        send("clear workspace")
+        send("start clean")
         tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Free roam" in s and "Commands" not in s)
         send("\x0c")
@@ -1083,7 +1084,14 @@ def journey_controls(binary, width, height):
         tmux("send-keys", "-t", "poc:0.0", "Home")
         wait_for(lambda s: "Context · Files · Journey" in s and "A Start" in s)
         assert not any(0x2800 <= ord(c) <= 0x28ff for c in capture()), "ASCII journey rendered Braille"
-        tmux("send-keys", "-t", "poc:0.0", "End", "Up", "Up", "Up", "Up", "Enter")
+        tmux("send-keys", "-t", "poc:0.0", "End")
+        for _ in range(12):
+            if "> Travel mode:" in settled():
+                break
+            tmux("send-keys", "-t", "poc:0.0", "Up")
+        else:
+            raise AssertionError("Travel mode action was not reachable")
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
         wait_for(lambda s: "Travel mode" in s and "Offline" in s)
         tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
         wait_for(lambda s: "Mapbox not connected" in s)
@@ -1610,9 +1618,17 @@ def saved_workspace_controls(binary, width, height, ascii_mode=False):
         original = path.read_bytes()
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: not active_modal(s, "Workspace saved") and not active_modal(s, "Missing or changed files"))
-        command("Clear workspace")
+        command("Clear journey")
+        wait_for(lambda s: "Paused 1x" in s and not active_modal(s, "Commands"))
+        assert path.read_bytes() == original, "Clear journey modified checkpoint"
+        command("Start clean")
         wait_for(lambda s: "Free roam" in s)
         assert path.read_bytes() == original, "clear modified checkpoint"
+        command("Save workspace")
+        wait_for(lambda s: active_modal(s, "Save workspace"))
+        assert "Weekend ride" not in capture(), "Start clean retained named checkpoint"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: not active_modal(s, "Save workspace"))
         alternate = folder / "another-workspace.json"
         alternate_manifest = dict(manifest, id="another-workspace", name="Z alternate workspace")
         alternate.write_text(json.dumps(alternate_manifest))
@@ -1701,6 +1717,53 @@ def saved_workspace_controls(binary, width, height, ascii_mode=False):
     print(f"Saved workspace interactions passed: {width}x{height}, ASCII={ascii_mode}")
 
 
+@isolated_settings
+def manual_workspace_restart(binary, width, height, ascii_mode=False):
+    settings = Path(os.environ["XDG_CONFIG_HOME"]) / "mapbox-tui/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    original = b'{malformed preferences'
+    settings.write_bytes(original)
+    folder = settings.parent / "workspaces"
+
+    def start(*flags):
+        argv = ["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor",
+                str(binary), "--safe-start", "--no-provider", "--no-animation",
+                *(["--ascii"] if ascii_mode else []), *flags]
+        tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height),
+             "exec " + shlex.join(argv))
+        wait_for(lambda s: "ctrl+b sidebar" in s or "A Start:" in s)
+
+    def stop(crash=False):
+        pid = int(tmux("display-message", "-p", "-t", "poc:0.0", "#{pane_pid}"))
+        if crash:
+            assert Path(f"/proc/{pid}/exe").resolve() == binary.resolve()
+            os.kill(pid, signal.SIGKILL)
+        else:
+            tmux("send-keys", "-t", "poc:0.0", "C-c")
+        until = time.monotonic() + 10
+        while Path(f"/proc/{pid}").exists() and time.monotonic() < until:
+            time.sleep(.03)
+        assert not Path(f"/proc/{pid}").exists(), "viewer did not exit"
+        tmux("kill-session", "-t", "poc", check=False)
+
+    try:
+        for crash in (False, True):
+            start(str(ROOT / "fixtures/example.gpx"), "--start", "51,0",
+                  "--end", "51.1,0.1", "--mode", "offline")
+            wait_for(lambda s: "A Start:" in s)
+            stop(crash)
+            assert settings.read_bytes() == original, "safe start rewrote malformed settings"
+            assert not list(folder.glob("*.json")), "exit automatically saved workspace"
+            start()
+            wait_for(lambda s: "Free roam" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Right")
+            stop()
+            assert settings.read_bytes() == original, "safe-start navigation saved preferences"
+        print(f"Manual workspace restart passed: {width}x{height}, ASCII={ascii_mode}")
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+
+
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
@@ -1737,6 +1800,7 @@ if __name__ == "__main__":
                 camera_restart(ROOT / "bin" / name, 70, 24, ascii_mode=True)
                 for width, height, ascii_mode in ((120, 40, False), (70, 24, False), (70, 24, True)):
                     saved_workspace_controls(ROOT / "bin" / name, width, height, ascii_mode)
+                    manual_workspace_restart(ROOT / "bin" / name, width, height, ascii_mode)
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)

@@ -130,10 +130,16 @@ func (m *viewer) freeRoam() tea.Cmd {
 	return m.fetch()
 }
 func (m *viewer) clearWorkspace() tea.Cmd {
-	m.savedWork.request++
-	m.cancelPlaceSearch()
+	m.closeDialog()
+	m.savedWork = savedWorkspaceUI{request: m.savedWork.request + 1}
 	m.workspace.clear()
-	m.path = ""
+	m.planner = journeyUI{searchID: m.planner.searchID}
+	m.args.Journey, m.args.WorkspacePath = nil, ""
+	m.searchLocation, m.searchPosition, m.inspected = nil, nil, nil
+	m.searchName, m.searchCredit, m.path = "", "", ""
+	m.dragging, m.rotating = false, false
+	m.ui.filesSelected, m.ui.filesCollapsed = 0, false
+	m.viewRestoreID++
 	return m.freeRoam()
 }
 func (m *viewer) activeTrack() *Track {

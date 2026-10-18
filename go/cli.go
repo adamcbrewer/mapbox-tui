@@ -67,6 +67,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	if command.Name == "open" {
 		fs.StringVar(&a.WorkspacePath, "workspace", "", "open a saved workspace JSON file")
+		fs.BoolVar(&a.SafeStart, "safe-start", false, "ignore saved preferences for this launch without resetting them")
 		fs.BoolVar(&a.ResetView, "reset-view", false, "delete saved centre and zoom before opening the viewer")
 		fs.StringVar(&journeyStart, "start", "", "journey start as latitude,longitude; requires --end")
 		fs.StringVar(&journeyEnd, "end", "", "journey destination as latitude,longitude; requires --start")
@@ -192,6 +193,9 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	if a.ItemID != nil && *a.ItemID < 1 {
 		return command, fmt.Errorf("item-id must be positive")
+	}
+	if a.SafeStart && a.ResetView {
+		return command, fmt.Errorf("--safe-start cannot be combined with --reset-view")
 	}
 	hasSelector := a.PointIndex != nil || a.ItemID != nil
 	if a.WorkspacePath != "" && (len(paths) > 0 || a.Journey != nil || hasSelector) {

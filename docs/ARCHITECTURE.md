@@ -40,7 +40,13 @@ Elevation stores `auto`, `show` or `hide`; layout decides whether the visible da
 can produce a chart. Theme fallback warnings stay separate from save errors.
 Centre and zoom restore from `last_view` across startup imports and route results.
 Navigation marks the view for one synchronous save after a clean exit.
-`--reset-view` deletes it before the UI opens.
+
+Use `--reset-view` to delete the saved centre and zoom before the UI opens.
+
+With `--safe-start`, we skip reading settings and saving the last view on exit.
+Explicit launch flags still apply. Preference changes made in the UI use the
+normal save path. We reject `--reset-view` alongside safe start because it would
+change the settings the user asked to bypass.
 
 Reads are capped at 64 KiB and reject unknown or invalid fields. Updates lock
 `settings.json.lock`, reread, merge the changed field, then sync and rename a
@@ -135,6 +141,14 @@ per complete road journey. Failures require an explicit retry. The viewer restor
 the planner journey independently of activity selection; background route results
 preserve the restored camera. Preference last-view state
 is separate from each checkpoint camera.
+
+Start clean clears content and detaches the named checkpoint through the shared
+workspace operation. We keep runtime IDs increasing so old results can't match
+new items. The viewer clears planner, search and dialog state, invalidates imports
+and candidate opens, and drops any pending startup journey. Clear journey uses
+shared item removal to cancel that journey's route and keep the other items.
+Both actions leave saves alone. Workspace saving is manual, and startup doesn't
+restore the previous session.
 
 ### Mapbox data and offline use
 

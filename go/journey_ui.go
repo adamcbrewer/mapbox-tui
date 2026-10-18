@@ -51,6 +51,7 @@ var journeyActions = [...]struct{ title, key, action string }{
 	{title: "Reverse journey", key: "ctrl+r", action: "reverse"},
 	{title: "Undo edit", key: "ctrl+z", action: "undo"},
 	{title: "Recalculate route", key: "ctrl+d", action: "calculate"},
+	{title: "Clear journey", action: "clear-journey"},
 	{title: "Copy journey to clipboard", action: "copy"},
 }
 
@@ -88,6 +89,25 @@ func (m *viewer) openJourney() tea.Cmd {
 		return tea.Batch(cmd, m.calculateJourneyIfRouted())
 	}
 	return cmd
+}
+
+// Clear the planner target, independently of the activity selected on the map.
+func (m *viewer) clearJourney() tea.Cmd {
+	ref := m.planner.ref
+	if _, err := m.workspace.journey(ref); err != nil {
+		m.ui.notice = "No journey to clear."
+		return nil
+	}
+	if err := m.workspace.removeItem(ref); err != nil {
+		m.ui.notice = err.Error()
+		return nil
+	}
+	m.closeDialog()
+	m.planner = journeyUI{searchID: m.planner.searchID}
+	m.args.Journey = nil
+	m.selectionChanged()
+	m.ui.notice = "Journey cleared. Save workspace to keep this change."
+	return nil
 }
 
 func (m *viewer) cancelPlaceSearch() {
@@ -365,6 +385,8 @@ func (m *viewer) updateJourneyDialog(msg tea.Msg) tea.Cmd {
 		if err == nil {
 			m.planner.row += direction
 		}
+	case "clear-journey":
+		return m.clearJourney()
 	case "copy":
 		return m.copyJourney()
 	}
