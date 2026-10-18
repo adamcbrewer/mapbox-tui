@@ -34,11 +34,13 @@ type workspaceSelection struct {
 }
 
 type Workspace struct {
-	documents []*workspaceDocument
-	selection *workspaceSelection
-	nextID    int
-	nextColor int
-	elevation *elevationProfile
+	liveGeneration string
+	liveRevision   uint64
+	documents      []*workspaceDocument
+	selection      *workspaceSelection
+	nextID         int
+	nextColor      int
+	elevation      *elevationProfile
 }
 
 func (w *Workspace) open(path string) (ItemRef, error) {
@@ -61,6 +63,7 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 	if entry := w.documentAtPath(d.Path); entry != nil {
 		return w.activateDocument(entry)
 	}
+	w.edited()
 	w.nextID++
 	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor)}
 	for _, item := range d.Items {
@@ -84,6 +87,9 @@ func (w *Workspace) documentAtPath(path string) *workspaceDocument {
 }
 
 func (w *Workspace) activateDocument(entry *workspaceDocument) ItemRef {
+	if len(entry.hidden) > 0 {
+		w.edited()
+	}
 	entry.hidden = nil
 	if w.selection != nil && w.selection.ref.DocumentID == entry.id {
 		return w.selection.ref
@@ -135,6 +141,9 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 	if err != nil {
 		return err
 	}
+	if entry.hidden[ref.ItemID] {
+		w.edited()
+	}
 	delete(entry.hidden, ref.ItemID)
 	if w.selection == nil || w.selection.ref != ref {
 		w.activate(ref, entry.document.Items[i].Track)
@@ -144,6 +153,7 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 
 func (w *Workspace) activate(ref ItemRef, track *Track) {
 	w.clearSelection()
+	w.edited()
 	w.selection = &workspaceSelection{ref: ref, track: track}
 	if entry, i, err := w.lookup(ref); err == nil && entry.document.Items[i].Journey != nil {
 		return
@@ -156,6 +166,7 @@ func (w *Workspace) clearSelection() {
 		if w.selection.playback != nil {
 			w.selection.playback.Playing = false
 		}
+		w.edited()
 		w.selection = nil
 	}
 }
@@ -165,13 +176,18 @@ func (w *Workspace) setVisible(ref ItemRef, visible bool) error {
 	if err != nil {
 		return err
 	}
+	if visible == !entry.hidden[ref.ItemID] {
+		return nil
+	}
 	if visible {
+		w.edited()
 		delete(entry.hidden, ref.ItemID)
 		return nil
 	}
 	if entry.hidden == nil {
 		entry.hidden = make(map[int]bool)
 	}
+	w.edited()
 	entry.hidden[ref.ItemID] = true
 	if w.selection != nil && w.selection.ref == ref {
 		w.clearSelection()
@@ -205,6 +221,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	if w.selection != nil && w.selection.ref == ref {
 		w.clearSelection()
 	}
+	w.edited()
 	entry.document.Items = slices.Delete(entry.document.Items, i, i+1)
 	delete(entry.hidden, ref.ItemID)
 	delete(entry.colors, ref.ItemID)
@@ -226,6 +243,7 @@ func (w *Workspace) removeDocument(id int) error {
 			if w.selection != nil && w.selection.ref.DocumentID == id {
 				w.clearSelection()
 			}
+			w.edited()
 			w.documents = slices.Delete(w.documents, i, i+1)
 			return nil
 		}
@@ -234,6 +252,8 @@ func (w *Workspace) removeDocument(id int) error {
 }
 
 func (w *Workspace) clear() {
+	w.liveGeneration = newSessionID()
+	w.edited()
 	w.cancelJourneyRoutes()
 	w.clearSelection()
 	w.documents = nil
@@ -262,6 +282,10 @@ func (w *Workspace) seek(index int) error {
 	}
 	if w.selection.playback == nil {
 		return fmt.Errorf("planned journeys have no recorded playback")
+	}
+	p := w.selection.playback
+	if p.Index != index || p.Blend != 0 || p.Playing {
+		w.edited()
 	}
 	w.selection.playback.seek(index)
 	return nil

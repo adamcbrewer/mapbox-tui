@@ -34,8 +34,8 @@ def equivalent(a, b):
 
 
 class MCP:
-    def __init__(self, binary, env=None):
-        self.p = subprocess.Popen([str(binary), "mcp"], cwd=ROOT, env=ENV if env is None else env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    def __init__(self, binary, env=None, session=None):
+        self.p = subprocess.Popen([str(binary), "mcp", *([] if session is None else ["--session", session])], cwd=ROOT, env=ENV if env is None else env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         self.id = 0
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.p.stdout, selectors.EVENT_READ)
@@ -78,7 +78,8 @@ def validate_mcp(binary):
         m.send("notifications/initialized", {}, notify=True)
         tools = m.send("tools/list", {})["result"]["tools"]
         expected = json.loads((ROOT / "shared/tools.json").read_text())
-        assert {t["name"]: t["inputSchema"] for t in tools} == {t["name"]: t["inputSchema"] for t in expected}
+        assert {t["name"]: t["inputSchema"] for t in tools if not t["name"].startswith("viewer_")} == {t["name"]: t["inputSchema"] for t in expected}
+        assert {"viewer_sessions", "viewer_status", "viewer_journey_create"} <= {t["name"] for t in tools}
         assert not m.send("ping", {}).get("error")
         loaded = m.call("load_track", {"path": str(ROOT / "fixtures/example.gpx")})["result"]["structuredContent"]
         track_id = loaded["track_id"]

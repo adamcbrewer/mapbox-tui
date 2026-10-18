@@ -52,10 +52,18 @@ and `last_view` with `zoom`, `lat`, `long`. These replace `mapbox_billing_accept
 inverted `no_animation`, and `center_lat`/`center_lon`. Explicit new keys win,
 including zero and false. Reading alone doesn't migrate the file.
 
-Each front end has its own session. The viewer keeps a workspace while it's open,
+By default, each front end has its own workspace session. The viewer keeps a workspace while it's open,
 multi-file CLI rendering creates a temporary one, and MCP keeps one for the
 server process. Single-file CLI/MCP snapshots use the same renderer without
 needing a workspace.
+
+Attached CLI/MCP clients can instead control a running viewer through its local
+UUID session. Socket workers deliver typed requests into the viewer update loop;
+imports and routing return typed asynchronous results. Shared model mutations
+advance a live revision, while replacing/clearing the working copy changes its
+generation. These are separate from saved checkpoint revisions. The transport
+never shares the standalone Service mutex with the viewer. See
+[live control](LIVE_CONTROL.md) for the protocol and #79/#80 integration boundary.
 
 ![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP use plain text, with scene metadata in CLI JSON and MCP responses.](images/shared-rendering.svg)
 

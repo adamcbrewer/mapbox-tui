@@ -759,6 +759,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		m.saveViewerPreference(func(s *appSettings) { s.ASCII = new(m.settings.ASCII) })
 	case "motion":
 		m.settings.NoAnimation = !m.settings.NoAnimation
+		m.workspace.edited()
 		m.saveViewerPreference(func(s *appSettings) { s.CameraAnimation = new(!m.settings.NoAnimation) })
 		if m.settings.NoAnimation {
 			m.camera = m.destination()
@@ -777,6 +778,7 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 		m.advancePlayback(time.Now())
 		if playback := m.activePlayback(); playback != nil {
 			playback.toggle()
+			m.workspace.edited()
 			m.clearTransientInspection()
 		}
 	}
@@ -856,7 +858,10 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 					m.saveThemePreference()
 				} else if p := m.activePlayback(); p != nil {
 					m.advancePlayback(time.Now())
-					p.speed = m.ui.selected
+					if p.speed != m.ui.selected {
+						p.speed = m.ui.selected
+						m.workspace.edited()
+					}
 				}
 				m.closeDialog()
 			}

@@ -115,6 +115,7 @@ func (w *Workspace) editJourneyIntent(ref ItemRef, intent journeyIntent) error {
 
 func (w *Workspace) replaceJourneyTrack(ref ItemRef, track *Track) {
 	entry, i, _ := w.lookup(ref)
+	w.edited()
 	entry.document.Items[i].Track = track
 	entry.document.Bounds = track.Bounds
 	if w.selection != nil && w.selection.ref == ref {

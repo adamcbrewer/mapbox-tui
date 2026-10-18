@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -20,24 +21,47 @@ func loadTrack(path string) (*Track, error) {
 }
 
 func loadDocument(path string) (*Document, error) {
+	return loadDocumentContext(context.Background(), path)
+}
+
+type contextTrackFile struct {
+	*os.File
+	ctx context.Context
+}
+
+func (f contextTrackFile) Read(p []byte) (int, error) {
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return f.File.Read(p)
+}
+func (f contextTrackFile) Seek(offset int64, whence int) (int64, error) {
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return f.File.Seek(offset, whence)
+}
+
+func loadDocumentContext(ctx context.Context, path string) (*Document, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open track file: %w", err)
 	}
 	defer f.Close()
+	reader := contextTrackFile{File: f, ctx: ctx}
 	var header [12]byte
 	n, _ := f.ReadAt(header[:], 0)
 	format := "FIT"
 	var document *Document
 	if (n == len(header) && string(header[8:]) == ".FIT") || strings.EqualFold(filepath.Ext(path), ".fit") {
-		document, err = parseFIT(f)
+		document, err = parseFIT(reader)
 	} else {
 		if n >= 3 && string(header[:3]) == "\xef\xbb\xbf" {
 			if _, err := f.Seek(3, io.SeekStart); err != nil {
 				return nil, err
 			}
 		}
-		d := xml.NewDecoder(f)
+		d := xml.NewDecoder(reader)
 		for {
 			var tok xml.Token
 			tok, err = d.Token()
@@ -68,7 +92,13 @@ func loadDocument(path string) (*Document, error) {
 		}
 	}
 	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
 		err = document.prepare()
+		if err == nil {
+			err = ctx.Err()
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", format, err)

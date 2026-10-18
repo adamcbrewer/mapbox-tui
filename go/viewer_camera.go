@@ -51,8 +51,9 @@ func (m *viewer) restoreStartupView(c Camera) Camera {
 
 func (m *viewer) recordViewChange(before Camera) {
 	after := m.destination()
-	if before.Center != after.Center || before.Zoom != after.Zoom {
+	if before.Center != after.Center || before.Zoom != after.Zoom || before.Bearing != after.Bearing {
 		m.viewChanged = true
+		m.workspace.edited()
 	}
 }
 

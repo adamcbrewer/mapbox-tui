@@ -336,3 +336,13 @@ The `offline` option plots straight lines. `manual` remains a compatibility alia
 These are interactive viewer options; offline geometry works locally, while routed
 modes use your normal Mapbox connection. Named-place search remains available
 inside the planner; startup arguments accept resolved coordinates.
+
+## Live viewer control
+
+Start `mapbox-tui --name main`, discover it with `mapbox-tui session list --json`,
+and control it with `mapbox-tui remote --session main ...` or
+the default `mapbox-tui mcp` server: call `viewer_sessions`, then pass the
+discovered UUID as `session_id` to viewer tools. Optionally pin an MCP connection
+with `mcp --session main`. UUIDs identify ephemeral sessions; names are
+optional aliases. Use `--no-control` to opt out. See [live control](LIVE_CONTROL.md)
+for camera, import, playback and journey commands, operation results and retries.

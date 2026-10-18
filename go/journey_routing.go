@@ -54,6 +54,7 @@ type journeyRoute struct {
 }
 
 type journeyRouteRequest struct {
+	generation   string
 	ctx          context.Context
 	ref          ItemRef
 	id, revision uint64
@@ -62,6 +63,7 @@ type journeyRouteRequest struct {
 }
 
 type journeyRouteResult struct {
+	generation   string
 	ref          ItemRef
 	id, revision uint64
 	route        *journeyRoute
@@ -157,8 +159,10 @@ func (w *Workspace) beginJourneyRoute(ctx context.Context, ref ItemRef) (journey
 	}
 	ctx, j.cancel = context.WithCancel(ctx)
 	j.Busy, j.Error = true, ""
+	w.edited()
 	return journeyRouteRequest{
 		ctx: ctx, ref: ref, id: j.requestID, revision: j.revision, mode: j.Mode, locations: locations,
+		generation: w.liveIdentity(),
 	}, nil
 }
 
@@ -169,10 +173,14 @@ func (request journeyRouteRequest) run(client *directionsClient) journeyRouteRes
 	}
 	return journeyRouteResult{
 		ref: request.ref, id: request.id, revision: request.revision, route: route, err: err,
+		generation: request.generation,
 	}
 }
 
 func (w *Workspace) acceptJourneyRoute(result journeyRouteResult) bool {
+	if result.generation != w.liveIdentity() {
+		return false
+	}
 	j, err := w.journey(result.ref)
 	if err != nil {
 		return false
@@ -186,6 +194,7 @@ func (w *Workspace) acceptJourneyRoute(result journeyRouteResult) bool {
 		j.cancel = nil
 	}
 	j.Busy = false
+	w.edited()
 	if result.err != nil {
 		if j.routeCurrent() {
 			j.invalidateRoute()

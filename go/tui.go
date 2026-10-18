@@ -32,6 +32,7 @@ type viewer struct {
 	args                      Args
 	settings                  viewerSettings
 	workspace                 Workspace
+	control                   *viewerControl
 	pendingPaths              []string
 	startupCameraPending      bool
 	savedView                 *savedView
@@ -105,9 +106,9 @@ func (m *viewer) Init() tea.Cmd {
 	}
 	if m.path == "" {
 		navigation := m.freeRoam()
-		return tea.Batch(tick(), navigation, credentials, usage, m.startJourneyFromArgs())
+		return tea.Batch(tick(), navigation, credentials, usage, m.startJourneyFromArgs(), m.waitControl())
 	}
-	return tea.Batch(tick(), m.load(m.path), credentials, usage)
+	return tea.Batch(tick(), m.load(m.path), credentials, usage, m.waitControl())
 }
 func (m *viewer) freeRoam() tea.Cmd {
 	m.loadID++
@@ -126,6 +127,7 @@ func (m *viewer) freeRoam() tea.Cmd {
 	return m.fetch()
 }
 func (m *viewer) clearWorkspace() tea.Cmd {
+	m.cancelPlaceSearch()
 	m.workspace.clear()
 	m.path = ""
 	return m.freeRoam()
@@ -258,7 +260,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		before := m.destination()
 		defer m.recordViewChange(before)
 	}
+	defer m.reconcileOperations()
 	switch v := msg.(type) {
+	case controlMessage:
+		return m, tea.Batch(m.handleControl(v), m.waitControl())
+	case controlLoaded:
+		return m, m.acceptControlLoad(v)
 	case accountUsageResult:
 		if v.id == m.usageID {
 			m.usage = v.report
@@ -347,10 +354,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.acceptSearchFavourite(v)
 		return m, nil
 	case journeyRouteResult:
-		if !m.workspace.acceptJourneyRoute(v) {
+		remote := m.isControlRoute(v)
+		accepted := m.workspace.acceptJourneyRoute(v)
+		m.acceptControlRoute(v, accepted)
+		if !accepted {
 			return m, nil
 		}
-		if m.planner.ref == v.ref {
+		if m.planner.ref == v.ref && !remote {
 			j, _ := m.workspace.journey(v.ref)
 			for i, frame := range m.ui.parents {
 				if frame.kind == dialogJourney {
@@ -368,7 +378,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.layout()
-		if v.err == nil {
+		if v.err == nil && !remote {
 			m.fitPlannerJourney(v.ref)
 		}
 		m.dirty = true
@@ -709,7 +719,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if key == "S" {
 					direction = -1
 				}
+				m.advancePlayback(time.Now())
 				p.cycle(direction)
+				m.workspace.edited()
 			}
 		case "a":
 			return m, m.toggleMenuOption("ascii")
@@ -857,6 +869,9 @@ func (m *viewer) layout() {
 }
 func (m *viewer) pausePlayback() {
 	if p := m.activePlayback(); p != nil {
+		if p.Playing {
+			m.workspace.edited()
+		}
 		p.Playing = false
 		m.dirty = true
 	}
@@ -1123,6 +1138,13 @@ func (m *viewer) rebuild() {
 	if playback != nil {
 		status = playback.status()
 	}
+	if m.control != nil && m.control.server != nil {
+		identity := m.control.server.info.Name
+		if identity == "" {
+			identity = m.control.server.info.ID[:8]
+		}
+		status = "Session " + identity + " | " + status
+	}
 	sourceStatus := sources.status()
 	if m.provider.token == "" && !m.preferences.Traffic {
 		sourceStatus = ""
@@ -1250,6 +1272,15 @@ func openViewerFiles(paths []string, a Args) error {
 	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	defer m.cancelAccountUsage()
+	if !a.NoControl {
+		server, err := startSession(a.SessionName)
+		if err != nil {
+			return err
+		}
+		defer server.close()
+		m.control = &viewerControl{server: server}
+	}
+	defer m.cancelControlOperations()
 	_, e = tea.NewProgram(m).Run()
 	if m.connectionEcho != "" {
 		fmt.Println(m.connectionEcho)

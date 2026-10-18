@@ -38,7 +38,11 @@ func (m *viewer) destination() Camera {
 }
 
 func (m *viewer) moveCamera(target Camera) {
-	if m.settings.NoAnimation {
+	m.moveCameraAnimated(target, !m.settings.NoAnimation)
+}
+
+func (m *viewer) moveCameraAnimated(target Camera, animate bool) {
+	if !animate {
 		m.camera = target
 		m.motion.Active = false
 	} else {

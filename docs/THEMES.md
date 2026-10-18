@@ -64,6 +64,14 @@ Custom palettes join the built-ins for that session. We read them once at startu
 with a 64 KiB limit. To bundle one, put its TOML file in `go/themes/` and rebuild.
 The embed pattern picks it up; `make dev` watches that directory.
 
+## Live agent control
+
+CLI agents can list the running viewer's palettes with
+`mapbox-tui remote --session main theme list --json` and select one with
+`mapbox-tui remote --session main theme set --theme nord`.
+MCP exposes `viewer_theme_list` and `viewer_theme_set`.
+These live changes do not save a global preference. See [live control](LIVE_CONTROL.md).
+
 ## File format
 
 Use a bundled palette as a complete template. These fields are required:
