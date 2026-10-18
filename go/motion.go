@@ -7,6 +7,7 @@ import (
 )
 
 type cameraMotion struct {
+	ID                            string
 	Target                        Camera
 	Velocity                      XY
 	ZoomVelocity, BearingVelocity float64
@@ -38,7 +39,15 @@ func (m *viewer) destination() Camera {
 }
 
 func (m *viewer) moveCamera(target Camera) {
-	if m.settings.NoAnimation {
+	m.moveCameraAnimated(target, !m.settings.NoAnimation)
+}
+
+func (m *viewer) moveCameraAnimated(target Camera, animate bool) {
+	// Record an already-settled transition before assigning its replacement.
+	m.reconcileOperations()
+	m.motion.ID = newSessionID()
+	m.motion.Target = target
+	if !animate {
 		m.camera = target
 		m.motion.Active = false
 	} else {
@@ -56,6 +65,18 @@ func (m *viewer) moveCamera(target Camera) {
 func (m *viewer) panCamera(dx, dy float64) {
 	target := m.destination()
 	target.pan(dx, dy)
-	m.following = false
+	m.setFollowing(false)
 	m.moveCamera(target)
+}
+
+func (m *viewer) setCameraAnimation(enabled bool) {
+	if m.settings.NoAnimation == enabled {
+		m.settings.NoAnimation = !enabled
+		m.workspace.edited()
+	}
+	if !enabled {
+		m.camera = m.destination()
+		m.motion.Active = false
+	}
+	m.dirty = true
 }

@@ -58,12 +58,32 @@ and `last_view` with `zoom`, `lat`, `long`. These replace `mapbox_billing_accept
 inverted `no_animation`, and `center_lat`/`center_lon`. Explicit new keys win,
 including zero and false. Reading alone doesn't migrate the file.
 
-Each front end has its own session. The viewer keeps a workspace while it's open,
-multi-file CLI rendering creates a temporary one, and MCP keeps one for the
-server process. Single-file CLI/MCP snapshots use the same renderer without
-needing a workspace.
+The viewer owns its workspace. Multi-file CLI rendering creates a temporary
+workspace; standalone MCP keeps one for the server process. Single-file CLI/MCP
+snapshots use the shared renderer without a workspace.
+
+CLI and MCP can also target a viewer's UUID session. Socket workers send typed
+requests to its update loop; imports and routing return asynchronous results.
+The loop serialises human and agent edits. The standalone MCP `Service` mutex
+only protects that server's workspace.
 
 ![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP use plain text, with scene metadata in CLI JSON and MCP responses.](images/shared-rendering.svg)
+
+### Shared live commands
+
+Content insertion and selection are separate. Creating a journey leaves the
+active recording alone. Human and agent playback commands use the same workspace
+setters and revision tracking. Animation uses a shared viewer setter; only UI
+changes save the preference.
+
+CLI and MCP validate arguments against the same embedded JSON schemas. Edits
+advance the live revision; replacing or clearing the working copy changes its
+generation. Saved checkpoints have separate revisions for storage conflicts.
+The shared model doesn't yet report unsaved changes.
+
+Cancel/clear commands have reserved capacity when ordinary work is full. Camera
+transitions have IDs and report completion, cancellation or supersession through
+operations. See [remote access](REMOTE_ACCESS.md) for limits and protocol details.
 
 ### Imports and workspace
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
@@ -21,12 +22,56 @@ func loadTrack(path string) (*Track, error) {
 }
 
 func loadDocument(path string) (*Document, error) {
-	f, err := os.Open(path)
+	return loadDocumentContext(context.Background(), path)
+}
+
+type contextTrackFile struct {
+	*os.File
+	ctx context.Context
+}
+
+func (f contextTrackFile) Read(p []byte) (int, error) {
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return f.File.Read(p)
+}
+func (f contextTrackFile) Seek(offset int64, whence int) (int64, error) {
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return f.File.Seek(offset, whence)
+}
+
+// Opening nonblocking prevents a FIFO from trapping a loader before it can
+// validate the descriptor. Regular files retain normal blocking read behaviour.
+func openRegularFile(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|regularFileOpenFlags, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = fmt.Errorf("must be a regular file")
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+func loadDocumentContext(ctx context.Context, path string) (*Document, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f, err := openRegularFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open track file: %w", err)
 	}
 	defer f.Close()
-	before, err := importFingerprint(f)
+	reader := contextTrackFile{File: f, ctx: ctx}
+	before, err := importFingerprint(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -38,14 +83,14 @@ func loadDocument(path string) (*Document, error) {
 	format := "FIT"
 	var document *Document
 	if (n == len(header) && string(header[8:]) == ".FIT") || strings.EqualFold(filepath.Ext(path), ".fit") {
-		document, err = parseFIT(f)
+		document, err = parseFIT(reader)
 	} else {
 		if n >= 3 && string(header[:3]) == "\xef\xbb\xbf" {
 			if _, err := f.Seek(3, io.SeekStart); err != nil {
 				return nil, err
 			}
 		}
-		d := xml.NewDecoder(f)
+		d := xml.NewDecoder(reader)
 		for {
 			var tok xml.Token
 			tok, err = d.Token()
@@ -76,7 +121,13 @@ func loadDocument(path string) (*Document, error) {
 		}
 	}
 	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
 		err = document.prepare()
+		if err == nil {
+			err = ctx.Err()
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", format, err)
@@ -85,7 +136,7 @@ func loadDocument(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	after, err := importFingerprint(f)
+	after, err := importFingerprint(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +255,10 @@ func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, []strin
 }
 
 // Hash the original bytes, including metadata and item order, before restoring item state.
-func importFingerprint(f *os.File) (string, error) {
+func importFingerprint(f interface {
+	io.ReadSeeker
+	Stat() (os.FileInfo, error)
+}) (string, error) {
 	info, err := f.Stat()
 	if err != nil {
 		return "", fmt.Errorf("inspect import: %w", err)
@@ -216,7 +270,7 @@ func importFingerprint(f *os.File) (string, error) {
 		return "", fmt.Errorf("read import: %w", err)
 	}
 	hash := sha256.New()
-	if _, err := io.Copy(hash, f); err != nil {
+	if _, err := io.Copy(hash, struct{ io.Reader }{f}); err != nil {
 		return "", fmt.Errorf("fingerprint import: %w", err)
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil

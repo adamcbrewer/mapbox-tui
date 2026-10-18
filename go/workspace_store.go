@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
@@ -233,23 +234,23 @@ func (v workspaceCamera) camera() (Camera, error) {
 }
 
 func readWorkspace(path string) (*workspaceCheckpoint, error) {
+	return readWorkspaceContext(context.Background(), path)
+}
+
+func readWorkspaceContext(ctx context.Context, path string) (*workspaceCheckpoint, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace path: %w", err)
 	}
-	file, err := os.Open(path)
+	file, err := openRegularFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open workspace: %w", err)
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("inspect workspace: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("workspace must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, workspaceFileLimit+1))
+	data, err := io.ReadAll(io.LimitReader(contextTrackFile{File: file, ctx: ctx}, workspaceFileLimit+1))
 	if err != nil {
 		return nil, fmt.Errorf("read workspace: %w", err)
 	}

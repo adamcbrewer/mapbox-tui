@@ -229,6 +229,7 @@ func TestSavedWorkspaceSummaryDatesPathsAndScrolling(t *testing.T) {
 	candidate.unresolved = []savedImport{manifest.Imports[0]}
 	m.openSavedWorkspaceDialog("open")
 	m.savedWork.mode = "open"
+	m.savedWork.generation, m.savedWork.revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 	m.acceptSavedWorkspace(savedWorkspaceReady{request: m.savedWork.request, candidate: candidate})
 	body := m.savedWorkspaceSummary(45)
 	for _, expected := range []string{
@@ -288,6 +289,7 @@ func TestSavedWorkspaceRestoresPlannerAndRoutesOnce(t *testing.T) {
 			}
 			m.preferences.Offline = true
 			m.savedWork.candidate, m.savedWork.camera = candidate, camera
+			m.savedWork.generation, m.savedWork.revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 			m.applySavedWorkspace()
 			ref := m.planner.ref
 			j, err := m.workspace.journey(ref)

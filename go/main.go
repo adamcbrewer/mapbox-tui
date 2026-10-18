@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -23,13 +24,19 @@ func run() error {
 		return nil
 	}
 	if command.Name == "mcp" {
+		if command.Session != "" {
+			return serveAttachedMCP(command.Session)
+		}
 		return serveMCP()
 	}
 	ctx := context.Background()
-	if command.Name == "auth" || command.Name == "render" {
+	if command.Name == "auth" || command.Name == "render" || command.Remote != nil {
 		var cancel context.CancelFunc
 		ctx, cancel = signal.NotifyContext(ctx, os.Interrupt)
 		defer cancel()
+	}
+	if command.Remote != nil {
+		return runRemote(ctx, command, os.Stdout)
 	}
 	if command.Name == "auth" {
 		return runAuth(ctx, command, authStreams{in: os.Stdin, out: os.Stdout, err: os.Stderr})
@@ -122,6 +129,10 @@ func run() error {
 }
 func main() {
 	if e := run(); e != nil {
+		var remote *remoteExitError
+		if errors.As(e, &remote) {
+			os.Exit(remote.code)
+		}
 		fmt.Fprintln(os.Stderr, e)
 		os.Exit(1)
 	}

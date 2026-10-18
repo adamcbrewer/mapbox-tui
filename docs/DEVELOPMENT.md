@@ -35,11 +35,16 @@ make interactions
 Unix-like terminal. Restarts clear the workspace but keep saved preferences.
 
 `make check` runs formatting, build, tests, vet, CLI/MCP parity and race checks
-offline. Run `make interactions` after viewer changes; it needs tmux,
-`rsvg-convert` and a monospace font. CI uses DejaVu Sans Mono; local captures
-can use a fontconfig fallback such as JetBrains Mono. Captures go in ignored `reports/`.
-Colour assertions require `NO_COLOR` to be unset. If your environment sets it,
-run `env -u NO_COLOR python3 scripts/interactions.py` after building.
+offline. Tests include Unix socket/MCP integration under the `integration` tag.
+
+Run `make interactions` after viewer changes. It runs both terminal scripts,
+including live CLI/MCP control, session isolation, retries and crash cleanup.
+It needs tmux, `rsvg-convert` and a monospace font. CI uses DejaVu Sans Mono;
+local captures can use a fontconfig fallback such as JetBrains Mono. Captures
+go in ignored `reports/`.
+
+Colour checks require `NO_COLOR` to be unset. If your environment sets it, run
+`env -u NO_COLOR make interactions`.
 
 The [Makefile](../Makefile) defines individual checks, watcher arguments,
 benchmarks, installation and packaging options. The [CI workflow](../.github/workflows/ci.yml)

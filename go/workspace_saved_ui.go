@@ -16,6 +16,8 @@ import (
 )
 
 type savedWorkspaceUI struct {
+	generation  string
+	revision    uint64
 	entries     []workspaceListing
 	selected    int
 	mode        string
@@ -93,6 +95,7 @@ func (m *viewer) beginSavedOpen(path string) tea.Cmd {
 	}
 	m.savedWork.request++
 	request := m.savedWork.request
+	m.savedWork.generation, m.savedWork.revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 	m.savedWork.busy = true
 	m.savedWork.candidate = nil
 	m.ui.notice = "Opening local content..."
@@ -112,6 +115,9 @@ func (m *viewer) acceptSavedWorkspace(result savedWorkspaceReady) tea.Cmd {
 		m.ui.notice = result.err.Error()
 		return nil
 	}
+	if !m.savedOpenCurrent() {
+		return nil
+	}
 	m.savedWork.candidate, m.savedWork.camera = result.candidate, result.camera
 	if m.savedWork.mode == "library" {
 		return m.applySavedWorkspace()
@@ -123,13 +129,32 @@ func (m *viewer) acceptSavedWorkspace(result savedWorkspaceReady) tea.Cmd {
 	return nil
 }
 
+func (m *viewer) savedOpenCurrent() bool {
+	if m.savedWork.generation == m.workspace.liveIdentity() && m.savedWork.revision == m.workspace.liveRevision {
+		return true
+	}
+	m.savedWork.candidate = nil
+	m.ui.notice = "Working copy changed while opening. Open the workspace again to replace it."
+	return false
+}
+
 func (m *viewer) applySavedWorkspace() tea.Cmd {
 	candidate := m.savedWork.candidate
-	if candidate == nil {
+	if candidate == nil || !m.savedOpenCurrent() {
 		return nil
 	}
-	camera := m.savedWork.camera
+	cmd := m.installSavedWorkspace(candidate, m.savedWork.camera)
+	if len(m.workspace.unresolved) > 0 {
+		return tea.Batch(m.openSavedWorkspaceDialog("repair"), cmd)
+	}
+	return cmd
+}
+
+// installSavedWorkspace shares replacement semantics without opening confirmation/repair dialogs.
+func (m *viewer) installSavedWorkspace(candidate *Workspace, camera Camera) tea.Cmd {
 	m.closeDialog()
+	m.cancelPlaceSearch()
+	m.savedWork.request++
 	m.loadID++
 	m.loading, m.pendingPaths = false, nil
 	m.startupCameraPending = false
@@ -139,7 +164,8 @@ func (m *viewer) applySavedWorkspace() tea.Cmd {
 	m.searchLocation, m.searchPosition, m.inspected = nil, nil, nil
 	m.searchName, m.searchCredit, m.path = "", "", ""
 	m.initialised = true
-	m.motion.Active, m.following = false, false
+	m.motion.Active = false
+	m.setFollowing(false)
 	camera.Width, camera.Height, camera.Aspect = m.camera.Width, m.camera.Height, m.camera.Aspect
 	m.camera = camera
 	m.viewRestoreID++
@@ -148,17 +174,11 @@ func (m *viewer) applySavedWorkspace() tea.Cmd {
 	m.savedWork.candidate = nil
 	m.selectionChanged()
 	routing := m.routePendingJourneys()
-	if len(m.workspace.unresolved) > 0 {
-		return tea.Batch(m.openSavedWorkspaceDialog("repair"), routing)
-	}
-	// Local content is already installed; online layers refresh independently.
 	return tea.Batch(m.fetch(), routing)
 }
 
-func (m *viewer) saveWorkspaceFromDialog() tea.Cmd {
-	name := strings.TrimSpace(m.ui.search.Value())
+func (m *viewer) saveWorkspaceCheckpoint(name string, saveAs bool) (*workspaceCheckpoint, error) {
 	store, err := localWorkspaceStore()
-	saveAs := m.savedWork.mode == "save-as"
 	var checkpoint *workspaceCheckpoint
 	if err == nil {
 		var snapshot savedWorkspace
@@ -176,6 +196,17 @@ func (m *viewer) saveWorkspaceFromDialog() tea.Cmd {
 		}
 	}
 	if err != nil {
+		return nil, err
+	}
+	m.workspace.checkpoint = checkpoint
+	m.workspace.edited()
+	return checkpoint, nil
+}
+
+func (m *viewer) saveWorkspaceFromDialog() tea.Cmd {
+	name := strings.TrimSpace(m.ui.search.Value())
+	checkpoint, err := m.saveWorkspaceCheckpoint(name, m.savedWork.mode == "save-as")
+	if err != nil {
 		m.ui.notice = err.Error()
 		if errors.Is(err, errWorkspaceConflict) {
 			m.savedWork.mode = "conflict"
@@ -184,7 +215,6 @@ func (m *viewer) saveWorkspaceFromDialog() tea.Cmd {
 		}
 		return nil
 	}
-	m.workspace.checkpoint = checkpoint
 	m.savedWork.mode = "saved"
 	m.ui.notice = "Workspace saved: " + checkpoint.manifest.Name
 	m.ui.search.Blur()

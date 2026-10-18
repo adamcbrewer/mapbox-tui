@@ -1,0 +1,946 @@
+{
+  "status": {
+    "description": "Inspect session essentials and paginated document/item summaries. Default 20 documents and 20 items per document. Use offset/limit for documents and item_offset for items; journey.inspect returns stop details. summary=true returns essentials only.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "item_offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "summary": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "capabilities": {
+    "description": "List supported actions, schemas and operation retention limits.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "operation.status": {
+    "description": "Read an operation by its original request ID. Unknown/expired outcomes require inspecting current state before retrying.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "load": {
+    "description": "Load an absolute local file path. Pending is not completion; query the operation or wait. Reopening restores visibility without rereading.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "select": {
+    "description": "Select and reveal an item.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "visibility": {
+    "description": "Set visibility. item_id 0 targets the whole document. Hiding the active item clears selection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "visible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ref",
+        "visible"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "remove": {
+    "description": "Remove an item; item_id 0 unloads its whole document.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.clear": {
+    "description": "Clear the live workspace with explicit discard=true. Invalidates pending work. Does not delete saved checkpoints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "discard": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discard"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "camera.set": {
+    "description": "Set camera coordinates, zoom or bearing. lat/lon must be supplied together within Mercator range. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -85.05112878,
+          "maximum": 85.05112878
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "zoom": {
+          "type": "number",
+          "minimum": -8,
+          "maximum": 20
+        },
+        "bearing": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360
+        },
+        "animate": {
+          "type": "boolean",
+          "description": "Override the viewer animation setting for this command."
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
+    }
+  },
+  "camera.pan": {
+    "description": "Pan by terminal cells as if dragging the map: positive dx drags right, positive dy drags down. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "dx": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "dy": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "animate": {
+          "type": "boolean",
+          "description": "Override the viewer animation setting for this command."
+        }
+      },
+      "required": [
+        "dx",
+        "dy"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "camera.fit": {
+    "description": "Fit visible geometry. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "animate": {
+          "type": "boolean",
+          "description": "Override the viewer animation setting for this command."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "playback.play": {
+    "description": "Play the specified imported recording, selecting it first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "playback.pause": {
+    "description": "Pause the specified imported recording, selecting it first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "playback.seek": {
+    "description": "Seek the specified recording to a zero-based point index and pause.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "point_index": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ref",
+        "point_index"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.create": {
+    "description": "Create a journey from ordered coordinate stops and mode. Routed modes calculate asynchronously. Does not change camera or selection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "lon": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              }
+            },
+            "required": [
+              "lat",
+              "lon"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "offline",
+            "walking",
+            "cycling",
+            "driving"
+          ]
+        }
+      },
+      "required": [
+        "stops",
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.inspect": {
+    "description": "Inspect stops, revision and route state. Estimates are returned only for a current ready route.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.reverse": {
+    "description": "Reverse the journey stops and recalculate when routed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.mode": {
+    "description": "Set mode and recalculate when routed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "offline",
+            "walking",
+            "cycling",
+            "driving"
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.stops": {
+    "description": "Replace all stops, allocating fresh stop IDs; recalculate when routed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "lon": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              }
+            },
+            "required": [
+              "lat",
+              "lon"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "ref",
+        "stops"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.stop.add": {
+    "description": "Insert a waypoint after stop ID, before destination; recalculate when routed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "after": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "required": [
+        "ref",
+        "after",
+        "lat",
+        "lon"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
+    }
+  },
+  "journey.stop.set": {
+    "description": "Edit stop coordinates preserving provenance; recalculate when routed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "stop_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "required": [
+        "ref",
+        "stop_id",
+        "lat",
+        "lon"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "lat": [
+          "lon"
+        ],
+        "lon": [
+          "lat"
+        ]
+      }
+    }
+  },
+  "journey.stop.remove": {
+    "description": "Remove a waypoint or clear an endpoint location, preserving incomplete drafts.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "stop_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "ref",
+        "stop_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.stop.move": {
+    "description": "Move an intermediate waypoint by -1 or +1 without crossing endpoints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "stop_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "direction": {
+          "type": "integer",
+          "enum": [
+            -1,
+            1
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "stop_id",
+        "direction"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.calculate": {
+    "description": "Calculate the current journey revision using session credentials/settings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "journey.show": {
+    "description": "Select, reveal and fit this journey without changing its stops. Uses the viewer animation setting unless animate is supplied. Animated moves return a transition_id and a pending operation, which becomes applied when settled or superseded if redirected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "animate": {
+          "type": "boolean",
+          "description": "Override the viewer animation setting for this command."
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "operation.cancel": {
+    "description": "Cancel pending work. Previously applied edits remain.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "theme.list": {
+    "description": "List themes available in this running viewer, including its startup custom palette.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "theme.set": {
+    "description": "Set the live viewer theme by ID. Does not save a global preference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "theme"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "camera.animation": {
+    "description": "Enable or disable camera animation for this session. Disabling finishes an active transition immediately. Does not save a global preference.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "playback.speed": {
+    "description": "Set playback multiplier for an imported recording, selecting it first. Preserves playing/paused state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "object",
+          "properties": {
+            "document_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "item_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "document_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        },
+        "speed": {
+          "type": "number",
+          "enum": [
+            1,
+            5,
+            20,
+            60,
+            120
+          ]
+        }
+      },
+      "required": [
+        "ref",
+        "speed"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.open": {
+    "description": "Open an absolute saved workspace JSON path using the shared loader. Explicit discard=true is required. Pending preparation rejects intervening edits; partial restoration reports unresolved imports without a dialog.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discard": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "discard"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.save": {
+    "description": "Save the active workspace through the shared atomic revision check. name defaults to the active checkpoint name. save_as=true creates a new identity; conflicts preserve the working copy.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "save_as": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

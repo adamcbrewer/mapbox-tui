@@ -89,6 +89,9 @@ func (m *viewer) restoreThemePreview() {
 }
 
 func (m *viewer) applyTheme(index int) {
+	if m.settings.Theme != index {
+		m.workspace.edited()
+	}
 	m.settings.Theme = index
 	if m.ui.dialog == dialogThemes {
 		m.ui.selected = index

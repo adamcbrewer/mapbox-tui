@@ -54,6 +54,7 @@ type journeyRoute struct {
 }
 
 type journeyRouteRequest struct {
+	generation   string
 	preserveView bool
 	ctx          context.Context
 	ref          ItemRef
@@ -63,6 +64,7 @@ type journeyRouteRequest struct {
 }
 
 type journeyRouteResult struct {
+	generation   string
 	preserveView bool
 	ref          ItemRef
 	id, revision uint64
@@ -101,6 +103,9 @@ func (w *Workspace) setJourneyMode(ref ItemRef, mode journeyMode) error {
 		return err
 	}
 	if j.Mode == mode {
+		if !j.modeChosen {
+			w.edited()
+		}
 		j.modeChosen = true
 		return nil
 	}
@@ -151,17 +156,23 @@ func (w *Workspace) beginJourneyRoute(ctx context.Context, ref ItemRef) (journey
 	if err != nil {
 		return journeyRouteRequest{}, err
 	}
+	wasBusy := j.Busy
 	j.automaticRoutePending = false
 	j.cancelRoute()
 	locations, err := routingLocations(j.Stops, j.Mode)
 	if err != nil {
+		if wasBusy || j.Error != err.Error() {
+			w.edited()
+		}
 		j.Error = err.Error()
 		return journeyRouteRequest{}, err
 	}
 	ctx, j.cancel = context.WithCancel(ctx)
 	j.Busy, j.Error = true, ""
+	w.edited()
 	return journeyRouteRequest{
 		ctx: ctx, ref: ref, id: j.requestID, revision: j.revision, mode: j.Mode, locations: locations,
+		generation: w.liveIdentity(),
 	}, nil
 }
 
@@ -172,11 +183,15 @@ func (request journeyRouteRequest) run(client *directionsClient) journeyRouteRes
 	}
 	return journeyRouteResult{
 		ref: request.ref, id: request.id, revision: request.revision, route: route, err: err,
+		generation:   request.generation,
 		preserveView: request.preserveView,
 	}
 }
 
 func (w *Workspace) acceptJourneyRoute(result journeyRouteResult) bool {
+	if result.generation != w.liveIdentity() {
+		return false
+	}
 	j, err := w.journey(result.ref)
 	if err != nil {
 		return false
@@ -190,6 +205,7 @@ func (w *Workspace) acceptJourneyRoute(result journeyRouteResult) bool {
 		j.cancel = nil
 	}
 	j.Busy = false
+	w.edited()
 	if result.err != nil {
 		if j.routeCurrent() {
 			j.invalidateRoute()

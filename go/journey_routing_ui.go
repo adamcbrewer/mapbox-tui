@@ -18,6 +18,7 @@ func (m *viewer) defaultJourneyMode(j *Journey) bool {
 	}
 	j.Mode = journeyDriving
 	j.invalidateRoute()
+	m.workspace.edited()
 	return true
 }
 
@@ -84,7 +85,7 @@ func (m *viewer) showJourneyOnMap() tea.Cmd {
 	m.closeDialog()
 	track := entry.document.Items[index].Track
 	if len(track.Points) > 0 {
-		m.following = false
+		m.setFollowing(false)
 		m.moveCamera(journeyView(j, track, m.camera))
 	}
 	return m.fetch()

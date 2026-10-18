@@ -37,6 +37,8 @@ type workspaceSelection struct {
 }
 
 type Workspace struct {
+	liveGeneration    string
+	liveRevision      uint64
 	documents         []*workspaceDocument
 	selection         *workspaceSelection
 	nextID            int
@@ -64,15 +66,15 @@ func (w *Workspace) open(path string) (ItemRef, error) {
 
 // addDocument takes ownership of a successfully prepared import.
 func (w *Workspace) addDocument(d *Document) ItemRef {
-	if entry := w.documentAtPath(d.Path); entry != nil {
-		return w.activateDocument(entry)
-	}
 	return w.activateDocument(w.appendDocument(d))
 }
 
-// appendDocument installs a new document without changing selection or playback.
-// Callers check for an already loaded path before transferring ownership.
+// appendDocument adds content without changing the active item or its playback.
 func (w *Workspace) appendDocument(d *Document) *workspaceDocument {
+	if entry := w.documentAtPath(d.Path); entry != nil {
+		return entry
+	}
+	w.edited()
 	w.nextID++
 	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor), saveID: rand.Text(), itemIDs: make(map[int]string)}
 	for _, item := range d.Items {
@@ -97,6 +99,9 @@ func (w *Workspace) documentAtPath(path string) *workspaceDocument {
 }
 
 func (w *Workspace) activateDocument(entry *workspaceDocument) ItemRef {
+	if len(entry.hidden) > 0 {
+		w.edited()
+	}
 	entry.hidden = nil
 	if w.selection != nil && w.selection.ref.DocumentID == entry.id {
 		return w.selection.ref
@@ -148,6 +153,9 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 	if err != nil {
 		return err
 	}
+	if entry.hidden[ref.ItemID] {
+		w.edited()
+	}
 	delete(entry.hidden, ref.ItemID)
 	if w.selection == nil || w.selection.ref != ref {
 		w.activate(ref, entry.document.Items[i].Track)
@@ -158,6 +166,7 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 func (w *Workspace) activate(ref ItemRef, track *Track) {
 	w.deferredSelection = nil
 	w.clearSelection()
+	w.edited()
 	w.selection = &workspaceSelection{ref: ref, track: track}
 	if entry, i, err := w.lookup(ref); err == nil && entry.document.Items[i].Journey != nil {
 		return
@@ -170,6 +179,7 @@ func (w *Workspace) clearSelection() {
 		if w.selection.playback != nil {
 			w.selection.playback.Playing = false
 		}
+		w.edited()
 		w.selection = nil
 	}
 }
@@ -179,13 +189,18 @@ func (w *Workspace) setVisible(ref ItemRef, visible bool) error {
 	if err != nil {
 		return err
 	}
+	if visible == !entry.hidden[ref.ItemID] {
+		return nil
+	}
 	if visible {
+		w.edited()
 		delete(entry.hidden, ref.ItemID)
 		return nil
 	}
 	if entry.hidden == nil {
 		entry.hidden = make(map[int]bool)
 	}
+	w.edited()
 	entry.hidden[ref.ItemID] = true
 	if w.selection != nil && w.selection.ref == ref {
 		w.clearSelection()
@@ -219,6 +234,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	if w.selection != nil && w.selection.ref == ref {
 		w.clearSelection()
 	}
+	w.edited()
 	entry.document.Items = slices.Delete(entry.document.Items, i, i+1)
 	delete(entry.hidden, ref.ItemID)
 	delete(entry.colors, ref.ItemID)
@@ -240,6 +256,7 @@ func (w *Workspace) removeDocument(id int) error {
 			if w.selection != nil && w.selection.ref.DocumentID == id {
 				w.clearSelection()
 			}
+			w.edited()
 			w.documents = slices.Delete(w.documents, i, i+1)
 			return nil
 		}
@@ -248,6 +265,8 @@ func (w *Workspace) removeDocument(id int) error {
 }
 
 func (w *Workspace) clear() {
+	w.liveGeneration = newSessionID()
+	w.edited()
 	w.cancelJourneyRoutes()
 	w.clearSelection()
 	w.documents = nil
@@ -261,6 +280,9 @@ func (w *Workspace) clear() {
 func (w *Workspace) cancelJourneyRoutes() {
 	for _, item := range w.items() {
 		if item.Item.Journey != nil {
+			if item.Item.Journey.Busy {
+				w.edited()
+			}
 			item.Item.Journey.cancelRoute()
 		}
 	}
@@ -280,6 +302,10 @@ func (w *Workspace) seek(index int) error {
 	}
 	if w.selection.playback == nil {
 		return fmt.Errorf("planned journeys have no recorded playback")
+	}
+	p := w.selection.playback
+	if p.Index != index || p.Blend != 0 || p.Playing {
+		w.edited()
 	}
 	w.selection.playback.seek(index)
 	return nil
@@ -450,4 +476,31 @@ func extendBounds(bounds *[4]float64, other [4]float64) {
 	bounds[1] = math.Min(bounds[1], other[1])
 	bounds[2] = math.Max(bounds[2], other[2])
 	bounds[3] = math.Max(bounds[3], other[3])
+}
+
+// setPlaybackSpeed and setPlaybackPlaying are shared by viewer and agent commands.
+func (w *Workspace) setPlaybackSpeed(index int) error {
+	if index < 0 || index >= len(playbackSpeeds) {
+		return fmt.Errorf("invalid playback speed index")
+	}
+	if w.selection == nil || w.selection.playback == nil {
+		return fmt.Errorf("no active recording")
+	}
+	p := w.selection.playback
+	if p.speed != index {
+		p.speed = index
+		w.edited()
+	}
+	return nil
+}
+
+func (w *Workspace) setPlaybackPlaying(playing bool) {
+	if w.selection == nil || w.selection.playback == nil {
+		return
+	}
+	p := w.selection.playback
+	if p.Playing != playing {
+		p.toggle()
+		w.edited()
+	}
 }

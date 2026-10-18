@@ -206,3 +206,19 @@ func TestJourneyRoutingFailurePreservesStopsAndStaleSnapshot(t *testing.T) {
 		t.Fatal("unresolved stop did not block requests with feedback", err)
 	}
 }
+
+func TestInvalidRoutingAdvancesLiveRevision(t *testing.T) {
+	var w Workspace
+	ref := routedTestJourney(t, &w)
+	j, _ := w.journey(ref)
+	j.Stops = append(j.Stops, make([]journeyStop, 26)...)
+	j.Busy = true
+	before := w.liveRevision
+	if _, err := w.beginJourneyRoute(t.Context(), ref); err == nil || w.liveRevision <= before || j.Busy || j.Error == "" {
+		t.Fatal("invalid routing did not record its state change", err)
+	}
+	before = w.liveRevision
+	if _, err := w.beginJourneyRoute(t.Context(), ref); err == nil || w.liveRevision != before {
+		t.Fatal("repeated validation failure recorded an unchanged state", err)
+	}
+}

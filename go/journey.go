@@ -68,11 +68,18 @@ func (j *Journey) hasCompleteLocations() bool {
 }
 
 func (w *Workspace) newJourney() ItemRef {
+	w.createJourney()
+	return w.activateDocument(w.documents[len(w.documents)-1])
+}
+
+// createJourney adds an editable journey without changing selection or playback.
+func (w *Workspace) createJourney() ItemRef {
 	d := &Document{Name: "Planned journey", Filename: "Planned journey", Format: "planned"}
 	item := d.addItem("planned")
 	item.Track.Name = d.Name
 	item.Journey = &Journey{Stops: []journeyStop{{ID: 1}, {ID: 2}}, nextID: 2}
-	return w.addDocument(d)
+	entry := w.appendDocument(d)
+	return ItemRef{DocumentID: entry.id, ItemID: item.ID}
 }
 
 func (w *Workspace) journey(ref ItemRef) (*Journey, error) {
@@ -118,6 +125,7 @@ func (w *Workspace) editJourneyIntent(ref ItemRef, intent journeyIntent) error {
 
 func (w *Workspace) replaceJourneyTrack(ref ItemRef, track *Track) {
 	entry, i, _ := w.lookup(ref)
+	w.edited()
 	entry.document.Items[i].Track = track
 	entry.document.Bounds = track.Bounds
 	if w.selection != nil && w.selection.ref == ref {

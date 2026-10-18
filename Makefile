@@ -39,13 +39,14 @@ format-check:
 	python3 scripts/check_format.py
 check: format-check test race
 test: build
-	MAPBOX_ACCESS_TOKEN='' go test ./...
+	MAPBOX_ACCESS_TOKEN='' go test -tags=integration ./...
 	MAPBOX_ACCESS_TOKEN='' go vet ./...
 	MAPBOX_ACCESS_TOKEN='' python3 scripts/validate.py
 race:
-	MAPBOX_ACCESS_TOKEN='' go test -race ./...
+	MAPBOX_ACCESS_TOKEN='' go test -race -tags=integration ./...
 interactions: build
 	MAPBOX_ACCESS_TOKEN='' python3 scripts/interactions.py
+	MAPBOX_ACCESS_TOKEN='' python3 scripts/control_interactions.py
 fixtures:
 	python3 scripts/fixtures.py
 bench: build fixtures

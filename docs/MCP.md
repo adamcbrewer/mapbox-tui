@@ -85,20 +85,18 @@ offline Mapbox renders return an actionable tool error before requesting tiles.
 Local imports/inspection and `provider: "none"` continue to work.
 The viewer's startup account-usage check does not add a polling loop to MCP.
 
-## Beyond MCP: terminal control
+## Control a live viewer
 
-MCP and the terminal viewer keep separate workspaces. Named viewer checkpoints
-are opened explicitly through the viewer or `--workspace`; the standalone MCP
-server never restores them automatically. Save/Open use shared workspace lifecycle
-code; Save/Open tools are not exposed over MCP. MCP manages imports,
-selection, visibility, inspection and text maps. Place search, journey planning,
-playback and live traffic are viewer features, so an agent needs terminal
-control to use them.
+Configure your MCP client to launch `mapbox-tui mcp`. Start a viewer separately
+with `mapbox-tui --name main`. Call `viewer_sessions`, find `main`, then pass its
+UUID as `session_id` to `viewer_*` tools. One MCP connection can control several
+viewers without changing configuration.
 
-For example, with Mapbox connected:
+Viewer tools control camera, imports, visibility, playback, themes, journeys and
+workspace save/open. Standalone tools keep their own workspace. To pin one viewer,
+configure `mapbox-tui mcp --session main`; the connection keeps that UUID even if
+another viewer reuses the name.
 
-> Use mapbox-tui in the terminal to plan a trip from King's Cross to Greenwich.
-> Compare the cycling and walking estimates, then show me the cycling route.
-
-These viewer actions and screenshots require separate terminal control. The MCP
-tools return text maps and scene metadata; they don't control or capture the viewer.
+See [remote access](REMOTE_ACCESS.md) for setup, examples and operation results,
+and [action schemas](../shared/control_tools.json) for arguments. Place-name
+search and screenshots still need terminal control.

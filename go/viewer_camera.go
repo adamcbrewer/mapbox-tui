@@ -51,8 +51,9 @@ func (m *viewer) restoreStartupView(c Camera) Camera {
 
 func (m *viewer) recordViewChange(before Camera) {
 	after := m.destination()
-	if before.Center != after.Center || before.Zoom != after.Zoom {
+	if before.Center != after.Center || before.Zoom != after.Zoom || before.Bearing != after.Bearing {
 		m.viewChanged = true
+		m.workspace.edited()
 	}
 }
 
@@ -69,4 +70,12 @@ func (m *viewer) saveViewOnExit() error {
 		return fmt.Errorf("view not saved: %w", err)
 	}
 	return nil
+}
+
+// Follow changes affect future playback even when the camera has not moved yet.
+func (m *viewer) setFollowing(enabled bool) {
+	if m.following != enabled {
+		m.following = enabled
+		m.workspace.edited()
+	}
 }

@@ -8,6 +8,8 @@ import (
 )
 
 type cliCommand struct {
+	Remote        *remoteOptions
+	Session       string
 	Name, Path    string
 	Paths         []string
 	Args          Args
@@ -20,6 +22,9 @@ type cliCommand struct {
 }
 
 func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
+	if len(argv) > 0 && (argv[0] == "remote" || argv[0] == "session") {
+		return parseControlCLI(argv, output)
+	}
 	if len(argv) > 0 && argv[0] == "--version" {
 		if len(argv) != 1 {
 			return cliCommand{}, fmt.Errorf("--version takes no other arguments")
@@ -40,6 +45,9 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
 	a := &command.Args
+	if command.Name == "mcp" {
+		fs.StringVar(&command.Session, "session", "", "attach to a live viewer UUID or name")
+	}
 	var lon, lat, zoom, bearing, distance float64
 	var index, itemID int
 	var noProvider bool
@@ -66,6 +74,8 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider to hide the basemap")
 	}
 	if command.Name == "open" {
+		fs.StringVar(&a.SessionName, "name", "", "human-readable live session alias")
+		fs.BoolVar(&a.NoControl, "no-control", false, "disable local session discovery and control")
 		fs.StringVar(&a.WorkspacePath, "workspace", "", "open a saved workspace JSON file")
 		fs.BoolVar(&a.SafeStart, "safe-start", false, "ignore saved preferences for this launch without resetting them")
 		fs.BoolVar(&a.ResetView, "reset-view", false, "delete saved centre and zoom before opening the viewer")
@@ -134,6 +144,15 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		return command, err
 	}
 	if command.Name == "mcp" {
+		var attached bool
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "session" {
+				attached = true
+			}
+		})
+		if attached && command.Session == "" {
+			return command, fmt.Errorf("--session requires a live UUID or name")
+		}
 		if len(paths) != 0 {
 			return command, fmt.Errorf("mcp takes no file argument; see 'mapbox-tui mcp --help'")
 		}
@@ -183,6 +202,9 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 	})
 	if _, err := parseElevationMode(a.Elevation); err != nil || (a.ElevationSet && a.Elevation == "") {
 		return command, fmt.Errorf("elevation must be auto, show or hide")
+	}
+	if a.NoControl && a.SessionName != "" {
+		return command, fmt.Errorf("--name cannot be combined with --no-control")
 	}
 	if journeyRequested {
 		journey, err := parseStartupJourney(journeyStart, journeyEnd, journeyWaypoints, journeyModeName)
@@ -269,7 +291,9 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 			"  render   Print a static map; accepts zero or more files\n"+
 			"  summary  Print track statistics or list items as JSON\n"+
 			"  inspect  Print a recorded point as JSON\n"+
-			"  mcp      Run the local stdio MCP server\n"+
+			"  mcp      Run the local stdio MCP server (or attach with --session)\n"+
+			"  session  List or inspect running viewer sessions\n"+
+			"  remote   Control a running viewer session\n"+
 			"  auth     Mapbox login, logout and status (optional Mapbox CLI)\n"+
 			"  bench    Benchmark synthetic map rendering")
 	case "render":
@@ -292,6 +316,7 @@ func printCLIHelp(fs *flag.FlagSet, output io.Writer, name string) {
 	case "mcp":
 		fmt.Fprintln(output, "Usage: mapbox-tui mcp\n\n"+
 			"Run the local MCP server over stdin/stdout. Takes no file argument.\n"+
+			"Discover live viewers with viewer_sessions and target tools by session_id.\n"+
 			"Local imports/tools need no account. Mapbox renders use an environment token\n"+
 			"or saved optional-CLI login; browser login never runs here. Setup: mapbox-tui auth --help.")
 	}

@@ -33,6 +33,7 @@ type viewer struct {
 	args                      Args
 	settings                  viewerSettings
 	workspace                 Workspace
+	control                   *viewerControl
 	pendingPaths              []string
 	startupCameraPending      bool
 	savedView                 *savedView
@@ -105,13 +106,13 @@ func (m *viewer) Init() tea.Cmd {
 		m.openBilling(billingEnableOnline)
 	}
 	if m.args.WorkspacePath != "" {
-		return tea.Batch(tick(), m.fetch(), credentials, usage, m.routePendingJourneys())
+		return tea.Batch(tick(), m.fetch(), credentials, usage, m.routePendingJourneys(), m.waitControl())
 	}
 	if m.path == "" {
 		navigation := m.freeRoam()
-		return tea.Batch(tick(), navigation, credentials, usage, m.startJourneyFromArgs())
+		return tea.Batch(tick(), navigation, credentials, usage, m.startJourneyFromArgs(), m.waitControl())
 	}
-	return tea.Batch(tick(), m.load(m.path), credentials, usage)
+	return tea.Batch(tick(), m.load(m.path), credentials, usage, m.waitControl())
 }
 func (m *viewer) freeRoam() tea.Cmd {
 	m.loadID++
@@ -121,7 +122,8 @@ func (m *viewer) freeRoam() tea.Cmd {
 	m.initialised = true
 	m.camera = m.destination()
 	m.motion.Active = false
-	m.loading, m.following = false, false
+	m.loading = false
+	m.setFollowing(false)
 	m.inspected = nil
 	m.ui.details.GotoTop()
 	m.lastMotionTick = time.Now()
@@ -178,7 +180,10 @@ func (m *viewer) activeSwatch() activityColor {
 	return 0
 }
 func (m *viewer) selectionChanged() {
-	m.motion.Active, m.following = false, false
+	before := m.destination()
+	m.motion.Active = false
+	m.setFollowing(false)
+	m.recordViewChange(before)
 	m.inspected = nil
 	m.lastTick = time.Now()
 	m.ui.details.GotoTop()
@@ -263,6 +268,8 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 	return tea.Batch(commands...)
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Finalise operations after input has recorded its revision changes.
+	defer m.reconcileOperations()
 	// Only navigation from input marks the view for saving. Startup imports,
 	// layout changes and animation frames must not persist launch overrides.
 	switch msg.(type) {
@@ -277,6 +284,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}()
 	}
 	switch v := msg.(type) {
+	case controlMessage:
+		return m, tea.Batch(m.handleControl(v), m.waitControl())
+	case controlWorkspaceReady:
+		return m, m.acceptControlWorkspace(v)
+	case controlLoaded:
+		return m, m.acceptControlLoad(v)
 	case workspaceLibraryReady:
 		return m, m.acceptWorkspaceLibrary(v)
 	case savedWorkspaceReady:
@@ -371,10 +384,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.acceptSearchFavourite(v)
 		return m, nil
 	case journeyRouteResult:
-		if !m.workspace.acceptJourneyRoute(v) {
+		remote := m.isControlRoute(v)
+		accepted := m.workspace.acceptJourneyRoute(v)
+		m.acceptControlRoute(v, accepted)
+		if !accepted {
 			return m, nil
 		}
-		if m.planner.ref == v.ref {
+		if m.planner.ref == v.ref && !remote {
 			j, _ := m.workspace.journey(v.ref)
 			for i, frame := range m.ui.parents {
 				if frame.kind == dialogJourney {
@@ -392,7 +408,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.layout()
-		if v.err == nil && !v.preserveView {
+		if v.err == nil && !remote && !v.preserveView {
 			m.fitPlannerJourney(v.ref)
 		}
 		m.dirty = true
@@ -492,6 +508,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.motion.advance(&m.camera, seconds) {
 			m.dirty = true
 		}
+		m.reconcileOperations()
 		command := m.fetchAt(now)
 		if !m.sources.busy() && !m.loading {
 			m.ui.spinning = false
@@ -678,7 +695,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.motion.Active = false
 			c.zoomAt(XY{float64(c.Width), float64(c.Height * 2)}, -zoomStep)
 		case "f", "r":
-			m.following = false
+			m.setFollowing(false)
 			m.moveCamera(m.workspace.fitVisible(c.Width, c.Height, c.Aspect))
 		case "n":
 			m.motion.Active = false
@@ -717,12 +734,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.inspected != nil {
 				target := m.destination()
 				target.Center = project(m.inspected.X, m.inspected.Y)
-				m.following = false
+				m.setFollowing(false)
 				m.moveCamera(target)
 			} else if pos := m.position(); pos != nil {
 				target := m.destination()
 				target.Center = pos.World
-				m.following = true
+				m.setFollowing(true)
 				m.moveCamera(target)
 			}
 		case "space":
@@ -733,7 +750,11 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if key == "S" {
 					direction = -1
 				}
-				p.cycle(direction)
+				m.advancePlayback(time.Now())
+				index := (p.speed + direction + len(playbackSpeeds)) % len(playbackSpeeds)
+				if err := m.workspace.setPlaybackSpeed(index); err != nil {
+					m.settingsNotice = err.Error()
+				}
 			}
 		case "a":
 			return m, m.toggleMenuOption("ascii")
@@ -801,7 +822,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseClickMsg:
 			if inside && (mouse.Button == tea.MouseLeft || mouse.Button == tea.MouseRight) {
 				m.motion.Active = false
-				m.following = false
+				m.setFollowing(false)
 				m.dragging = mouse.Button == tea.MouseLeft
 				m.rotating = mouse.Button == tea.MouseRight
 				m.moved = false
@@ -815,7 +836,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.rotating {
 						m.camera.Bearing += float64(dx) * 2
 					} else {
-						m.following = false
+						m.setFollowing(false)
 						m.camera.pan(float64(dx*2), float64(dy*4))
 					}
 					m.lastX, m.lastY = x, y
@@ -881,6 +902,9 @@ func (m *viewer) layout() {
 }
 func (m *viewer) pausePlayback() {
 	if p := m.activePlayback(); p != nil {
+		if p.Playing {
+			m.workspace.edited()
+		}
 		p.Playing = false
 		m.dirty = true
 	}
@@ -1150,6 +1174,13 @@ func (m *viewer) rebuild() {
 	if playback != nil {
 		status = playback.status()
 	}
+	if m.control != nil && m.control.server != nil {
+		identity := m.control.server.info.Name
+		if identity == "" {
+			identity = m.control.server.info.ID[:8]
+		}
+		status = "Session " + identity + " | " + status
+	}
 	sourceStatus := sources.status()
 	if m.provider.token == "" && !m.preferences.Traffic {
 		sourceStatus = ""
@@ -1290,6 +1321,15 @@ func openViewerFiles(paths []string, a Args) error {
 	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	defer m.cancelAccountUsage()
+	server, err := startViewerSession(a)
+	if err != nil {
+		return err
+	}
+	if server != nil {
+		defer server.close()
+		m.control = &viewerControl{server: server}
+	}
+	defer m.cancelControlOperations()
 	_, e = tea.NewProgram(m).Run()
 	if m.connectionEcho != "" {
 		fmt.Println(m.connectionEcho)

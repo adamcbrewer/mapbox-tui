@@ -38,7 +38,11 @@ switching, journey planning and copying a command to reopen the journey.
  Road routes are recalculated when reopened.
 - **CLI and MCP.** Get JSON summaries, inspect points by distance and render
   ANSI-free text maps. The local MCP server keeps loaded files, selection and
-  visibility between requests in its own session workspace.
+  visibility in its own workspace.
+- **Remote control through CLI and MCP.** Let an agent control a running map:
+  move the camera, edit journeys, manage imports, set playback speed and themes,
+  or save and open workspaces. Discover viewers by session name or UUID.
+  See [remote access](docs/REMOTE_ACCESS.md).
 - **Offline file support.** Import GPX, FIT, TCX and KML files, view elevation and
   replay recordings without an account. Connected features include Mapbox
   basemaps, search, road routing and an optional traffic overlay in the viewer.
@@ -118,8 +122,13 @@ Those examples use synthetic fixtures and work offline. For a recorded ride, try
 Open fixtures/country-ride.gpx. Summarise its distance and elevation, inspect the point nearest 90 km, then render an offline map of the whole ride.
 ```
 
-MCP has its own workspace, separate from an open viewer. An agent with terminal
-control can also use the viewer's journey planner, playback and live traffic.
+To control a running map, start `mapbox-tui --name main`. Use
+`mapbox-tui remote --session main status --json` from another terminal, or ask
+an MCP agent to find `main` with `viewer_sessions` and use its UUID with the
+`viewer_*` tools. Standalone MCP tools keep a separate workspace.
+
+See [remote access](docs/REMOTE_ACCESS.md) for commands and agent setup.
+Place-name lookup and screenshots still need terminal control.
 
 See [MCP notes](docs/MCP.md) for workspace rendering and measurement details.
 The [tool schemas](shared/tools.json) describe the available calls.
@@ -229,7 +238,7 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Headless map rendering | ANSI-free text via CLI/MCP | - | ANSI snapshots via CLI | ANSI frames via Rust SDK |
 | JSON activity summaries and point inspection | ✓ | - | - | - |
 | Local MCP server with a session workspace | ✓ | - | - | - |
-| Session steering from a separate CLI process | (proposed) | - | - | - |
+| Remote access to a running viewer through CLI and MCP | [✓](docs/REMOTE_ACCESS.md) | - | - | - |
 | Lua plugins and scripted scenes | - | - | ✓ | - |
 | Embeddable map SDK | - | - | - | Rust SDK |
 | Multiple independent map views | - | - | - | Via SDK |

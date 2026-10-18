@@ -14,6 +14,8 @@ import (
 )
 
 type Args struct {
+	SessionName    string          `json:"-"`
+	NoControl      bool            `json:"-"`
 	WorkspacePath  string          `json:"-"`
 	Journey        *startupJourney `json:"-"`
 	Path           string          `json:"path"`
@@ -307,5 +309,6 @@ func serveMCP() error {
 			}, nil
 		})
 	}
+	addViewerTools(server, sessionInfo{})
 	return server.Run(context.Background(), &mcp.StdioTransport{})
 }

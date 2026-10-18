@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -83,22 +84,32 @@ func (w *Workspace) snapshot(name string, camera Camera, saveAs bool) (savedWork
 // prepareWorkspace never mutates an active workspace and never calls a provider.
 // Unavailable imports retain their complete saved state for later repair/save.
 func prepareWorkspace(path string) (*Workspace, Camera, error) {
-	checkpoint, err := readWorkspace(path)
+	return prepareWorkspaceContext(context.Background(), path)
+}
+
+func prepareWorkspaceContext(ctx context.Context, path string) (*Workspace, Camera, error) {
+	checkpoint, err := readWorkspaceContext(ctx, path)
 	if err != nil {
 		return nil, Camera{}, err
 	}
 	v := checkpoint.manifest
 	candidate := &Workspace{checkpoint: checkpoint}
 	for _, imported := range v.Imports {
+		if err := ctx.Err(); err != nil {
+			return nil, Camera{}, err
+		}
 		if !filepath.IsAbs(imported.Path) {
 			imported.Path = filepath.Join(filepath.Dir(checkpoint.path), imported.Path)
 		}
-		if err := candidate.restoreImport(imported); err != nil {
+		if err := candidate.restoreImportContext(ctx, imported); err != nil {
 			imported.problem = err.Error()
 			candidate.unresolved = append(candidate.unresolved, imported)
 		}
 	}
 	for _, saved := range v.Journeys {
+		if err := ctx.Err(); err != nil {
+			return nil, Camera{}, err
+		}
 		ref := candidate.newJourney()
 		entry, index, err := candidate.lookup(ref)
 		if err != nil {
@@ -134,16 +145,23 @@ func prepareWorkspace(path string) (*Workspace, Camera, error) {
 	if err := candidate.restoreSelection(v.Selection); err != nil {
 		return nil, Camera{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, Camera{}, err
+	}
 	camera, err := v.Camera.camera()
 	return candidate, camera, err
 }
 
 func (w *Workspace) restoreImport(saved savedImport) error {
+	return w.restoreImportContext(context.Background(), saved)
+}
+
+func (w *Workspace) restoreImportContext(ctx context.Context, saved savedImport) error {
 	// A repeated resolved path would alias two saved identities through addDocument.
 	if w.documentAtPath(saved.Path) != nil {
 		return fmt.Errorf("duplicate import path")
 	}
-	d, err := loadSavedImport(saved)
+	d, err := loadSavedImportContext(ctx, saved)
 	if err != nil {
 		return err
 	}
@@ -151,7 +169,11 @@ func (w *Workspace) restoreImport(saved savedImport) error {
 }
 
 func loadSavedImport(saved savedImport) (*Document, error) {
-	d, err := loadDocument(saved.Path)
+	return loadSavedImportContext(context.Background(), saved)
+}
+
+func loadSavedImportContext(ctx context.Context, saved savedImport) (*Document, error) {
+	d, err := loadDocumentContext(ctx, saved.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +247,7 @@ func (w *Workspace) restoreSelection(selection *savedSelection) error {
 // replace keeps runtime document IDs monotonic across workspace switches. Late
 // route results from the old workspace cannot target an item in the new one.
 func (w *Workspace) replace(candidate *Workspace) {
+	revision := w.liveRevision + 1
 	w.cancelJourneyRoutes()
 	offset := w.nextID
 	for _, entry := range candidate.documents {
@@ -235,6 +258,7 @@ func (w *Workspace) replace(candidate *Workspace) {
 	}
 	candidate.nextID += offset
 	*w = *candidate
+	w.liveGeneration, w.liveRevision = newSessionID(), revision
 }
 
 func (w *Workspace) removeUnresolved(id string) error {
@@ -249,6 +273,7 @@ func (w *Workspace) removeUnresolved(id string) error {
 			}
 		}
 	}
+	w.edited()
 	w.unresolved = slices.Delete(w.unresolved, index, index+1)
 	return nil
 }
@@ -288,6 +313,7 @@ func (w *Workspace) completeImportRepair(id string, document *Document) error {
 	if err := w.attachSavedImport(saved, document); err != nil {
 		return err
 	}
+	w.edited()
 	w.unresolved = slices.Delete(w.unresolved, index, index+1)
 	w.orderSavedDocuments()
 	if w.selection == nil {
