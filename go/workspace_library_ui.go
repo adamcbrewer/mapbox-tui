@@ -62,11 +62,14 @@ func (m *viewer) selectLibraryWorkspace(index int) tea.Cmd {
 		m.ui.notice = entry.problem
 		return nil
 	}
-	return m.beginSavedOpen(entry.path)
+	return nil
 }
 
 func (m *viewer) updateWorkspaceLibrary(msg tea.KeyPressMsg) tea.Cmd {
 	count := len(m.savedWork.entries)
+	if m.savedWork.busy && count > 0 {
+		return nil
+	}
 	switch msg.String() {
 	case "up", "k", "down", "j":
 		if count == 0 {
@@ -78,8 +81,8 @@ func (m *viewer) updateWorkspaceLibrary(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return m.selectLibraryWorkspace(menuStep(m.savedWork.selected, step, count))
 	case "enter":
-		if !m.savedWork.busy {
-			return m.applySavedWorkspace()
+		if count > 0 && m.savedWork.entries[m.savedWork.selected].problem == "" {
+			return m.beginSavedOpen(m.savedWork.entries[m.savedWork.selected].path)
 		}
 	case "tab":
 		m.savedWork.request++
@@ -129,23 +132,10 @@ func (m *viewer) workspaceLibraryContent(width, height int) (string, string, str
 		}
 		lines = append(lines, ansi.Truncate(prefix+name, width, ""))
 	}
-	details := "Loading workspace details..."
-	if m.savedWork.candidate != nil {
-		// The list already names the selection. Keep dates and import paths visible
-		// on narrow terminals; PgUp/PgDown scroll longer import lists independently.
-		summary := m.savedWorkspaceSummaryLines(width)
-		var compact []string
-		for _, line := range summary[1:] {
-			if line == "" || strings.HasPrefix(line, "Playback pauses.") {
-				continue
-			}
-			compact = append(compact, line)
-		}
-		path := abbreviatedWorkspacePath(m.savedWork.candidate.checkpoint.path, max(1, width-6), m.settings.ASCII)
-		compact = append(compact, "Save: "+path)
-		details = ansi.Hardwrap(strings.Join(compact, "\n"), width, true)
-	} else if !m.savedWork.busy {
-		details = "Cannot open this save.\n" + cleanPlaceText(m.ui.notice)
+	entry := m.savedWork.entries[m.savedWork.selected]
+	details := entry.preview.pickerDetails(width, m.settings.ASCII)
+	if entry.problem != "" {
+		details = "Cannot open this save.\n" + cleanPlaceText(entry.problem)
 	}
 	m.ui.page.SetWidth(max(1, width))
 	m.ui.page.SetHeight(max(1, height-len(lines)-1))

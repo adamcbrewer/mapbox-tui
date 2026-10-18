@@ -269,8 +269,27 @@ func (w *Workspace) locateUnresolved(id, path string) error {
 	}
 	saved := w.unresolved[index]
 	saved.Path = absolute
+	document, err := loadSavedImport(saved)
+	if err != nil {
+		return err
+	}
+	return w.completeImportRepair(id, document)
+}
+
+// Both synchronous callers and the viewer commit repairs through this operation.
+// Validate against the current unresolved reference before changing the workspace.
+func (w *Workspace) completeImportRepair(id string, document *Document) error {
+	index := slices.IndexFunc(w.unresolved, func(entry savedImport) bool { return entry.ID == id })
+	if index < 0 {
+		return fmt.Errorf("unresolved import no longer exists")
+	}
+	saved := w.unresolved[index]
+	if document == nil || document.Fingerprint != saved.Fingerprint {
+		return fmt.Errorf("file changed; locate the original or remove this reference and import the replacement")
+	}
+	saved.Path = document.Path
 	selection, deferred := w.selection, w.deferredSelection
-	if err := w.restoreImport(saved); err != nil {
+	if err := w.attachSavedImport(saved, document); err != nil {
 		return err
 	}
 	w.selection, w.deferredSelection = selection, deferred

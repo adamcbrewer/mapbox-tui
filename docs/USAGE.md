@@ -353,7 +353,9 @@ storage paths. You can keep several saves; each viewer has one active workspace.
 file elsewhere, or press P to enter a path. The picker lists saved workspaces
 from the workspace directory, newest modified first. Up/Down selects a save and
 shows its created/modified dates, import counts and abbreviated paths on the same
-screen. PgUp/PgDown scrolls longer details; R refreshes the filesystem list.
+screen. Browsing reads saved metadata only; import files are loaded and checked
+when you press Enter. Missing or changed imports then open the repair screen.
+PgUp/PgDown scrolls longer details; R refreshes the filesystem list.
 Unreadable saves remain visible with an explanation. Enter opens the selected
 save; Esc keeps your current work. Save changes before switching.
 
@@ -388,7 +390,10 @@ are written as absolute paths; relative paths in a manifest resolve beside that
 manifest, independently of the process working directory. This isn't a portable
 bundle: retain the original GPX/FIT/TCX/KML files.
 
-Missing or changed imports appear in **Repair missing workspace files**. **Skip
+Missing or changed imports appear in **Repair missing workspace files**.
+Press Enter to edit the replacement path, Ctrl-U to clear it, or Tab to browse
+for the original file. Home/End and arrow keys move through long paths; `~/`
+paths resolve from your home directory. **Skip
 for now** keeps their references, item state and any unresolved selection when you
 save again. **Locate original import** accepts the path of an identical copy. A
 changed file never receives old item state; to adopt it, deliberately remove the

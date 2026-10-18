@@ -14,9 +14,10 @@ type workspaceListing struct {
 	name     string
 	modified time.Time
 	problem  string
+	preview  workspacePreview
 }
 
-// Listing reads manifests only; imported geometry is loaded for the selected save.
+// Listing reads manifests only; imported geometry is loaded only when opening a save.
 func (s workspaceStore) list() ([]workspaceListing, error) {
 	files, err := os.ReadDir(s.directory)
 	if errors.Is(err, os.ErrNotExist) {
@@ -36,6 +37,7 @@ func (s workspaceStore) list() ([]workspaceListing, error) {
 			entry.problem = err.Error()
 		} else {
 			entry.name, entry.modified = checkpoint.manifest.Name, checkpoint.manifest.Modified
+			entry.preview = previewWorkspace(checkpoint, nil, false)
 		}
 		entries = append(entries, entry)
 	}

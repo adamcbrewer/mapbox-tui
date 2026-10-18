@@ -361,3 +361,82 @@ func TestSavedWorkspaceConfirmationShowsFullPath(t *testing.T) {
 		t.Fatal("full path inaccessible by scrolling", body)
 	}
 }
+
+func TestSavedWorkspaceRepairPathEditing(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	path := filepath.Join(t.TempDir(), "missing", "nested", "original.gpx")
+	m.workspace.unresolved = []savedImport{{ID: "missing-import", Path: path}}
+	m.openSavedWorkspaceDialog("repair")
+	savedKey(m, tea.KeyEnter)
+	if !m.ui.search.Focused() {
+		t.Fatal("replacement path input is not focused")
+	}
+	m.savedWorkspaceContent(42, 12)
+	savedKey(m, tea.KeyHome)
+	m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if m.ui.search.Value() != "x"+path {
+		t.Fatal("typing did not edit replacement path", m.ui.search.Value())
+	}
+	savedKey(m, tea.KeyBackspace)
+	if m.ui.search.Value() != path {
+		t.Fatal("backspace did not edit replacement path")
+	}
+	savedKey(m, tea.KeyEnd)
+	m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	if m.ui.search.Value() != "" {
+		t.Fatal("replace-path shortcut did not clear the field")
+	}
+	m.Update(tea.PasteMsg{Content: path})
+	cmd := m.updateSavedWorkspaceDialog(tea.KeyPressMsg{Code: tea.KeyTab})
+	if cmd == nil || m.savedWork.mode != "locate-browse" {
+		t.Fatal("repair file browser did not open")
+	}
+	if _, err := os.Stat(m.ui.picker.CurrentDirectory); err != nil {
+		t.Fatal("browser started in missing directory", err)
+	}
+	savedKey(m, tea.KeyEscape)
+	if m.savedWork.mode != "locate" || !m.ui.search.Focused() || m.ui.search.Value() != path {
+		t.Fatal("browser return lost editable path")
+	}
+	cmd = m.beginLocateImport()
+	m.Update(cmd())
+	if m.savedWork.repairError == "" || !m.ui.search.Focused() || m.savedWork.busy {
+		t.Fatal("failed repair did not allow editing and retry")
+	}
+}
+
+func TestSavedWorkspaceLongPathArrowCursor(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	path := "/a/long/path/that/extends/beyond/the/input/viewport/country-ride.gpx"
+	m.workspace.unresolved = []savedImport{{ID: "missing-import", Path: path}}
+	m.openSavedWorkspaceDialog("repair")
+	savedKey(m, tea.KeyEnter)
+	styles := m.ui.search.Styles()
+	styles.Cursor.Blink = false
+	m.ui.search.SetStyles(styles)
+	m.rebuild()
+	m.dialogContent(35, 12)
+	initial := m.ui.search.View()
+	end := m.ui.search.Position()
+	savedKey(m, tea.KeyLeft)
+	m.dialogContent(35, 12)
+	if m.ui.search.Position() != end-1 {
+		t.Fatal("Left did not move editing position")
+	}
+	if m.ui.search.Cursor() != nil {
+		t.Fatal("scrolled workspace input still uses unadjusted native cursor")
+	}
+	if m.ui.search.View() == initial {
+		t.Fatal("Left did not move visible cursor")
+	}
+	savedKey(m, tea.KeyRight)
+	m.dialogContent(35, 12)
+	if m.ui.search.Position() != end || m.ui.search.View() != initial {
+		t.Fatal("Right did not restore visible cursor")
+	}
+	savedKey(m, tea.KeyLeft)
+	m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if m.ui.search.Value() != path[:len(path)-1]+"x"+path[len(path)-1:] {
+		t.Fatal("typing ignored arrow-selected position")
+	}
+}

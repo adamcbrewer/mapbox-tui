@@ -1082,6 +1082,9 @@ func (m *viewer) details() []string {
 	return lines
 }
 func (m *viewer) rebuild() {
+	// The native textinput cursor uses the absolute character index, ignoring
+	// horizontal scrolling. Workspace paths need the rendered, scroll-aware cursor.
+	m.ui.search.SetVirtualCursor(m.ui.dialog == dialogSavedWorkspace)
 	m.cursor = nil
 	if m.width < 30 || m.height < 12 {
 		m.content = "Enlarge terminal to 30×12; q quits"

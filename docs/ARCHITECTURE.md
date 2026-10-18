@@ -105,6 +105,17 @@ are applied only to byte-identical imports, including a deliberately retained su
 when items have been removed. Missing/changed imports retain complete references
 and state separately from loaded geometry. Failed candidate loads leave the active
 workspace intact. Repair also checks fingerprints before installing content.
+Synchronous repair and asynchronous viewer repair both commit through
+`Workspace.completeImportRepair`, which validates the current unresolved reference,
+preserves selection, removes the resolved reference and restores document order.
+
+The saved-workspace picker reads manifests into structured preview metadata.
+Selection changes render that metadata without opening or parsing imported files.
+Only an explicit Open builds a candidate; repeated Open actions are disabled while
+it loads, and late results after cancellation are ignored. Picker details and
+confirmation views render the same preview fields with separate layouts, without
+inspecting or filtering presentation strings. Import availability remains unchecked
+in the metadata preview and is reported after the candidate loads.
 
 A save locks a separate lock file, rereads and checks both the revision and full file
 digest, writes/syncs a same-directory temporary file, then renames it. Names never

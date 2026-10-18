@@ -455,3 +455,44 @@ func TestSavedWorkspacePreservesInterleavedDocumentOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestCompleteImportRepairValidatesBeforeChangingWorkspace(t *testing.T) {
+	var w Workspace
+	source := importFile(t, "original.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
+	openWorkspaceFile(t, &w, source)
+	cp := saveTestWorkspace(t, &w, workspaceStore{directory: t.TempDir()}, false)
+	moved := source + ".moved.gpx"
+	if err := os.Rename(source, moved); err != nil {
+		t.Fatal(err)
+	}
+	candidate, _, err := prepareWorkspace(cp.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := candidate.unresolved[0]
+	document, err := loadDocument(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := document.Fingerprint
+	document.Fingerprint = "changed"
+	if err := candidate.completeImportRepair(saved.ID, document); err == nil {
+		t.Fatal("changed document was accepted")
+	}
+	if len(candidate.documents) != 0 || len(candidate.unresolved) != 1 || candidate.deferredSelection == nil {
+		t.Fatal("failed repair changed workspace state")
+	}
+	document.Fingerprint = fingerprint
+	if err := candidate.completeImportRepair(saved.ID, document); err != nil {
+		t.Fatal(err)
+	}
+	if len(candidate.unresolved) != 0 || candidate.selection == nil || candidate.documents[0].saveID != saved.ID {
+		t.Fatal("repair did not restore saved identity and selection")
+	}
+	if candidate.documents[0].document.Path != moved {
+		t.Fatal("repair lost replacement path")
+	}
+	if err := candidate.completeImportRepair(saved.ID, document); err == nil || len(candidate.documents) != 1 {
+		t.Fatal("stale completion installed a duplicate import")
+	}
+}

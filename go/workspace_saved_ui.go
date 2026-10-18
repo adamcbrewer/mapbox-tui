@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,14 +16,15 @@ import (
 )
 
 type savedWorkspaceUI struct {
-	entries   []workspaceListing
-	selected  int
-	mode      string
-	request   uint64
-	candidate *Workspace
-	camera    Camera
-	repairID  string
-	busy      bool
+	entries     []workspaceListing
+	selected    int
+	mode        string
+	request     uint64
+	candidate   *Workspace
+	camera      Camera
+	repairID    string
+	busy        bool
+	repairError string
 }
 
 type savedWorkspaceReady struct {
@@ -44,6 +46,7 @@ func (m *viewer) openSavedWorkspaceDialog(mode string) tea.Cmd {
 	m.savedWork.request++
 	m.savedWork.mode, m.savedWork.busy = mode, false
 	m.savedWork.candidate = nil
+	m.savedWork.repairError = ""
 	m.ui.search.CharLimit = 4096
 	m.ui.search.Placeholder = "Workspace JSON path"
 	m.ui.search.SetValue("")
@@ -110,9 +113,10 @@ func (m *viewer) acceptSavedWorkspace(result savedWorkspaceReady) tea.Cmd {
 		return nil
 	}
 	m.savedWork.candidate, m.savedWork.camera = result.candidate, result.camera
-	if m.savedWork.mode != "library" {
-		m.savedWork.mode = "confirm-open"
+	if m.savedWork.mode == "library" {
+		return m.applySavedWorkspace()
 	}
+	m.savedWork.mode = "confirm-open"
 	m.ui.page.GotoTop()
 	m.ui.notice = ""
 	m.ui.search.Blur()
@@ -195,12 +199,14 @@ func (m *viewer) beginLocateImport() tea.Cmd {
 		return nil
 	}
 	reference := m.workspace.unresolved[index]
-	path, err := filepath.Abs(m.ui.search.Value())
+	path, err := replacementImportPath(m.ui.search.Value())
 	if err != nil {
 		m.ui.notice = err.Error()
 		return nil
 	}
 	reference.Path = path
+	m.savedWork.repairError = ""
+	m.ui.notice = ""
 	m.savedWork.request++
 	request := m.savedWork.request
 	m.savedWork.busy = true
@@ -217,28 +223,14 @@ func (m *viewer) acceptSavedImport(result savedImportReady) tea.Cmd {
 	m.savedWork.busy = false
 	m.dirty = true
 	if result.err != nil {
-		m.ui.notice = result.err.Error()
-		return nil
+		m.savedWork.repairError = result.err.Error()
+		m.savedWork.mode = "locate"
+		return m.ui.search.Focus()
 	}
-	index := slices.IndexFunc(m.workspace.unresolved, func(entry savedImport) bool {
-		return entry.ID == result.reference.ID
-	})
-	if index < 0 {
-		return nil
-	}
-	selection, deferred := m.workspace.selection, m.workspace.deferredSelection
-	if err := m.workspace.attachSavedImport(result.reference, result.document); err != nil {
-		m.ui.notice = err.Error()
-		return nil
-	}
-	m.workspace.selection, m.workspace.deferredSelection = selection, deferred
-	m.workspace.unresolved = slices.Delete(m.workspace.unresolved, index, index+1)
-	m.workspace.orderSavedDocuments()
-	if selection == nil {
-		if err := m.workspace.restoreSelection(m.workspace.deferredSelection); err != nil {
-			m.ui.notice = err.Error()
-			return nil
-		}
+	if err := m.workspace.completeImportRepair(result.reference.ID, result.document); err != nil {
+		m.savedWork.repairError = err.Error()
+		m.savedWork.mode = "locate"
+		return m.ui.search.Focus()
 	}
 	m.selectionChanged()
 	return m.openSavedWorkspaceDialog("repair")
@@ -248,6 +240,10 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 	if pressed, ok := msg.(tea.KeyPressMsg); ok {
 		key := pressed.String()
 		if key == "esc" {
+			if m.savedWork.mode == "locate-browse" {
+				m.savedWork.mode = "locate"
+				return m.ui.search.Focus()
+			}
 			m.closeDialog()
 			return nil
 		}
@@ -339,6 +335,8 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 				entry := m.workspace.unresolved[m.ui.selected]
 				m.savedWork.repairID, m.savedWork.mode = entry.ID, "locate"
 				m.ui.search.SetValue(entry.Path)
+				m.ui.search.CursorEnd()
+				m.savedWork.repairError = ""
 				m.ui.search.Placeholder = "Replacement file path"
 				return m.ui.search.Focus()
 			case "delete", "backspace":
@@ -346,7 +344,20 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 				m.savedWork.mode = "remove-reference"
 			}
 			return nil
+		case "locate-browse":
+			if key == "tab" {
+				m.savedWork.mode = "locate"
+				return m.ui.search.Focus()
+			}
 		case "locate":
+			if key == "tab" {
+				return m.browseReplacementImport()
+			}
+			if key == "ctrl+u" {
+				m.ui.search.SetValue("")
+				m.savedWork.repairError = ""
+				return nil
+			}
 			if key == "enter" {
 				return m.beginLocateImport()
 			}
@@ -362,10 +373,17 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 		m.ui.page, cmd = m.ui.page.Update(msg)
 		return cmd
 	}
-	if m.savedWork.mode == "browse" {
+	if m.savedWork.mode == "browse" || m.savedWork.mode == "locate-browse" {
 		var cmd tea.Cmd
 		m.ui.picker, cmd = m.ui.picker.Update(msg)
 		if selected, path := m.ui.picker.DidSelectFile(msg); selected {
+			if m.savedWork.mode == "locate-browse" {
+				m.savedWork.mode = "locate"
+				m.ui.search.SetValue(path)
+				m.ui.search.CursorEnd()
+				m.ui.search.Focus()
+				return m.beginLocateImport()
+			}
 			return m.beginSavedOpen(path)
 		}
 		return cmd
@@ -377,6 +395,7 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 
 func (m *viewer) savedWorkspaceContent(width, height int) (string, string, string) {
 	m.ui.search.SetWidth(max(1, width-2))
+	m.ui.search.SetCursor(m.ui.search.Position())
 	input := m.ui.search.View()
 	switch m.savedWork.mode {
 	case "library":
@@ -426,10 +445,16 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		body := ansi.Hardwrap(filename, width, true) + "\n\n" + m.styles.dialogAccent.Render(problem)
 		hints := "↑/↓ select • enter locate • del remove • esc skip for now"
 		return "Missing or changed files", body, hints
+	case "locate-browse":
+		m.ui.picker.SetHeight(max(1, height))
+		return "Locate original import", m.ui.picker.View(), "enter choose • tab path • esc back"
 	case "locate":
 		body := input + "\n\nChoose an identical copy to restore item state." +
 			"\nFor changed content, remove the reference and add the new file."
-		return "Locate original import", ansi.Hardwrap(body, width, true), "enter locate • esc skip for now"
+		if m.savedWork.repairError != "" {
+			body += "\n\n" + m.styles.dialogAccent.Render(m.savedWork.repairError)
+		}
+		return "Locate original import", ansi.Hardwrap(body, width, true), "enter locate • tab files • ctrl+u replace path • esc skip"
 	case "remove-reference":
 		name := "this missing import"
 		for _, entry := range m.workspace.unresolved {
@@ -463,37 +488,9 @@ func workspaceLaunchCamera(camera Camera, args Args) Camera {
 }
 
 func (m *viewer) savedWorkspaceSummary(width int) string {
-	return ansi.Hardwrap(strings.Join(m.savedWorkspaceSummaryLines(width), "\n"), max(1, width), true)
-}
-
-func (m *viewer) savedWorkspaceSummaryLines(width int) []string {
 	candidate := m.savedWork.candidate
-	saved := candidate.checkpoint.manifest
-	lines := []string{
-		saved.Name,
-		"Created:  " + saved.Created.Local().Format("02 Jan 2006 15:04 MST"),
-		"Modified: " + saved.Modified.Local().Format("02 Jan 2006 15:04 MST"),
-		"",
-		"Replaces current work. Save changes first.",
-		"Playback pauses. Road routes recalculate when online.",
-		"",
-		fmt.Sprintf("Imports: %d | Journeys: %d", len(saved.Imports), len(saved.Journeys)),
-	}
-	if len(saved.Imports) == 0 {
-		lines = append(lines, "No imported files.")
-	}
-	for _, imported := range saved.Imports {
-		path := imported.Path
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(filepath.Dir(candidate.checkpoint.path), path)
-		}
-		name := cleanPlaceText(filepath.Base(path))
-		if slices.ContainsFunc(candidate.unresolved, func(entry savedImport) bool { return entry.ID == imported.ID }) {
-			name += " (missing/changed)"
-		}
-		lines = append(lines, name, "  "+abbreviatedWorkspacePath(path, max(1, width-2), m.settings.ASCII))
-	}
-	return lines
+	preview := previewWorkspace(candidate.checkpoint, candidate.unresolved, true)
+	return preview.confirmation(width, m.settings.ASCII)
 }
 
 // Keep the filename and nearest parent directories when a path exceeds the row.
@@ -518,4 +515,55 @@ func abbreviatedWorkspacePath(path string, width int, ascii bool) string {
 		shortened = ansi.TruncateLeft(path, cut, prefix)
 	}
 	return shortened
+}
+
+func replacementImportPath(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", fmt.Errorf("choose a file or enter its path")
+	}
+	if value == "~" || strings.HasPrefix(value, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if value == "~" {
+			value = home
+		} else {
+			value = filepath.Join(home, strings.TrimPrefix(value, "~/"))
+		}
+	}
+	return filepath.Abs(value)
+}
+
+func (m *viewer) browseReplacementImport() tea.Cmd {
+	path, err := replacementImportPath(m.ui.search.Value())
+	if err != nil {
+		path, _ = os.Getwd()
+	}
+	directory := path
+	if info, err := os.Stat(directory); err != nil || !info.IsDir() {
+		directory = filepath.Dir(directory)
+	}
+	// Start at the nearest existing parent if the original directory was moved.
+	for {
+		if info, err := os.Stat(directory); err == nil && info.IsDir() {
+			break
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			break
+		}
+		directory = parent
+	}
+	picker := filepicker.New()
+	picker.CurrentDirectory = directory
+	picker.AllowedTypes = []string{".gpx", ".fit", ".tcx", ".kml", ".GPX", ".FIT", ".TCX", ".KML"}
+	picker.AutoHeight = false
+	picker.SetHeight(max(1, min(17, m.height-10)-3))
+	picker.ShowPermissions, picker.ShowSize = false, false
+	m.ui.picker = picker
+	m.stylePicker()
+	m.savedWork.mode = "locate-browse"
+	m.ui.search.Blur()
+	return picker.Init()
 }
