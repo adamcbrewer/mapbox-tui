@@ -103,6 +103,9 @@ func (w *Workspace) setJourneyMode(ref ItemRef, mode journeyMode) error {
 		return err
 	}
 	if j.Mode == mode {
+		if !j.modeChosen {
+			w.edited()
+		}
 		j.modeChosen = true
 		return nil
 	}

@@ -589,7 +589,7 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		}
 		if err == nil {
 			m.controlMoveCamera(target, a.Animate)
-			m.following = false
+			m.setFollowing(false)
 			m.recordViewChange(before)
 			cmd = m.fetch()
 			response.Result = controlJSON(controlCamera(target))

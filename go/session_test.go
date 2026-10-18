@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -435,5 +436,41 @@ func TestSessionUsesShortFallbackForLongRuntimePaths(t *testing.T) {
 				t.Fatal("fallback session not discoverable")
 			}
 		})
+	}
+}
+
+func TestPlainRemoteFailuresRemoveTerminalControls(t *testing.T) {
+	testSessionDirectory(t)
+	server := testLiveSession(t, "plain-output")
+	path := filepath.Join(t.TempDir(), "café\x1b[31m\nINJECT.json")
+	for _, action := range [][]string{{"load", path}, {"workspace", "open", path, "--discard"}} {
+		for _, jsonOutput := range []bool{false, true} {
+			args := append([]string{"remote", "--session", server.info.ID}, action...)
+			if jsonOutput {
+				args = append(args, "--json")
+			}
+			command, err := parseCLI(args, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if err := runRemote(t.Context(), command, &out); err == nil {
+				t.Fatal("nonexistent path succeeded")
+			}
+			if strings.ContainsRune(out.String(), '\x1b') {
+				t.Fatal("raw terminal escape printed")
+			}
+			if jsonOutput {
+				var response controlResponse
+				if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(response.Message, path) {
+					t.Fatal("JSON lost original error path", response.Message)
+				}
+			} else if strings.Contains(out.String(), "\nINJECT") || !strings.Contains(out.String(), "café") {
+				t.Fatal("plain message was not safe printable Unicode", out.String())
+			}
+		}
 	}
 }

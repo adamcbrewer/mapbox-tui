@@ -122,7 +122,8 @@ func (m *viewer) freeRoam() tea.Cmd {
 	m.initialised = true
 	m.camera = m.destination()
 	m.motion.Active = false
-	m.loading, m.following = false, false
+	m.loading = false
+	m.setFollowing(false)
 	m.inspected = nil
 	m.ui.details.GotoTop()
 	m.lastMotionTick = time.Now()
@@ -174,7 +175,8 @@ func (m *viewer) activeSwatch() activityColor {
 }
 func (m *viewer) selectionChanged() {
 	before := m.destination()
-	m.motion.Active, m.following = false, false
+	m.motion.Active = false
+	m.setFollowing(false)
 	m.recordViewChange(before)
 	m.inspected = nil
 	m.lastTick = time.Now()
@@ -687,7 +689,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.motion.Active = false
 			c.zoomAt(XY{float64(c.Width), float64(c.Height * 2)}, -zoomStep)
 		case "f", "r":
-			m.following = false
+			m.setFollowing(false)
 			m.moveCamera(m.workspace.fitVisible(c.Width, c.Height, c.Aspect))
 		case "n":
 			m.motion.Active = false
@@ -726,12 +728,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.inspected != nil {
 				target := m.destination()
 				target.Center = project(m.inspected.X, m.inspected.Y)
-				m.following = false
+				m.setFollowing(false)
 				m.moveCamera(target)
 			} else if pos := m.position(); pos != nil {
 				target := m.destination()
 				target.Center = pos.World
-				m.following = true
+				m.setFollowing(true)
 				m.moveCamera(target)
 			}
 		case "space":
@@ -814,7 +816,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseClickMsg:
 			if inside && (mouse.Button == tea.MouseLeft || mouse.Button == tea.MouseRight) {
 				m.motion.Active = false
-				m.following = false
+				m.setFollowing(false)
 				m.dragging = mouse.Button == tea.MouseLeft
 				m.rotating = mouse.Button == tea.MouseRight
 				m.moved = false
@@ -828,7 +830,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.rotating {
 						m.camera.Bearing += float64(dx) * 2
 					} else {
-						m.following = false
+						m.setFollowing(false)
 						m.camera.pan(float64(dx*2), float64(dy*4))
 					}
 					m.lastX, m.lastY = x, y

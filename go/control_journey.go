@@ -195,7 +195,7 @@ func (m *viewer) executeJourneyControl(
 				m.selectionChanged()
 				before := m.destination()
 				m.controlMoveCamera(journeyView(j, entry.document.Items[index].Track, before), a.Animate)
-				m.following = false
+				m.setFollowing(false)
 				m.recordViewChange(before)
 				m.layout()
 				m.dirty = true

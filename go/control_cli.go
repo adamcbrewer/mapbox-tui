@@ -452,15 +452,15 @@ func runRemote(ctx context.Context, c cliCommand, out io.Writer) error {
 	if c.JSON {
 		err = json.NewEncoder(out).Encode(response)
 	} else {
-		_, err = fmt.Fprintln(out, response.Message)
+		_, err = fmt.Fprintln(out, cleanPlaceText(response.Message))
 		if err == nil && len(response.Result) > 0 {
 			_, err = fmt.Fprintln(out, string(response.Result))
 		}
 		if response.OperationID != "" {
-			fmt.Fprintln(out, "Operation:", response.OperationID)
+			fmt.Fprintln(out, "Operation:", cleanPlaceText(response.OperationID))
 		}
 		if response.Error != nil {
-			fmt.Fprintln(out, "Recovery:", response.Error.Recovery)
+			fmt.Fprintln(out, "Recovery:", cleanPlaceText(response.Error.Recovery))
 		}
 	}
 	if err != nil {

@@ -278,6 +278,9 @@ func (w *Workspace) clear() {
 func (w *Workspace) cancelJourneyRoutes() {
 	for _, item := range w.items() {
 		if item.Item.Journey != nil {
+			if item.Item.Journey.Busy {
+				w.edited()
+			}
 			item.Item.Journey.cancelRoute()
 		}
 	}

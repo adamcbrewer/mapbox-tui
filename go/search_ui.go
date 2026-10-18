@@ -23,7 +23,7 @@ func (m *viewer) applyPlaceLocation(location placeLocation) tea.Cmd {
 	}
 	defer m.recordViewChange(m.destination())
 	m.closeDialog()
-	m.following = false
+	m.setFollowing(false)
 	m.searchPosition = &XY{location.Lon, location.Lat}
 	m.inspected = m.searchPosition
 	m.searchCredit = location.Attribution

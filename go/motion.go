@@ -65,7 +65,7 @@ func (m *viewer) moveCameraAnimated(target Camera, animate bool) {
 func (m *viewer) panCamera(dx, dy float64) {
 	target := m.destination()
 	target.pan(dx, dy)
-	m.following = false
+	m.setFollowing(false)
 	m.moveCamera(target)
 }
 

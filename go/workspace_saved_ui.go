@@ -164,7 +164,8 @@ func (m *viewer) installSavedWorkspace(candidate *Workspace, camera Camera) tea.
 	m.searchLocation, m.searchPosition, m.inspected = nil, nil, nil
 	m.searchName, m.searchCredit, m.path = "", "", ""
 	m.initialised = true
-	m.motion.Active, m.following = false, false
+	m.motion.Active = false
+	m.setFollowing(false)
 	camera.Width, camera.Height, camera.Aspect = m.camera.Width, m.camera.Height, m.camera.Aspect
 	m.camera = camera
 	m.viewRestoreID++

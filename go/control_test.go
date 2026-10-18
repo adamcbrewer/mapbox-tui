@@ -829,3 +829,68 @@ func TestDefaultJourneyModeRejectsStaleControlMutation(t *testing.T) {
 		t.Fatal("unchanged default mode advanced revision")
 	}
 }
+
+func TestCameraNoOpRecordsStoppingFollow(t *testing.T) {
+	for _, action := range []string{"camera.set", "camera.pan"} {
+		t.Run(action, func(t *testing.T) {
+			m := journeyViewer(t)
+			args := map[string]any{"zoom": m.camera.Zoom, "animate": false}
+			if action == "camera.pan" {
+				args = map[string]any{"dx": 0, "dy": 0, "animate": false}
+			}
+			m.following = true
+			before := m.workspace.liveRevision
+			response, _ := m.applyControl(controlTestRequest(m, action, args))
+			if response.Error != nil || !response.Changed || m.following || response.Revision <= before {
+				t.Fatal("stopping follow was not recorded", response)
+			}
+			repeated, _ := m.applyControl(controlTestRequest(m, action, args))
+			if repeated.Error != nil || repeated.Changed || repeated.Revision != response.Revision {
+				t.Fatal("repeated camera command recorded unchanged state", repeated)
+			}
+		})
+	}
+}
+
+func TestChoosingDefaultModeRecordsPreference(t *testing.T) {
+	m := journeyViewer(t)
+	ref := m.workspace.newJourney()
+	before := m.workspace.liveRevision
+	response, _ := m.applyControl(controlTestRequest(m, "journey.mode", map[string]any{"ref": ref, "mode": "offline"}))
+	if response.Error != nil || !response.Changed || response.Revision <= before {
+		t.Fatal("explicit mode preference not recorded", response)
+	}
+	repeated, _ := m.applyControl(controlTestRequest(m, "journey.mode", map[string]any{"ref": ref, "mode": "offline"}))
+	if repeated.Error != nil || repeated.Changed || repeated.Revision != response.Revision {
+		t.Fatal("unchanged mode preference recorded twice", repeated)
+	}
+	m.directions = newDirectionsClient("token")
+	j, _ := m.workspace.journey(ref)
+	if m.defaultJourneyMode(j) || j.Mode != journeyManual {
+		t.Fatal("credential discovery replaced explicit Offline")
+	}
+}
+
+func TestRouteCancellationRejectsStaleMutation(t *testing.T) {
+	m := journeyViewer(t)
+	ref := routedTestJourney(t, &m.workspace)
+	if _, err := m.workspace.beginJourneyRoute(t.Context(), ref); err != nil {
+		t.Fatal(err)
+	}
+	request := controlTestRequest(m, "journey.reverse", map[string]any{"ref": ref})
+	before := m.workspace.liveRevision
+	m.workspace.cancelJourneyRoutes()
+	j, _ := m.workspace.journey(ref)
+	if j.Busy || m.workspace.liveRevision <= before {
+		t.Fatal("route cancellation did not record edit")
+	}
+	response, _ := m.applyControl(request)
+	if response.Error == nil || response.Error.Code != "revision_conflict" {
+		t.Fatal("stale edit accepted after cancellation", response)
+	}
+	before = m.workspace.liveRevision
+	m.workspace.cancelJourneyRoutes()
+	if m.workspace.liveRevision != before {
+		t.Fatal("idle cancellation recorded edit")
+	}
+}

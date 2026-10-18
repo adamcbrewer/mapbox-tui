@@ -71,3 +71,11 @@ func (m *viewer) saveViewOnExit() error {
 	}
 	return nil
 }
+
+// Follow changes affect future playback even when the camera has not moved yet.
+func (m *viewer) setFollowing(enabled bool) {
+	if m.following != enabled {
+		m.following = enabled
+		m.workspace.edited()
+	}
+}

@@ -227,7 +227,7 @@ func (m *viewer) fitPlannerJourney(ref ItemRef) {
 	if revision := m.planner.preserveViewRevision; revision != nil && *revision == item.Journey.revision {
 		return
 	}
-	m.following = false
+	m.setFollowing(false)
 	viewport := m.camera
 	if m.journeySidebar() {
 		viewport.Width = max(1, m.journeyPanelX()-1)
