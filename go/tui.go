@@ -37,6 +37,7 @@ type viewer struct {
 	startupCameraPending      bool
 	savedView                 *savedView
 	viewChanged               bool
+	viewRestoreID             uint64
 	windowSizeKnown           bool
 	initialised               bool
 	provider                  *Provider
@@ -261,7 +262,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.MouseMsg:
 		before := m.destination()
-		defer m.recordViewChange(before)
+		restoreID := m.viewRestoreID
+		defer func() {
+			// Confirming a checkpoint restores a view; it is not map navigation.
+			if restoreID == m.viewRestoreID {
+				m.recordViewChange(before)
+			}
+		}()
 	}
 	switch v := msg.(type) {
 	case workspaceLibraryReady:

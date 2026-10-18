@@ -473,6 +473,11 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 	parents := m.ui.parents
 	if m.ui.dialog != dialogNone && m.ui.dialog != kind {
+		if m.ui.dialog == dialogSavedWorkspace && m.savedWork.busy {
+			m.savedWork.request++
+			m.savedWork.busy = false
+			m.ui.notice = "Workspace operation cancelled; retry after returning."
+		}
 		frame := dialogFrame{
 			kind:              m.ui.dialog,
 			selected:          m.ui.selected,
@@ -576,6 +581,10 @@ func (m *viewer) backDialog() tea.Cmd {
 		m.ui.search.Placeholder = frame.searchPlaceholder
 		m.ui.search.SetValue(frame.searchValue)
 		m.ui.search.SetCursor(frame.searchPosition)
+		if frame.kind == dialogSavedWorkspace {
+			m.ui.inputID = rand.Text()
+			command = m.ui.search.Focus()
+		}
 	}
 	if placeSearch {
 		m.ui.inputID = rand.Text()

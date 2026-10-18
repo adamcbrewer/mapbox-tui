@@ -472,3 +472,122 @@ func TestSavedWorkspaceLongPathArrowCursor(t *testing.T) {
 		t.Fatal("typing ignored arrow-selected position")
 	}
 }
+
+func TestSavedWorkspaceBrowserStartsInExistingDirectory(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	m.openSavedWorkspaceDialog("open")
+	m.Update(m.browseSavedWorkspaces()())
+	info, err := os.Stat(m.ui.picker.CurrentDirectory)
+	if err != nil || !info.IsDir() {
+		t.Fatal("workspace browser started in a missing directory", m.ui.picker.CurrentDirectory)
+	}
+}
+
+func TestSavedWorkspaceCommandsCancelPendingWork(t *testing.T) {
+	for _, operation := range []string{"library", "open", "repair"} {
+		t.Run(operation, func(t *testing.T) {
+			m := themeViewer(t, 70, 24, false)
+			source := importFile(t, "missing.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
+			openWorkspaceFile(t, &m.workspace, source)
+			cp := saveTestWorkspace(t, &m.workspace, workspaceStore{directory: t.TempDir()}, false)
+			if err := os.Remove(source); err != nil {
+				t.Fatal(err)
+			}
+			candidate, _, err := prepareWorkspace(cp.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.workspace.replace(candidate)
+			var pending tea.Cmd
+			switch operation {
+			case "library":
+				pending = m.openSavedWorkspaceDialog("open")
+			case "open":
+				m.openSavedWorkspaceDialog("open")
+				m.savedWork.mode = "open"
+				m.ui.search.SetValue(cp.path)
+				pending = m.beginSavedOpen(cp.path)
+			case "repair":
+				m.openSavedWorkspaceDialog("repair")
+				savedKey(m, tea.KeyEnter)
+				pending = m.beginLocateImport()
+			}
+			owner := m.ui.inputID
+			m.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+			m.Update(pending())
+			savedKey(m, tea.KeyEscape)
+			if m.ui.dialog != dialogSavedWorkspace || m.savedWork.busy {
+				t.Fatal("returning from Commands left workspace controls busy")
+			}
+			if operation != "library" && !m.ui.search.Focused() {
+				t.Fatal("returning from Commands left the path uneditable")
+			}
+			if operation != "library" {
+				path := m.ui.search.Value()
+				m.ui.search.SetValue("")
+				m.Update(searchClipboardResult{owner: owner, dialog: dialogSavedWorkspace,
+					msg: tea.PasteMsg{Content: "stale"}})
+				if m.ui.search.Value() != "" {
+					t.Fatal("returning accepted a paste from the old dialog")
+				}
+				m.Update(searchClipboardResult{owner: m.ui.inputID, dialog: dialogSavedWorkspace,
+					msg: tea.PasteMsg{Content: path}})
+				if m.ui.search.Value() != path {
+					t.Fatal("returning discarded a paste for the restored input")
+				}
+			}
+			key := tea.KeyEnter
+			if operation == "library" {
+				key = 'r'
+			}
+			_, retry := m.Update(tea.KeyPressMsg{Code: key})
+			if retry == nil || !m.savedWork.busy {
+				t.Fatal("cancelled operation could not be retried")
+			}
+			m.Update(retry())
+			if m.savedWork.busy {
+				t.Fatal("retry completion was not accepted")
+			}
+		})
+	}
+}
+
+func TestSavedWorkspaceConfirmationDoesNotRecordNavigation(t *testing.T) {
+	for _, test := range []struct {
+		mode      string
+		navigated bool
+	}{{"open", false}, {"browse", false}, {"open", true}, {"browse", true}} {
+		t.Run(fmt.Sprintf("%s-navigated-%t", test.mode, test.navigated), func(t *testing.T) {
+			m := themeViewer(t, 70, 24, false)
+			cp := saveTestWorkspace(t, &m.workspace, workspaceStore{directory: t.TempDir()}, false)
+			if err := saveAppSettings(appSettings{LastView: testSavedView(10, 20, 8)}); err != nil {
+				t.Fatal(err)
+			}
+			before := string(settingsBytes(t))
+			m.camera.Center = project(10, 20)
+			if test.navigated {
+				savedKey(m, tea.KeyRight)
+				if !m.viewChanged {
+					t.Fatal("initial navigation was not recorded")
+				}
+			}
+			m.openSavedWorkspaceDialog("open")
+			m.savedWork.mode = test.mode
+			m.Update(m.beginSavedOpen(cp.path)())
+			savedKey(m, tea.KeyEnter)
+			if m.viewChanged || m.camera.Center == project(10, 20) {
+				t.Fatal("workspace restoration recorded navigation or failed to restore camera")
+			}
+			if err := m.saveViewOnExit(); err != nil {
+				t.Fatal(err)
+			}
+			if string(settingsBytes(t)) != before {
+				t.Fatal("workspace restoration overwrote global last view")
+			}
+			savedKey(m, tea.KeyRight)
+			if !m.viewChanged {
+				t.Fatal("navigation after restoration was not recorded")
+			}
+		})
+	}
+}

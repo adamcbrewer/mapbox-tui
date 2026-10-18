@@ -74,7 +74,7 @@ func (m *viewer) browseSavedWorkspaces() tea.Cmd {
 		return nil
 	}
 	picker := filepicker.New()
-	picker.CurrentDirectory = store.directory
+	picker.CurrentDirectory = existingParentDirectory(store.directory)
 	picker.AllowedTypes = []string{".json"}
 	picker.AutoHeight = false
 	picker.SetHeight(max(1, min(17, m.height-10)-3))
@@ -142,6 +142,8 @@ func (m *viewer) applySavedWorkspace() tea.Cmd {
 	m.motion.Active, m.following = false, false
 	camera.Width, camera.Height, camera.Aspect = m.camera.Width, m.camera.Height, m.camera.Aspect
 	m.camera = camera
+	m.viewRestoreID++
+	m.viewChanged = false
 	m.lastTick, m.lastMotionTick = time.Now(), time.Now()
 	m.savedWork.candidate = nil
 	m.selectionChanged()
@@ -528,23 +530,8 @@ func (m *viewer) browseReplacementImport() tea.Cmd {
 	if err != nil {
 		path, _ = os.Getwd()
 	}
-	directory := path
-	if info, err := os.Stat(directory); err != nil || !info.IsDir() {
-		directory = filepath.Dir(directory)
-	}
-	// Start at the nearest existing parent if the original directory was moved.
-	for {
-		if info, err := os.Stat(directory); err == nil && info.IsDir() {
-			break
-		}
-		parent := filepath.Dir(directory)
-		if parent == directory {
-			break
-		}
-		directory = parent
-	}
 	picker := filepicker.New()
-	picker.CurrentDirectory = directory
+	picker.CurrentDirectory = existingParentDirectory(path)
 	picker.AllowedTypes = []string{".gpx", ".fit", ".tcx", ".kml", ".GPX", ".FIT", ".TCX", ".KML"}
 	picker.AutoHeight = false
 	picker.SetHeight(max(1, min(17, m.height-10)-3))
@@ -554,4 +541,18 @@ func (m *viewer) browseReplacementImport() tea.Cmd {
 	m.savedWork.mode = "locate-browse"
 	m.ui.search.Blur()
 	return picker.Init()
+}
+
+// A fresh workspace library or moved import may have no parent directory yet.
+func existingParentDirectory(path string) string {
+	for {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path
+		}
+		path = parent
+	}
 }
