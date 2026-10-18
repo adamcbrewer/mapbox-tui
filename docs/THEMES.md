@@ -157,6 +157,3 @@ their roles/slots; colours are resolved when painting. The cached elevation grid
 can therefore be recoloured without rebuilding geometry. Drawing priority and
 ASCII glyphs stay in `mapStyles`, independent of theme choice. CLI/MCP plain maps
 continue to use the same geometry without ANSI styling.
-
-The [issue 22 audit](THEME_AUDIT.md) records the readability fixes and terminal
-reproductions for this polish pass.
