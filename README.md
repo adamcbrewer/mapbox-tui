@@ -38,8 +38,11 @@ switching, journey planning and copying a command to reopen the journey.
  Road routes are recalculated when reopened.
 - **CLI and MCP.** Get JSON summaries, inspect points by distance and render
   ANSI-free text maps. The local MCP server keeps loaded files, selection and
-  visibility in its own workspace. Use CLI or MCP to control a running viewer
-  too, including its camera, imports, playback and journeys.
+  visibility in its own workspace.
+- **Remote control through CLI and MCP.** Let an agent control a running map:
+  move the camera, edit journeys, manage imports, set playback speed and themes,
+  or save and open workspaces. Discover viewers by session name or UUID.
+  See [live control](docs/LIVE_CONTROL.md).
 - **Offline file support.** Import GPX, FIT, TCX and KML files, view elevation and
   replay recordings without an account. Connected features include Mapbox
   basemaps, search, road routing and an optional traffic overlay in the viewer.
