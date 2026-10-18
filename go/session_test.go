@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -315,5 +316,67 @@ func TestMCPDiscoversAndControlsMultipleSessions(t *testing.T) {
 	stale := call("viewer_status", map[string]any{"session_id": first.info.ID, "args": map[string]any{}})
 	if stale.Error == nil || stale.Error.Code != "session_not_found" {
 		t.Fatal("ended session should report recovery instructions", stale)
+	}
+}
+
+func TestLargeWorkspaceStatusRemainsControllable(t *testing.T) {
+	testSessionDirectory(t)
+	server := testLiveSession(t, "large")
+	stops := make([]controlStop, 1000)
+	for i := range stops {
+		stops[i] = controlStop{Lat: 51 + float64(i%10)/100, Lon: float64(i%10) / 100}
+	}
+	var ref ItemRef
+	for range 40 {
+		response, err := callRemote(t.Context(), server.info, controlRequest{
+			Action: "journey.create", Args: controlJSON(map[string]any{"mode": "offline", "stops": stops}),
+		}, false, true)
+		if err != nil || response.Error != nil {
+			t.Fatal(response, err)
+		}
+		ref = controlTestRef(t, response)
+	}
+	response, err := sendControl(t.Context(), server.info, controlRequest{Action: "status"})
+	if err != nil || response.Error != nil {
+		t.Fatal(response, err)
+	}
+	state := controlTestResult(t, response)
+	if len(state["tracks"].([]any)) != 20 || state["next_offset"] != float64(20) {
+		t.Fatal("missing pagination", state["next_offset"])
+	}
+	if len(controlJSON(response)) > controlResponseLimit {
+		t.Fatal("status exceeded wire limit")
+	}
+	response, err = sendControl(t.Context(), server.info, controlRequest{Action: "journey.inspect",
+		Args: controlJSON(map[string]any{"ref": ref})})
+	if err != nil || response.Error != nil || len(controlTestResult(t, response)["stops"].([]any)) != 1000 {
+		t.Fatal("explicit journey inspection lost stops", response, err)
+	}
+	response, err = callRemote(t.Context(), server.info, controlRequest{
+		Action: "camera.set", Args: controlJSON(map[string]any{"zoom": 12, "animate": false}),
+	}, false, true)
+	if err != nil || response.Error != nil {
+		t.Fatal("large state blocked automatic preconditions", response, err)
+	}
+}
+
+func TestOversizedControlResponseIsStructured(t *testing.T) {
+	testSessionDirectory(t)
+	server, err := startSession("oversized")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		request := <-server.inbox
+		request.reply <- controlResponse{Version: controlVersion, OutcomeKnown: true, State: "applied",
+			Result: controlJSON(strings.Repeat("x", controlResponseLimit))}
+	}()
+	response, err := sendControl(t.Context(), server.info, controlRequest{Action: "status"})
+	<-done
+	if err != nil || response.Error == nil || response.Error.Code != "response_too_large" {
+		t.Fatal(response, err)
 	}
 }

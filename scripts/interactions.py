@@ -1564,6 +1564,143 @@ def camera_restart(binary, width, height, ascii_mode=False):
         tmux("kill-session", "-t", "poc", check=False)
 
 
+@isolated_settings
+def saved_workspace_controls(binary, width, height, ascii_mode=False):
+    folder = Path(os.environ["XDG_CONFIG_HOME"]) / "mapbox-tui/workspaces"
+    source = Path(os.environ["XDG_CONFIG_HOME"]) / "ride.gpx"
+    source.write_bytes((ROOT / "fixtures/example.gpx").read_bytes())
+
+    def start(*flags):
+        command = shlex.join(["env", "MAPBOX_ACCESS_TOKEN=", "TERM=xterm-256color", "COLORTERM=truecolor",
+                              "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary),
+                              "--no-provider", "--no-animation", *( ["--ascii"] if ascii_mode else []), *flags])
+        tmux("new-session", "-d", "-s", "poc", "-x", str(width), "-y", str(height), command)
+        wait_for(lambda s: "ctrl+b sidebar" in s or "A Start:" in s or active_modal(s, "Missing or changed files"))
+
+    def command(query):
+        tmux("send-keys", "-t", "poc:0.0", "C-k")
+        wait_for(lambda s: active_modal(s, "Commands"))
+        send(query)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+
+    def stop():
+        tmux("send-keys", "-t", "poc:0.0", "C-c")
+        wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        tmux("kill-session", "-t", "poc", check=False)
+
+    try:
+        start(str(source), "--start", "51,0", "--end", "51.1,0.1", "--mode", "offline")
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "Paused 1x" in s and "A Start:" not in s)
+        command("Save workspace")
+        wait_for(lambda s: active_modal(s, "Save workspace"))
+        send("Weekend ride")
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Workspace saved"))
+        paths = list(folder.glob("*.json"))
+        assert len(paths) == 1, "save did not create one workspace"
+        path = paths[0]
+        saved_screen = capture()
+        assert str(path) in re.sub(r"[\s│|]+", "", saved_screen), f"save confirmation clipped its path: {saved_screen}"
+        screenshots = ROOT / "reports/generated"
+        screenshots.mkdir(parents=True, exist_ok=True)
+        save_svg(screenshots / f"workspace-saved-{width}x{height}-ascii-{ascii_mode}.svg", width, height)
+        manifest = json.loads(path.read_text())
+        assert manifest["name"] == "Weekend ride" and len(manifest["imports"]) == 1
+        original = path.read_bytes()
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: not active_modal(s, "Workspace saved") and not active_modal(s, "Missing or changed files"))
+        command("Clear workspace")
+        wait_for(lambda s: "Free roam" in s)
+        assert path.read_bytes() == original, "clear modified checkpoint"
+        alternate = folder / "another-workspace.json"
+        alternate_manifest = dict(manifest, id="another-workspace", name="Z alternate workspace")
+        alternate.write_text(json.dumps(alternate_manifest))
+        command("Open saved workspace")
+        summary = wait_for(lambda s: active_modal(s, "Open saved workspace") and "Modified:" in s)
+        assert "Created:" in summary and "Imports: 1" in summary and "ride.gpx" in summary
+        assert "Weekend ride" in summary and "Z alternate workspace" in summary
+        tmux("send-keys", "-t", "poc:0.0", "Down")
+        wait_for(lambda s: "Saved workspaces (2/2)" in s and "Modified:" in s)
+        tmux("send-keys", "-t", "poc:0.0", "Up")
+        wait_for(lambda s: "Saved workspaces (1/2)" in s and "Modified:" in s)
+        screenshots = ROOT / "reports/generated"
+        screenshots.mkdir(parents=True, exist_ok=True)
+        save_svg(screenshots / f"workspace-open-{width}x{height}-ascii-{ascii_mode}.svg", width, height)
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "Paused 1x" in s and not active_modal(s, "Open saved workspace"))
+        assert path.read_bytes() == original, "open rewrote checkpoint"
+        alternate.unlink()
+        command("Journey Planner")
+        planner = wait_for(lambda s: "A Start:" in s and "51.000000" in s)
+        assert "(enter location)" not in planner, "restored planner lost saved stops"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: "A Start:" not in s)
+        stop()
+        source.rename(source.with_suffix(".moved.gpx"))
+        start("--workspace", str(path))
+        wait_for(lambda s: active_modal(s, "Missing or changed files"))
+        screenshots = ROOT / "reports/generated"
+        screenshots.mkdir(parents=True, exist_ok=True)
+        save_svg(screenshots / f"workspace-repair-{width}x{height}-ascii-{ascii_mode}.svg", width, height)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: not active_modal(s, "Workspace saved") and not active_modal(s, "Missing or changed files"))
+        command("Save workspace")
+        wait_for(lambda s: active_modal(s, "Save workspace"))
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Workspace saved"))
+        partial = json.loads(path.read_text())
+        assert partial["imports"] == manifest["imports"], "partial save lost unresolved references"
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: not active_modal(s, "Workspace saved"))
+        command("Repair missing workspace files")
+        wait_for(lambda s: active_modal(s, "Missing or changed files"))
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Locate original import"))
+        tmux("send-keys", "-t", "poc:0.0", "Left")
+        send("X")
+        wait_for(lambda s: "ride.gpXx" in s)
+        tmux("send-keys", "-t", "poc:0.0", "BSpace", "Right")
+        wait_for(lambda s: "ride.gpXx" not in s)
+        tmux("send-keys", "-t", "poc:0.0", "Home")
+        send("x")
+        wait_for(lambda s: "x/tmp/" in s)
+        tmux("send-keys", "-t", "poc:0.0", "BSpace")
+        wait_for(lambda s: "x/tmp/" not in s)
+        if ascii_mode:
+            tmux("send-keys", "-t", "poc:0.0", "Tab")
+            wait_for(lambda s: "ride.moved.gpx" in s and "tab path" in s)
+            send("G")
+            wait_for(lambda s: "> ride.moved.gpx" in s)
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+        else:
+            tmux("send-keys", "-t", "poc:0.0", "C-u")
+            send(str(source.with_suffix(".moved.gpx")))
+            tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: "All referenced files are available." in s)
+        tmux("send-keys", "-t", "poc:0.0", "Escape")
+        wait_for(lambda s: not active_modal(s, "Workspace files"))
+        # A concurrent/external edit must offer a usable Save As path.
+        path.write_text("external edit")
+        command("Save workspace")
+        wait_for(lambda s: active_modal(s, "Save workspace"))
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Workspace changed"))
+        send("s")
+        wait_for(lambda s: active_modal(s, "Save workspace as"))
+        tmux("send-keys", "-t", "poc:0.0", "Enter")
+        wait_for(lambda s: active_modal(s, "Workspace saved"))
+        assert path.read_text() == "external edit", "Save As replaced conflicting checkpoint"
+        copies = [entry for entry in folder.glob("*.json") if entry != path]
+        assert len(copies) == 1
+        repaired = json.loads(copies[0].read_text())
+        assert repaired["imports"][0]["path"] == str(source.with_suffix(".moved.gpx"))
+        stop()
+    finally:
+        tmux("kill-session", "-t", "poc", check=False)
+    print(f"Saved workspace interactions passed: {width}x{height}, ASCII={ascii_mode}")
+
+
 if __name__ == "__main__":
     settings = tempfile.TemporaryDirectory()
     os.environ["XDG_CONFIG_HOME"] = settings.name
@@ -1598,6 +1735,8 @@ if __name__ == "__main__":
                     theme_switching(ROOT / "bin" / name, width, height)
                     command_palette_access(ROOT / "bin" / name, width, height)
                 camera_restart(ROOT / "bin" / name, 70, 24, ascii_mode=True)
+                for width, height, ascii_mode in ((120, 40, False), (70, 24, False), (70, 24, True)):
+                    saved_workspace_controls(ROOT / "bin" / name, width, height, ascii_mode)
                 workspace_controls(ROOT / "bin" / name)
                 for width, height in ((120, 40), (70, 24), (70, 18)):
                     workspace_profiles(ROOT / "bin" / name, width, height)

@@ -392,7 +392,12 @@ Mapbox Search Box is billed by search session for suggest/retrieve; this is sepa
 from Directions' free allowance. Its documentation lists coverage in the US, Canada
 and Europe.
 
-Search results and plans remain in memory for this session only. The local
+Search suggestions and calculated routes remain in memory for this session only.
+Explicit workspace saves retain journey stop values, including names, coordinates,
+source, provider ID and attribution, but not provider route geometry, tiles or
+traffic. Reopening restores local intent immediately, then requests one fresh
+Directions route per complete road journey when Mapbox access is available. Offline
+loads retain straight-line previews. Failed requests require an explicit retry. The local
 [favourites library](USAGE.md#favourite-places) saves user-entered locations and
 Geocoding results. Alt-S on a search suggestion sends its Mapbox ID to the
 Geocoding v6 forward endpoint with `autocomplete=false`, using the API’s default

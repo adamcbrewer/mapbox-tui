@@ -646,3 +646,26 @@ func TestRecoveryAllowanceRemainsBoundedAndIndependent(t *testing.T) {
 		t.Fatal("recovery budget consumed ordinary capacity", response)
 	}
 }
+
+func TestRepeatedSelectionReportsInterruptedCamera(t *testing.T) {
+	for _, action := range []string{"select", "load"} {
+		t.Run(action, func(t *testing.T) {
+			m := journeyViewer(t)
+			ref, err := m.workspace.open("../fixtures/example.gpx")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": 15, "animate": true}))
+			before := m.workspace.liveRevision
+			args := map[string]any{"ref": ref}
+			if action == "load" {
+				path, _ := filepath.Abs("../fixtures/example.gpx")
+				args = map[string]any{"path": path}
+			}
+			response, _ := m.applyControl(controlTestRequest(m, action, args))
+			if response.Error != nil || !response.Changed || m.workspace.liveRevision == before {
+				t.Fatal("interrupted destination was not reported", response)
+			}
+		})
+	}
+}

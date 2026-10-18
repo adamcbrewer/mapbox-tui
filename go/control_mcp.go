@@ -42,18 +42,19 @@ func addViewerTools(server *mcp.Server, pinned sessionInfo) {
 		if cameraControl(action) {
 			description += " Animated moves return a transition_id and pending operation; use wait_visual=true to await this transition, or inspect viewer_operation_status."
 		}
-		schema := map[string]any{"type": "object", "additionalProperties": false, "required": required,
-			"properties": map[string]any{
-				"session_id":        map[string]any{"type": "string", "minLength": 1, "description": "Live session UUID from viewer_sessions. In pinned mode, must match the attached UUID if supplied."},
-				"request_id":        map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
-				"generation":        map[string]any{"type": "string", "minLength": 1},
-				"expected_revision": map[string]any{"type": "integer", "minimum": 0},
-				"args":              spec.Schema, "wait": map[string]any{"type": "boolean"},
-				"timeout_seconds": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 300},
-			}}
-		if cameraControl(action) {
-			schema["properties"].(map[string]any)["wait_visual"] = map[string]any{"type": "boolean"}
+		properties := map[string]any{
+			"session_id":        map[string]any{"type": "string", "minLength": 1, "description": "Live session UUID from viewer_sessions. In pinned mode, must match the attached UUID if supplied."},
+			"request_id":        map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
+			"generation":        map[string]any{"type": "string", "minLength": 1},
+			"expected_revision": map[string]any{"type": "integer", "minimum": 0},
+			"args":              spec.Schema, "wait": map[string]any{"type": "boolean"},
+			"timeout_seconds": map[string]any{"type": "number", "exclusiveMinimum": 0, "maximum": 300},
 		}
+		if cameraControl(action) {
+			properties["wait_visual"] = map[string]any{"type": "boolean"}
+		}
+		schema := map[string]any{"type": "object", "additionalProperties": false,
+			"required": required, "properties": properties}
 		server.AddTool(&mcp.Tool{Name: "viewer_" + strings.ReplaceAll(action, ".", "_"), Description: description, InputSchema: schema},
 			func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				var args attachedToolArgs
@@ -90,18 +91,8 @@ func addViewerTools(server *mcp.Server, pinned sessionInfo) {
 				response, err := callRemote(ctx, info, controlRequest{ID: args.RequestID, Action: action,
 					Generation: args.Generation, Revision: args.Revision, Args: args.Args}, args.Wait || args.WaitVisual, false)
 				if err != nil {
-					previous := response
-					response = controlFailure(
-						"connection_failed",
-						err.Error(),
-						"inspect operation status before retrying; explicitly reconnect if the session ended",
-					)
-					response.OperationID, response.Changed = previous.OperationID, previous.Changed
-					response.OutcomeKnown = false
-					if typed, ok := err.(*controlError); ok {
-						response.Error = typed
-						response.OutcomeKnown = true
-					}
+					response = controlTransportFailure(response, err,
+						"inspect operation status before retrying; explicitly reconnect if the session ended")
 					response.SessionID, response.RequestID = info.ID, args.RequestID
 				}
 				return controlMCPResult(response), nil

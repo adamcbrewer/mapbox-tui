@@ -102,7 +102,7 @@ func (p *placeClient) retrieve(ctx context.Context, suggestion placeSuggestion, 
 	}
 	return placeLocation{
 		Name: suggestion.Label, Lon: *coords[0], Lat: *coords[1],
-		Source: placeSourceMapboxSearch, Attribution: cleanPlaceText(response.Attribution),
+		Source: placeSourceMapboxSearch, ProviderID: suggestion.ID, Attribution: cleanPlaceText(response.Attribution),
 	}, nil
 }
 

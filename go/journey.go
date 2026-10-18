@@ -40,17 +40,19 @@ func journeyStopLabel(index, count int) string {
 }
 
 type Journey struct {
-	Stops      []journeyStop
-	Mode       journeyMode
-	Route      *journeyRoute
-	Error      string
-	Busy       bool
-	modeChosen bool
-	nextID     int
-	history    []journeyIntent
-	revision   uint64
-	requestID  uint64
-	cancel     context.CancelFunc
+	Stops                      []journeyStop
+	Mode                       journeyMode
+	Route                      *journeyRoute
+	Error                      string
+	Busy                       bool
+	modeChosen                 bool
+	automaticRoutePending      bool
+	automaticRoutePreserveView bool
+	nextID                     int
+	history                    []journeyIntent
+	revision                   uint64
+	requestID                  uint64
+	cancel                     context.CancelFunc
 }
 
 func (j *Journey) hasCompleteLocations() bool {
@@ -72,11 +74,11 @@ func (w *Workspace) newJourney() ItemRef {
 
 // createJourney adds an editable journey without changing selection or playback.
 func (w *Workspace) createJourney() ItemRef {
-	d := &Document{Name: "Planned journey", Filename: "Planned journey (session only)", Format: "planned"}
+	d := &Document{Name: "Planned journey", Filename: "Planned journey", Format: "planned"}
 	item := d.addItem("planned")
 	item.Track.Name = d.Name
 	item.Journey = &Journey{Stops: []journeyStop{{ID: 1}, {ID: 2}}, nextID: 2}
-	entry := w.storeDocument(d)
+	entry := w.appendDocument(d)
 	return ItemRef{DocumentID: entry.id, ItemID: item.ID}
 }
 
@@ -109,6 +111,7 @@ func (w *Workspace) editJourneyIntent(ref ItemRef, intent journeyIntent) error {
 	if err != nil {
 		return err
 	}
+	j.automaticRoutePending = false
 	j.history = append(j.history, journeyIntent{Stops: j.Stops, Mode: j.Mode})
 	if len(j.history) > 64 {
 		j.history = slices.Delete(j.history, 0, 1)

@@ -10,6 +10,12 @@ import (
 )
 
 type controlArgs struct {
+	Name        string        `json:"name,omitempty"`
+	SaveAs      bool          `json:"save_as,omitempty"`
+	Offset      int           `json:"offset,omitempty"`
+	ItemOffset  int           `json:"item_offset,omitempty"`
+	Limit       *int          `json:"limit,omitempty"`
+	Summary     bool          `json:"summary,omitempty"`
 	Theme       string        `json:"theme,omitempty"`
 	Speed       float64       `json:"speed,omitempty"`
 	Animate     *bool         `json:"animate,omitempty"`
@@ -63,7 +69,7 @@ var controlSpecs = func() map[string]controlSpec {
 func controlCapabilities() any {
 	return map[string]any{"protocol_version": controlVersion, "actions": controlSpecs,
 		"operation_retention_seconds": operationRetention.Seconds(), "operation_capacity": operationCapacity,
-		"pending_capacity": pendingCapacity, "recovery_capacity": recoveryCapacity, "persistence_available": false}
+		"pending_capacity": pendingCapacity, "recovery_capacity": recoveryCapacity, "persistence_available": true}
 }
 
 func decodeControlArgs(action string, data json.RawMessage) (controlArgs, error) {

@@ -16,6 +16,7 @@ import (
 type Args struct {
 	SessionName    string          `json:"-"`
 	NoControl      bool            `json:"-"`
+	WorkspacePath  string          `json:"-"`
 	Journey        *startupJourney `json:"-"`
 	Path           string          `json:"path"`
 	TrackID        string          `json:"track_id"`

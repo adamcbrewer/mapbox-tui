@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func loadTrack(path string) (*Track, error) {
@@ -42,13 +45,41 @@ func (f contextTrackFile) Seek(offset int64, whence int) (int64, error) {
 	return f.File.Seek(offset, whence)
 }
 
+// Opening nonblocking prevents a FIFO from trapping a loader before it can
+// validate the descriptor. Regular files retain normal blocking read behaviour.
+func openRegularFile(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = fmt.Errorf("must be a regular file")
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
 func loadDocumentContext(ctx context.Context, path string) (*Document, error) {
-	f, err := os.Open(path)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f, err := openRegularFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open track file: %w", err)
 	}
 	defer f.Close()
 	reader := contextTrackFile{File: f, ctx: ctx}
+	before, err := importFingerprint(reader)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
 	var header [12]byte
 	n, _ := f.ReadAt(header[:], 0)
 	format := "FIT"
@@ -107,6 +138,14 @@ func loadDocumentContext(ctx context.Context, path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	after, err := importFingerprint(reader)
+	if err != nil {
+		return nil, err
+	}
+	if before != after {
+		return nil, fmt.Errorf("import changed while loading; try again")
+	}
+	document.Fingerprint = before
 	document.Filename = filepath.Base(path)
 	document.Format = format
 	return document, nil
@@ -215,4 +254,26 @@ func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, []strin
 			}
 		}
 	}
+}
+
+// Hash the original bytes, including metadata and item order, before restoring item state.
+func importFingerprint(f interface {
+	io.ReadSeeker
+	Stat() (os.FileInfo, error)
+}) (string, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("inspect import: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("import must be a regular file")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("read import: %w", err)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, struct{ io.Reader }{f}); err != nil {
+		return "", fmt.Errorf("fingerprint import: %w", err)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

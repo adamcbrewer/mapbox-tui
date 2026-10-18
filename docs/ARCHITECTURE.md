@@ -94,6 +94,56 @@ and constants in `go/place_source.go`. Favourites validate against that accepted
 set on both reads and writes. Persisted source strings are format values: changing
 one requires a file migration. Compatibility tests pin the existing spellings.
 
+### Saved workspace checkpoints
+
+`workspace_store.go` defines a versioned persistence model separate from runtime
+`Workspace`, preferences and favourites. `workspace_saved.go` captures and restores
+that model without viewer widgets, authentication or provider requests. The viewer
+uses these operations for explicit Save/Open and `--workspace`; ordinary CLI renders
+and standalone MCP still start with their own state and never restore a checkpoint
+implicitly. Their shared scene renderer remains ANSI-free outside the viewer.
+
+Version 1 accepts at most 4 MiB, 1,024 documents and 1,000 stops per journey.
+Unknown fields, unsupported versions and invalid identities/state are rejected.
+There are no older supported versions to migrate. Imports carry SHA-256 fingerprints
+of their original bytes; parsing checks fingerprints before and after reading.
+Saved document/item IDs are independent of runtime IDs. Document order is retained
+for scene layering, including across partial loads and repairs. Original parser item keys
+are applied only to byte-identical imports, including a deliberately retained subset
+when items have been removed. Missing/changed imports retain complete references
+and state separately from loaded geometry. Failed candidate loads leave the active
+workspace intact. Repair also checks fingerprints before installing content.
+Synchronous repair and asynchronous viewer repair both commit through
+`Workspace.completeImportRepair`, which validates the current unresolved reference,
+preserves selection, removes the resolved reference and restores document order.
+
+The saved-workspace picker reads manifests into structured preview metadata.
+Selection changes render that metadata without opening or parsing imported files.
+Only an explicit Open builds a candidate; repeated Open actions are disabled while
+it loads, and late results after cancellation are ignored. Picker details and
+confirmation views render the same preview fields with separate layouts, without
+inspecting or filtering presentation strings. Import availability remains unchecked
+in the metadata preview and is reported after the candidate loads.
+
+A save locks a separate lock file, rereads and checks both the revision and full file
+digest, writes/syncs a same-directory temporary file, then renames it. Names never
+select overwrite targets. Save As allocates a new checkpoint ID. Failed/conflicting
+writes retain the working copy and original checkpoint. Native Windows replacement
+semantics remain unverified, as with settings and favourites. Writes happen
+synchronously in the viewer update loop, so there are no queued saves that can
+outlive a workspace switch. Imports and candidate opens remain asynchronous.
+
+Switching invalidates import/search/open requests and cancels old routes. Shared
+workspace replacement keeps runtime document IDs monotonic, preventing old route
+results from matching a new journey. Stops preserve source, provider ID and
+attribution; undo history, requests, clients, credentials and provider geometry
+aren't serialised. Restored journeys retain their chosen mode and show unresolved
+straight-line previews until Mapbox is available for one automatic recalculation
+per complete road journey. Failures require an explicit retry. The viewer restores
+the planner journey independently of activity selection; background route results
+preserve the restored camera. Preference last-view state
+is separate from each checkpoint camera.
+
 ### Mapbox data and offline use
 
 We fetch and decode Mapbox vector tiles, then pass their features to the renderer

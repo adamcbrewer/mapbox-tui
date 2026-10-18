@@ -35,10 +35,9 @@ type viewerControl struct {
 }
 
 type controlLoaded struct {
-	id         string
-	generation string
-	document   *Document
-	err        error
+	id       string
+	document *Document
+	err      error
 }
 
 func (m *viewer) waitControl() tea.Cmd {
@@ -118,7 +117,7 @@ func (m *viewer) applyControl(request controlRequest) (controlResponse, tea.Cmd)
 		r := m.response(request)
 		switch request.Action {
 		case "status":
-			r.Result = controlJSON(m.controlStatus())
+			r.Result = controlJSON(m.controlStatus(args))
 		case "theme.list":
 			r.Result = controlJSON(m.controlThemes())
 		case "capabilities":
@@ -346,16 +345,56 @@ func (m *viewer) acceptControlRoute(result journeyRouteResult, accepted bool) {
 	m.reconcileOperations()
 }
 
-func (m *viewer) controlStatus() map[string]any {
-	tracks := make([]trackInfo, 0, len(m.workspace.documents))
-	journeys := []any{}
-	for _, entry := range m.workspace.documents {
-		tracks = append(tracks, describeTrack(entry))
-		for _, item := range entry.document.Items {
-			if item.Journey != nil {
-				journeys = append(journeys, m.journeyStatus(ItemRef{DocumentID: entry.id, ItemID: item.ID}, item.Journey))
+const controlPageSize = 20
+
+func controlText(value string, limit int) string {
+	value = clean(value)
+	if len(value) > limit {
+		return value[:limit] + "..."
+	}
+	return value
+}
+
+func (m *viewer) controlStatus(options ...controlArgs) map[string]any {
+	a := controlArgs{}
+	if len(options) > 0 {
+		a = options[0]
+	}
+	limit := controlPageSize
+	if a.Limit != nil {
+		limit = *a.Limit
+	}
+	tracks, journeys := []any{}, []any{}
+	start := min(a.Offset, len(m.workspace.documents))
+	end := min(start+limit, len(m.workspace.documents))
+	if !a.Summary {
+		for _, entry := range m.workspace.documents[start:end] {
+			items := []any{}
+			itemStart := min(a.ItemOffset, len(entry.document.Items))
+			itemEnd := min(itemStart+controlPageSize, len(entry.document.Items))
+			for _, item := range entry.document.Items[itemStart:itemEnd] {
+				ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
+				items = append(items, map[string]any{"item_id": item.ID, "ref": ref,
+					"name": controlText(item.Track.Name, 256), "kind": item.Kind,
+					"visible": !entry.hidden[item.ID], "point_count": len(item.Track.Points)})
+				if item.Journey != nil {
+					journeys = append(journeys, m.journeySummary(ref, item.Journey))
+				}
 			}
+			var nextItem any
+			if itemEnd < len(entry.document.Items) {
+				nextItem = itemEnd
+			}
+			tracks = append(tracks, map[string]any{
+				"document_id": entry.id, "name": controlText(entry.document.Name, 256),
+				"filename": controlText(entry.document.Filename, 256), "path": controlText(entry.document.Path, 4096),
+				"items": items, "item_count": len(entry.document.Items), "next_item_offset": nextItem,
+			})
 		}
+	}
+	var next any
+	if !a.Summary && end < len(m.workspace.documents) {
+		next = end
 	}
 	var active *ItemRef
 	if m.workspace.selection != nil {
@@ -372,7 +411,7 @@ func (m *viewer) controlStatus() map[string]any {
 		session = m.control.server.info
 	}
 	return map[string]any{"session": session, "generation": m.workspace.liveIdentity(), "revision": m.workspace.liveRevision,
-		"persistence_dirty_available": false, "tracks": tracks, "journeys": journeys, "active_item": active,
+		"persistence_dirty_available": false, "checkpoint": m.controlCheckpoint(), "tracks": tracks, "journeys": journeys, "document_count": len(m.workspace.documents), "next_offset": next, "active_item": active,
 		"camera": controlCamera(m.destination()), "camera_current": controlCamera(m.camera),
 		"camera_transition_id": m.motion.ID, "camera_animating": m.motion.Active, "camera_animation": !m.settings.NoAnimation,
 		"theme": m.controlThemeID(), "playback": playback}
@@ -388,6 +427,10 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 	var err error
 	var cmd tea.Cmd
 	switch r.Action {
+	case "workspace.open":
+		return m.beginControlWorkspaceOpen(r, a, op)
+	case "workspace.save":
+		return m.controlWorkspaceSave(r, a)
 	case "load":
 		if !filepath.IsAbs(a.Path) {
 			err = fmt.Errorf("path must be absolute")
@@ -403,7 +446,7 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		response.State, response.Message = "pending", "import queued; query operation status for completion"
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 		op.cancel = cancel
-		id, generation, path := r.ID, r.Generation, a.Path
+		id, path := r.ID, a.Path
 		cmd = func() tea.Msg {
 			defer cancel()
 			info, err := os.Stat(path)
@@ -417,7 +460,7 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 			if err == nil {
 				document, err = loadDocumentContext(ctx, path)
 			}
-			return controlLoaded{id: id, generation: generation, document: document, err: err}
+			return controlLoaded{id: id, document: document, err: err}
 		}
 	case "operation.cancel":
 		target := m.control.operations[a.OperationID]
@@ -655,7 +698,7 @@ func recoveryControl(action string) bool {
 
 // Camera transitions share a single viewer animation, not the worker budget.
 func (m *viewer) startsControlWork(action string, args controlArgs) bool {
-	if action == "load" {
+	if action == "load" || action == "workspace.open" {
 		return true
 	}
 	if !strings.HasPrefix(action, "journey.") || action == "journey.show" {

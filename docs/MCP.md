@@ -90,7 +90,7 @@ The viewer's startup account-usage check does not add a polling loop to MCP.
 Launch a viewer with `mapbox-tui --name main`. The default `mapbox-tui mcp`
 server exposes `viewer_sessions` to discover running viewers, plus typed
 `viewer_*` tools for camera, imports, visibility, playback and coordinate-based
-journey editing/routing. Supply the discovered UUID as `session_id` on each
+journey editing/routing, theme selection, and workspace save/open. Supply the discovered UUID as `session_id` on each
 viewer call. No configuration change is needed when viewers start or stop.
 
 Optionally use `mapbox-tui mcp --session main` to pin one connection to a UUID.

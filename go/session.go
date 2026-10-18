@@ -21,6 +21,7 @@ import (
 
 const controlVersion = 1
 const controlLimit = 64 << 10
+const controlResponseLimit = 4 << 20
 
 var sessionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{0,47}$`)
 var sessionIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -325,6 +326,9 @@ func (s *sessionServer) handle(conn net.Conn) {
 				"query the operation using request_id before retrying",
 			)
 			response.OutcomeKnown = false
+			if !controlRead(request.Action) {
+				response.OperationID = request.ID
+			}
 			select {
 			case s.inbox <- message:
 				select {
@@ -338,7 +342,17 @@ func (s *sessionServer) handle(conn net.Conn) {
 	response.SessionID = s.info.ID
 	response.RequestID = request.ID
 	// A disconnect is expected; the operation remains available in the viewer.
-	_ = json.NewEncoder(conn).Encode(response)
+	data := controlJSON(response)
+	if len(data)+1 > controlResponseLimit {
+		response.Result = nil
+		response.State = "failed"
+		response.Error = &controlError{Code: "response_too_large",
+			Message:  "response exceeds the transport limit",
+			Recovery: "use status summary=true or smaller pages; inspect operation and item IDs separately"}
+		response.Message = response.Error.Message
+		data = controlJSON(response)
+	}
+	_, _ = conn.Write(append(data, '\n'))
 }
 
 func resolveSession(target string) (sessionInfo, error) {
@@ -390,7 +404,7 @@ func sendControl(ctx context.Context, info sessionInfo, request controlRequest) 
 		return controlResponse{}, err
 	}
 	var response controlResponse
-	err = json.NewDecoder(io.LimitReader(conn, 4<<20)).Decode(&response)
+	err = json.NewDecoder(io.LimitReader(conn, controlResponseLimit)).Decode(&response)
 	if err != nil {
 		return controlResponse{}, fmt.Errorf("response unavailable; query operation %s before retrying: %w", request.ID, err)
 	}
@@ -398,4 +412,15 @@ func sendControl(ctx context.Context, info sessionInfo, request controlRequest) 
 		return controlResponse{}, fmt.Errorf("invalid session response identity")
 	}
 	return response, nil
+}
+
+func controlTransportFailure(previous controlResponse, err error, recovery string) controlResponse {
+	response := controlFailure("connection_failed", err.Error(), recovery)
+	response.OperationID, response.Changed = previous.OperationID, previous.Changed
+	response.OutcomeKnown = false
+	if typed, ok := err.(*controlError); ok {
+		response.Error = typed
+		response.OutcomeKnown = true
+	}
+	return response
 }

@@ -55,6 +55,7 @@ type journeyRoute struct {
 
 type journeyRouteRequest struct {
 	generation   string
+	preserveView bool
 	ctx          context.Context
 	ref          ItemRef
 	id, revision uint64
@@ -64,6 +65,7 @@ type journeyRouteRequest struct {
 
 type journeyRouteResult struct {
 	generation   string
+	preserveView bool
 	ref          ItemRef
 	id, revision uint64
 	route        *journeyRoute
@@ -151,6 +153,7 @@ func (w *Workspace) beginJourneyRoute(ctx context.Context, ref ItemRef) (journey
 	if err != nil {
 		return journeyRouteRequest{}, err
 	}
+	j.automaticRoutePending = false
 	j.cancelRoute()
 	locations, err := routingLocations(j.Stops, j.Mode)
 	if err != nil {
@@ -173,7 +176,8 @@ func (request journeyRouteRequest) run(client *directionsClient) journeyRouteRes
 	}
 	return journeyRouteResult{
 		ref: request.ref, id: request.id, revision: request.revision, route: route, err: err,
-		generation: request.generation,
+		generation:   request.generation,
+		preserveView: request.preserveView,
 	}
 }
 

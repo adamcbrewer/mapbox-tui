@@ -1,9 +1,26 @@
 {
   "status": {
-    "description": "Inspect live workspace, camera, selection, journeys and playback without changing the view.",
+    "description": "Inspect session essentials and paginated document/item summaries. Default 20 documents and 20 items per document. Use offset/limit for documents and item_offset for items; journey.inspect returns stop details. summary=true returns essentials only.",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "item_offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "summary": {
+          "type": "boolean"
+        }
+      },
       "required": [],
       "additionalProperties": false
     }
@@ -885,6 +902,44 @@
         "ref",
         "speed"
       ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.open": {
+    "description": "Open a saved workspace JSON path using the shared loader. Explicit discard=true is required. Pending preparation rejects intervening edits; partial restoration reports unresolved imports without a dialog.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discard": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "discard"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "workspace.save": {
+    "description": "Save the active workspace through the shared atomic revision check. name defaults to the active checkpoint name. save_as=true creates a new identity; conflicts preserve the working copy.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "save_as": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
       "additionalProperties": false
     }
   }

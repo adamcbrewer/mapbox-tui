@@ -15,10 +15,16 @@ func (m *viewer) journeyStatus(ref ItemRef, j *Journey) map[string]any {
 		value := map[string]any{"stop_id": stop.ID, "location": nil}
 		if l := stop.Location; l != nil {
 			value["location"] = map[string]any{
-				"lat": l.Lat, "lon": l.Lon, "name": l.Name, "source": l.Source, "attribution": l.Attribution}
+				"lat": l.Lat, "lon": l.Lon, "name": controlText(l.Name, 256), "source": l.Source, "attribution": controlText(l.Attribution, 512)}
 		}
 		stops = append(stops, value)
 	}
+	result := m.journeySummary(ref, j)
+	result["stops"] = stops
+	return result
+}
+
+func (m *viewer) journeySummary(ref ItemRef, j *Journey) map[string]any {
 	mode := string(j.Mode)
 	if mode == "" {
 		mode = "offline"
@@ -36,8 +42,8 @@ func (m *viewer) journeyStatus(ref ItemRef, j *Journey) map[string]any {
 	case j.Route != nil:
 		state = "stale"
 	}
-	result := map[string]any{"ref": ref, "revision": j.revision, "stops": stops, "mode": mode,
-		"route_state": state, "error": j.Error, "geometry": "straight_line_preview"}
+	result := map[string]any{"ref": ref, "revision": j.revision, "stop_count": len(j.Stops), "mode": mode,
+		"route_state": state, "error": controlText(j.Error, 512), "geometry": "straight_line_preview"}
 	if state == "ready" {
 		result["geometry"] = "road_route"
 		result["distance_m"], result["duration_s"] = j.Route.Distance, j.Route.Duration

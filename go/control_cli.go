@@ -77,6 +77,13 @@ func parseControlCLI(argv []string, output io.Writer) (cliCommand, error) {
 	var ref, raw, start, end string
 	var waypoints []string
 	a := controlArgs{}
+	fs.StringVar(&a.Name, "name", "", "saved workspace name")
+	fs.BoolVar(&a.SaveAs, "save-as", false, "save a new checkpoint identity")
+	var limit int
+	fs.IntVar(&a.Offset, "offset", 0, "status document offset")
+	fs.IntVar(&a.ItemOffset, "item-offset", 0, "status item offset within each document")
+	fs.IntVar(&limit, "limit", 20, "status page size (1..20 documents)")
+	fs.BoolVar(&a.Summary, "summary", false, "status essentials only")
 	var lat, lon, zoom, bearing float64
 	var visible, animate, enabled bool
 	fs.StringVar(&a.Theme, "theme", "", "theme ID from theme list")
@@ -209,7 +216,7 @@ func parseControlCLI(argv []string, output io.Writer) (cliCommand, error) {
        mapbox-tui remote --session UUID_OR_NAME ACTION [OPTIONS]
 
 Actions: status, capabilities, operation status/cancel ID, load FILE,
-select, visibility, remove, workspace clear, camera set/pan/fit,
+select, visibility, remove, workspace open/save/clear, camera set/pan/fit,
 theme list/set, camera animation, playback play/pause/seek/speed, journey create/inspect/reverse/mode/stops/calculate/show,
 journey stop add/set/remove/move.
 
@@ -256,6 +263,10 @@ routing too. Use capabilities --json for exact action schemas.
 	}
 	action := strings.Join(words, ".")
 	switch {
+	case len(words) == 3 && words[0] == "workspace" && words[1] == "open":
+		a.Path = words[2]
+		action = "workspace.open"
+		options.Wait = true
 	case words[0] == "load" && len(words) == 2:
 		a.Path = words[1]
 		action = "load"
@@ -264,7 +275,7 @@ routing too. Use capabilities --json for exact action schemas.
 		a.OperationID = words[2]
 		action = "operation." + words[1]
 	}
-	if action == "load" {
+	if action == "load" || action == "workspace.open" {
 		options.Wait = true
 	}
 	if waitVisual {
@@ -324,6 +335,9 @@ routing too. Use capabilities --json for exact action schemas.
 		case "bearing":
 			a.Bearing = &bearing
 			supplied["bearing"] = true
+		case "limit":
+			a.Limit = &limit
+			supplied["limit"] = true
 		case "animate":
 			a.Animate = &animate
 			supplied["animate"] = true
@@ -366,6 +380,7 @@ routing too. Use capabilities --json for exact action schemas.
 			"zoom": a.Zoom, "bearing": a.Bearing, "dx": a.DX, "dy": a.DY, "point_index": a.PointIndex,
 			"stops": a.Stops, "mode": a.Mode, "stop_id": a.StopID, "after": a.After, "direction": a.Direction,
 			"operation_id": a.OperationID, "discard": a.Discard,
+			"name": a.Name, "save_as": a.SaveAs, "offset": a.Offset, "item_offset": a.ItemOffset, "limit": a.Limit, "summary": a.Summary,
 			"theme": a.Theme, "speed": a.Speed, "animate": a.Animate, "enabled": a.Enabled}
 		fields = make(map[string]json.RawMessage)
 		for key := range supplied {
@@ -399,7 +414,7 @@ func listLiveSessions(ctx context.Context) ([]sessionInfo, error) {
 		return nil, err
 	}
 	for i, info := range records {
-		response, err := sendControl(ctx, info, controlRequest{Action: "status"})
+		response, err := sendControl(ctx, info, controlRequest{Action: "status", Args: controlJSON(map[string]any{"summary": true})})
 		if err == nil && response.Error == nil {
 			records[i].Status = response.Result
 		}
@@ -430,19 +445,8 @@ func runRemote(ctx context.Context, c cliCommand, out io.Writer) error {
 		response, err = callRemote(ctx, info, options.Request, options.Wait, true)
 	}
 	if err != nil {
-		previous := response
-		response = controlFailure(
-			"connection_failed",
-			err.Error(),
-			"list sessions; inspect the operation before retrying a mutation",
-		)
-		response.OperationID = previous.OperationID
-		response.Changed = previous.Changed
-		response.OutcomeKnown = false
-		if typed, ok := err.(*controlError); ok {
-			response.Error = typed
-			response.OutcomeKnown = true
-		}
+		response = controlTransportFailure(response, err,
+			"list sessions; inspect the operation before retrying a mutation")
 		response.RequestID, response.SessionID = options.Request.ID, info.ID
 	}
 	if c.JSON {
@@ -465,7 +469,7 @@ func runRemote(ctx context.Context, c cliCommand, out io.Writer) error {
 	if response.Error != nil {
 		code := 2
 		switch response.Error.Code {
-		case "revision_conflict", "workspace_changed", "request_id_conflict":
+		case "revision_conflict", "workspace_revision_conflict", "workspace_changed", "request_id_conflict":
 			code = 3
 		case "session_not_found", "session_disconnected", "routing_unavailable":
 			code = 4
@@ -487,7 +491,7 @@ func callRemote(
 		request.ID = newSessionID()
 	}
 	if autoGuard && !controlRead(request.Action) && (request.Generation == "" || request.Revision == nil) {
-		status, err := sendControl(ctx, info, controlRequest{Action: "status"})
+		status, err := sendControl(ctx, info, controlRequest{Action: "status", Args: controlJSON(map[string]any{"summary": true})})
 		if err != nil {
 			return controlResponse{}, err
 		}

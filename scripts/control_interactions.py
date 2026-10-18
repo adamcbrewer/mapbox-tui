@@ -120,7 +120,8 @@ def main():
                     "request_id": "reverse-once", "generation": status["generation"],
                     "expected_revision": status["revision"], "args": {"ref": journey}})
                 assert result["result"]["structuredContent"] == duplicate["result"]["structuredContent"]
-                observed = remote(env, identity, "status")["result"]["journeys"][0]
+                observed = remote(env, identity, "journey", "inspect", "--journey",
+                                  f'{journey["document_id"]}:{journey["item_id"]}')["result"]
                 assert observed["stops"][0]["location"]["lat"] == 51.6, observed
                 remote(env, identity, "journey", "show", "--journey",
                        f'{journey["document_id"]}:{journey["item_id"]}')
@@ -137,6 +138,17 @@ def main():
                     for result in pool.map(load, ["fixtures/waypoints.gpx", "fixtures/country-ride.gpx"]):
                         response = json.loads(result.stdout)
                         assert response["state"] == "applied" or response["error"]["code"] == "revision_conflict", response
+                # CLI save and MCP open share the viewer's checkpoint model.
+                saved = remote(env, identity, "workspace", "save", "--name", "Agent tour")["result"]
+                current = remote(env, identity, "status")
+                opened = mcp.call("viewer_workspace_open", {
+                    "args": {"path": saved["path"], "discard": True}, "wait": True,
+                    "request_id": "open-saved-tour", "generation": current["generation"],
+                    "expected_revision": current["revision"]})["result"]["structuredContent"]
+                assert opened["state"] == "applied", opened
+                assert opened["session_id"] == identity, opened
+                assert opened["generation"] != current["generation"], opened
+                assert opened["result"]["checkpoint"]["id"] == saved["id"], opened
                 # Kill the process, reclaim its endpoint, and reuse its name.
                 pid = int(tmux("display-message", "-p", "-t", "main", "#{pane_pid}").strip())
                 os.kill(pid, 9)

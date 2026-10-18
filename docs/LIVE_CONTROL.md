@@ -28,11 +28,10 @@ A session is not a saved workspace. It owns one live working copy. Clearing that
 copy changes its generation, while the session UUID stays the same. Session
 names don't create saved files, and there is no saved-session history.
 
-Workspace saving/reopening belongs to #79; startup recovery and draft ownership
-belong to #80. Those features aren't present on this branch's base. This release
-reports `persistence_available: false` and does not advertise save/open tools or
-implement a second persistence format. Ordinary CLI rendering and standalone MCP
-continue to use independent workspaces.
+Workspace save/open uses the shared saved-workspace model and atomic checkpoint
+store from #79. Sessions can open the same checkpoint; stale saves fail without
+replacing either working copy. Startup recovery and draft ownership belong to #80.
+Ordinary CLI rendering and standalone MCP use independent workspaces.
 
 ## CLI actions
 
@@ -74,6 +73,28 @@ For visibility and removal only, item ID 0 targets a whole document. Reopening a
 loaded path reuses the existing document, restores visibility and selects it.
 Failed imports preserve the current workspace. Playback targets a specific
 recording, selecting it first. Planned journeys have no recorded playback.
+
+## Status and saved workspaces
+
+Status returns at most 20 documents and 20 items per document. Follow `next_offset`
+with `--offset`, and `next_item_offset` with `--item-offset`; `--limit` accepts 1–20.
+Names and descriptive text are bounded. Journey summaries omit stops; use
+`journey inspect` for stop details. `status --summary` returns session, camera,
+playback and checkpoint metadata without document lists.
+
+```sh
+mapbox-tui remote --session main workspace save --name "London tour" --json
+mapbox-tui remote --session main workspace save --json
+mapbox-tui remote --session main workspace save --name "London variant" --save-as --json
+mapbox-tui remote --session main workspace open /path/from/save.json --discard --json
+```
+
+Save returns the checkpoint path. Open waits for completion by default and requires
+`--discard` because it replaces the live working copy. Missing imports remain
+available for repair in the viewer. Save conflicts return
+`workspace_revision_conflict` (CLI exit 3); reload or use Save As. MCP exposes
+`viewer_workspace_save` and `viewer_workspace_open` with the same arguments and
+mutation preconditions. These use the viewer's shared persistence APIs.
 
 ## Journey control
 
@@ -134,9 +155,9 @@ for an agent acting on an earlier observation, supply that observation's values.
 MCP requires explicit preconditions. Stale requests fail without applying changes.
 
 Live revision counts edits for concurrency control, including presentation and
-playback edits. It is not a saved-workspace dirty flag. Until #79 supplies its
-shared persistence model, status reports `persistence_dirty_available: false`
-and omits `unsaved_changes`.
+playback edits. It is not a saved-workspace dirty flag. The shared model does not yet expose
+persistence dirtiness, so status reports `persistence_dirty_available: false`
+and omits `unsaved_changes`. Checkpoint metadata has its own saved revision.
 
 The live revision is monotonic and may advance more than once per command. It is
 not a saved checkpoint revision or a playback-frame counter.
@@ -286,16 +307,15 @@ missing endpoints after a crash. This is local same-user control, not a remote
 network server or a boundary between agents running as the same OS user.
 
 The wire protocol is one newline-delimited JSON request/response per connection,
-version 1. Requests are bounded to 64 KiB; clients bound responses to 4 MiB.
+version 1. Requests are bounded to 64 KiB; responses are bounded to 4 MiB. Oversized results return a structured
+`response_too_large` error; check `changed` and the operation ID before retrying.
 Socket handlers are bounded to 32 concurrent connections and use deadlines.
 Parsing and provider work run outside the update loop; only typed results and
 requests enter it. Responses are serialised snapshots, never shared model pointers.
 
-When integrating #79, keep the saved checkpoint ID/base revision alongside the
-live working copy. Checkpoint saving must check and replace under one storage
-lock. Another session's successful save causes a stale-save conflict, preserving
-the losing session's work for reload or Save As. A saved checkpoint needn't stay
-locked while open. Recovery-draft ownership remains exclusive under #80.
-Replacing a working copy must create a fresh live generation and invalidate old
-imports/routes/saves. Advertise workspace persistence tools only once those
-shared operations are available; don't create a second store in the transport.
+The saved checkpoint ID/base revision lives alongside the working copy. Saving
+checks and replaces under one storage lock. Another session's successful save
+causes a stale-save conflict, preserving the losing session's work for reload or
+Save As. Checkpoints remain unlocked while open. Recovery-draft ownership remains
+exclusive under #80. Opening creates a fresh live generation and invalidates old
+work; edits made while the file loads supersede the open operation.

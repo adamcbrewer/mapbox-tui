@@ -9,6 +9,7 @@ import (
 
 type Document struct {
 	Path, Filename, Format, Name string
+	Fingerprint                  string
 	Items                        []*DocumentItem
 	Bounds                       [4]float64
 	nextID                       int
