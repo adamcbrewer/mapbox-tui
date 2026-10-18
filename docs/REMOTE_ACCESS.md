@@ -1,4 +1,4 @@
-# Control a running viewer
+# Remote access
 
 Start the map in one terminal:
 

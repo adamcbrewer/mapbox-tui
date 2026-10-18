@@ -64,7 +64,7 @@ Custom palettes join the built-ins for that session. We read them once at startu
 with a 64 KiB limit. To bundle one, put its TOML file in `go/themes/` and rebuild.
 The embed pattern picks it up; `make dev` watches that directory.
 
-## Live control
+## Remote access
 
 List and set palettes in a running viewer:
 
@@ -74,7 +74,7 @@ mapbox-tui remote --session main theme set --theme nord
 ```
 
 MCP uses `viewer_theme_list` and `viewer_theme_set`. These commands change the
-session theme without saving a preference. See [live control](LIVE_CONTROL.md).
+session theme without saving a preference. See [remote access](REMOTE_ACCESS.md).
 
 ## File format
 

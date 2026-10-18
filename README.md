@@ -42,7 +42,7 @@ switching, journey planning and copying a command to reopen the journey.
 - **Remote control through CLI and MCP.** Let an agent control a running map:
   move the camera, edit journeys, manage imports, set playback speed and themes,
   or save and open workspaces. Discover viewers by session name or UUID.
-  See [live control](docs/LIVE_CONTROL.md).
+  See [remote access](docs/REMOTE_ACCESS.md).
 - **Offline file support.** Import GPX, FIT, TCX and KML files, view elevation and
   replay recordings without an account. Connected features include Mapbox
   basemaps, search, road routing and an optional traffic overlay in the viewer.
@@ -127,7 +127,7 @@ To control a running map, start `mapbox-tui --name main`. Use
 an MCP agent to find `main` with `viewer_sessions` and use its UUID with the
 `viewer_*` tools. Standalone MCP tools keep a separate workspace.
 
-See [live control](docs/LIVE_CONTROL.md) for commands and agent setup.
+See [remote access](docs/REMOTE_ACCESS.md) for commands and agent setup.
 Place-name lookup and screenshots still need terminal control.
 
 See [MCP notes](docs/MCP.md) for workspace rendering and measurement details.

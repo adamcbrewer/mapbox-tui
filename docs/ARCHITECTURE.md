@@ -77,7 +77,7 @@ The shared model doesn't yet report unsaved changes.
 
 Cancel/clear commands have reserved capacity when ordinary work is full. Camera
 transitions have IDs and report completion, cancellation or supersession through
-operations. See [live control](LIVE_CONTROL.md) for limits and protocol details.
+operations. See [remote access](REMOTE_ACCESS.md) for limits and protocol details.
 
 ### Imports and workspace
 

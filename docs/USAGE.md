@@ -427,4 +427,4 @@ mapbox-tui remote --session main status --json
 Every live session has a UUID; names are optional aliases. Use `--no-control`
 to disable discovery and control. MCP agents discover sessions with
 `viewer_sessions` and pass a UUID as `session_id` to viewer tools.
-See [live control](LIVE_CONTROL.md) for CLI commands, MCP setup and retry rules.
+See [remote access](REMOTE_ACCESS.md) for CLI commands, MCP setup and retry rules.

@@ -97,6 +97,6 @@ workspace save/open. Standalone tools keep their own workspace. To pin one viewe
 configure `mapbox-tui mcp --session main`; the connection keeps that UUID even if
 another viewer reuses the name.
 
-See [live control](LIVE_CONTROL.md) for setup, examples and operation results,
+See [remote access](REMOTE_ACCESS.md) for setup, examples and operation results,
 and [action schemas](../shared/control_tools.json) for arguments. Place-name
 search and screenshots still need terminal control.
