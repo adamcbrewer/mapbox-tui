@@ -87,19 +87,16 @@ The viewer's startup account-usage check does not add a polling loop to MCP.
 
 ## Control a live viewer
 
-Launch a viewer with `mapbox-tui --name main`. The default `mapbox-tui mcp`
-server exposes `viewer_sessions` to discover running viewers, plus typed
-`viewer_*` tools for camera, imports, visibility, playback and coordinate-based
-journey editing/routing, theme selection, and workspace save/open. Supply the discovered UUID as `session_id` on each
-viewer call. No configuration change is needed when viewers start or stop.
+Configure your MCP client to launch `mapbox-tui mcp`. Start a viewer separately
+with `mapbox-tui --name main`. Call `viewer_sessions`, find `main`, then pass its
+UUID as `session_id` to `viewer_*` tools. One MCP connection can control several
+viewers without changing configuration.
 
-Optionally use `mapbox-tui mcp --session main` to pin one connection to a UUID.
-Viewer tools use the live viewer's workspace and settings. The existing
-standalone tools retain their separate workspace.
+Viewer tools control camera, imports, visibility, playback, themes, journeys and
+workspace save/open. Standalone tools keep their own workspace. To pin one viewer,
+configure `mapbox-tui mcp --session main`; the connection keeps that UUID even if
+another viewer reuses the name.
 
-See [live control](LIVE_CONTROL.md) for session discovery, tool arguments,
-preconditions, operation completion and errors. Attached schemas live in
-[shared/control_tools.json](../shared/control_tools.json).
-
-Place-name search and screenshots still need terminal control. MCP results report
-structured state and routing outcomes; they don't capture the viewer screen.
+See [live control](LIVE_CONTROL.md) for setup, examples and operation results,
+and [action schemas](../shared/control_tools.json) for arguments. Place-name
+search and screenshots still need terminal control.

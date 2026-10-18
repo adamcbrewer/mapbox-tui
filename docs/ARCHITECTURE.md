@@ -52,20 +52,32 @@ and `last_view` with `zoom`, `lat`, `long`. These replace `mapbox_billing_accept
 inverted `no_animation`, and `center_lat`/`center_lon`. Explicit new keys win,
 including zero and false. Reading alone doesn't migrate the file.
 
-By default, each front end has its own workspace session. The viewer keeps a workspace while it's open,
-multi-file CLI rendering creates a temporary one, and MCP keeps one for the
-server process. Single-file CLI/MCP snapshots use the same renderer without
-needing a workspace.
+The viewer owns its workspace. Multi-file CLI rendering creates a temporary
+workspace; standalone MCP keeps one for the server process. Single-file CLI/MCP
+snapshots use the shared renderer without a workspace.
 
-Attached CLI/MCP clients can instead control a running viewer through its local
-UUID session. Socket workers deliver typed requests into the viewer update loop;
-imports and routing return typed asynchronous results. Shared model mutations
-advance a live revision, while replacing/clearing the working copy changes its
-generation. These are separate from saved checkpoint revisions. The transport
-never shares the standalone Service mutex with the viewer. See
-[live control](LIVE_CONTROL.md) for the protocol and #79/#80 integration boundary.
+CLI and MCP can also target a viewer's UUID session. Socket workers send typed
+requests to its update loop; imports and routing return asynchronous results.
+The loop serialises human and agent edits. The standalone MCP `Service` mutex
+only protects that server's workspace.
 
 ![Local imports and optional Mapbox data feed the shared renderer. The viewer adds styling; CLI/MCP use plain text, with scene metadata in CLI JSON and MCP responses.](images/shared-rendering.svg)
+
+### Shared live commands
+
+Content insertion and selection are separate. Creating a journey leaves the
+active recording alone. Human and agent playback commands use the same workspace
+setters and revision tracking. Animation uses a shared viewer setter; only UI
+changes save the preference.
+
+CLI and MCP validate arguments against the same embedded JSON schemas. Edits
+advance the live revision; replacing or clearing the working copy changes its
+generation. Saved checkpoints have separate revisions for storage conflicts.
+The shared model doesn't yet report unsaved changes.
+
+Cancel/clear commands have reserved capacity when ordinary work is full. Camera
+transitions have IDs and report completion, cancellation or supersession through
+operations. See [live control](LIVE_CONTROL.md) for limits and protocol details.
 
 ### Imports and workspace
 
@@ -359,18 +371,3 @@ history. We don't have a baseline for claiming Rust is faster here. If results
 turn up, record the prototype/revision and setup above. Compare directly only
 where workload, pipeline, build optimisation, hardware and sampling match;
 otherwise keep them as separate historical observations.
-
-
-### Shared live commands
-
-The viewer update loop owns agent commands and human input. Workspace content
-insertion is separate from activation: creating a journey does not need to
-temporarily replace the active recording. UI and agent playback commands share
-the same workspace setters and revision tracking; camera animation settings
-share a viewer setter while preference persistence remains a UI choice.
-
-CLI and MCP validate action arguments against the same embedded JSON schemas.
-Live concurrency revisions are separate from persistence dirtiness, which will
-come from the saved-workspace model. Bounded recovery capacity keeps cancellation
-available when ordinary work saturates. Camera transitions carry identities and
-use the operation lifecycle for settled, cancelled and superseded outcomes.

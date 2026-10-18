@@ -337,15 +337,6 @@ These are interactive viewer options; offline geometry works locally, while rout
 modes use your normal Mapbox connection. Named-place search remains available
 inside the planner; startup arguments accept resolved coordinates.
 
-## Live viewer control
-
-Start `mapbox-tui --name main`, discover it with `mapbox-tui session list --json`,
-and control it with `mapbox-tui remote --session main ...` or
-the default `mapbox-tui mcp` server: call `viewer_sessions`, then pass the
-discovered UUID as `session_id` to viewer tools. Optionally pin an MCP connection
-with `mcp --session main`. UUIDs identify ephemeral sessions; names are
-optional aliases. Use `--no-control` to opt out. See [live control](LIVE_CONTROL.md)
-for camera, import, playback and journey commands, operation results and retries.
 CLI journeys in Driving, Cycling or Walking mode calculate automatically once
 Mapbox is available, even if you switch the planner to another journey while
 connecting. Offline mode keeps straight lines; failed requests wait for an explicit retry.
@@ -422,3 +413,18 @@ checkpoint is not silently recreated. Unsupported formats, oversized files and
 failed writes leave existing saves intact. Clearing the working workspace or
 `--reset-view` does not delete checkpoints, preferences or favourites. Automatic
 recovery and a searchable save library are separate features.
+
+## Live viewer control
+
+Start a named viewer, then run control commands from another terminal:
+
+```sh
+mapbox-tui --name main
+mapbox-tui session list --json
+mapbox-tui remote --session main status --json
+```
+
+Every live session has a UUID; names are optional aliases. Use `--no-control`
+to disable discovery and control. MCP agents discover sessions with
+`viewer_sessions` and pass a UUID as `session_id` to viewer tools.
+See [live control](LIVE_CONTROL.md) for CLI commands, MCP setup and retry rules.

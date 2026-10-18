@@ -1,63 +1,63 @@
 # Control a running viewer
 
-Each running viewer exposes a local control session by default. CLI commands and
-attached MCP tools operate on that viewer's workspace, through the same handlers.
-No keyboard automation is needed. Control currently supports Unix local sockets.
-Use `--no-control` to disable discovery and control for a viewer.
-
-## Session identity
+Start the map in one terminal:
 
 ```sh
 mapbox-tui --name main
-mapbox-tui session list --json
-mapbox-tui session inspect main --json
-mapbox-tui remote --session main status --json
 ```
 
-Every session gets a UUID, including named sessions. A name is an optional alias,
-unique among live sessions for the current user. Names start with an ASCII letter
-and contain up to 48 letters, digits, hyphens or underscores. UUID-shaped names
-are reserved. Use the full UUID when an agent needs an unambiguous target.
-
-A bare viewer launch also creates a discoverable session. Its name or shortened
-UUID appears in the status line. Closing the viewer ends the session. Clients
-never start a replacement viewer when their target disappears. Attached MCP pins
-the resolved UUID for its lifetime, even if another viewer later reuses the name.
-
-A session is not a saved workspace. It owns one live working copy. Clearing that
-copy changes its generation, while the session UUID stays the same. Session
-names don't create saved files, and there is no saved-session history.
-
-Workspace save/open uses the shared saved-workspace model and atomic checkpoint
-store from #79. Sessions can open the same checkpoint; stale saves fail without
-replacing either working copy. Startup recovery and draft ownership belong to #80.
-Ordinary CLI rendering and standalone MCP use independent workspaces.
-
-## CLI actions
-
-Options can precede or follow the action. `--session` accepts a UUID or live name.
-Use `--json` for structured responses; `capabilities` returns the action schemas.
+Control it from another:
 
 ```sh
-mapbox-tui remote --session main capabilities --json
+mapbox-tui session list --json
+mapbox-tui remote --session main status --json
+mapbox-tui remote --session main camera set --lat 51.53 --lon -0.12 --zoom 13
+```
+
+CLI and MCP use the same viewer commands. Local control uses Unix sockets and
+starts with every viewer. Launch with `--no-control` to disable it.
+
+## Sessions
+
+Every session has a UUID and an optional name. Names are unique among the current
+user's live sessions. They start with an ASCII letter and contain up to 48 letters,
+digits, hyphens or underscores. UUID-shaped names are reserved.
+
+Use `session inspect main --json` to inspect a session. CLI `--session` accepts
+its name or full UUID. MCP uses UUIDs. The viewer shows its name or shortened UUID
+in the status line.
+
+Closing the viewer ends its session. Clients report a missing target rather than
+start another viewer. A pinned MCP connection keeps the original UUID even if a
+new viewer reuses the name.
+
+Each session owns a working copy. Opening or clearing a workspace changes that
+copy's generation but keeps the session UUID. Session names don't save files;
+there is no session history to resume. Saved workspaces use #79's shared store.
+Recovery drafts belong to #80. Ordinary CLI rendering and standalone MCP keep
+separate workspaces.
+
+## Imports and camera
+
+Options can go before or after the action. Use `--json` for structured output
+and `capabilities --json` for the action schemas.
+
+```sh
 mapbox-tui remote --session main load fixtures/example.gpx --json
 mapbox-tui remote --session main camera fit
-mapbox-tui remote --session main camera set --lat 51.53 --lon -0.12 --zoom 13
 mapbox-tui remote --session main camera set --bearing 45
 mapbox-tui remote --session main camera pan --dx 5 --dy 0
 ```
 
-Camera commands set a destination and follow the viewer animation setting
-unless overridden with `--animate=true/false`. Pan values describe dragging the map in
-terminal cells: positive dx drags right; positive dy drags down. Centre latitude
-must fit the Mercator range, approximately -85.0511 to 85.0511. Zoom is absolute,
-from -8 to 20. `camera fit` fits all visible geometry.
+`camera fit` fits visible geometry. Pan values drag the map in terminal cells:
+positive dx moves right; positive dy moves down. Latitude must stay within the
+Mercator range, about -85.0511 to 85.0511. Absolute zoom accepts -8 to 20.
 
-Imports return `ref` with `document_id` and `item_id`. The CLI spelling is
-`DOCUMENT_ID:ITEM_ID`; discover current IDs with `status`. IDs belong to the live
-working copy. Relative import paths are resolved in the sending CLI's directory.
-CLI loads wait for completion by default, including `--path` and JSON arguments.
-Remote imports accept regular files up to 128 MiB.
+Imports return a `ref` with `document_id` and `item_id`. CLI commands use
+`DOCUMENT_ID:ITEM_ID`. Read IDs from `status`; the IDs below are examples.
+Relative paths resolve from the sending CLI's directory. Imports accept regular
+files up to 128 MiB and wait for completion by default, including `--path` and
+JSON arguments.
 
 ```sh
 mapbox-tui remote --session main select --ref 1:1
@@ -69,38 +69,46 @@ mapbox-tui remote --session main playback seek --ref 1:1 --point-index 10
 mapbox-tui remote --session main remove --ref 1:1
 ```
 
-For visibility and removal only, item ID 0 targets a whole document. Reopening a
-loaded path reuses the existing document, restores visibility and selects it.
-Failed imports preserve the current workspace. Playback targets a specific
-recording, selecting it first. Planned journeys have no recorded playback.
+Item ID 0 targets a whole document for visibility and removal only. Reopening a
+loaded path reuses, reveals and selects its document without rereading it.
+Failed imports preserve the workspace. Playback selects the requested recording;
+planned journeys have no recorded playback.
 
 ## Status and saved workspaces
 
-Status returns at most 20 documents and 20 items per document. Follow `next_offset`
-with `--offset`, and `next_item_offset` with `--item-offset`; `--limit` accepts 1–20.
-Names and descriptive text are bounded. Journey summaries omit stops; use
-`journey inspect` for stop details. `status --summary` returns session, camera,
-playback and checkpoint metadata without document lists.
+Status returns up to 20 documents and 20 items per document. Pass `next_offset`
+as `--offset`, and `next_item_offset` as `--item-offset`. `--limit` accepts 1 to 20.
+Names and descriptions are truncated to bounded lengths. Use `journey inspect`
+for stops. Use `status --summary` for session, camera, playback and checkpoint
+metadata without document lists.
 
 ```sh
 mapbox-tui remote --session main workspace save --name "London tour" --json
 mapbox-tui remote --session main workspace save --json
 mapbox-tui remote --session main workspace save --name "London variant" --save-as --json
 mapbox-tui remote --session main workspace open /path/from/save.json --discard --json
+mapbox-tui remote --session main workspace clear --discard
 ```
 
-Save returns the checkpoint path. Open waits for completion by default and requires
-`--discard` because it replaces the live working copy. Missing imports remain
-available for repair in the viewer. Save conflicts return
-`workspace_revision_conflict` (CLI exit 3); reload or use Save As. MCP exposes
-`viewer_workspace_save` and `viewer_workspace_open` with the same arguments and
-mutation preconditions. These use the viewer's shared persistence APIs.
+Save returns the checkpoint path. Open waits for completion and requires
+`--discard` to replace the working copy. Missing imports remain available for
+repair in the viewer. Clear invalidates pending work and leaves saved checkpoints
+and source files intact.
 
-## Journey control
+Sessions can open the same checkpoint. Saving checks its revision and replaces
+it under one storage lock. A stale save returns `workspace_revision_conflict`,
+with CLI exit 3, and preserves both working copies. Reload or use Save As.
+Checkpoints stay unlocked while open. Edits made during an open operation
+supersede it.
 
-Create with coordinates, or use the `stops` array through `--args` or MCP. Returned
-journey references use the same document/item pair as imports. Stops have stable
-IDs within a journey; these are different from indices in provider geometry.
+MCP exposes `viewer_workspace_save` and `viewer_workspace_open` through the same
+shared persistence APIs.
+
+## Journeys
+
+Create a journey with coordinates or a `stops` array through `--args` or MCP.
+Use the returned document/item reference in later commands. Stop IDs are stable
+within a journey and separate from provider geometry indices.
 
 ```sh
 mapbox-tui remote --session main journey create \
@@ -116,51 +124,76 @@ mapbox-tui remote --session main journey stop remove --journey 2:1 --stop-id 3
 mapbox-tui remote --session main journey show --journey 2:1
 ```
 
-Use returned IDs instead of assuming the example's IDs. `journey stop move` takes
-`--stop-id` and `--direction -1` or `1`, moving an intermediate waypoint without
-crossing endpoints. Removing an endpoint clears its location, retaining the
-incomplete draft. `journey stops` replaces the ordered stops with fresh stop IDs:
+`journey stop move --stop-id ID --direction -1` or `1` moves a waypoint without
+crossing endpoints. Removing an endpoint clears its location but keeps the draft.
+`journey stops` replaces all stops and assigns fresh IDs:
 
 ```sh
 mapbox-tui remote --session main journey stops --args \
   '{"ref":{"document_id":2,"item_id":1},"stops":[{"lat":51.5,"lon":-0.1},{"lat":51.6,"lon":-0.2}]}'
 ```
 
-Supported modes are `offline`, `walking`, `cycling` and `driving`. Complete edits
-in routed modes recalculate asynchronously. `journey calculate` explicitly retries
-routing. Route status distinguishes `offline`, `unresolved`, `pending`, `ready`,
-`failed` and `stale`. Distance/duration estimates appear only for a ready road
-route, with its revision and attribution. Offline geometry is a straight-line
-preview, not a road route. A failure can retain edited stops while reporting that
-routing failed; check `changed` and `error` rather than assuming rollback.
+Modes are `offline`, `walking`, `cycling` and `driving`. Routed edits recalculate
+asynchronously once the stops are complete. Use `journey calculate` to retry.
+Route states are `offline`, `unresolved`, `pending`, `ready`, `failed` and `stale`.
+Only ready road routes include distance/duration estimates, revision and
+attribution. Offline mode draws straight lines. Routing failure can leave stop
+edits applied; check `changed` and `error`.
 
-Creating, editing or inspecting a journey doesn't move the camera or select it.
-`journey show` explicitly selects, reveals and fits its current geometry. Provider
-requests use the viewer's credentials and online/billing settings. Control never
-acknowledges billing or overrides offline mode. Coordinates and local imports
-remain usable offline. Place-name lookup is not included in this interface yet.
+Creating, editing and inspecting journeys leave selection and camera unchanged.
+`journey show` selects, reveals and fits the journey. Requests use the viewer's
+credentials, offline setting and billing acknowledgement. Control cannot change
+billing consent or override offline mode. Coordinates and imports work offline;
+place-name lookup isn't available through these commands.
 
-## Preconditions, operations and retries
+## Theme, speed and animation
 
-Each response includes `session_id`, `request_id`, `generation`, live `revision`,
-`state`, `changed`, `outcome_known`, a message and, where applicable, `result` or a structured
-`error`. Mutation responses also include `operation_id`, equal to their request
-ID. Errors contain `code`, `message` and `recovery`. JSON never contains terminal
-styling. States are `applied`, `pending`, `failed`, `cancelled` or `superseded`.
+These changes affect the session without saving global preferences:
 
-Mutations require the generation and expected live revision. CLI commands read
-status immediately before sending unless you provide `--generation` and
-`--expected-revision`. This catches changes between that read and application;
-for an agent acting on an earlier observation, supply that observation's values.
-MCP requires explicit preconditions. Stale requests fail without applying changes.
+```sh
+mapbox-tui remote --session main theme list --json
+mapbox-tui remote --session main theme set --theme nord
+mapbox-tui remote --session main playback speed --ref 1:1 --speed 20
+mapbox-tui remote --session main camera animation --enabled=true
+mapbox-tui remote --session main camera set --lat 51.5308 --lon -0.1238 --zoom 14 --animate --wait-visual
+mapbox-tui remote --session main camera fit --animate=false
+```
 
-Live revision counts edits for concurrency control, including presentation and
-playback edits. It is not a saved-workspace dirty flag. The shared model does not yet expose
-persistence dirtiness, so status reports `persistence_dirty_available: false`
-and omits `unsaved_changes`. Checkpoint metadata has its own saved revision.
+Use a theme ID from `theme list`, including custom palettes loaded at startup.
+Playback speeds are 1, 5, 20, 60 and 120. Setting speed selects the recording and
+preserves its playing/paused state.
 
-The live revision is monotonic and may advance more than once per command. It is
-not a saved checkpoint revision or a playback-frame counter.
+Camera set, pan, fit and journey show follow the viewer's animation setting.
+`--animate=true/false` overrides it for one command. Motion uses the viewer's
+spring animation; duration isn't configurable.
+
+Camera moves return a `transition_id`. Animated moves stay `pending` until they
+settle, then become `applied`. A replacement move or human navigation makes them
+`superseded`. Cancellation stops at the current position. Use `--wait-visual`,
+`--wait` or `operation status` to await that transition. For tours, wait for each
+operation rather than the global animation flag, which may describe a later move.
+
+Status includes `camera` for the destination, `camera_current`,
+`camera_transition_id`, `camera_animating`, `camera_animation`, `theme` and
+playback `speed`/`available_speeds`.
+
+## Operations and retries
+
+Responses include session/request IDs, working-copy `generation`, live `revision`,
+`state`, `changed`, `outcome_known` and a message. They may include `result` or an
+`error` with `code`, `message` and `recovery`. Mutations return an `operation_id`
+equal to the request ID. JSON is ANSI-free.
+
+Mutations require the generation and expected live revision. CLI reads these
+before sending unless you supply `--generation` and `--expected-revision`.
+MCP requires both explicitly. When acting on an earlier observation, send its
+values. Stale requests fail without applying edits.
+
+Live revision counts edits, including presentation and playback changes. It
+increases monotonically and can advance more than once per command. It is
+separate from checkpoint revision and playback frames. The shared model has no
+persistence dirty-state API yet, so status reports
+`persistence_dirty_available: false` and omits `unsaved_changes`.
 
 ```sh
 mapbox-tui remote --session main camera set --zoom 12 \
@@ -169,153 +202,92 @@ mapbox-tui remote --session main operation status move-camera-1 --json
 mapbox-tui remote --session main operation cancel OPERATION_ID --json
 ```
 
-`--wait` waits for imports/routing; `--timeout 30s` is the default, with a maximum
-of five minutes. An `applied` import is in the workspace. A `pending` response
-means work was accepted, not completed. Timeout/disconnect doesn't imply rollback.
-`outcome_known: false` marks an uncertain outcome; `changed` then reports only
-confirmed effects, and false mustn't be read as proof that nothing happened.
-Query `operation status` before retrying. Cancellation leaves previously applied
-edits intact. Edits/removal or workspace clearing can supersede pending work.
+States are `applied`, `pending`, `failed`, `cancelled` and `superseded`. Pending
+means accepted, not finished. `--wait` waits for completion; `--timeout` defaults
+to `30s` and accepts up to five minutes.
 
-Reuse a request ID only with the same action, arguments and preconditions. The
-viewer retains mutation results for 15 minutes from acceptance, with a maximum
-of 256 ordinary retained operations and 16 pending import/routing operations.
-Synchronous edits and camera transitions do not consume the worker allowance.
-Cancel and clear commands have a separate allowance of 33 retained results, so
-saturating ordinary work does not block recovery. Recovery results keep the same
-retry guarantees; exhausting that separate allowance requires waiting for expiry.
-The viewer rejects new work when its relevant allowance is full rather than
-evicting unexpired outcomes. Completed results become eligible
-for removal after the retention period. Deduplication is session-local and ends
-when the viewer exits. After expiry or an unknown outcome, inspect the workspace
-before issuing a new mutation; replaying an expired key can apply it again.
+A timeout or disconnect doesn't roll back work. `outcome_known: false` means the
+outcome is uncertain, even when `changed` is false. Query the operation before
+retrying. Cancellation keeps earlier edits. Later edits, removal or workspace
+replacement can supersede pending work.
 
-Ordinary success and accepted pending work exit 0. Reported action failures exit
-2, conflicts exit 3, missing/disconnected sessions or unavailable routing exit 4,
-and a reported timeout exits 5. CLI parsing/local setup failures exit 1. A transport
-failure can leave the outcome unknown; the message identifies the request to
-inspect. Use `--json` to read the error code rather than parsing prose.
+Reuse a request ID only with identical action, arguments and preconditions.
+Results stay available for 15 minutes from acceptance, within these limits:
 
-Clearing the workspace is explicit:
+| Allowance | Limit |
+| --- | ---: |
+| Ordinary retained operations | 256 |
+| Pending imports, routing and workspace opens | 16 |
+| Retained cancel/clear operations | 33 |
 
-```sh
-mapbox-tui remote --session main workspace clear --discard
-```
+Camera transitions and synchronous edits don't use pending-worker capacity.
+A full allowance rejects new work. Cancel/clear has separate capacity, but once
+that fills it also needs results to expire. Completed results can be removed
+after 15 minutes; all results disappear when the session ends. Inspect current
+state before retrying an expired or unknown request. An expired ID can apply again.
 
-This cancels/invalidates old work without deleting saved checkpoints or source
-files. It is not saved-workspace deletion.
+| CLI exit | Meaning |
+| --- | --- |
+| 0 | Applied or accepted pending work |
+| 1 | Parsing or local setup failure |
+| 2 | Action failed |
+| 3 | Conflict |
+| 4 | Missing/disconnected session or unavailable routing |
+| 5 | Timeout |
 
-## Theme, playback speed and camera animation
+Read JSON error codes rather than parsing messages.
 
-These settings affect the live session and do not overwrite saved preferences:
+## MCP setup
 
-```sh
-mapbox-tui remote --session main theme list --json
-mapbox-tui remote --session main theme set --theme nord
-mapbox-tui remote --session main playback speed --ref 1:1 --speed 20
-mapbox-tui remote --session main camera animation --enabled=true
-mapbox-tui remote --session main camera set --lat 51.5308 --lon -0.1238 --zoom 14 --animate
-mapbox-tui remote --session main camera set --zoom 10 --animate
-mapbox-tui remote --session main camera fit --animate=false
-```
+Configure your MCP client once to launch `mapbox-tui mcp`. The client starts and
+connects to that process; running it in another terminal doesn't attach it to
+an existing agent. Start the viewer separately with `mapbox-tui --name main`.
 
-Playback speed accepts the viewer's existing multipliers: 1, 5, 20, 60 and 120.
-It selects the specified recording and preserves its playing/paused state.
-Use the recording reference from status, not the example reference above.
-Theme selection accepts IDs returned by `theme list`, including a custom palette
-loaded when that viewer started.
-
-Camera set, pan, fit and journey show follow the viewer's animation setting by
-default. An explicit `animate` boolean overrides it for that command only.
-Transitions use the same spring motion as keyboard navigation; duration is not
-configurable. Every camera command returns a `transition_id`. Animated moves
-return a `pending` operation until that particular transition settles; it then
-becomes `applied`. A replacement move or human navigation makes it `superseded`.
-Use `--wait-visual` (or `--wait`) to wait for its outcome, or query
-`operation status OPERATION_ID`. Cancel stops the transition at its current
-position; it does not undo earlier motion.
-
-Status reports `camera` (destination), `camera_current`, `camera_transition_id`,
-`camera_animating`, `camera_animation`, `theme` and playback
-`speed`/`available_speeds`. For scripted tours, wait for the operation, not just
-the global animation flag, which could refer to a later move.
-
-MCP exposes `viewer_theme_list`, `viewer_theme_set`, `viewer_playback_speed`
-and `viewer_camera_animation`, alongside the camera tools. Camera tools accept
-`wait_visual: true` in the MCP wrapper to await the specific transition.
-For example, ask:
-
-> Find the session named main. Set its theme to nord, set the active recording's
-> playback speed to 20x, then smoothly move to King's Cross at 51.5308, -0.1238,
-> zoom 14 and wait for that transition to settle. Read current generation/revision
-> before each mutation.
-
-## MCP session discovery and control
-
-Configure your MCP client once to launch `mapbox-tui mcp`. No session-specific
-configuration is needed. Start a viewer in another terminal:
-
-```sh
-mapbox-tui --name main
-```
-
-Ask the agent to call `viewer_sessions` with `{}`, choose the session named
-`main`, then call `viewer_status` with:
+Call `viewer_sessions` with `{}`, find `main`, then call `viewer_status`:
 
 ```json
 {"session_id":"UUID_FROM_DISCOVERY","args":{}}
 ```
 
-Every viewer action accepts that same `session_id` UUID. Names are displayed for
-humans; UUID targeting prevents a later viewer reusing a name from receiving an
-old command. The MCP server can start before any viewers, discover newly opened
-ones, and control several sessions independently. Discovery returns an empty
-list when none are running; launch a viewer and list again.
+Pass that UUID to each viewer tool. The server can discover viewers started
+later and control several sessions. An empty discovery list means no viewers
+are running. Launch one and try again.
 
-For example, ask: “Use viewer_sessions to find main, inspect its status, then
-move its camera to latitude 51.5308, longitude -0.1238, zoom 14. Use its UUID,
-generation and revision, and a unique request ID.”
+Try this prompt:
 
-Typed `viewer_*` tools cover camera, import, selection, visibility, playback,
-journey and operation controls. The canonical action argument schemas are in
-`shared/control_tools.json`; tool names replace dots with underscores, for
-example `viewer_journey_stop_add`. The wrapper accepts `args`, optional `wait`
-and `timeout_seconds`, and mutation preconditions `request_id`, `generation`,
-`expected_revision`. Read status before mutating.
+> Find main with viewer_sessions. Set its theme to nord, then animate the camera
+> to 51.5308, -0.1238 at zoom 14 and wait for it to settle. Read status before each
+> edit and use its UUID, generation and revision with a unique request ID.
 
-Both MCP structured content and text carry the response; `isError` is set for
-failed, cancelled or superseded outcomes. A pending response is not an MCP
-error. `viewer_operation_status` inspects its final result. An ended session
-returns an error with recovery instructions; it never selects a replacement.
+Tool names replace action dots with underscores, such as
+`viewer_journey_stop_add`. [Action schemas](../shared/control_tools.json) define
+`args`. The MCP wrapper accepts `wait`, `timeout_seconds` and mutation fields
+`request_id`, `generation`, `expected_revision`. Camera tools also accept
+`wait_visual: true`. Theme, speed and animation tools are `viewer_theme_list`,
+`viewer_theme_set`, `viewer_playback_speed` and `viewer_camera_animation`.
 
-Optionally launch `mapbox-tui mcp --session main` to pin a connection to one
-UUID. In pinned mode `session_id` can be omitted; supplying a different UUID
-fails. Reconnect to change that pinned target.
+Structured content and text carry the same response. Failed, cancelled and
+superseded outcomes set `isError`; pending work does not. Use
+`viewer_operation_status` to check completion.
 
-Default MCP also retains its existing standalone tools and private workspace.
-Standalone `render_map` and `load_track` do not modify live viewers; use the
-explicit `viewer_*` tools for live control.
+For one fixed target, configure the client to launch `mapbox-tui mcp --session main`.
+This pins its UUID. You can omit `session_id`; a different UUID fails. Reconnect
+to change targets. Standalone tools such as `load_track` and `render_map` keep
+their own workspace. Use `viewer_*` tools to control the map on screen.
 
-## Transport and workspace integration
+## Transport
 
-The runtime directory is `$XDG_RUNTIME_DIR/mapbox-tui-UID`, falling back to
-`$TMPDIR/mapbox-tui-UID` (normally `/tmp`). It must be owned by the current user,
-with permissions 0700. Sockets are 0600. A short registry lock protects publication,
-name uniqueness and stale-record cleanup. Timeouts aren't evidence of a dead
-viewer. Normal exit removes the socket/record; discovery reclaims refused or
-missing endpoints after a crash. This is local same-user control, not a remote
-network server or a boundary between agents running as the same OS user.
+The current user owns the runtime directory, with mode 0700, and sockets use
+0600. The directory is `$XDG_RUNTIME_DIR/mapbox-tui-UID`, falling back to
+`$TMPDIR/mapbox-tui-UID`, normally under `/tmp`. A short registry lock protects
+publication, names and stale-record cleanup. Normal exit removes the endpoint;
+discovery reclaims missing or refused endpoints after crashes. Timeouts alone
+don't mark a viewer dead. Any process running as the same OS user can connect.
 
-The wire protocol is one newline-delimited JSON request/response per connection,
-version 1. Requests are bounded to 64 KiB; responses are bounded to 4 MiB. Oversized results return a structured
-`response_too_large` error; check `changed` and the operation ID before retrying.
-Socket handlers are bounded to 32 concurrent connections and use deadlines.
-Parsing and provider work run outside the update loop; only typed results and
-requests enter it. Responses are serialised snapshots, never shared model pointers.
+Protocol version 1 sends one newline-delimited JSON request/response per
+connection. Requests are limited to 64 KiB, responses to 4 MiB and concurrent
+connections to 32. Connections have deadlines. Oversized results return
+`response_too_large`; inspect `changed` and the operation before retrying.
 
-The saved checkpoint ID/base revision lives alongside the working copy. Saving
-checks and replaces under one storage lock. Another session's successful save
-causes a stale-save conflict, preserving the losing session's work for reload or
-Save As. Checkpoints remain unlocked while open. Recovery-draft ownership remains
-exclusive under #80. Opening creates a fresh live generation and invalidates old
-work; edits made while the file loads supersede the open operation.
+Parsing and provider work run outside the update loop. Typed requests/results
+enter the loop; responses contain serialised snapshots, never model pointers.

@@ -38,8 +38,8 @@ switching, journey planning and copying a command to reopen the journey.
  Road routes are recalculated when reopened.
 - **CLI and MCP.** Get JSON summaries, inspect points by distance and render
   ANSI-free text maps. The local MCP server keeps loaded files, selection and
-  visibility between requests in its own workspace. Attach CLI or MCP to a live
-  viewer session to control its camera, imports, playback and journeys.
+  visibility in its own workspace. Use CLI or MCP to control a running viewer
+  too, including its camera, imports, playback and journeys.
 - **Offline file support.** Import GPX, FIT, TCX and KML files, view elevation and
   replay recordings without an account. Connected features include Mapbox
   basemaps, search, road routing and an optional traffic overlay in the viewer.
@@ -119,13 +119,13 @@ Those examples use synthetic fixtures and work offline. For a recorded ride, try
 Open fixtures/country-ride.gpx. Summarise its distance and elevation, inspect the point nearest 90 km, then render an offline map of the whole ride.
 ```
 
-Standalone MCP has its own workspace. To control a viewer you already have open,
-launch it with `mapbox-tui --name main`. The default MCP server exposes
-`viewer_sessions` for discovery; pass a discovered UUID as `session_id` to
-`viewer_*` tools. CLI agents can use
-`mapbox-tui remote --session main status --json` and the camera/journey commands.
-See [live session control](docs/LIVE_CONTROL.md) for actions, preconditions and
-operation results. Place-name lookup and screenshots still need terminal control.
+To control a running map, start `mapbox-tui --name main`. Use
+`mapbox-tui remote --session main status --json` from another terminal, or ask
+an MCP agent to find `main` with `viewer_sessions` and use its UUID with the
+`viewer_*` tools. Standalone MCP tools keep a separate workspace.
+
+See [live control](docs/LIVE_CONTROL.md) for commands and agent setup.
+Place-name lookup and screenshots still need terminal control.
 
 See [MCP notes](docs/MCP.md) for workspace rendering and measurement details.
 The [tool schemas](shared/tools.json) describe the available calls.
