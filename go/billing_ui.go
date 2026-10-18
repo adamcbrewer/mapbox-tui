@@ -52,8 +52,9 @@ func (m *viewer) fetchAccountUsage() tea.Cmd {
 	m.usageCancel = cancel
 	m.usage = usageReport{State: "loading", Products: []productUsage{}}
 	id := m.usageID
+	telemetry := m.mapboxTelemetryOverride()
 	return func() tea.Msg {
-		return accountUsageResult{id: id, report: collectAccountUsage(ctx)}
+		return accountUsageResult{id: id, report: collectAccountUsageWithTelemetry(ctx, telemetry)}
 	}
 }
 

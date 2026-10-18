@@ -41,6 +41,10 @@ func TestMapboxCLIProcess(t *testing.T) {
 	if scenario == "" {
 		return
 	}
+	if scenario == "safe-start" && os.Getenv("MAPBOX_CLI_NO_TELEMETRY") != "1" {
+		fmt.Fprintln(os.Stderr, "safe start enabled telemetry")
+		os.Exit(2)
+	}
 	var args []string
 	for i, arg := range os.Args {
 		if arg == "--" {

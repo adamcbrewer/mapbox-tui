@@ -102,7 +102,11 @@ func mapboxEnvironment(token *string, telemetry bool) []string {
 }
 
 func findMapboxCLI(ctx context.Context) (*mapboxCLI, error) {
-	cli, status := checkMapboxCLI(ctx)
+	return findMapboxCLIWithTelemetry(ctx, nil)
+}
+
+func findMapboxCLIWithTelemetry(ctx context.Context, telemetry *bool) (*mapboxCLI, error) {
+	cli, status := checkMapboxCLIWithTelemetry(ctx, telemetry)
 	if cli == nil {
 		return nil, &mapboxDependencyError{status: status}
 	}
@@ -110,6 +114,10 @@ func findMapboxCLI(ctx context.Context) (*mapboxCLI, error) {
 }
 
 func checkMapboxCLI(ctx context.Context) (*mapboxCLI, mapboxDependencyStatus) {
+	return checkMapboxCLIWithTelemetry(ctx, nil)
+}
+
+func checkMapboxCLIWithTelemetry(ctx context.Context, telemetry *bool) (*mapboxCLI, mapboxDependencyStatus) {
 	status := mapboxDependencyStatus{State: "missing", Checked: "PATH", InstallURL: mapboxInstallURL}
 	path := os.Getenv("MAPBOX_TUI_CLI")
 	if path == "" {
@@ -135,11 +143,13 @@ func checkMapboxCLI(ctx context.Context) (*mapboxCLI, mapboxDependencyStatus) {
 		}
 		return nil, status
 	}
-	settings, err := loadAppSettings()
-	if err != nil {
-		settings = appSettings{}
+	var enabled bool
+	if telemetry != nil {
+		enabled = *telemetry
+	} else if settings, err := loadAppSettings(); err == nil {
+		enabled = settings.MapboxCLITelemetry
 	}
-	cli := &mapboxCLI{path: path, telemetry: settings.MapboxCLITelemetry}
+	cli := &mapboxCLI{path: path, telemetry: enabled}
 	if err := cli.check(ctx); err != nil {
 		status.State, status.Guidance = "unavailable", err.Error()
 		return nil, status

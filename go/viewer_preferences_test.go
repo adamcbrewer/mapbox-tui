@@ -317,3 +317,39 @@ func TestSafeStartBypassesPreferencesWithoutWriting(t *testing.T) {
 		})
 	}
 }
+
+func TestSafeStartMapboxHelpersIgnoreSavedTelemetry(t *testing.T) {
+	fakeMapbox(t, "safe-start")
+	t.Setenv("MAPBOX_ACCESS_TOKEN", "")
+	t.Setenv("MapboxAccessToken", "")
+	for _, name := range []string{"MAPBOX_ACCESS_TOKEN", "MapboxAccessToken"} {
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("MAPBOX_CLI_NO_TELEMETRY", "")
+	if err := saveAppSettings(appSettings{MapboxCLITelemetry: true}); err != nil {
+		t.Fatal(err)
+	}
+	before := settingsBytes(t)
+	m := preferenceViewer(t, "--safe-start")
+	credential := m.discoverCredentials(false, false)().(credentialResult)
+	if credential.credential.token == "" {
+		t.Fatal("safe-start credential discovery failed", credential.credential.guidance)
+	}
+	usage := m.fetchAccountUsage()().(accountUsageResult)
+	if usage.report.State != "available" {
+		t.Fatal("safe-start usage failed", usage.report.Guidance)
+	}
+	setup := m.checkMapboxSetup()().(mapboxDependencyResult)
+	if setup.status.State != "ready" {
+		t.Fatal("safe-start dependency check failed", setup.status)
+	}
+	cli, err := findMapboxCLIWithTelemetry(t.Context(), m.mapboxTelemetryOverride())
+	if err != nil || cli.telemetry {
+		t.Fatal("safe-start login helper enabled saved telemetry", err)
+	}
+	if !bytes.Equal(before, settingsBytes(t)) {
+		t.Fatal("helper discovery rewrote preferences")
+	}
+}

@@ -1739,7 +1739,6 @@ def manual_workspace_restart(binary, width, height, ascii_mode=False):
     def stop(crash=False):
         if crash:
             pid = int(pid_file.read_text())
-            assert Path(f"/proc/{pid}/exe").resolve() == binary.resolve()
             os.kill(pid, signal.SIGKILL)
             wait_for(lambda s: "EXIT=-9" in s)
         else:

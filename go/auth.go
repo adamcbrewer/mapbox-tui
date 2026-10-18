@@ -121,10 +121,14 @@ func (c *mapboxCLI) publicCredential(ctx context.Context) (renderingCredential, 
 }
 
 func resolveCredential(ctx context.Context) renderingCredential {
+	return resolveCredentialWithTelemetry(ctx, nil)
+}
+
+func resolveCredentialWithTelemetry(ctx context.Context, telemetry *bool) renderingCredential {
 	if credential, explicit := environmentCredential(); explicit {
 		return credential
 	}
-	cli, dependency := checkMapboxCLI(ctx)
+	cli, dependency := checkMapboxCLIWithTelemetry(ctx, telemetry)
 	if cli == nil {
 		return renderingCredential{source: "none", guidance: dependency.Guidance, dependency: dependency}
 	}

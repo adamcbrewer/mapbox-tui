@@ -104,8 +104,9 @@ func (m *viewer) discoverCredentialsWith(
 	m.authCancel, m.authBusy = cancel, true
 	id := m.authID
 	preferences := m.preferences
+	telemetry := m.mapboxTelemetryOverride()
 	return func() tea.Msg {
-		credential := resolveCredential(ctx)
+		credential := resolveCredentialWithTelemetry(ctx, telemetry)
 		var access authSection
 		if preferences.productAccess(credential.token) == mapboxAllowed && (afterLogin || checkConnection) {
 			access = probe(ctx, providerForCredential("mapbox", credential))
@@ -267,8 +268,9 @@ func (m *viewer) beginMapboxLogin() tea.Cmd {
 	m.authCancel, m.authBusy = cancel, true
 	m.authMessage = "Preparing Mapbox login…"
 	id := m.authID
+	telemetry := m.mapboxTelemetryOverride()
 	return func() tea.Msg {
-		cli, err := findMapboxCLI(ctx)
+		cli, err := findMapboxCLIWithTelemetry(ctx, telemetry)
 		return mapboxLoginReady{id: id, ctx: ctx, cli: cli, err: err}
 	}
 }
@@ -285,8 +287,9 @@ func (m *viewer) checkMapboxSetup() tea.Cmd {
 	m.authMessage, m.ui.selected = "", 0
 	m.dirty = true
 	id := m.authID
+	telemetry := m.mapboxTelemetryOverride()
 	return func() tea.Msg {
-		_, status := checkMapboxCLI(ctx)
+		_, status := checkMapboxCLIWithTelemetry(ctx, telemetry)
 		return mapboxDependencyResult{id: id, status: status}
 	}
 }
@@ -488,4 +491,13 @@ func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
 	m.ui.page.SetHeight(max(1, height))
 	m.ui.page.SetContent(content.String())
 	return "Installation", m.ui.page.View(), "↑/↓ scroll   esc close"
+}
+
+// Capture the session choice before launching a helper. Safe start must not
+// reopen settings, but deliberate telemetry changes in this session still apply.
+func (m *viewer) mapboxTelemetryOverride() *bool {
+	if m.args.SafeStart {
+		return new(m.preferences.MapboxCLITelemetry)
+	}
+	return nil
 }

@@ -123,10 +123,14 @@ func (c *mapboxCLI) usage(ctx context.Context, account, tokenID string, period u
 
 // Startup statistics must never call token validation or billable service probes.
 func collectAccountUsage(ctx context.Context) usageReport {
+	return collectAccountUsageWithTelemetry(ctx, nil)
+}
+
+func collectAccountUsageWithTelemetry(ctx context.Context, telemetry *bool) usageReport {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	report := usageReport{State: "unavailable", Products: []productUsage{}}
-	cli, status := checkMapboxCLI(ctx)
+	cli, status := checkMapboxCLIWithTelemetry(ctx, telemetry)
 	if cli == nil {
 		report.Guidance = status.Guidance
 		return report
