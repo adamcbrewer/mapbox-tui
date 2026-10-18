@@ -153,7 +153,7 @@ def main():
                 pid = int(tmux("display-message", "-p", "-t", "main", "#{pane_pid}").strip())
                 os.kill(pid, 9)
                 wait_for(lambda: len(sessions()) == 1)
-                launch("main")
+                launch("main", extra=("--workspace", saved["path"]))
                 wait_for(lambda: len(sessions()) == 2)
                 result = mcp.call("viewer_status", {"args": {}})
                 assert result["result"]["isError"], result

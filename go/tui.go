@@ -106,7 +106,7 @@ func (m *viewer) Init() tea.Cmd {
 		m.openBilling(billingEnableOnline)
 	}
 	if m.args.WorkspacePath != "" {
-		return tea.Batch(tick(), m.fetch(), credentials, usage, m.routePendingJourneys())
+		return tea.Batch(tick(), m.fetch(), credentials, usage, m.routePendingJourneys(), m.waitControl())
 	}
 	if m.path == "" {
 		navigation := m.freeRoam()
@@ -1312,11 +1312,11 @@ func openViewerFiles(paths []string, a Args) error {
 	defer m.workspace.cancelJourneyRoutes()
 	defer m.cancelAuth()
 	defer m.cancelAccountUsage()
-	if !a.NoControl {
-		server, err := startSession(a.SessionName)
-		if err != nil {
-			return err
-		}
+	server, err := startViewerSession(a)
+	if err != nil {
+		return err
+	}
+	if server != nil {
 		defer server.close()
 		m.control = &viewerControl{server: server}
 	}

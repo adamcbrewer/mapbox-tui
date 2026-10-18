@@ -487,6 +487,8 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 					m.workspace.edited()
 				}
 			}
+			target.response.Generation = m.workspace.liveIdentity()
+			target.response.Revision = m.workspace.liveRevision
 			target.response.State = "cancelled"
 			target.response.Message = "operation cancelled; previously applied edits remain"
 			target.response.Error = &controlError{

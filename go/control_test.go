@@ -489,6 +489,9 @@ func TestControlRecoverySurvivesSaturation(t *testing.T) {
 			if result.Error != nil || m.control.operations[target].response.State != "cancelled" {
 				t.Fatal("saturated operation table blocked cancellation", result)
 			}
+			if m.control.operations[target].response.Revision != m.workspace.liveRevision {
+				t.Fatal("cancelled operation retained an old revision")
+			}
 			if route != nil && route.Busy {
 				t.Fatal("route cancellation did not stop routing")
 			}
@@ -561,7 +564,7 @@ func TestControlCameraTransitionOutcomes(t *testing.T) {
 	}
 	fourth := start(9)
 	_, _ = m.applyControl(controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": fourth.OperationID}))
-	if result := status(fourth.OperationID); result.State != "cancelled" || m.motion.Active {
+	if result := status(fourth.OperationID); result.State != "cancelled" || m.motion.Active || result.Revision != m.workspace.liveRevision {
 		t.Fatal("cancel did not stop transition", result)
 	}
 }
@@ -667,5 +670,19 @@ func TestRepeatedSelectionReportsInterruptedCamera(t *testing.T) {
 				t.Fatal("interrupted destination was not reported", response)
 			}
 		})
+	}
+}
+
+func TestUnavailableCalculationAdvancesRevision(t *testing.T) {
+	m := journeyViewer(t)
+	ref := routedTestJourney(t, &m.workspace)
+	before := m.workspace.liveRevision
+	response, _ := m.applyControl(controlTestRequest(m, "journey.calculate", map[string]any{"ref": ref}))
+	if response.Error == nil || response.Error.Code != "routing_unavailable" || !response.Changed || response.Revision <= before {
+		t.Fatal("routing error changed state without advancing revision", response)
+	}
+	repeated, _ := m.applyControl(controlTestRequest(m, "journey.calculate", map[string]any{"ref": ref}))
+	if repeated.Changed || repeated.Revision != response.Revision {
+		t.Fatal("unchanged routing error advanced revision", repeated)
 	}
 }

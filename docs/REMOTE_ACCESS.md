@@ -15,7 +15,8 @@ mapbox-tui remote --session main camera set --lat 51.53 --lon -0.12 --zoom 13
 ```
 
 CLI and MCP use the same viewer commands. Local control uses Unix sockets and
-starts with every viewer. Launch with `--no-control` to disable it.
+starts with every Unix viewer. Launch with `--no-control` to disable it.
+Windows viewers start without remote access; named control sessions require Unix.
 
 ## Sessions
 

@@ -232,7 +232,10 @@ func (m *viewer) executeJourneyControl(
 	if m.directions == nil || m.preferences.productAccess(m.directions.token) != mapboxAllowed {
 		response.State = "failed"
 		response.Message = "journey retained; routing is unavailable while offline, unacknowledged or disconnected"
-		j.Error = response.Message
+		if j.Error != response.Message {
+			j.Error = response.Message
+			m.workspace.edited()
+		}
 		response.Result = controlJSON(m.journeyStatus(ref, j))
 		response.Error = &controlError{Code: "routing_unavailable", Message: response.Message,
 			Recovery: "enable Mapbox through account settings or choose offline mode"}

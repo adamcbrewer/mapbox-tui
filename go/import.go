@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 func loadTrack(path string) (*Track, error) {
@@ -48,7 +46,7 @@ func (f contextTrackFile) Seek(offset int64, whence int) (int64, error) {
 // Opening nonblocking prevents a FIFO from trapping a loader before it can
 // validate the descriptor. Regular files retain normal blocking read behaviour.
 func openRegularFile(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NONBLOCK, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|regularFileOpenFlags, 0)
 	if err != nil {
 		return nil, err
 	}

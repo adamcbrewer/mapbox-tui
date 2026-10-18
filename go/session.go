@@ -221,6 +221,20 @@ func discoverSessions() ([]sessionInfo, error) {
 	return sessionRecords(dir)
 }
 
+// Ordinary launches keep working on platforms without the local control transport.
+func startViewerSession(a Args) (*sessionServer, error) {
+	if a.NoControl {
+		return nil, nil
+	}
+	if !sessionControlSupported {
+		if a.SessionName != "" {
+			return nil, fmt.Errorf("named control sessions require Unix")
+		}
+		return nil, nil
+	}
+	return startSession(a.SessionName)
+}
+
 func startSession(name string) (*sessionServer, error) {
 	if name != "" && (!sessionNamePattern.MatchString(name) || sessionIDPattern.MatchString(name)) {
 		return nil, fmt.Errorf("session name must start with a letter and contain at most 48 letters, digits, '-' or '_'")
