@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -117,12 +118,24 @@ type sessionServer struct {
 	slots    chan struct{}
 }
 
+// Darwin permits at most 103 pathname bytes, including the UUID and suffix.
+const sessionSocketPathLimit = 103
+
+func sessionDirectoryAt(root string, uid int) string {
+	name := fmt.Sprintf("mapbox-tui-%d", uid)
+	dir := filepath.Join(root, name)
+	if len(filepath.Join(dir, strings.Repeat("0", 36)+".sock")) > sessionSocketPathLimit {
+		dir = filepath.Join("/tmp", name)
+	}
+	return dir
+}
+
 func sessionDirectory() (string, error) {
 	root := os.Getenv("XDG_RUNTIME_DIR")
 	if root == "" {
 		root = os.TempDir()
 	}
-	dir := filepath.Join(root, fmt.Sprintf("mapbox-tui-%d", os.Getuid()))
+	dir := sessionDirectoryAt(root, os.Getuid())
 	if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", err
 	}

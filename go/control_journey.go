@@ -192,6 +192,7 @@ func (m *viewer) executeJourneyControl(
 			}
 			err = m.workspace.selectItem(ref)
 			if err == nil {
+				m.selectionChanged()
 				before := m.destination()
 				m.controlMoveCamera(journeyView(j, entry.document.Items[index].Track, before), a.Animate)
 				m.following = false

@@ -511,6 +511,7 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 			m.selectionChanged()
 		}
 	case "visibility":
+		hadSelection := m.workspace.selection != nil
 		if a.Visible == nil {
 			err = fmt.Errorf("visible is required")
 			break
@@ -520,11 +521,18 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		} else {
 			err = m.workspace.setVisible(a.Ref, *a.Visible)
 		}
+		if err == nil && hadSelection && m.workspace.selection == nil {
+			m.selectionChanged()
+		}
 	case "remove":
+		hadSelection := m.workspace.selection != nil
 		if a.Ref.ItemID == 0 {
 			err = m.workspace.removeDocument(a.Ref.DocumentID)
 		} else {
 			err = m.workspace.removeItem(a.Ref)
+		}
+		if err == nil && hadSelection && m.workspace.selection == nil {
+			m.selectionChanged()
 		}
 	case "workspace.clear":
 		if !a.Discard {

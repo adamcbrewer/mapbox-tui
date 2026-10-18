@@ -43,7 +43,7 @@ def wait_for(predicate):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="mb-control-") as folder:
+    with tempfile.TemporaryDirectory(prefix="mb-control-", dir="/tmp") as folder:
         env = {**os.environ, "XDG_RUNTIME_DIR": folder, "XDG_CONFIG_HOME": folder,
                "MAPBOX_ACCESS_TOKEN": "", "TERM": "xterm-256color"}
         env.pop("NO_COLOR", None)

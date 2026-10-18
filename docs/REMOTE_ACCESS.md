@@ -281,7 +281,8 @@ their own workspace. Use `viewer_*` tools to control the map on screen.
 
 The current user owns the runtime directory, with mode 0700, and sockets use
 0600. The directory is `$XDG_RUNTIME_DIR/mapbox-tui-UID`, falling back to
-`$TMPDIR/mapbox-tui-UID`, normally under `/tmp`. A short registry lock protects
+`$TMPDIR/mapbox-tui-UID`, normally under `/tmp`. If that path is too long for
+a Unix socket, endpoints use `/tmp/mapbox-tui-UID`. A short registry lock protects
 publication, names and stale-record cleanup. Normal exit removes the endpoint;
 discovery reclaims missing or refused endpoints after crashes. Timeouts alone
 don't mark a viewer dead. Any process running as the same OS user can connect.

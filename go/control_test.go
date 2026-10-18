@@ -750,3 +750,82 @@ func TestControlTextPreservesUnicodeAndRuneBoundaries(t *testing.T) {
 		t.Fatal("ANSI escape retained")
 	}
 }
+
+func TestHideAndRemoveRunSelectionCleanup(t *testing.T) {
+	for _, action := range []string{"visibility", "remove"} {
+		for _, document := range []bool{false, true} {
+			for _, active := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/document=%t/active=%t", action, document, active), func(t *testing.T) {
+					m := journeyViewer(t)
+					target := openWorkspaceFile(t, &m.workspace, "../fixtures/example.gpx")
+					other := openWorkspaceFile(t, &m.workspace, "../fixtures/country-ride.gpx")
+					selected := other
+					if active {
+						selected = target
+					}
+					if err := m.workspace.selectItem(selected); err != nil {
+						t.Fatal(err)
+					}
+					_, _ = m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": 15, "animate": true}))
+					m.following, m.inspected = true, &XY{1, 2}
+					if document {
+						target.ItemID = 0
+					}
+					args := map[string]any{"ref": target}
+					if action == "visibility" {
+						args["visible"] = false
+					}
+					response, _ := m.applyControl(controlTestRequest(m, action, args))
+					if response.Error != nil {
+						t.Fatal(response)
+					}
+					if active {
+						if m.workspace.selection != nil || m.following || m.inspected != nil || m.motion.Active {
+							t.Fatal("removed selection retained viewer state")
+						}
+					} else if m.workspace.selection == nil || !m.following || m.inspected == nil || !m.motion.Active {
+						t.Fatal("unrelated item edit cleared viewer selection state")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestJourneyShowCleansSelectionBeforeAnimating(t *testing.T) {
+	m := journeyViewer(t)
+	ref := routedTestJourney(t, &m.workspace)
+	if err := m.workspace.setJourneyMode(ref, journeyManual); err != nil {
+		t.Fatal(err)
+	}
+	openWorkspaceFile(t, &m.workspace, "../fixtures/example.gpx")
+	m.following, m.inspected = true, &XY{1, 2}
+	response, _ := m.applyControl(controlTestRequest(m, "journey.show", map[string]any{"ref": ref, "animate": true}))
+	if response.Error != nil || m.inspected != nil || m.following || !m.motion.Active || m.workspace.selection.ref != ref {
+		t.Fatal("journey show did not clean selection before fitting", response)
+	}
+}
+
+func TestDefaultJourneyModeRejectsStaleControlMutation(t *testing.T) {
+	m := journeyViewer(t)
+	m.planner.ref = m.workspace.newJourney()
+	m.directions = newDirectionsClient("token")
+	request := controlTestRequest(m, "journey.reverse", map[string]any{"ref": m.planner.ref})
+	before := m.workspace.liveRevision
+	if cmd := m.calculateJourneyIfRouted(); cmd != nil {
+		t.Fatal("incomplete draft requested routing")
+	}
+	j, _ := m.workspace.journey(m.planner.ref)
+	if j.Mode != journeyDriving || m.workspace.liveRevision <= before {
+		t.Fatal("default mode did not record live edit")
+	}
+	response, _ := m.applyControl(request)
+	if response.Error == nil || response.Error.Code != "revision_conflict" {
+		t.Fatal("stale edit accepted after default mode change", response)
+	}
+	before = m.workspace.liveRevision
+	m.calculateJourneyIfRouted()
+	if m.workspace.liveRevision != before {
+		t.Fatal("unchanged default mode advanced revision")
+	}
+}

@@ -18,6 +18,7 @@ func (m *viewer) defaultJourneyMode(j *Journey) bool {
 	}
 	j.Mode = journeyDriving
 	j.invalidateRoute()
+	m.workspace.edited()
 	return true
 }
 

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -21,7 +22,7 @@ import (
 func testSessionDirectory(t *testing.T) {
 	t.Helper()
 	// Keep socket paths below the Unix sockaddr limit even with long test names.
-	dir, err := os.MkdirTemp("", "mb-session-")
+	dir, err := os.MkdirTemp("/tmp", "mb-session-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,5 +397,43 @@ func TestSessionDiscoverySkipsVanishedRecords(t *testing.T) {
 	records, err := discoverSessions()
 	if err != nil || len(records) != 1 || records[0].ID != server.info.ID {
 		t.Fatal(records, err)
+	}
+}
+
+func TestSessionUsesShortFallbackForLongRuntimePaths(t *testing.T) {
+	for _, xdg := range []bool{false, true} {
+		t.Run(fmt.Sprint(xdg), func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), strings.Repeat("long-runtime-", 12))
+			if err := os.MkdirAll(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("XDG_RUNTIME_DIR", "")
+			t.Setenv("TMPDIR", root)
+			if xdg {
+				t.Setenv("XDG_RUNTIME_DIR", root)
+			}
+			server, err := startSession("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.close()
+			path := filepath.Join(server.dir, server.info.ID+".sock")
+			if len(path) > sessionSocketPathLimit || filepath.Dir(server.dir) != "/tmp" {
+				t.Fatal("socket path exceeds portable limit", path)
+			}
+			records, err := discoverSessions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, record := range records {
+				if record.ID == server.info.ID {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("fallback session not discoverable")
+			}
+		})
 	}
 }
