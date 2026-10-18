@@ -7,7 +7,7 @@ import (
 )
 
 func TestControlWorkspaceSaveOpenAndConflicts(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "東京-café"))
 	a := journeyViewer(t)
 	b := journeyViewer(t)
 	_, _ = a.applyControl(controlTestRequest(a, "journey.create", map[string]any{
@@ -113,5 +113,14 @@ func TestPendingHumanOpenPreservesAgentEdits(t *testing.T) {
 	m.Update(ready)
 	if len(m.workspace.documents) == 0 {
 		t.Fatal("pending human open discarded an intervening successful agent mutation")
+	}
+}
+
+func TestControlWorkspaceOpenRequiresAbsolutePath(t *testing.T) {
+	m := journeyViewer(t)
+	generation, revision := m.workspace.liveIdentity(), m.workspace.liveRevision
+	response, cmd := m.applyControl(controlTestRequest(m, "workspace.open", map[string]any{"path": "relative.json", "discard": true}))
+	if response.Error == nil || response.Error.Code != "invalid_arguments" || cmd != nil || response.Changed || response.Generation != generation || response.Revision != revision {
+		t.Fatal("relative path reached workspace loader", response)
 	}
 }

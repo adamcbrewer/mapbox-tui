@@ -260,6 +260,8 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 	return tea.Batch(commands...)
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Finalise operations after input has recorded its revision changes.
+	defer m.reconcileOperations()
 	// Only navigation from input marks the view for saving. Startup imports,
 	// layout changes and animation frames must not persist launch overrides.
 	switch msg.(type) {
@@ -273,7 +275,6 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}()
 	}
-	defer m.reconcileOperations()
 	switch v := msg.(type) {
 	case controlMessage:
 		return m, tea.Batch(m.handleControl(v), m.waitControl())

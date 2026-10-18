@@ -906,7 +906,7 @@
     }
   },
   "workspace.open": {
-    "description": "Open a saved workspace JSON path using the shared loader. Explicit discard=true is required. Pending preparation rejects intervening edits; partial restoration reports unresolved imports without a dialog.",
+    "description": "Open an absolute saved workspace JSON path using the shared loader. Explicit discard=true is required. Pending preparation rejects intervening edits; partial restoration reports unresolved imports without a dialog.",
     "inputSchema": {
       "type": "object",
       "properties": {

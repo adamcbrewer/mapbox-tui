@@ -91,7 +91,8 @@ mapbox-tui remote --session main workspace open /path/from/save.json --discard -
 mapbox-tui remote --session main workspace clear --discard
 ```
 
-Save returns the checkpoint path. Open waits for completion and requires
+Save returns the checkpoint path. CLI resolves relative open paths before sending;
+MCP and protocol clients must send absolute paths. Open waits for completion and requires
 `--discard` to replace the working copy. Missing imports remain available for
 repair in the viewer. Clear invalidates pending work and leaves saved checkpoints
 and source files intact.

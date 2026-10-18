@@ -380,3 +380,21 @@ func TestOversizedControlResponseIsStructured(t *testing.T) {
 		t.Fatal(response, err)
 	}
 }
+
+func TestSessionDiscoverySkipsVanishedRecords(t *testing.T) {
+	testSessionDirectory(t)
+	server, err := startSession("survivor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.close()
+	// A dangling entry reproduces Open returning ErrNotExist after a successful Glob.
+	vanished := filepath.Join(server.dir, newSessionID()+".json")
+	if err := os.Symlink(filepath.Join(server.dir, "removed"), vanished); err != nil {
+		t.Fatal(err)
+	}
+	records, err := discoverSessions()
+	if err != nil || len(records) != 1 || records[0].ID != server.info.ID {
+		t.Fatal(records, err)
+	}
+}

@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -684,5 +687,66 @@ func TestUnavailableCalculationAdvancesRevision(t *testing.T) {
 	repeated, _ := m.applyControl(controlTestRequest(m, "journey.calculate", map[string]any{"ref": ref}))
 	if repeated.Changed || repeated.Revision != response.Revision {
 		t.Fatal("unchanged routing error advanced revision", repeated)
+	}
+}
+
+func TestSupersededOperationReportsCurrentIdentity(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprint(replace), func(t *testing.T) {
+			m := journeyViewer(t)
+			pending, _ := m.applyControl(controlTestRequest(m, "camera.set", map[string]any{"zoom": 15, "animate": true}))
+			if replace {
+				m.workspace.clear()
+			} else {
+				m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+			}
+			result, _ := m.applyControl(controlTestRequest(m, "operation.status", map[string]any{"operation_id": pending.OperationID}))
+			if result.State != "superseded" || result.Generation != m.workspace.liveIdentity() || result.Revision != m.workspace.liveRevision {
+				t.Fatal("superseded operation returned stale identity", result)
+			}
+		})
+	}
+}
+
+func TestPlaybackSwitchCleansViewerSelection(t *testing.T) {
+	for _, action := range []string{"playback.play", "playback.pause", "playback.seek", "playback.speed"} {
+		t.Run(action, func(t *testing.T) {
+			m := journeyViewer(t)
+			first := openWorkspaceFile(t, &m.workspace, "../fixtures/example.gpx")
+			second := openWorkspaceFile(t, &m.workspace, "../fixtures/country-ride.gpx")
+			if err := m.workspace.selectItem(first); err != nil {
+				t.Fatal(err)
+			}
+			m.following, m.inspected = true, &XY{1, 2}
+			args := map[string]any{"ref": second}
+			if action == "playback.seek" {
+				args["point_index"] = 1
+			}
+			if action == "playback.speed" {
+				args["speed"] = 20
+			}
+			response, _ := m.applyControl(controlTestRequest(m, action, args))
+			if response.Error != nil || m.following || m.inspected != nil {
+				t.Fatal("playback retained previous selection state", response)
+			}
+			m.following, m.inspected = true, &XY{1, 2}
+			response, _ = m.applyControl(controlTestRequest(m, action, args))
+			if response.Error != nil || !m.following || m.inspected == nil {
+				t.Fatal("same-recording command cleared selection state", response)
+			}
+		})
+	}
+}
+
+func TestControlTextPreservesUnicodeAndRuneBoundaries(t *testing.T) {
+	value := "/tmp/東京/café.json"
+	if got := controlText(value, 4096); got != value {
+		t.Fatal(got)
+	}
+	if got := controlText("é東京", 4); got != "é..." || !utf8.ValidString(got) {
+		t.Fatal(got)
+	}
+	if got := controlText("a\x1bb", 20); strings.ContainsRune(got, '\x1b') {
+		t.Fatal("ANSI escape retained")
 	}
 }

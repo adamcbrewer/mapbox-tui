@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -259,6 +260,7 @@ func (m *viewer) reconcileOperations() {
 				target := m.motion.Target
 				settled := m.camera.Center == target.Center && m.camera.Zoom == target.Zoom && m.camera.Bearing == target.Bearing
 				if settled {
+					op.response.Generation, op.response.Revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 					op.response.State, op.response.Message = "applied", "camera transition settled"
 					continue
 				}
@@ -275,6 +277,7 @@ func (m *viewer) reconcileOperations() {
 			if op.cancel != nil {
 				op.cancel()
 			}
+			op.response.Generation, op.response.Revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 			op.response.State, op.response.Message = state, message
 			op.response.Error = &controlError{
 				Code:     state,
@@ -348,8 +351,11 @@ func (m *viewer) acceptControlRoute(result journeyRouteResult, accepted bool) {
 const controlPageSize = 20
 
 func controlText(value string, limit int) string {
-	value = clean(value)
+	value = cleanPlaceText(value)
 	if len(value) > limit {
+		for limit > 0 && !utf8.RuneStart(value[limit]) {
+			limit--
+		}
 		return value[:limit] + "..."
 	}
 	return value
@@ -592,7 +598,8 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		}
 		track := entry.document.Items[index]
 		candidate := m.activePlayback()
-		if m.workspace.selection == nil || m.workspace.selection.ref != a.Ref {
+		selectionChanged := m.workspace.selection == nil || m.workspace.selection.ref != a.Ref
+		if selectionChanged {
 			candidate = nil
 		}
 		if candidate == nil && track.Journey == nil {
@@ -612,6 +619,9 @@ func (m *viewer) executeControl(r controlRequest, a controlArgs, op *controlOper
 		}
 		if err = m.workspace.selectItem(a.Ref); err != nil {
 			break
+		}
+		if selectionChanged {
+			m.selectionChanged()
 		}
 		p := m.activePlayback()
 		switch r.Action {

@@ -60,7 +60,6 @@ func (m *viewer) moveCameraAnimated(target Camera, animate bool) {
 		m.motion.Active = true
 	}
 	m.dirty = true
-	m.reconcileOperations()
 }
 
 func (m *viewer) panCamera(dx, dy float64) {

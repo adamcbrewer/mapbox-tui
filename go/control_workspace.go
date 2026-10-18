@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -27,6 +28,9 @@ func (m *viewer) controlCheckpoint() any {
 }
 
 func (m *viewer) beginControlWorkspaceOpen(r controlRequest, a controlArgs, op *controlOperation) (controlResponse, tea.Cmd) {
+	if !filepath.IsAbs(a.Path) {
+		return m.fail(r, "invalid_arguments", "path must be absolute", "resolve the workspace path before sending"), nil
+	}
 	if !a.Discard {
 		return m.fail(r, "unsaved_changes", "opening requires explicit discard",
 			"save the working copy first, or supply discard=true"), nil

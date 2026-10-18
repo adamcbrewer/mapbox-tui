@@ -171,6 +171,9 @@ func sessionRecords(dir string) ([]sessionInfo, error) {
 			return nil, fmt.Errorf("session registry scan timed out")
 		}
 		f, err := os.Open(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue // The viewer may have exited after Glob returned its record.
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -153,10 +153,14 @@ func (w *Workspace) beginJourneyRoute(ctx context.Context, ref ItemRef) (journey
 	if err != nil {
 		return journeyRouteRequest{}, err
 	}
+	wasBusy := j.Busy
 	j.automaticRoutePending = false
 	j.cancelRoute()
 	locations, err := routingLocations(j.Stops, j.Mode)
 	if err != nil {
+		if wasBusy || j.Error != err.Error() {
+			w.edited()
+		}
 		j.Error = err.Error()
 		return journeyRouteRequest{}, err
 	}
