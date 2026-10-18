@@ -66,6 +66,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		fs.StringVar(&a.Provider, "provider", "", "legacy basemap selector; use --no-provider to hide the basemap")
 	}
 	if command.Name == "open" {
+		fs.StringVar(&a.WorkspacePath, "workspace", "", "open a saved workspace JSON file")
 		fs.BoolVar(&a.ResetView, "reset-view", false, "delete saved centre and zoom before opening the viewer")
 		fs.StringVar(&journeyStart, "start", "", "journey start as latitude,longitude; requires --end")
 		fs.StringVar(&journeyEnd, "end", "", "journey destination as latitude,longitude; requires --start")
@@ -193,6 +194,9 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 		return command, fmt.Errorf("item-id must be positive")
 	}
 	hasSelector := a.PointIndex != nil || a.ItemID != nil
+	if a.WorkspacePath != "" && (len(paths) > 0 || a.Journey != nil || hasSelector) {
+		return command, fmt.Errorf("--workspace cannot be combined with import files, journey options or item/point selectors")
+	}
 	if multipleFiles && hasSelector {
 		return command, fmt.Errorf("point-index and item-id require a single file")
 	}

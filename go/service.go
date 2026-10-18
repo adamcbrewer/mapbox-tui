@@ -14,6 +14,7 @@ import (
 )
 
 type Args struct {
+	WorkspacePath  string          `json:"-"`
 	Journey        *startupJourney `json:"-"`
 	Path           string          `json:"path"`
 	TrackID        string          `json:"track_id"`

@@ -79,10 +79,11 @@ func (m *viewer) startJourneyFromArgs() tea.Cmd {
 		m.planner.preserveViewRevision = &revision
 	}
 	m.dirty = true
-	if j.Mode != journeyManual && m.directions.token == "" {
-		m.startupJourneyRouting = true
+	j.automaticRoutePending = j.Mode != journeyManual
+	j.automaticRoutePreserveView = m.hasStartupView()
+	if j.automaticRoutePending && m.preferences.productAccess(m.directions.token) != mapboxAllowed {
 		m.ui.notice = "Mapbox connection needed for routing"
 		return nil
 	}
-	return m.calculateJourneyIfRouted()
+	return m.routePendingJourneys()
 }

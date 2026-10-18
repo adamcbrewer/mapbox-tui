@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -76,16 +77,19 @@ func TestNativeJourneyWaitsForCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.args.Journey = initial
-	if cmd := m.startJourneyFromArgs(); cmd != nil || !m.startupJourneyRouting {
+	cmd := m.startJourneyFromArgs()
+	j, _ := m.workspace.journey(m.planner.ref)
+	if cmd != nil || !j.automaticRoutePending {
 		t.Fatal("unauthenticated startup tried to route or failed to retain routing intent")
 	}
-	j, _ := m.workspace.journey(m.planner.ref)
 	if !j.hasCompleteLocations() || j.Mode != journeyCycling || j.Busy {
 		t.Fatal("startup lost offline journey geometry")
 	}
+	// A different planner draft must not steal the CLI journey's pending route.
+	m.planner.ref = m.workspace.newJourney()
 	result := credentialResult{id: m.authID, credential: renderingCredential{token: "test-token"}}
 	m.acceptCredentials(result)
-	if m.startupJourneyRouting || !j.Busy || j.Mode != journeyCycling {
+	if j.automaticRoutePending || !j.Busy || j.Mode != journeyCycling {
 		t.Fatal("credentials did not start the requested route")
 	}
 	request := j.requestID
@@ -135,5 +139,62 @@ func TestStartupJourneyWaitsForTerminalSize(t *testing.T) {
 		if m.camera != before {
 			t.Fatal("startup camera was not fitted to the actual terminal size")
 		}
+	}
+}
+
+func TestNativeJourneyAutomaticallyRoutesArguments(t *testing.T) {
+	for _, mode := range []string{"driving", "cycling", "walking", "offline"} {
+		t.Run(mode, func(t *testing.T) {
+			m := journeyViewer(t)
+			m.preferences.BillingAcceptedVersion = billingNoticeVersion
+			m.directions = newDirectionsClient("test-token")
+			var requests int
+			m.directions.client.Transport = fakeTransport(func(r *http.Request) (*http.Response, error) {
+				requests++
+				if !strings.Contains(r.URL.Path, "/"+mode+"/") {
+					t.Fatal("wrong routing mode", r.URL.Path)
+				}
+				locations := directionsRequestLocations(t, r)
+				if len(locations) != 3 {
+					t.Fatal("CLI waypoint lost", locations)
+				}
+				return locationResponse(directionsTestResponse(locations, 12345, 3661)), nil
+			})
+			args := []string{
+				"--start=51.3,-2.5", "--waypoint=51.35,-2.55",
+				"--end=51.4,-2.6", "--mode=" + mode,
+			}
+			command, err := parseCLI(args, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.args.Journey = command.Args.Journey
+			m.preferences.Offline = true
+			if cmd := m.startJourneyFromArgs(); cmd != nil {
+				t.Fatal("offline startup requested routing")
+			}
+			j, err := m.workspace.journey(m.planner.ref)
+			if err != nil || !j.hasCompleteLocations() {
+				t.Fatal("CLI stops not restored", err)
+			}
+			m.preferences.Offline = false
+			cmd := m.routePendingJourneys()
+			if mode == "offline" {
+				if cmd != nil || requests != 0 {
+					t.Fatal("offline mode requested a road route")
+				}
+				return
+			}
+			if cmd == nil {
+				t.Fatal("online CLI journey did not recalculate")
+			}
+			m.Update(cmd())
+			if !j.routeCurrent() || requests != 1 {
+				t.Fatal("CLI route was not calculated", j.Error, requests)
+			}
+			if m.routePendingJourneys() != nil {
+				t.Fatal("CLI route recalculated twice")
+			}
+		})
 	}
 }

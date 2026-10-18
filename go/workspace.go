@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -22,6 +23,8 @@ type WorkspaceItem struct {
 
 type workspaceDocument struct {
 	id       int
+	saveID   string
+	itemIDs  map[int]string
 	document *Document
 	hidden   map[int]bool
 	colors   map[int]activityColor
@@ -34,11 +37,14 @@ type workspaceSelection struct {
 }
 
 type Workspace struct {
-	documents []*workspaceDocument
-	selection *workspaceSelection
-	nextID    int
-	nextColor int
-	elevation *elevationProfile
+	documents         []*workspaceDocument
+	selection         *workspaceSelection
+	nextID            int
+	nextColor         int
+	elevation         *elevationProfile
+	unresolved        []savedImport
+	deferredSelection *savedSelection
+	checkpoint        *workspaceCheckpoint
 }
 
 func (w *Workspace) open(path string) (ItemRef, error) {
@@ -62,8 +68,9 @@ func (w *Workspace) addDocument(d *Document) ItemRef {
 		return w.activateDocument(entry)
 	}
 	w.nextID++
-	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor)}
+	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor), saveID: rand.Text(), itemIDs: make(map[int]string)}
 	for _, item := range d.Items {
+		entry.itemIDs[item.ID] = rand.Text()
 		entry.colors[item.ID] = activityColor(w.nextColor%activityColorCount + 1)
 		w.nextColor++
 	}
@@ -143,6 +150,7 @@ func (w *Workspace) selectItem(ref ItemRef) error {
 }
 
 func (w *Workspace) activate(ref ItemRef, track *Track) {
+	w.deferredSelection = nil
 	w.clearSelection()
 	w.selection = &workspaceSelection{ref: ref, track: track}
 	if entry, i, err := w.lookup(ref); err == nil && entry.document.Items[i].Journey != nil {
@@ -237,6 +245,8 @@ func (w *Workspace) clear() {
 	w.cancelJourneyRoutes()
 	w.clearSelection()
 	w.documents = nil
+	w.unresolved = nil
+	w.deferredSelection = nil
 	w.elevation = nil
 }
 

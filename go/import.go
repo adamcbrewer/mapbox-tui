@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -25,6 +26,13 @@ func loadDocument(path string) (*Document, error) {
 		return nil, fmt.Errorf("cannot open track file: %w", err)
 	}
 	defer f.Close()
+	before, err := importFingerprint(f)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
 	var header [12]byte
 	n, _ := f.ReadAt(header[:], 0)
 	format := "FIT"
@@ -77,6 +85,14 @@ func loadDocument(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	after, err := importFingerprint(f)
+	if err != nil {
+		return nil, err
+	}
+	if before != after {
+		return nil, fmt.Errorf("import changed while loading; try again")
+	}
+	document.Fingerprint = before
 	document.Filename = filepath.Base(path)
 	document.Format = format
 	return document, nil
@@ -185,4 +201,23 @@ func xmlTokens(d *xml.Decoder, root string, visit func(xml.StartElement, []strin
 			}
 		}
 	}
+}
+
+// Hash the original bytes, including metadata and item order, before restoring item state.
+func importFingerprint(f *os.File) (string, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("inspect import: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("import must be a regular file")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("read import: %w", err)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", fmt.Errorf("fingerprint import: %w", err)
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

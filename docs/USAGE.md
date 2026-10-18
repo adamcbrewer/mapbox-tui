@@ -290,7 +290,7 @@ snapped road/path coordinates; usage and request behaviour are documented in
 Offline mode plots straight lines between resolved locations. Connected plans
 default to Driving and recalculate after location or mode edits. Routed distance
 and travel time come from Mapbox; planned geometry has no recorded timestamps
-or elevation. Plans last for the viewer session.
+or elevation. Plans remain in memory until you explicitly save a workspace.
 
 Traffic and colour themes are in Ctrl-K. See [Mapbox notes](MAPBOX.md)
 for routing, traffic and search policies, and [themes](THEMES.md) for palettes.
@@ -336,3 +336,71 @@ The `offline` option plots straight lines. `manual` remains a compatibility alia
 These are interactive viewer options; offline geometry works locally, while routed
 modes use your normal Mapbox connection. Named-place search remains available
 inside the planner; startup arguments accept resolved coordinates.
+CLI journeys in Driving, Cycling or Walking mode calculate automatically once
+Mapbox is available, even if you switch the planner to another journey while
+connecting. Offline mode keeps straight lines; failed requests wait for an explicit retry.
+
+
+## Saved workspaces
+
+Use **Ctrl-K → Save workspace** to name a checkpoint. The dialog explains that
+imports remain references to their original files and that calculated road routes,
+basemaps and traffic aren't saved. **Save workspace as** creates a separate
+checkpoint with a new ID. Names may contain printable Unicode and aren't used as
+storage paths. You can keep several saves; each viewer has one active workspace.
+
+**Ctrl-K → Open saved workspace** opens the saved-workspace picker. Press Tab to choose a JSON
+file elsewhere, or press P to enter a path. The picker lists saved workspaces
+from the workspace directory, newest modified first. Up/Down selects a save and
+shows its created/modified dates, import counts and abbreviated paths on the same
+screen. PgUp/PgDown scrolls longer details; R refreshes the filesystem list.
+Unreadable saves remain visible with an explanation. Enter opens the selected
+save; Esc keeps your current work. Save changes before switching.
+
+You can also launch directly into a saved workspace:
+
+```sh
+mapbox-tui --workspace ~/.config/mapbox-tui/workspaces/WORKSPACE_ID.json
+mapbox-tui --workspace /path/to/workspace.json --zoom 12 --no-provider
+```
+
+The workspace camera takes precedence over the global last view. Explicit launch
+centre/zoom/bearing flags override the workspace camera for that launch. Opening a
+save inside the viewer restores its camera without reapplying launch overrides.
+`--workspace` cannot be combined with startup imports, journey options or item/point
+selectors. Theme, ASCII, animation and elevation preferences stay global.
+
+A checkpoint includes imported file references, multiple journeys and incomplete
+drafts, ordered stop values with their provenance and attribution, travel modes,
+visibility, selection, activity palette slots and camera. Saved drafts are available
+in Files; select one and open Journey to continue editing it. Playback reopens
+paused at the saved recorded point. Journey road geometry and travel estimates
+are cleared, with a labelled straight-line preview until each complete road journey
+is recalculated automatically when Mapbox is available. Failed requests wait for
+**Recalculate route**; reconnecting does not repeatedly retry them. The planner
+restores its saved journey, and background recalculation preserves the saved view.
+Favourite locations are copied values; changing a favourite doesn't change a save.
+
+On Linux saves live in `$XDG_CONFIG_HOME/mapbox-tui/workspaces/`, or
+`~/.config/mapbox-tui/workspaces/`, one JSON file per stable ID. Other systems use
+Go's user configuration directory. The save result shows its path. Imported paths
+are written as absolute paths; relative paths in a manifest resolve beside that
+manifest, independently of the process working directory. This isn't a portable
+bundle: retain the original GPX/FIT/TCX/KML files.
+
+Missing or changed imports appear in **Repair missing workspace files**. **Skip
+for now** keeps their references, item state and any unresolved selection when you
+save again. **Locate original import** accepts the path of an identical copy. A
+changed file never receives old item state; to adopt it, deliberately remove the
+reference and add the replacement with Open track file. Removing a reference asks
+for confirmation and never deletes its source. A failed open leaves current work
+intact. Local restoration makes no provider requests.
+
+Only explicit Save replaces a checkpoint. Clearing the workspace, quitting,
+opening another save and repairing references don't update it automatically.
+Save detects edits by another viewer or external editor; on conflict keep your
+working copy with Save workspace as, or explicitly reopen the saved file. A deleted
+checkpoint is not silently recreated. Unsupported formats, oversized files and
+failed writes leave existing saves intact. Clearing the working workspace or
+`--reset-view` does not delete checkpoints, preferences or favourites. Automatic
+recovery and a searchable save library are separate features.

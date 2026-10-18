@@ -22,7 +22,7 @@ func (m *viewer) favouritesDialogOpen() bool {
 }
 
 func (m *viewer) textDialogOpen() bool {
-	return m.ui.dialog == dialogCommands || m.placeSearchOpen() ||
+	return m.ui.dialog == dialogSavedWorkspace || m.ui.dialog == dialogCommands || m.placeSearchOpen() ||
 		m.ui.dialog == dialogFavourites || m.ui.dialog == dialogFavouriteName
 }
 

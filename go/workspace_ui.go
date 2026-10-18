@@ -22,7 +22,7 @@ func (m *viewer) workspaceRows() []workspaceRow {
 	for _, entry := range m.workspace.documents {
 		var visible, listed bool
 		for _, item := range entry.document.Items {
-			if item.Journey != nil && !item.Journey.hasCompleteLocations() {
+			if item.Journey != nil && !item.Journey.hasCompleteLocations() && !m.workspace.savedJourney(entry.saveID) {
 				continue
 			}
 			listed = true
@@ -38,7 +38,7 @@ func (m *viewer) workspaceRows() []workspaceRow {
 			visible: visible,
 		})
 		for _, item := range entry.document.Items {
-			if item.Journey != nil && !item.Journey.hasCompleteLocations() {
+			if item.Journey != nil && !item.Journey.hasCompleteLocations() && !m.workspace.savedJourney(entry.saveID) {
 				continue
 			}
 			ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}

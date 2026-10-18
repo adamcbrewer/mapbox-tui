@@ -41,6 +41,7 @@ const (
 	dialogFavourites
 	dialogFavouriteName
 	dialogFavouriteDelete
+	dialogSavedWorkspace
 	dialogJourney
 	dialogJourneyLocation
 	dialogJourneyRouting
@@ -350,6 +351,9 @@ func (m *viewer) gradient(s string, background color.Color) string {
 	return out.String()
 }
 func (m *viewer) closeDialog() {
+	if m.ui.dialog == dialogSavedWorkspace {
+		m.savedWork.request++
+	}
 	if m.ui.dialog == dialogMapboxBilling {
 		m.billingIntent = billingNoIntent
 	}
@@ -637,11 +641,20 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Quick place search", shortcut: "/", action: "search"},
 		{title: "Favourite places", action: "favourites"},
 		{title: "Save selected location as favourite", action: "save-favourite", disabled: m.inspected == nil},
-		{title: "Open track file", shortcut: "ctrl+o", action: "open"},
-		{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
-		{title: "Journey Planner", shortcut: "ctrl+j", action: "journey"},
-		{title: "Colour theme", action: "theme"},
+		{title: "Save workspace", action: "save-workspace"},
+		{title: "Save workspace as", action: "save-workspace-as"},
+		{title: "Open saved workspace", action: "open-workspace"},
+		{title: "Repair missing workspace files", action: "repair-workspace", disabled: len(m.workspace.unresolved) == 0},
 	}
+	if len(m.workspace.documents) > 0 {
+		commands = append(commands, viewerCommand{title: "Clear workspace (remove all files)", action: "clear"})
+	}
+	commands = append(commands,
+		viewerCommand{title: "Open track file", shortcut: "ctrl+o", action: "open"},
+		viewerCommand{title: "Loaded files and routes", shortcut: "ctrl+l", action: "workspace"},
+		viewerCommand{title: "Journey Planner", shortcut: "ctrl+j", action: "journey"},
+		viewerCommand{title: "Colour theme", action: "theme"},
+	)
 	toggles := []viewerCommand{
 		m.trafficCommand(),
 		{title: "Toggle animations", shortcut: "m", action: "motion", toggle: true,
@@ -651,7 +664,6 @@ func (m *viewer) commands() []viewerCommand {
 	if len(m.workspace.documents) > 0 {
 		commands = append(commands,
 			viewerCommand{title: "Fit all visible routes", shortcut: "f", action: "fit"},
-			viewerCommand{title: "Clear workspace (remove all files)", action: "clear"},
 		)
 	}
 	if len(m.workspace.profileItems()) > 0 {
@@ -704,6 +716,14 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return command
 	}
 	switch action {
+	case "save-workspace":
+		return m.openSavedWorkspaceDialog("save")
+	case "save-workspace-as":
+		return m.openSavedWorkspaceDialog("save-as")
+	case "open-workspace":
+		return m.openSavedWorkspaceDialog("open")
+	case "repair-workspace":
+		return m.openSavedWorkspaceDialog("repair")
 	case "favourites":
 		return m.pushDialog(dialogFavourites)
 	case "save-favourite":
@@ -786,6 +806,9 @@ func (m *viewer) toggleMenuOption(action string) tea.Cmd {
 
 func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 	m.dirty = true
+	if m.ui.dialog == dialogSavedWorkspace {
+		return m.updateSavedWorkspaceDialog(msg)
+	}
 	if m.favouritesDialogOpen() {
 		return m.updateFavouritesDialog(msg)
 	}
@@ -911,6 +934,8 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	switch m.ui.dialog {
+	case dialogSavedWorkspace:
+		return m.savedWorkspaceContent(width, height)
 	case dialogFavourites, dialogFavouriteName, dialogFavouriteDelete:
 		return m.favouritesContent(width, height)
 	case dialogSearch:

@@ -87,7 +87,10 @@ The viewer's startup account-usage check does not add a polling loop to MCP.
 
 ## Beyond MCP: terminal control
 
-MCP and the terminal viewer keep separate workspaces. MCP manages imports,
+MCP and the terminal viewer keep separate workspaces. Named viewer checkpoints
+are opened explicitly through the viewer or `--workspace`; the standalone MCP
+server never restores them automatically. Save/Open use shared workspace lifecycle
+code; Save/Open tools are not exposed over MCP. MCP manages imports,
 selection, visibility, inspection and text maps. Place search, journey planning,
 playback and live traffic are viewer features, so an agent needs terminal
 control to use them.

@@ -243,8 +243,7 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	}
 	var routing tea.Cmd
 	if j, err := m.workspace.journey(m.planner.ref); err == nil {
-		if m.defaultJourneyMode(j) || (m.startupJourneyRouting && m.directions.token != "") {
-			m.startupJourneyRouting = false
+		if m.defaultJourneyMode(j) {
 			routing = m.calculateJourneyIfRouted()
 		}
 	}
@@ -255,7 +254,7 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 	if access == mapboxNeedsConsent {
 		m.openBilling(billingEnableOnline)
 	}
-	return tea.Batch(m.fetch(), routing, search)
+	return tea.Batch(m.fetch(), routing, search, m.routePendingJourneys())
 }
 
 func (m *viewer) beginMapboxLogin() tea.Cmd {

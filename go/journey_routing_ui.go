@@ -249,3 +249,34 @@ func journeyDuration(seconds float64) string {
 	}
 	return fmt.Sprintf("%.0f h %.0f min", math.Floor(minutes/60), math.Mod(minutes, 60))
 }
+
+// A saved or CLI journey gets one automatic attempt when product access is ready.
+// beginJourneyRoute consumes the pending flag, including validation failures;
+// subsequent failures and reconnects require an explicit retry.
+func (m *viewer) routePendingJourneys() tea.Cmd {
+	if m.directions == nil || m.preferences.productAccess(m.directions.token) != mapboxAllowed {
+		return nil
+	}
+	var commands []tea.Cmd
+	for _, item := range m.workspace.items() {
+		j := item.Item.Journey
+		if j == nil || !j.automaticRoutePending {
+			continue
+		}
+		if j.Busy || j.routeCurrent() {
+			j.automaticRoutePending = false
+			continue
+		}
+		request, err := m.workspace.beginJourneyRoute(m.ctx, item.Ref)
+		if err != nil {
+			continue
+		} // beginJourneyRoute retains the actionable error on the journey.
+		request.preserveView = j.automaticRoutePreserveView
+		client := m.directions
+		commands = append(commands, func() tea.Msg { return request.run(client) })
+	}
+	if len(commands) > 0 {
+		m.dirty = true
+	}
+	return tea.Batch(commands...)
+}
