@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,17 +17,26 @@ import (
 )
 
 type savedWorkspaceUI struct {
-	generation  string
-	revision    uint64
-	entries     []workspaceListing
-	selected    int
-	mode        string
-	request     uint64
-	candidate   *Workspace
-	camera      Camera
-	repairID    string
-	busy        bool
-	repairError string
+	generation      string
+	revision        uint64
+	entries         []workspaceListing
+	allEntries      []workspaceListing
+	query           string
+	sortName        bool
+	anchor          string
+	target          *workspaceCheckpoint
+	switchAction    string
+	confirmSelected int
+	confirmButtons  [3]image.Rectangle
+	actionSelected  int
+	selected        int
+	mode            string
+	request         uint64
+	candidate       *Workspace
+	camera          Camera
+	repairID        string
+	busy            bool
+	repairError     string
 }
 
 type savedWorkspaceReady struct {
@@ -44,10 +54,15 @@ type savedImportReady struct {
 }
 
 func (m *viewer) openSavedWorkspaceDialog(mode string) tea.Cmd {
+	if mode == "repair" && len(m.workspace.unresolved) == 0 {
+		m.closeDialog()
+		return nil
+	}
 	m.openDialog(dialogSavedWorkspace)
 	m.savedWork.request++
 	m.savedWork.mode, m.savedWork.busy = mode, false
 	m.savedWork.candidate = nil
+	m.savedWork.switchAction = ""
 	m.savedWork.repairError = ""
 	m.ui.search.CharLimit = 4096
 	m.ui.search.Placeholder = "Workspace JSON path"
@@ -134,6 +149,11 @@ func (m *viewer) savedOpenCurrent() bool {
 		return true
 	}
 	m.savedWork.candidate = nil
+	if m.savedWork.mode == "unsaved" || m.savedWork.mode == "confirm-open" {
+		m.savedWork.mode, m.savedWork.switchAction = "open", ""
+		m.workspaceNameInput("Workspace JSON path", "")
+		m.ui.search.CharLimit = 4096
+	}
 	m.ui.notice = "Working copy changed while opening. Open the workspace again to replace it."
 	return false
 }
@@ -143,6 +163,18 @@ func (m *viewer) applySavedWorkspace() tea.Cmd {
 	if candidate == nil || !m.savedOpenCurrent() {
 		return nil
 	}
+	if m.workspace.modified(m.destination(), m.planner.ref) {
+		m.savedWork.mode, m.savedWork.switchAction = "unsaved", "open"
+		m.savedWork.confirmSelected = 2
+		m.ui.notice = ""
+		m.ui.search.Blur()
+		return nil
+	}
+	return m.commitSavedWorkspace()
+}
+
+func (m *viewer) commitSavedWorkspace() tea.Cmd {
+	candidate := m.savedWork.candidate
 	cmd := m.installSavedWorkspace(candidate, m.savedWork.camera)
 	if len(m.workspace.unresolved) > 0 {
 		return tea.Batch(m.openSavedWorkspaceDialog("repair"), cmd)
@@ -182,12 +214,13 @@ func (m *viewer) saveWorkspaceCheckpoint(name string, saveAs bool) (*workspaceCh
 	var checkpoint *workspaceCheckpoint
 	if err == nil {
 		var snapshot savedWorkspace
-		snapshot, err = m.workspace.snapshot(name, m.destination(), saveAs)
+		snapshot, err = m.workspace.plannerSnapshot(
+			name,
+			m.destination(),
+			saveAs,
+			m.planner.ref,
+		)
 		if err == nil {
-			if _, err := m.workspace.journey(m.planner.ref); err == nil {
-				entry, _, _ := m.workspace.lookup(m.planner.ref)
-				snapshot.Planner = entry.itemIDs[m.planner.ref.ItemID]
-			}
 			expected := m.workspace.checkpoint
 			if saveAs {
 				expected = nil
@@ -199,6 +232,8 @@ func (m *viewer) saveWorkspaceCheckpoint(name string, saveAs bool) (*workspaceCh
 		return nil, err
 	}
 	m.workspace.checkpoint = checkpoint
+	m.workspace.detachedManifest = nil
+	m.workspace.rememberSavedState(m.destination(), m.planner.ref)
 	m.workspace.edited()
 	return checkpoint, nil
 }
@@ -214,6 +249,15 @@ func (m *viewer) saveWorkspaceFromDialog() tea.Cmd {
 			m.ui.notice = "The checkpoint changed; your working copy is safe."
 		}
 		return nil
+	}
+	if m.savedWork.switchAction != "" {
+		m.savedWork.generation, m.savedWork.revision = m.workspace.liveIdentity(), m.workspace.liveRevision
+		if m.savedWork.switchAction == "clear" {
+			return m.clearWorkspace()
+		}
+		path := m.savedWork.candidate.checkpoint.path
+		m.savedWork.switchAction, m.savedWork.mode = "", "library"
+		return m.beginSavedOpen(path)
 	}
 	m.savedWork.mode = "saved"
 	m.ui.notice = "Workspace saved: " + checkpoint.manifest.Name
@@ -268,12 +312,30 @@ func (m *viewer) acceptSavedImport(result savedImportReady) tea.Cmd {
 }
 
 func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
+	if m.savedWork.mode == "unsaved" {
+		return m.updateUnsavedWorkspaceDialog(msg)
+	}
 	if pressed, ok := msg.(tea.KeyPressMsg); ok {
 		key := pressed.String()
 		if key == "esc" {
+			if m.savedWork.mode == "library-actions" {
+				m.savedWork.mode = "library"
+				return nil
+			}
+			if m.savedWork.mode == "library-search" {
+				m.savedWork.mode = "library"
+				m.ui.search.Blur()
+				return nil
+			}
+			if m.savedWork.mode == "rename" || m.savedWork.mode == "duplicate" || m.savedWork.mode == "delete" {
+				m.savedWork.mode = "library"
+				m.ui.search.Blur()
+				return m.selectLibraryWorkspace(m.savedWork.selected)
+			}
 			if m.savedWork.mode == "locate-browse" {
-				m.savedWork.mode = "locate"
-				return m.ui.search.Focus()
+				m.savedWork.mode = "repair"
+				m.ui.search.Blur()
+				return nil
 			}
 			m.closeDialog()
 			return nil
@@ -285,6 +347,31 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		switch m.savedWork.mode {
+		case "library-actions":
+			return m.updateWorkspaceActions(key)
+		case "rename", "duplicate", "delete":
+			if key == "enter" {
+				return m.manageSavedWorkspace()
+			}
+			if m.savedWork.mode == "delete" && key == "home" {
+				m.ui.page.GotoTop()
+				return nil
+			}
+			if m.savedWork.mode == "delete" && key == "end" {
+				m.ui.page.GotoBottom()
+				return nil
+			}
+			if key == "pgup" || key == "pgdown" || m.savedWork.mode == "delete" {
+				var cmd tea.Cmd
+				m.ui.page, cmd = m.ui.page.Update(msg)
+				return cmd
+			}
+		case "library-search":
+			if key == "enter" {
+				m.savedWork.mode = "library"
+				m.ui.search.Blur()
+				return nil
+			}
 		case "save", "save-as":
 			if key == "enter" {
 				return m.saveWorkspaceFromDialog()
@@ -358,7 +445,7 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 				m.ui.search.CursorEnd()
 				m.savedWork.repairError = ""
 				m.ui.search.Placeholder = "Replacement file path"
-				return m.ui.search.Focus()
+				return m.browseReplacementImport()
 			case "delete", "backspace":
 				m.savedWork.repairID = m.workspace.unresolved[m.ui.selected].ID
 				m.savedWork.mode = "remove-reference"
@@ -410,6 +497,10 @@ func (m *viewer) updateSavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	m.ui.search, cmd = m.ui.search.Update(msg)
+	if m.savedWork.mode == "library-search" {
+		m.savedWork.query = m.ui.search.Value()
+		m.filterWorkspaceLibrary()
+	}
 	return m.clipboardCommand(msg, cmd)
 }
 
@@ -418,8 +509,14 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 	m.ui.search.SetCursor(m.ui.search.Position())
 	input := m.ui.search.View()
 	switch m.savedWork.mode {
-	case "library":
+	case "library", "library-search":
 		return m.workspaceLibraryContent(width, height)
+	case "library-actions":
+		return m.workspaceActionsContent(width, height)
+	case "rename", "duplicate", "delete":
+		return m.workspaceManagementContent(input, width, height)
+	case "unsaved":
+		return m.unsavedWorkspaceContent(width)
 	case "save", "save-as":
 		title := "Save workspace"
 		if m.savedWork.mode == "save-as" {
@@ -454,9 +551,6 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		m.ui.page.SetContent(m.savedWorkspaceSummary(width))
 		return "Open workspace?", m.ui.page.View(), "↑/↓ scroll • enter open • esc keep current"
 	case "repair":
-		if len(m.workspace.unresolved) == 0 {
-			return "Workspace files", "All referenced files are available.", "esc close"
-		}
 		count := len(m.workspace.unresolved)
 		m.ui.selected = min(m.ui.selected, count-1)
 		entry := m.workspace.unresolved[m.ui.selected]
@@ -466,8 +560,12 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		hints := "↑/↓ select • enter locate • del remove • esc skip for now"
 		return "Missing or changed files", body, hints
 	case "locate-browse":
-		m.ui.picker.SetHeight(max(1, height))
-		return "Locate original import", m.ui.picker.View(), "enter choose • tab path • esc back"
+		m.ui.picker.SetHeight(max(1, height-2))
+		m.ui.picker.Styles.Selected = m.ui.picker.Styles.Selected.Width(max(1, width-1)).MaxWidth(max(1, width-1))
+		m.ui.picker.Styles.File = m.styles.dialogText.Width(max(1, width-2)).MaxWidth(max(1, width-2))
+		m.ui.picker.Styles.Directory = m.styles.dialogAccent.Width(max(1, width-2)).MaxWidth(max(1, width-2))
+		folder := "Folder: " + abbreviatedWorkspacePath(m.ui.picker.CurrentDirectory, max(1, min(36, width-8)), m.settings.ASCII)
+		return "Locate original import", folder + "\n\n" + m.ui.picker.View(), "enter choose • tab enter path • esc back"
 	case "locate":
 		body := input + "\n\nChoose an identical copy to restore item state." +
 			"\nFor changed content, remove the reference and add the new file."

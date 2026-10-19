@@ -10,11 +10,12 @@ import (
 )
 
 type workspaceListing struct {
-	path     string
-	name     string
-	modified time.Time
-	problem  string
-	preview  workspacePreview
+	path       string
+	name       string
+	modified   time.Time
+	problem    string
+	preview    workspacePreview
+	checkpoint *workspaceCheckpoint
 }
 
 // Listing reads manifests only; imported geometry is loaded only when opening a save.
@@ -36,6 +37,7 @@ func (s workspaceStore) list() ([]workspaceListing, error) {
 		if err != nil {
 			entry.problem = err.Error()
 		} else {
+			entry.checkpoint = checkpoint
 			entry.name, entry.modified = checkpoint.manifest.Name, checkpoint.manifest.Modified
 			entry.preview = previewWorkspace(checkpoint, nil, false)
 		}

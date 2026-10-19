@@ -193,9 +193,10 @@ values. Stale requests fail without applying edits.
 
 Live revision counts edits, including presentation and playback changes. It
 increases monotonically and can advance more than once per command. It is
-separate from checkpoint revision and playback frames. The shared model has no
-persistence dirty-state API yet, so status reports
-`persistence_dirty_available: false` and omits `unsaved_changes`.
+separate from checkpoint revision and playback frames. The viewer compares
+savable state for its Open/Start clean confirmation. Remote status still reports
+`persistence_dirty_available: false` and omits `unsaved_changes`; remote replacement
+continues to require explicit discard consent, independently of live revision.
 
 ```sh
 mapbox-tui remote --session main camera set --zoom 12 \

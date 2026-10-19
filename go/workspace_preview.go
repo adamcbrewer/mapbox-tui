@@ -48,7 +48,6 @@ func (p workspacePreview) detailLines(width int, ascii bool) []string {
 	lines := []string{
 		"Created:  " + p.created.Local().Format("02 Jan 2006 15:04 MST"),
 		"Modified: " + p.modified.Local().Format("02 Jan 2006 15:04 MST"),
-		"Replaces current work. Save changes first.",
 		fmt.Sprintf("Imports: %d | Journeys: %d", len(p.imports), p.journeys),
 	}
 	if len(p.imports) == 0 {
@@ -65,12 +64,35 @@ func (p workspacePreview) detailLines(width int, ascii bool) []string {
 }
 
 func (p workspacePreview) pickerDetails(width int, ascii bool) string {
-	lines := p.detailLines(width, ascii)
-	if !p.checked && len(p.imports) > 0 {
-		lines = append(lines, "Import files are checked when opening.")
+	lines := []string{
+		"Modified: " + p.modified.Local().Format("02 Jan 2006 15:04"),
+		"Created:  " + p.created.Local().Format("02 Jan 2006"),
+		fmt.Sprintf("Imports: %d | Journeys: %d", len(p.imports), p.journeys),
 	}
-	lines = append(lines, "Save: "+abbreviatedWorkspacePath(p.path, max(1, width-6), ascii))
+	for _, entry := range p.imports {
+		lines = append(lines, "  "+workspaceFilename(entry.path, max(1, min(36, width-2)), ascii))
+	}
+	if !p.checked && len(p.imports) > 0 {
+		lines = append(lines, "Files checked when opening.")
+	}
 	return ansi.Hardwrap(strings.Join(lines, "\n"), max(1, width), true)
+}
+
+func workspaceFilename(path string, width int, ascii bool) string {
+	name := cleanPlaceText(filepath.Base(path))
+	if ansi.StringWidth(name) <= width {
+		return name
+	}
+	ending := "…"
+	if ascii {
+		ending = "..."
+	}
+	extension := filepath.Ext(name)
+	room := width - ansi.StringWidth(extension)
+	if room <= ansi.StringWidth(ending) {
+		return ansi.Truncate(name, width, ending)
+	}
+	return ansi.Truncate(name, room, ending) + extension
 }
 
 func (p workspacePreview) confirmation(width int, ascii bool) string {

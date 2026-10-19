@@ -116,8 +116,11 @@ func (v savedWorkspace) validate() error {
 		return fmt.Errorf("unsupported workspace version %d; original left unchanged", v.Version)
 	}
 	validName := strings.TrimSpace(v.Name) != "" && len([]rune(v.Name)) <= 256 && cleanPlaceText(v.Name) == v.Name
-	if !validSavedID(v.ID) || !validName || v.Revision == 0 {
-		return fmt.Errorf("invalid workspace identity, name or revision")
+	if !validName {
+		return fmt.Errorf("workspace name must contain 1 to 256 printable characters")
+	}
+	if !validSavedID(v.ID) || v.Revision == 0 {
+		return fmt.Errorf("invalid workspace identity or revision")
 	}
 	if v.Created.IsZero() || v.Modified.Before(v.Created) {
 		return fmt.Errorf("invalid workspace timestamps")
@@ -293,27 +296,21 @@ func (s workspaceStore) save(v savedWorkspace, expected *workspaceCheckpoint) (*
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("create workspace directory: %w", err)
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	unlock, err := lockWorkspace(path)
 	if err != nil {
-		return nil, fmt.Errorf("open workspace lock: %w", err)
+		return nil, err
 	}
-	defer lock.Close()
-	if err := lockLocalFile(lock); err != nil {
-		return nil, fmt.Errorf("workspace is busy; try again: %w", err)
-	}
-	defer unlockLocalFile(lock)
-	current, readErr := readWorkspace(path)
+	defer unlock()
 	if expected == nil {
+		_, readErr := readWorkspace(path)
 		if !errors.Is(readErr, os.ErrNotExist) {
 			return nil, fmt.Errorf("workspace already exists or cannot be read; use Save As")
 		}
 	} else {
-		if readErr != nil {
-			return nil, fmt.Errorf("%w or is unavailable; reload or Save As: %w", errWorkspaceConflict, readErr)
+		if err := checkWorkspace(expected); err != nil {
+			return nil, err
 		}
-		sameFile := current.digest == expected.digest && current.manifest.ID == v.ID
-		matches := sameFile && current.manifest.Revision+1 == v.Revision
-		if !matches {
+		if expected.manifest.ID != v.ID || expected.manifest.Revision+1 != v.Revision {
 			return nil, fmt.Errorf("%w in another viewer or editor; reload or Save As", errWorkspaceConflict)
 		}
 	}
@@ -334,6 +331,75 @@ func (s workspaceStore) save(v savedWorkspace, expected *workspaceCheckpoint) (*
 		return nil, fmt.Errorf("replace workspace: %w", err)
 	}
 	return &workspaceCheckpoint{path: path, digest: sha256.Sum256(data), manifest: v}, nil
+}
+
+func lockWorkspace(path string) (func(), error) {
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open workspace lock: %w", err)
+	}
+	if err := lockLocalFile(lock); err != nil {
+		lock.Close()
+		return nil, fmt.Errorf("workspace is busy; try again: %w", err)
+	}
+	return func() {
+		unlockLocalFile(lock)
+		lock.Close()
+	}, nil
+}
+
+func checkWorkspace(expected *workspaceCheckpoint) error {
+	current, err := readWorkspace(expected.path)
+	if err != nil {
+		return fmt.Errorf("%w or is unavailable; reload or Save As: %w", errWorkspaceConflict, err)
+	}
+	sameIdentity := current.manifest.ID == expected.manifest.ID && current.manifest.Revision == expected.manifest.Revision
+	if current.digest != expected.digest || !sameIdentity {
+		return fmt.Errorf("%w in another viewer or editor; refresh or Save As", errWorkspaceConflict)
+	}
+	return nil
+}
+
+func (s workspaceStore) rename(expected *workspaceCheckpoint, name string) (*workspaceCheckpoint, error) {
+	v := expected.manifest
+	v.Name, v.Modified, v.Revision = strings.TrimSpace(name), time.Now().UTC(), v.Revision+1
+	return s.save(v, expected)
+}
+
+func (s workspaceStore) duplicate(expected *workspaceCheckpoint, name string) (*workspaceCheckpoint, error) {
+	unlock, err := lockWorkspace(expected.path)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err := checkWorkspace(expected); err != nil {
+		return nil, err
+	}
+	v := expected.manifest
+	fresh := newSavedWorkspace(strings.TrimSpace(name))
+	v.ID, v.Name, v.Created, v.Modified, v.Revision = fresh.ID, fresh.Name, fresh.Created, fresh.Modified, fresh.Revision
+	v.Imports = append([]savedImport{}, v.Imports...)
+	for i := range v.Imports {
+		if !filepath.IsAbs(v.Imports[i].Path) {
+			v.Imports[i].Path = filepath.Join(filepath.Dir(expected.path), v.Imports[i].Path)
+		}
+	}
+	return s.save(v, nil)
+}
+
+func (s workspaceStore) delete(expected *workspaceCheckpoint) error {
+	unlock, err := lockWorkspace(expected.path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := checkWorkspace(expected); err != nil {
+		return err
+	}
+	if err := os.Remove(expected.path); err != nil {
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+	return nil
 }
 
 func newSavedWorkspace(name string) savedWorkspace {

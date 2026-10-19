@@ -363,12 +363,38 @@ storage paths. You can keep several saves; each viewer has one active workspace.
 **Ctrl-K → Open saved workspace** opens the saved-workspace picker. Press Tab to choose a JSON
 file elsewhere, or press P to enter a path. The picker lists saved workspaces
 from the workspace directory, newest modified first. Up/Down selects a save and
-shows its created/modified dates, import counts and abbreviated paths on the same
+shows its created/modified dates, import counts and shortened filenames on the same
 screen. Browsing reads saved metadata only; import files are loaded and checked
 when you press Enter. Missing or changed imports then open the repair screen.
 PgUp/PgDown scrolls longer details; R refreshes the filesystem list.
 Unreadable saves remain visible with an explanation. Enter opens the selected
-save; Esc keeps your current work. Save changes before switching.
+save; Esc keeps your current work. If the current workspace has unsaved changes,
+opening another save offers Save, Discard or Cancel. A failed or conflicting Save
+keeps the current work. Discard drops only the in-memory changes.
+Save is selected by default. Use Tab or Left/Right to choose Cancel, Discard changes
+or Save, then Enter; the buttons also accept mouse clicks.
+
+Press `/` to search names, then Enter or Esc to return to the filtered list.
+Clear the search text to show all saves. Press O to switch between newest-first
+and name ordering. The active checkpoint is highlighted and labelled `(active)`.
+Duplicate or shortened names show a short ID to distinguish them.
+
+Press M for the workspace actions menu. The direct shortcuts still work:
+N renames the selected checkpoint, D duplicates it and Delete asks
+for confirmation before deleting it. Rename preserves the ID and saved contents;
+it doesn't save current unsaved edits. Duplicate copies the selected saved contents
+with a new ID, including missing-file references. It doesn't copy unsaved edits or
+switch the active workspace. S saves the current working copy; A opens Save As.
+Save As creates a new checkpoint from the current working copy. Names can match
+other saves and contain up to 256 printable Unicode characters; blank names are
+rejected. Names never select a storage path or overwrite target.
+
+Rename, Duplicate and Delete check for conflicting edits. On conflict, keep the
+working copy, press Esc to return to the picker and R to refresh before retrying.
+Deleting the active checkpoint leaves its working copy available as unsaved work.
+The next Save asks for a name and creates a new ID. Deletion only removes the
+selected checkpoint JSON file; original imports, preferences, favourites and other
+saves stay untouched. The separate lock file is retained for concurrent writers.
 
 You can also launch directly into a saved workspace:
 
@@ -405,8 +431,9 @@ Missing or changed imports appear in **Repair missing workspace files**.
 Repair preserves playback of another selected activity. If you reopen a missing
 file through **Open track file**, remove its unresolved reference before saving;
 one path cannot be saved as both a loaded import and an unresolved reference.
-Press Enter to edit the replacement path, Ctrl-U to clear it, or Tab to browse
-for the original file. Home/End and arrow keys move through long paths; `~/`
+Press Enter to open the file picker beside the original file's location. Tab switches
+to a typed path; press Tab again to return to the picker. Ctrl-U clears the typed
+path. Home/End and arrow keys move through long paths; `~/`
 paths resolve from your home directory. **Skip
 for now** keeps their references, item state and any unresolved selection when you
 save again. **Locate original import** accepts the path of an identical copy. A
@@ -414,21 +441,28 @@ changed file never receives old item state; to adopt it, deliberately remove the
 reference and add the replacement with Open track file. Removing a reference asks
 for confirmation and never deletes its source. A failed open leaves current work
 intact. Local restoration makes no provider requests.
+Once the last reference is repaired or removed, the repair dialog closes.
 
-Only explicit Save replaces a checkpoint. Clearing the workspace, quitting,
+Only explicit Save replaces a checkpoint's working contents. Rename changes its
+name and revision/timestamp metadata; Duplicate and Save As create new IDs.
+Clearing the workspace, quitting,
 opening another save and repairing references don't update it automatically.
 Save detects edits by another viewer or external editor; on conflict keep your
 working copy with Save workspace as, or explicitly reopen the saved file. A deleted
 checkpoint is not silently recreated. Unsupported formats, oversized files and
 failed writes leave existing saves intact. Clearing the working workspace or
-`--reset-view` does not delete checkpoints, preferences or favourites. Automatic
-recovery and a searchable save library are separate features.
+`--reset-view` does not delete checkpoints, preferences or favourites. Browsing,
+searching, renaming and duplicating saved metadata don't call providers or parse
+original imports. Autosave and automatic session/crash recovery remain deferred.
 
 ## Start clean, clear journeys and safe start
 
 Use **Ctrl-K → Start clean** to empty the workspace. This clears imports,
 journeys, missing-file references and selection, and cancels pending workspace
-work. Your preferences, favourites and saved files stay as they are.
+work. If there are unsaved changes, choose Save, Discard or Cancel before clearing.
+Save must succeed before clearing; a cancellation or failure keeps the working
+copy available. Your preferences, favourites and saved files stay as they are
+unless you explicitly choose Save.
 **Save workspace** then asks for a new name, so you won't overwrite the
 checkpoint you had open.
 

@@ -36,3 +36,27 @@ func TestWorkspacePreviewMetadataAndValidatedImports(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkspacePreviewShortensFilenamesWithoutStoragePaths(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		ascii bool
+	}{
+		{name: "unicode"},
+		{name: "ascii", ascii: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := "/very/long/folder/" + strings.Repeat("旅行", 40) + ".gpx"
+			short := workspaceFilename(path, 24, test.ascii)
+			if ansi.StringWidth(short) > 24 || !strings.HasSuffix(short, ".gpx") {
+				t.Fatal("filename lost extension or exceeded its width", short)
+			}
+			p := workspacePreview{path: "/settings/workspaces/opaque-workspace-id.json",
+				imports: []workspaceImportPreview{{path: path}}}
+			body := p.pickerDetails(45, test.ascii)
+			if strings.Contains(body, "opaque-workspace-id") || strings.Contains(body, "/very/long/folder") {
+				t.Fatal("picker still shows long storage paths", body)
+			}
+		})
+	}
+}

@@ -158,6 +158,24 @@ confirmation views render the same preview fields with separate layouts, without
 inspecting or filtering presentation strings. Import availability remains unchecked
 in the metadata preview and is reported after the candidate loads.
 
+The picker filters names and sorts metadata in memory. Rows retain checkpoint
+identity and the digest/revision observed during listing. Rename reuses the atomic
+save path but changes only the stored name and revision/timestamps. Duplicate
+checks and locks the source, preserves its saved contents, resolves relative import
+paths against the source manifest and creates a new checkpoint ID. Delete checks
+the same lock/digest/revision before removing only the checkpoint JSON. Its lock
+file stays in place so other processes continue to lock the same inode. Deleting
+the active checkpoint detaches it without clearing the working copy.
+
+Shared workspace code compares a digest of savable state against an in-memory
+baseline captured after opening or saving. Generated checkpoint metadata is
+excluded; camera, selection, planner, imports and journeys are included. The
+baseline uses restored runtime state, so missing imports and unavailable road
+geometry don't themselves count as edits. Live command revisions and transient
+provider state don't determine persistence dirtiness. The viewer checks this
+comparison before Open or Start clean and offers Save/Discard/Cancel. A failed
+save keeps the current workspace. No autosave or recovery files are created.
+
 A save locks a separate lock file, rereads and checks both the revision and full file
 digest, writes/syncs a same-directory temporary file, then renames it. Names never
 select overwrite targets. Save As allocates a new checkpoint ID. Failed/conflicting

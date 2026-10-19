@@ -125,6 +125,7 @@ func TestSavedWorkspaceRepairUIAndDraftAccess(t *testing.T) {
 	m.savedWork.mode = "open"
 	m.Update(m.beginSavedOpen(cp.path)())
 	savedKey(m, tea.KeyEnter)
+	savedKey(m, 'd')
 	if m.savedWork.mode != "repair" {
 		t.Fatal("missing import was not explained")
 	}
@@ -141,7 +142,7 @@ func TestSavedWorkspaceRepairUIAndDraftAccess(t *testing.T) {
 		t.Fatal("removal lacked confirmation")
 	}
 	savedKey(m, tea.KeyEnter)
-	if len(m.workspace.unresolved) != 0 {
+	if len(m.workspace.unresolved) != 0 || m.ui.dialog != dialogNone {
 		t.Fatal("remove did not update working copy")
 	}
 	unchanged, err := readWorkspace(cp.path)
@@ -164,6 +165,7 @@ func TestSavedWorkspaceClearMissingOnlyImports(t *testing.T) {
 	m.savedWork.mode = "open"
 	m.Update(m.beginSavedOpen(cp.path)())
 	savedKey(m, tea.KeyEnter)
+	savedKey(m, 'd')
 	savedKey(m, tea.KeyEscape)
 	if len(m.workspace.documents) != 0 || len(m.workspace.unresolved) != 1 {
 		t.Fatal("expected only an unresolved import")
@@ -180,6 +182,53 @@ func TestSavedWorkspaceClearMissingOnlyImports(t *testing.T) {
 		return
 	}
 	t.Fatal("Clear workspace is unavailable for missing-only imports")
+}
+
+func TestSavedWorkspaceRepairClosesAfterLastReference(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	data := []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`)
+	first := importFile(t, "first.gpx", data)
+	second := importFile(t, "second.gpx", data)
+	for _, path := range []string{first, second} {
+		openWorkspaceFile(t, &m.workspace, path)
+	}
+	cp, err := m.saveWorkspaceCheckpoint("Two missing files", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{first, second} {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	candidate, camera, err := prepareWorkspace(cp.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.installSavedWorkspace(candidate, camera)
+	m.openSavedWorkspaceDialog("repair")
+	for i := range 2 {
+		reference := m.workspace.unresolved[0]
+		replacement := importFile(t, fmt.Sprintf("replacement-%d.gpx", i), data)
+		m.savedWork.mode, m.savedWork.repairID = "locate", reference.ID
+		m.ui.search.SetValue(replacement)
+		m.Update(m.beginLocateImport()())
+		if i == 0 && (m.ui.dialog != dialogSavedWorkspace || m.savedWork.mode != "repair") {
+			t.Fatal("repair closed with another missing reference remaining")
+		}
+	}
+	if m.ui.dialog != dialogNone || len(m.workspace.unresolved) != 0 {
+		t.Fatal("repair completion left an unnecessary dialog open")
+	}
+	if !m.workspace.modified(m.destination(), m.planner.ref) {
+		t.Fatal("closing repair implicitly saved the working changes")
+	}
+	if cmd := m.openSavedWorkspaceDialog("repair"); cmd != nil || m.ui.dialog != dialogNone {
+		t.Fatal("empty repair flow opened a dialog")
+	}
+	if err := checkWorkspace(cp); err != nil {
+		t.Fatal("repair changed the named checkpoint", err)
+	}
 }
 
 func TestSavedWorkspaceViewerConflictOffersSaveAs(t *testing.T) {
@@ -291,6 +340,7 @@ func TestSavedWorkspaceRestoresPlannerAndRoutesOnce(t *testing.T) {
 			m.savedWork.candidate, m.savedWork.camera = candidate, camera
 			m.savedWork.generation, m.savedWork.revision = m.workspace.liveIdentity(), m.workspace.liveRevision
 			m.applySavedWorkspace()
+			m.updateUnsavedWorkspace("d")
 			ref := m.planner.ref
 			j, err := m.workspace.journey(ref)
 			if err != nil || !j.hasCompleteLocations() {
@@ -402,6 +452,10 @@ func TestSavedWorkspaceRepairPathEditing(t *testing.T) {
 	m.workspace.unresolved = []savedImport{{ID: "missing-import", Path: path}}
 	m.openSavedWorkspaceDialog("repair")
 	savedKey(m, tea.KeyEnter)
+	if m.savedWork.mode != "locate-browse" {
+		t.Fatal("Locate did not open the file picker")
+	}
+	savedKey(m, tea.KeyTab)
 	if !m.ui.search.Focused() {
 		t.Fatal("replacement path input is not focused")
 	}
@@ -428,7 +482,7 @@ func TestSavedWorkspaceRepairPathEditing(t *testing.T) {
 	if _, err := os.Stat(m.ui.picker.CurrentDirectory); err != nil {
 		t.Fatal("browser started in missing directory", err)
 	}
-	savedKey(m, tea.KeyEscape)
+	savedKey(m, tea.KeyTab)
 	if m.savedWork.mode != "locate" || !m.ui.search.Focused() || m.ui.search.Value() != path {
 		t.Fatal("browser return lost editable path")
 	}
@@ -445,6 +499,7 @@ func TestSavedWorkspaceLongPathArrowCursor(t *testing.T) {
 	m.workspace.unresolved = []savedImport{{ID: "missing-import", Path: path}}
 	m.openSavedWorkspaceDialog("repair")
 	savedKey(m, tea.KeyEnter)
+	savedKey(m, tea.KeyTab)
 	styles := m.ui.search.Styles()
 	styles.Cursor.Blink = false
 	m.ui.search.SetStyles(styles)
@@ -512,6 +567,7 @@ func TestSavedWorkspaceCommandsCancelPendingWork(t *testing.T) {
 			case "repair":
 				m.openSavedWorkspaceDialog("repair")
 				savedKey(m, tea.KeyEnter)
+				savedKey(m, tea.KeyTab)
 				pending = m.beginLocateImport()
 			}
 			owner := m.ui.inputID
@@ -577,6 +633,7 @@ func TestSavedWorkspaceConfirmationDoesNotRecordNavigation(t *testing.T) {
 			m.savedWork.mode = test.mode
 			m.Update(m.beginSavedOpen(cp.path)())
 			savedKey(m, tea.KeyEnter)
+			savedKey(m, 'd')
 			if m.viewChanged || m.camera.Center == project(10, 20) {
 				t.Fatal("workspace restoration recorded navigation or failed to restore camera")
 			}

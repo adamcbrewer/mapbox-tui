@@ -47,6 +47,9 @@ type Workspace struct {
 	unresolved        []savedImport
 	deferredSelection *savedSelection
 	checkpoint        *workspaceCheckpoint
+	detachedManifest  *savedWorkspace
+	savedDigest       [32]byte
+	hasSavedDigest    bool
 }
 
 func (w *Workspace) open(path string) (ItemRef, error) {
@@ -274,6 +277,8 @@ func (w *Workspace) clear() {
 	w.deferredSelection = nil
 	w.elevation = nil
 	w.checkpoint = nil
+	w.detachedManifest = nil
+	w.hasSavedDigest = false
 	w.nextColor = 0
 }
 

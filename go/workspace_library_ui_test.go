@@ -53,6 +53,7 @@ func TestWorkspaceLibraryPreviewSwitchCancelAndOpen(t *testing.T) {
 	}
 	list = m.openSavedWorkspaceDialog("open")
 	m.Update(list())
+	selectedPath := m.savedWork.entries[m.savedWork.selected].path
 	open := m.updateSavedWorkspaceDialog(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if open == nil {
 		t.Fatal("Enter did not prepare saved content")
@@ -64,7 +65,8 @@ func TestWorkspaceLibraryPreviewSwitchCancelAndOpen(t *testing.T) {
 		t.Fatal("repeated Enter started duplicate loading")
 	}
 	m.Update(open())
-	if m.workspace.checkpoint.path != second.path || m.workspace.selection.ref == original {
+	savedKey(m, 'd')
+	if m.workspace.checkpoint.path != selectedPath || m.workspace.selection.ref == original {
 		t.Fatal("Enter did not open the previewed workspace directly")
 	}
 }
@@ -105,6 +107,57 @@ func TestWorkspaceLibraryEmptyInvalidAndAlternatePath(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLibrarySearchDoesNotCancelPendingListing(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	if _, err := m.saveWorkspaceCheckpoint("Saved workspace", false); err != nil {
+		t.Fatal(err)
+	}
+	list := m.openSavedWorkspaceDialog("open")
+	m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: '/'})
+	m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: 'o'})
+	m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: 'm'})
+	m.Update(list())
+	if m.savedWork.busy || len(m.savedWork.entries) != 1 || m.savedWork.mode != "library" {
+		t.Fatal("early search or sort stranded a pending listing")
+	}
+	m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: '/'})
+	if m.savedWork.mode != "library-search" {
+		t.Fatal("search unavailable after loading")
+	}
+}
+
+func TestWorkspaceLibraryMarksActiveCheckpointAndOffersActions(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	cp, err := m.saveWorkspaceCheckpoint("Active workspace", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localWorkspaceStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.duplicate(cp, "Other workspace"); err != nil {
+		t.Fatal(err)
+	}
+	openTestWorkspaceLibrary(t, m)
+	_, body, hints := m.savedWorkspaceContent(48, 15)
+	if !strings.Contains(body, "Active workspace (active)") || strings.Contains(body, cp.manifest.ID[:8]) {
+		t.Fatal("active marker missing or unique save still shows an opaque ID", body)
+	}
+	if !strings.Contains(hints, "m actions") || strings.Contains(hints, "del delete") {
+		t.Fatal("workspace actions still crowd the picker footer", hints)
+	}
+	m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: 'm'})
+	_, body, _ = m.savedWorkspaceContent(48, 15)
+	if !strings.Contains(body, "Rename saved workspace") || !strings.Contains(body, "Save current workspace as") {
+		t.Fatal("missing readable workspace actions", body)
+	}
+	savedKey(m, tea.KeyEnter)
+	if m.savedWork.mode != "rename" {
+		t.Fatal("action menu did not open Rename")
+	}
+}
+
 func TestWorkspaceLibraryDefersImportChecksAndIgnoresCancelledOpen(t *testing.T) {
 	m := themeViewer(t, 70, 24, false)
 	source := importFile(t, "original.gpx", []byte(`<gpx><wpt lat="51" lon="0"/></gpx>`))
@@ -138,6 +191,7 @@ func TestWorkspaceLibraryDefersImportChecksAndIgnoresCancelledOpen(t *testing.T)
 	m.Update(list())
 	open = m.updateSavedWorkspaceDialog(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m.Update(open())
+	savedKey(m, 'd')
 	if m.savedWork.mode != "repair" || len(m.workspace.unresolved) != 1 || m.workspace.checkpoint.path != cp.path {
 		t.Fatal("opening did not validate missing import")
 	}

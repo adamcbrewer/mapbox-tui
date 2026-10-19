@@ -289,6 +289,7 @@ func TestViewerFreeRoamKeepsFilesAndClearWorkspaceRejectsStaleLoads(t *testing.T
 		t.Fatal(err)
 	}
 	m.runCommand("clear")
+	savedKey(m, 'd')
 	m.Update(loaded{id: staleID, document: d})
 	if len(m.workspace.documents) != 0 || m.activeTrack() != nil {
 		t.Fatal("a stale load restored a cleared workspace")

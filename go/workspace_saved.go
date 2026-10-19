@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -63,10 +65,10 @@ func (w *Workspace) snapshot(name string, camera Camera, saveAs bool) (savedWork
 			v.Imports = append(v.Imports, imported)
 		}
 	}
-	if w.checkpoint != nil {
+	if manifest := w.savedManifest(); manifest != nil {
 		// Keep unresolved references in their original positions, then append new work.
 		order := make([]string, 0, len(v.Order))
-		for _, id := range w.checkpoint.manifest.Order {
+		for _, id := range manifest.Order {
 			if slices.Contains(v.Order, id) {
 				order = append(order, id)
 			}
@@ -79,6 +81,70 @@ func (w *Workspace) snapshot(name string, camera Camera, saveAs bool) (savedWork
 		v.Order = order
 	}
 	return v, v.validate()
+}
+
+func (w *Workspace) savedManifest() *savedWorkspace {
+	if w.checkpoint != nil {
+		return &w.checkpoint.manifest
+	}
+	return w.detachedManifest
+}
+
+func (w *Workspace) detachCheckpoint() {
+	w.detachedManifest = &w.checkpoint.manifest
+	w.checkpoint = nil
+	w.hasSavedDigest = false
+	w.edited()
+}
+
+func (w *Workspace) plannerSnapshot(name string, camera Camera, saveAs bool, planner ItemRef) (savedWorkspace, error) {
+	v, err := w.snapshot(name, camera, saveAs)
+	if err != nil {
+		return v, err
+	}
+	if _, err := w.journey(planner); err == nil {
+		entry, _, _ := w.lookup(planner)
+		v.Planner = entry.itemIDs[planner.ItemID]
+	}
+	return v, nil
+}
+
+func workspaceContentDigest(v savedWorkspace) ([32]byte, error) {
+	v.ID, v.Name, v.Revision = "", "", 0
+	v.Created, v.Modified = time.Time{}, time.Time{}
+	data, err := json.Marshal(v)
+	return sha256.Sum256(data), err
+}
+
+func (w *Workspace) rememberSavedState(camera Camera, planner ItemRef) {
+	v, err := w.plannerSnapshot(
+		"Working copy",
+		camera,
+		false,
+		planner,
+	)
+	w.hasSavedDigest = false
+	if err == nil {
+		w.savedDigest, err = workspaceContentDigest(v)
+		w.hasSavedDigest = err == nil
+	}
+}
+
+func (w *Workspace) modified(camera Camera, planner ItemRef) bool {
+	if !w.hasSavedDigest {
+		return w.checkpoint != nil || len(w.documents)+len(w.unresolved) > 0
+	}
+	v, err := w.plannerSnapshot(
+		"Working copy",
+		camera,
+		false,
+		planner,
+	)
+	if err != nil {
+		return true
+	}
+	digest, err := workspaceContentDigest(v)
+	return err != nil || digest != w.savedDigest
 }
 
 // prepareWorkspace never mutates an active workspace and never calls a provider.
@@ -144,6 +210,9 @@ func prepareWorkspaceContext(ctx context.Context, path string) (*Workspace, Came
 		return nil, Camera{}, err
 	}
 	camera, err := v.Camera.camera()
+	if err == nil {
+		candidate.rememberSavedState(camera, candidate.restoredPlannerRef())
+	}
 	return candidate, camera, err
 }
 
@@ -318,20 +387,22 @@ func (w *Workspace) completeImportRepair(id string, document *Document) error {
 }
 
 func (w *Workspace) savedJourney(id string) bool {
-	if w.checkpoint == nil {
+	manifest := w.savedManifest()
+	if manifest == nil {
 		return false
 	}
-	return slices.ContainsFunc(w.checkpoint.manifest.Journeys, func(j savedJourney) bool { return j.ID == id })
+	return slices.ContainsFunc(manifest.Journeys, func(j savedJourney) bool { return j.ID == id })
 }
 
 // Existing document order also controls scene layering; restoration must not
 // regroup imported activities and journeys or move a repaired import to the end.
 func (w *Workspace) orderSavedDocuments() {
-	if w.checkpoint == nil {
+	manifest := w.savedManifest()
+	if manifest == nil {
 		return
 	}
 	positions := make(map[string]int)
-	for i, id := range w.checkpoint.manifest.Order {
+	for i, id := range manifest.Order {
 		positions[id] = i
 	}
 	position := func(id string) int {

@@ -586,7 +586,12 @@ func (m *viewer) backDialog() tea.Cmd {
 		m.ui.search.SetCursor(frame.searchPosition)
 		if frame.kind == dialogSavedWorkspace {
 			m.ui.inputID = rand.Text()
-			command = m.ui.search.Focus()
+			switch m.savedWork.mode {
+			case "save", "save-as", "open", "locate", "rename", "duplicate", "library-search":
+				command = m.ui.search.Focus()
+			default:
+				m.ui.search.Blur()
+			}
 		}
 	}
 	if placeSearch {
@@ -734,6 +739,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return m.openSavedWorkspaceDialog("save-as")
 	case "open-workspace":
 		return m.openSavedWorkspaceDialog("open")
+	case "clear":
+		return m.startCleanWorkspace()
 	case "repair-workspace":
 		return m.openSavedWorkspaceDialog("repair")
 	case "favourites":
@@ -765,8 +772,6 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 	switch action {
 	case "roam":
 		return m.freeRoam()
-	case "clear":
-		return m.clearWorkspace()
 	}
 	keys := map[string]string{
 		"fit":     "f",
@@ -1132,6 +1137,10 @@ func (m *viewer) dialogFooter(hints string, width int) []string {
 
 func (m *viewer) overlay() {
 	m.favourites.deleteButtons = [2]image.Rectangle{}
+	m.savedWork.confirmButtons = [3]image.Rectangle{}
+	workspacePrompt := m.ui.dialog == dialogSavedWorkspace && m.savedWork.mode == "unsaved"
+	workspaceActions := m.ui.dialog == dialogSavedWorkspace && m.savedWork.mode == "library-actions"
+	compactDialog := m.ui.dialog == dialogFavouriteDelete || workspacePrompt || workspaceActions
 	dialogOpen := m.ui.dialog != dialogNone
 	hasRoom := m.width >= 30 && m.height >= 12
 	if !dialogOpen || !hasRoom || m.journeyPanelOpen() || m.ui.dialog == dialogWorkspace {
@@ -1143,6 +1152,12 @@ func (m *viewer) overlay() {
 	}
 	if m.ui.dialog == dialogMapbox || m.ui.dialog == dialogFavouriteDelete {
 		width = min(52, m.width-8)
+	}
+	if workspacePrompt {
+		width = min(54, m.width-8)
+	}
+	if workspaceActions {
+		width = min(40, m.width-8)
 	}
 	height := max(1, min(17, m.height-10, m.height-8))
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
@@ -1173,7 +1188,7 @@ func (m *viewer) overlay() {
 	if m.ui.notice != "" {
 		body = s.dialogMuted.Render(ansi.Truncate(m.ui.notice, width, "…")) + "\n" + body
 	}
-	if m.ui.dialog == dialogFavouriteDelete {
+	if compactDialog {
 		height = lipgloss.Height(body)
 	}
 	bodyStyle := lipgloss.NewStyle().
@@ -1183,7 +1198,7 @@ func (m *viewer) overlay() {
 		Height(height).
 		MaxHeight(height)
 	gap := "\n\n"
-	if m.ui.dialog != dialogFavouriteDelete && (len(hintLines) > 1 || compactSearchNotice) {
+	if !compactDialog && (len(hintLines) > 1 || compactSearchNotice) {
 		gap = "\n"
 	}
 	content := bodyStyle.Render(body) + gap + strings.Join(hintLines, "\n")
@@ -1217,6 +1232,15 @@ func (m *viewer) overlay() {
 		}
 		for i := range m.favourites.deleteButtons {
 			m.favourites.deleteButtons[i] = m.favourites.deleteButtons[i].Add(origin)
+		}
+	}
+	if workspacePrompt {
+		origin := image.Pt(x+3, y+2)
+		if m.ui.notice != "" {
+			origin.Y++
+		}
+		for i := range m.savedWork.confirmButtons {
+			m.savedWork.confirmButtons[i] = m.savedWork.confirmButtons[i].Add(origin)
 		}
 	}
 	base := lipgloss.NewLayer(m.content)
