@@ -16,6 +16,11 @@ type controlWorkspaceReady struct {
 	err       error
 }
 
+type controlWorkspaceSaveStart struct {
+	id   string
+	args controlArgs
+}
+
 func (m *viewer) controlCheckpoint() any {
 	checkpoint := m.workspace.checkpoint
 	if checkpoint == nil {
@@ -77,8 +82,37 @@ func (m *viewer) acceptControlWorkspace(result controlWorkspaceReady) tea.Cmd {
 	return cmd
 }
 
-// Saving uses the same bounded, atomic store call as the viewer dialog. The
-// operation remains queryable if a filesystem sync outlasts the client's wait.
+func (m *viewer) beginControlWorkspaceSave(r controlRequest, a controlArgs) (controlResponse, tea.Cmd) {
+	response := m.response(r)
+	response.State, response.Message = "pending", "preparing workspace save"
+	return response, func() tea.Msg { return controlWorkspaceSaveStart{id: r.ID, args: a} }
+}
+
+func (m *viewer) startControlWorkspaceSave(start controlWorkspaceSaveStart) tea.Cmd {
+	m.reconcileOperations()
+	op := m.control.operations[start.id]
+	if op == nil {
+		return nil
+	}
+	if op.response.State == "pending" {
+		if *op.request.Revision != m.workspace.liveRevision {
+			op.response = m.fail(op.request, "superseded", "working copy changed before saving",
+				"inspect current state before saving again")
+			op.response.State = "superseded"
+		} else {
+			op.response, _ = m.controlWorkspaceSave(op.request, start.args)
+		}
+		op.response.OperationID = start.id
+	}
+	m.updateControlActivity(time.Now())
+	m.rebuild()
+	if op.saveReply != nil {
+		op.saveReply <- op.response
+		op.saveReply = nil
+	}
+	return nil
+}
+
 func (m *viewer) controlWorkspaceSave(r controlRequest, a controlArgs) (controlResponse, tea.Cmd) {
 	name := a.Name
 	if name == "" && m.workspace.checkpoint != nil {

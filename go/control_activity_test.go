@@ -161,7 +161,7 @@ func TestControlActivityConflictsCancellationAndSupersession(t *testing.T) {
 				cancel := controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": request.ID})
 				activityControl(m, cancel)
 				rows := strings.Split(m.control.activity.text, "\n")
-				if rows[0] != "Remote: Command cancelled" || rows[1] != "Remote: Camera move cancelled" {
+				if rows[0] != "Remote: Cancellation checked" || rows[1] != "Remote: Camera move cancelled" {
 					t.Fatal("cancellation stayed busy", m.control.activity.text)
 				}
 			} else {
@@ -215,6 +215,146 @@ func TestControlActivityRoutingPhaseAndCompletion(t *testing.T) {
 	m.updateControlActivity(time.Now())
 	if m.control.activity.text != "Remote: Journey created" {
 		t.Fatal("routing did not complete the original command", m.control.activity.text)
+	}
+}
+
+func TestControlActivityRoutingFailurePreservesAppliedEdit(t *testing.T) {
+	m := journeyViewer(t)
+	m.preferences.BillingAcceptedVersion = billingNoticeVersion
+	m.preferences.Offline = false
+	m.directions = newDirectionsClient("token")
+	m.directions.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("directions unavailable")
+	})
+	request := controlTestRequest(m, "journey.create", map[string]any{
+		"mode": "cycling", "stops": []controlStop{{Lat: 51.5, Lon: -0.1}, {Lat: 51.6, Lon: -0.2}},
+	})
+	response, cmd := activityControl(m, request)
+	if response.State != "pending" || !response.Changed || cmd == nil {
+		t.Fatal("journey edit was not applied before routing", response)
+	}
+	m.Update(cmd())
+	m.updateControlActivity(time.Now())
+	op := m.control.operations[request.ID]
+	if op.response.State != "failed" || !op.response.Changed || len(m.workspace.documents) != 1 {
+		t.Fatal("failed routing discarded the journey", op.response)
+	}
+	if m.control.activity.text != "Remote: Route calculation failed" {
+		t.Fatal("routing failure misreported the applied edit", m.control.activity.text)
+	}
+}
+
+func TestControlActivityCancellationOfCompletedOperation(t *testing.T) {
+	m := journeyViewer(t)
+	request := controlTestRequest(m, "camera.set", map[string]any{"zoom": 12, "animate": false})
+	response, _ := activityControl(m, request)
+	activityControl(m, controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": request.ID}))
+	if !reflect.DeepEqual(m.control.operations[request.ID].response, response) {
+		t.Fatal("cancellation changed an already completed operation")
+	}
+	if m.control.activity.text != "Remote: Cancellation checked\nRemote: Camera updated" {
+		t.Fatal("cancellation claimed completed work was cancelled", m.control.activity.text)
+	}
+}
+
+func TestControlActivityQueuedPulseKeepsCompletionVisible(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		m := journeyViewer(t)
+		t.Cleanup(m.cancelControlOperations)
+		request := controlTestRequest(m, "load", map[string]any{"path": "/unavailable.gpx"})
+		activityControl(m, request)
+		queued := pulse(time.Now())
+		time.Sleep(3 * time.Second)
+		m.Update(controlLoaded{id: request.ID, err: fmt.Errorf("unavailable file")})
+		m.Update(queued)
+		if m.control.activity.entries[0].expires != time.Now().Add(controlActivityDuration) {
+			t.Fatal("completion timer included time spent waiting in the event queue")
+		}
+		time.Sleep(time.Second)
+		m.Update(pulse(time.Now()))
+		if m.control.activity.text != "Remote: Track import failed" {
+			t.Fatal("completion disappeared before two visible seconds", m.control.activity.text)
+		}
+		time.Sleep(time.Second)
+		m.Update(pulse(time.Now()))
+		if m.control.activity.text != "" {
+			t.Fatal("completion did not expire after two visible seconds")
+		}
+	})
+}
+
+func TestControlActivityWorkspaceSaveRendersBeforeWritingAndRepliesOnce(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := journeyViewer(t)
+	request := controlTestRequest(m, "workspace.save", map[string]any{"name": "Deferred save"})
+	reply := make(chan controlResponse, 1)
+	cmd := m.handleControl(controlMessage{request: request, reply: reply})
+	if cmd == nil || len(reply) != 0 || m.workspace.checkpoint != nil {
+		t.Fatal("save wrote or replied before rendering its running frame")
+	}
+	if !strings.Contains(m.View().Content, "Saving workspace") {
+		t.Fatal("pending save was not rendered")
+	}
+	retry, retryCmd := activityControl(m, request)
+	if retry.State != "pending" || retryCmd != nil || len(m.control.activity.entries) != 1 {
+		t.Fatal("pending retry started another save or notification", retry)
+	}
+	revision := m.workspace.liveRevision
+	start := cmd()
+	m.Update(start)
+	response := <-reply
+	if response.State != "applied" || !response.Changed || response.OperationID != request.ID {
+		t.Fatal("save did not reply with its final outcome", response)
+	}
+	if m.workspace.liveRevision != revision+1 || m.workspace.modified(m.destination(), m.planner.ref) {
+		t.Fatal("save did not record exactly one clean checkpoint")
+	}
+	if controlTestResult(t, response)["path"] != m.workspace.checkpoint.path ||
+		m.control.activity.text != "Remote: Workspace saved" {
+		t.Fatal("save lost its checkpoint path or completion label", response)
+	}
+	m.Update(start)
+	duplicate, _ := activityControl(m, request)
+	if len(reply) != 0 || m.workspace.liveRevision != revision+1 || !reflect.DeepEqual(response, duplicate) {
+		t.Fatal("save start or retry wrote or replied twice")
+	}
+}
+
+func TestControlActivityWorkspaceSaveRejectsChangesBeforeStart(t *testing.T) {
+	for _, change := range []string{"edit", "clear", "cancel"} {
+		t.Run(change, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			m := journeyViewer(t)
+			request := controlTestRequest(m, "workspace.save", map[string]any{"name": "Do not save"})
+			reply := make(chan controlResponse, 1)
+			cmd := m.handleControl(controlMessage{request: request, reply: reply})
+			if cmd == nil {
+				t.Fatal("save did not defer its filesystem write")
+			}
+			want := "superseded"
+			switch change {
+			case "edit":
+				m.workspace.edited()
+			case "clear":
+				m.clearWorkspace()
+			case "cancel":
+				activityControl(m, controlTestRequest(m, "operation.cancel", map[string]any{"operation_id": request.ID}))
+				want = "cancelled"
+			}
+			m.Update(cmd())
+			response := <-reply
+			store, err := localWorkspaceStore()
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := filepath.Glob(filepath.Join(store.directory, "*.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.State != want || response.Changed || m.workspace.checkpoint != nil || len(files) != 0 {
+				t.Fatal("stale or cancelled save wrote a checkpoint", response, files)
+			}
+		})
 	}
 }
 

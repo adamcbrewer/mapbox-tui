@@ -45,7 +45,7 @@ var controlActionLabels = map[string]controlActionLabel{
 	"journey.stop.move":   {running: "Moving stop", complete: "Stop moved", subject: "Stop move"},
 	"journey.calculate":   {running: "Calculating route", complete: "Route calculated", subject: "Route calculation"},
 	"journey.show":        {running: "Showing journey", complete: "Journey shown", subject: "Journey display"},
-	"operation.cancel":    {running: "Cancelling command", complete: "Command cancelled", subject: "Cancellation"},
+	"operation.cancel":    {running: "Cancelling command", complete: "Cancellation checked", subject: "Cancellation"},
 	"theme.set":           {running: "Changing theme", complete: "Theme updated", subject: "Theme change"},
 }
 
@@ -99,11 +99,11 @@ func (n *controlNotification) update(response controlResponse, now time.Time) {
 
 func (n controlNotification) label(op *controlOperation, now time.Time, ascii bool) string {
 	label := controlLabel(n.action)
+	if op != nil && op.routeID != 0 && (n.state == "pending" || n.state == "failed") {
+		label = controlLabel("journey.calculate")
+	}
 	if n.state == "pending" {
 		text := label.running
-		if op != nil && op.routeID != 0 {
-			text = controlLabel("journey.calculate").running
-		}
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		if ascii {
 			frames = []string{"|", "/", "-", "\\"}

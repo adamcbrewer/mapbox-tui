@@ -288,6 +288,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.handleControl(v), m.waitControl())
 	case controlWorkspaceReady:
 		return m, m.acceptControlWorkspace(v)
+	case controlWorkspaceSaveStart:
+		return m, m.startControlWorkspaceSave(v)
 	case controlLoaded:
 		return m, m.acceptControlLoad(v)
 	case workspaceLibraryReady:
@@ -509,7 +511,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirty = true
 		}
 		m.reconcileOperations()
-		m.updateControlActivity(now)
+		m.updateControlActivity(time.Now())
 		command := m.fetchAt(now)
 		if !m.sources.busy() && !m.loading {
 			m.ui.spinning = false
