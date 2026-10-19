@@ -166,7 +166,7 @@ func (w *Workspace) replaceJourneyLocations(ref ItemRef, locations []placeLocati
 	if err != nil {
 		return err
 	}
-	return w.editJourney(ref, stops)
+	return w.editJourneyIntent(ref, journeyIntent{Stops: stops, Mode: j.Mode})
 }
 
 func (w *Workspace) editJourneyIntent(ref ItemRef, intent journeyIntent) error {

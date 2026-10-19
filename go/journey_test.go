@@ -107,21 +107,34 @@ func TestJourneyRejectedPlansPreserveState(t *testing.T) {
 }
 
 func TestJourneyMutationRejectsMissingReferences(t *testing.T) {
-	var w Workspace
 	ref := ItemRef{DocumentID: 99, ItemID: 1}
 	locations := []placeLocation{{Lon: 0, Lat: 51}, {Lon: 1, Lat: 52}}
-	for _, err := range []error{
-		w.initializeJourney(ref, locations, journeyManual),
-		w.replaceJourneyLocations(ref, locations),
-		w.insertJourneyWaypoint(ref, 1, &locations[0]),
-		w.addJourneyWaypoint(ref),
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Workspace) error
+	}{
+		{name: "initialize", mutate: func(w *Workspace) error {
+			return w.initializeJourney(ref, locations, journeyManual)
+		}},
+		{name: "replace", mutate: func(w *Workspace) error {
+			return w.replaceJourneyLocations(ref, locations)
+		}},
+		{name: "insert waypoint", mutate: func(w *Workspace) error {
+			return w.insertJourneyWaypoint(ref, 1, &locations[0])
+		}},
+		{name: "add empty waypoint", mutate: func(w *Workspace) error {
+			return w.addJourneyWaypoint(ref)
+		}},
 	} {
-		if err == nil {
-			t.Fatal("mutation accepted a missing journey")
-		}
-	}
-	if len(w.documents) != 0 || w.liveRevision != 0 {
-		t.Fatal("missing-reference mutations changed workspace")
+		t.Run(tc.name, func(t *testing.T) {
+			var w Workspace
+			if err := tc.mutate(&w); err == nil {
+				t.Fatal("mutation accepted a missing journey")
+			}
+			if len(w.documents) != 0 || w.liveRevision != 0 {
+				t.Fatal("missing-reference mutation changed workspace")
+			}
+		})
 	}
 }
 
@@ -360,25 +373,33 @@ func TestJourneyWaypointIDsSurviveUndo(t *testing.T) {
 }
 
 func TestJourneyRejectedLocationPreservesState(t *testing.T) {
-	for _, location := range []placeLocation{
-		{Lon: math.NaN(), Lat: 51},
-		{Lon: 0, Lat: 91},
-		{Lon: 0, Lat: 51, Source: "unknown"},
+	for _, tc := range []struct {
+		name     string
+		location placeLocation
+	}{
+		{name: "not finite", location: placeLocation{Lon: math.NaN(), Lat: 51}},
+		{name: "out of bounds", location: placeLocation{Lon: 0, Lat: 91}},
+		{name: "unknown source", location: placeLocation{Lon: 0, Lat: 51, Source: "unknown"}},
 	} {
-		var w Workspace
-		ref := w.newJourney()
-		j, _ := w.journey(ref)
-		before := slices.Clone(j.Stops)
-		selection, revision := w.selection, w.liveRevision
-		if err := w.setJourneyLocation(ref, j.Stops[0].ID, location); err == nil {
-			t.Fatal("invalid location was accepted")
-		}
-		if !slices.Equal(j.Stops, before) || w.selection != selection || w.liveRevision != revision {
-			t.Fatal("rejected location changed journey, selection or revision")
-		}
-		if err := w.undoJourney(ref); err == nil {
-			t.Fatal("rejected location added an undo entry")
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			var w Workspace
+			ref := w.newJourney()
+			j, _ := w.journey(ref)
+			before := slices.Clone(j.Stops)
+			selection, revision := w.selection, w.liveRevision
+			if err := w.setJourneyLocation(ref, j.Stops[0].ID, tc.location); err == nil {
+				t.Fatal("invalid location was accepted")
+			}
+			if !slices.Equal(j.Stops, before) || w.selection != selection {
+				t.Fatal("rejected location changed journey or selection")
+			}
+			if w.liveRevision != revision {
+				t.Fatal("rejected location changed revision")
+			}
+			if err := w.undoJourney(ref); err == nil {
+				t.Fatal("rejected location added an undo entry")
+			}
+		})
 	}
 }
 

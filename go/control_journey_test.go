@@ -85,23 +85,33 @@ func TestControlJourneyRejectedInsertionsPreserveState(t *testing.T) {
 }
 
 func TestControlInvalidJourneyCreationDoesNotAllocateIdentity(t *testing.T) {
-	m := journeyViewer(t)
-	for _, args := range []map[string]any{
-		{"mode": "flying", "stops": []controlStop{{Lat: 51, Lon: 0}, {Lat: 52, Lon: 1}}},
-		{"mode": "offline", "stops": []controlStop{{Lat: 51, Lon: 0}}},
-		{"mode": "offline", "stops": []controlStop{{Lat: 91, Lon: 0}, {Lat: 52, Lon: 1}}},
+	for _, tc := range []struct {
+		name  string
+		mode  string
+		stops []controlStop
+	}{
+		{name: "invalid mode", mode: "flying", stops: []controlStop{{Lat: 51, Lon: 0}, {Lat: 52, Lon: 1}}},
+		{name: "one stop", mode: "offline", stops: []controlStop{{Lat: 51, Lon: 0}}},
+		{name: "invalid coordinates", mode: "offline", stops: []controlStop{{Lat: 91, Lon: 0}, {Lat: 52, Lon: 1}}},
 	} {
-		revision := m.workspace.liveRevision
-		response, _ := m.applyControl(controlTestRequest(m, "journey.create", args))
-		if response.Error == nil || response.Changed || len(m.workspace.documents) != 0 ||
-			m.workspace.liveRevision != revision {
-			t.Fatal("invalid creation changed the workspace", response)
-		}
-	}
-	response, _ := m.applyControl(controlTestRequest(m, "journey.create", map[string]any{
-		"mode": "offline", "stops": []controlStop{{Lat: 51, Lon: 0}, {Lat: 52, Lon: 1}},
-	}))
-	if ref := controlTestRef(t, response); ref.DocumentID != 1 {
-		t.Fatal("invalid creation consumed a document identity", ref)
+		t.Run(tc.name, func(t *testing.T) {
+			m := journeyViewer(t)
+			revision := m.workspace.liveRevision
+			response, _ := m.applyControl(controlTestRequest(m, "journey.create", map[string]any{
+				"mode": tc.mode, "stops": tc.stops,
+			}))
+			if response.Error == nil || response.Changed {
+				t.Fatal("invalid creation was not rejected", response)
+			}
+			if len(m.workspace.documents) != 0 || m.workspace.liveRevision != revision {
+				t.Fatal("invalid creation changed the workspace", response)
+			}
+			response, _ = m.applyControl(controlTestRequest(m, "journey.create", map[string]any{
+				"mode": "offline", "stops": []controlStop{{Lat: 51, Lon: 0}, {Lat: 52, Lon: 1}},
+			}))
+			if ref := controlTestRef(t, response); ref.DocumentID != 1 {
+				t.Fatal("invalid creation consumed a document identity", ref)
+			}
+		})
 	}
 }
