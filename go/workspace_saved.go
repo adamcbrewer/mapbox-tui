@@ -110,31 +110,26 @@ func prepareWorkspaceContext(ctx context.Context, path string) (*Workspace, Came
 		if err := ctx.Err(); err != nil {
 			return nil, Camera{}, err
 		}
-		ref := candidate.newJourney()
+		stops := make([]journeyStop, len(saved.Stops))
+		for i, location := range saved.Stops {
+			if location != nil {
+				stops[i].Location = &placeLocation{Name: location.Name, Lon: *location.Lon, Lat: *location.Lat,
+					Source: location.Source, ProviderID: location.ProviderID, Attribution: location.Attribution}
+			}
+		}
+		ref, err := candidate.createJourneyFromIntent(journeyIntent{Stops: stops, Mode: saved.Mode})
+		if err != nil {
+			return nil, Camera{}, fmt.Errorf("restore journey: %w", err)
+		}
 		entry, index, err := candidate.lookup(ref)
 		if err != nil {
 			return nil, Camera{}, err
 		}
 		item := entry.document.Items[index]
 		j := item.Journey
-		j.Stops = make([]journeyStop, len(saved.Stops))
-		for i, location := range saved.Stops {
-			stop := journeyStop{ID: i + 1}
-			if location != nil {
-				stop.Location = &placeLocation{Name: location.Name, Lon: *location.Lon, Lat: *location.Lat,
-					Source: location.Source, ProviderID: location.ProviderID, Attribution: location.Attribution}
-			}
-			j.Stops[i] = stop
-		}
-		j.nextID, j.Mode, j.modeChosen = len(j.Stops), saved.Mode, true
 		j.automaticRoutePending = j.Mode != journeyManual && j.hasCompleteLocations()
 		j.automaticRoutePreserveView = true
-		track, err := journeyTrack(j.Stops)
-		if err != nil {
-			return nil, Camera{}, fmt.Errorf("restore journey: %w", err)
-		}
-		track.Name = saved.Name
-		candidate.replaceJourneyTrack(ref, track)
+		item.Track.Name = saved.Name
 		entry.saveID, entry.itemIDs[item.ID] = saved.ID, saved.Item.ID
 		entry.document.Name = saved.Name
 		entry.hidden = map[int]bool{item.ID: !saved.Item.Visible}

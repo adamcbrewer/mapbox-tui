@@ -81,6 +81,8 @@ history, as well as replacement and waypoint insertion. Initializing a plan leav
 no empty draft to undo. Successful edits allocate stop IDs monotonically, including
 after undo; rejected edits preserve the plan and its routing state. Viewer, startup
 and live-control callers choose selection, camera and routing presentation separately.
+Saved journeys use the same initialization, including incomplete drafts; restoration
+then applies saved appearance, identity and automatic-routing choices.
 
 CLI and MCP validate arguments against the same embedded JSON schemas. Edits
 advance the live revision; replacing or clearing the working copy changes its

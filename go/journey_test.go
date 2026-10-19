@@ -68,6 +68,30 @@ func TestJourneyInitializationOwnsStateAndPreservesRecording(t *testing.T) {
 	}
 }
 
+func TestJourneyInitialIntentAssignsIDsAndOwnsLocations(t *testing.T) {
+	location := placeLocation{Name: "Start", Lon: 0, Lat: 51, Source: placeSourceCoordinates}
+	stops := []journeyStop{{ID: 40, Location: &location}, {ID: 80}, {ID: 120}}
+	var w Workspace
+	ref, err := w.createJourneyFromIntent(journeyIntent{Stops: stops, Mode: journeyCycling})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := w.journey(ref)
+	if len(j.Stops) != len(stops) {
+		t.Fatal("initialization changed the number of stops")
+	}
+	for i, stop := range j.Stops {
+		if stop.ID != i+1 {
+			t.Fatal("initialization retained caller-assigned stop IDs")
+		}
+	}
+	location.Name = "Changed caller input"
+	stops[0].Location = nil
+	if j.Stops[0].Location.Name != "Start" || j.Stops[1].Location != nil {
+		t.Fatal("initialization retained caller storage or filled a missing stop")
+	}
+}
+
 func TestJourneyRejectedPlansPreserveState(t *testing.T) {
 	valid := []placeLocation{{Lon: 0, Lat: 51}, {Lon: 1, Lat: 52}}
 	for _, tc := range []struct {
@@ -89,6 +113,13 @@ func TestJourneyRejectedPlansPreserveState(t *testing.T) {
 			revision, nextID := w.liveRevision, w.nextID
 			if _, err := w.createJourneyWithLocations(tc.locations, tc.mode); err == nil {
 				t.Fatal("invalid creation accepted")
+			}
+			stops := make([]journeyStop, len(tc.locations))
+			for i, location := range tc.locations {
+				stops[i].Location = &location
+			}
+			if _, err := w.createJourneyFromIntent(journeyIntent{Stops: stops, Mode: tc.mode}); err == nil {
+				t.Fatal("invalid initial intent accepted")
 			}
 			if err := w.initializeJourney(ref, tc.locations, tc.mode); err == nil {
 				t.Fatal("invalid initialization accepted")

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -96,6 +97,114 @@ func TestSavedWorkspaceRoundTrip(t *testing.T) {
 	}
 	if filepath.Base(checkpoint.path) != checkpoint.manifest.ID+".json" {
 		t.Fatal("name became path")
+	}
+}
+
+func TestSavedJourneyInitializationPreservesDraftAndSavedState(t *testing.T) {
+	start := placeLocation{Name: "Café", Lon: 0, Lat: 51, Source: placeSourceMapboxSearch,
+		ProviderID: "cafe-id", Attribution: "© Mapbox"}
+	waypoint := placeLocation{Name: "Waypoint", Lon: .01, Lat: 51.01, Source: placeSourceCoordinates}
+	end := placeLocation{Name: "End", Lon: .02, Lat: 51.02, Source: placeSourceCoordinates}
+	for _, tc := range []struct {
+		name  string
+		mode  journeyMode
+		stops []*placeLocation
+	}{
+		{name: "empty draft", mode: journeyCycling, stops: []*placeLocation{nil, nil}},
+		{name: "gap", mode: journeyCycling, stops: []*placeLocation{&start, nil, &end}},
+		{name: "complete road plan", mode: journeyCycling, stops: []*placeLocation{&start, &waypoint, &end}},
+		{name: "offline plan", stops: []*placeLocation{&start, &end}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var w Workspace
+			if _, err := w.open("../fixtures/example.gpx"); err != nil {
+				t.Fatal(err)
+			}
+			ref := w.createJourney()
+			for range len(tc.stops) - 2 {
+				if err := w.addJourneyWaypoint(ref); err != nil {
+					t.Fatal(err)
+				}
+			}
+			j, _ := w.journey(ref)
+			for i, location := range tc.stops {
+				if location != nil {
+					if err := w.setJourneyLocation(ref, j.Stops[i].ID, *location); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := w.setJourneyMode(ref, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			entry, index, _ := w.lookup(ref)
+			entry.document.Items[index].Track.Name = "Saved café journey"
+			entry.colors[ref.ItemID] = 5
+			if err := w.setVisible(ref, false); err != nil {
+				t.Fatal(err)
+			}
+			store := workspaceStore{directory: t.TempDir()}
+			checkpoint := saveTestWorkspace(t, &w, store, false)
+			restored, camera, err := prepareWorkspace(checkpoint.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedCamera, err := checkpoint.manifest.Camera.camera()
+			if err != nil || camera != expectedCamera {
+				t.Fatal("restoration changed the saved camera", err)
+			}
+			if restored.selection == nil || restored.selection.playback == nil {
+				t.Fatal("restoration replaced the selected recording with the journey")
+			}
+			var restoredRef ItemRef
+			for _, item := range restored.items() {
+				if item.Item.Journey != nil {
+					restoredRef = item.Ref
+					if item.Item.Track.Name != "Saved café journey" || item.Color != 5 || item.Visible {
+						t.Fatal("restoration lost saved name, colour or visibility")
+					}
+				}
+			}
+			j, err = restored.journey(restoredRef)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if j.Mode != tc.mode || !j.modeChosen {
+				t.Fatal("restoration lost the chosen travel mode")
+			}
+			for i, stop := range j.Stops {
+				if !reflect.DeepEqual(stop.Location, tc.stops[i]) {
+					t.Fatal("restoration changed a missing stop or its location metadata")
+				}
+			}
+			shouldRoute := tc.mode != journeyManual && j.hasCompleteLocations()
+			if j.automaticRoutePending != shouldRoute || !j.automaticRoutePreserveView {
+				t.Fatal("restoration changed automatic routing intent")
+			}
+			if j.Route != nil || j.Busy || j.Error != "" {
+				t.Fatal("restoration retained runtime routing state")
+			}
+			if err := restored.undoJourney(restoredRef); err == nil {
+				t.Fatal("restoration retained undo history")
+			}
+			next := saveTestWorkspace(t, restored, store, false)
+			if !reflect.DeepEqual(next.manifest.Journeys, checkpoint.manifest.Journeys) {
+				t.Fatal("restoration changed persisted identities or journey state")
+			}
+			before := slices.Clone(j.Stops)
+			if err := restored.addJourneyWaypoint(restoredRef); err != nil {
+				t.Fatal(err)
+			}
+			if j.Stops[len(j.Stops)-2].ID != len(before)+1 {
+				t.Fatal("first restored edit reused an existing stop identity")
+			}
+			if err := restored.undoJourney(restoredRef); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(j.Stops, before) {
+				t.Fatal("undo did not restore the loaded draft")
+			}
+		})
 	}
 }
 

@@ -84,7 +84,15 @@ func (w *Workspace) createJourney() ItemRef {
 
 // Create only after validation, so a rejected plan cannot consume an identity.
 func (w *Workspace) createJourneyWithLocations(locations []placeLocation, mode journeyMode) (ItemRef, error) {
-	intent, track, err := prepareInitialJourney(locations, mode)
+	stops, err := journeyStopsFromLocations(locations, 0)
+	if err != nil {
+		return ItemRef{}, err
+	}
+	return w.createJourneyFromIntent(journeyIntent{Stops: stops, Mode: mode})
+}
+
+func (w *Workspace) createJourneyFromIntent(intent journeyIntent) (ItemRef, error) {
+	intent, track, err := prepareInitialJourney(intent)
 	if err != nil {
 		return ItemRef{}, err
 	}
@@ -97,7 +105,11 @@ func (w *Workspace) initializeJourney(ref ItemRef, locations []placeLocation, mo
 	if _, err := w.journey(ref); err != nil {
 		return err
 	}
-	intent, track, err := prepareInitialJourney(locations, mode)
+	stops, err := journeyStopsFromLocations(locations, 0)
+	if err != nil {
+		return err
+	}
+	intent, track, err := prepareInitialJourney(journeyIntent{Stops: stops, Mode: mode})
 	if err != nil {
 		return err
 	}
@@ -105,16 +117,23 @@ func (w *Workspace) initializeJourney(ref ItemRef, locations []placeLocation, mo
 	return nil
 }
 
-func prepareInitialJourney(locations []placeLocation, mode journeyMode) (journeyIntent, *Track, error) {
-	if mode != journeyManual && mode.limitKM() == 0 {
+func prepareInitialJourney(intent journeyIntent) (journeyIntent, *Track, error) {
+	if intent.Mode != journeyManual && intent.Mode.limitKM() == 0 {
 		return journeyIntent{}, nil, fmt.Errorf("unknown journey routing mode")
 	}
-	stops, err := journeyStopsFromLocations(locations, 0)
-	if err != nil {
-		return journeyIntent{}, nil, err
+	if len(intent.Stops) < 2 {
+		return journeyIntent{}, nil, fmt.Errorf("at least two stops are required")
+	}
+	stops := make([]journeyStop, len(intent.Stops))
+	for i, stop := range intent.Stops {
+		stops[i].ID = i + 1
+		if stop.Location != nil {
+			location := *stop.Location
+			stops[i].Location = &location
+		}
 	}
 	track, err := journeyTrack(stops)
-	return journeyIntent{Stops: stops, Mode: mode}, track, err
+	return journeyIntent{Stops: stops, Mode: intent.Mode}, track, err
 }
 
 func (w *Workspace) applyInitialJourney(ref ItemRef, intent journeyIntent, track *Track) {
