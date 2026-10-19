@@ -474,3 +474,40 @@ func TestPlainRemoteFailuresRemoveTerminalControls(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionJourneyStopLimit(t *testing.T) {
+	testSessionDirectory(t)
+	server := testLiveSession(t, "stop-limit")
+	stops := make([]controlStop, 5000)
+	for i := range stops {
+		stops[i] = controlStop{Lat: 51.12345678901234, Lon: float64(i) / 100000}
+	}
+	response, err := callRemote(t.Context(), server.info, controlRequest{
+		Action: "journey.create", Args: controlJSON(map[string]any{"mode": "offline", "stops": stops}),
+	}, false, true)
+	if err != nil || response.Error != nil {
+		t.Fatal("transport could not create a maximum-size journey", response, err)
+	}
+	ref := controlTestRef(t, response)
+	response, err = callRemote(t.Context(), server.info, controlRequest{
+		Action: "journey.stops", Args: controlJSON(map[string]any{"ref": ref, "stops": stops}),
+	}, false, true)
+	if err != nil || response.Error != nil || len(controlTestResult(t, response)["stops"].([]any)) != 5000 {
+		t.Fatal("transport could not replace maximum-size journey stops", response, err)
+	}
+}
+
+func TestSessionRejectsOversizedRequests(t *testing.T) {
+	testSessionDirectory(t)
+	server := testLiveSession(t, "request-limit")
+	_, err := sendControl(t.Context(), server.info, controlRequest{
+		Action: "status", Args: controlJSON(map[string]any{"padding": strings.Repeat("a", controlLimit)}),
+	})
+	if err == nil {
+		t.Fatal("transport accepted an oversized request")
+	}
+	response, err := sendControl(t.Context(), server.info, controlRequest{Action: "status"})
+	if err != nil || response.Error != nil {
+		t.Fatal("oversized request blocked the session", response, err)
+	}
+}

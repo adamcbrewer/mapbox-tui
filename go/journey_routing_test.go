@@ -222,3 +222,21 @@ func TestInvalidRoutingAdvancesLiveRevision(t *testing.T) {
 		t.Fatal("repeated validation failure recorded an unchanged state", err)
 	}
 }
+
+func TestRoutingLocationCountLimit(t *testing.T) {
+	for _, count := range []int{25, 26, 5000} {
+		locations := journeyLimitLocations(count)
+		stops := make([]journeyStop, count)
+		for i := range stops {
+			stops[i] = journeyStop{Location: &locations[i]}
+		}
+		result, err := routingLocations(stops, journeyWalking)
+		if count == 25 {
+			if err != nil || len(result) != count {
+				t.Fatal("routing rejected 25 valid stops", err)
+			}
+		} else if err == nil {
+			t.Fatal("routing accepted more than 25 stops", count)
+		}
+	}
+}

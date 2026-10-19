@@ -128,7 +128,9 @@ func (g kmlGeometry) appendTo(t *Track, name string) error {
 		if err != nil {
 			return err
 		}
-		t.Waypoints = append(t.Waypoints, p)
+		if err := t.appendImportedWaypoint(p); err != nil {
+			return err
+		}
 	}
 	lines := g.Lines
 	for _, polygon := range g.Polygons {
@@ -144,7 +146,9 @@ func (g kmlGeometry) appendTo(t *Track, name string) error {
 			if err != nil {
 				return err
 			}
-			t.appendPoint(p, &segment, "route")
+			if err := t.appendImportedPoint(p, &segment, "route"); err != nil {
+				return err
+			}
 		}
 	}
 	for _, track := range g.Tracks {
@@ -164,7 +168,9 @@ func (g kmlGeometry) appendTo(t *Track, name string) error {
 			if len(track.Times) != 0 {
 				p.Time = optionalTime(track.Times[i])
 			}
-			t.appendPoint(p, &segment, "track")
+			if err := t.appendImportedPoint(p, &segment, "track"); err != nil {
+				return err
+			}
 		}
 	}
 	for _, multi := range append(g.Multi, g.MultiTrack...) {

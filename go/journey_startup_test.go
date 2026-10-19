@@ -209,3 +209,20 @@ func TestNativeJourneyAutomaticallyRoutesArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeJourneyStopLimit(t *testing.T) {
+	for _, count := range []int{5000, 5001} {
+		waypoints := make([]string, count-2)
+		for i := range waypoints {
+			waypoints[i] = "51,0"
+		}
+		journey, err := parseStartupJourney("51,0", "51,0", waypoints, "offline")
+		if count == 5000 {
+			if err != nil || len(journey.Locations) != count {
+				t.Fatal("startup rejected the permitted stop count", err)
+			}
+		} else if err == nil {
+			t.Fatal("startup accepted too many stops")
+		}
+	}
+}

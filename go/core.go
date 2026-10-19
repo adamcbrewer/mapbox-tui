@@ -171,9 +171,9 @@ func parseGPX(d *xml.Decoder) (*Document, error) {
 					if t == nil || seg < 0 {
 						return nil, fmt.Errorf("point outside segment")
 					}
-					s := &t.Segments[seg]
-					t.Points = append(t.Points, *p)
-					s.End = len(t.Points)
+					if err := t.appendImportedPoint(*p, &seg, t.Segments[seg].Kind); err != nil {
+						return nil, err
+					}
 				}
 				p = nil
 				pointTag = ""

@@ -15,6 +15,9 @@ func parseStartupJourney(start, end string, waypoints []string, mode string) (*s
 	if start == "" || end == "" {
 		return nil, fmt.Errorf("a startup journey requires both --start and --end as latitude,longitude")
 	}
+	if err := validateJourneyStopCount(len(waypoints) + 2); err != nil {
+		return nil, err
+	}
 	j := &startupJourney{Mode: journeyMode(mode)}
 	switch mode {
 	case "offline", "manual":

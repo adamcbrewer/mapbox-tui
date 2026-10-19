@@ -101,6 +101,7 @@ func TestJourneyRejectedPlansPreserveState(t *testing.T) {
 	}{
 		{name: "no stops"},
 		{name: "one stop", locations: valid[:1]},
+		{name: "over stop limit", locations: journeyLimitLocations(5001)},
 		{name: "invalid coordinates", locations: []placeLocation{{Lon: math.NaN()}, valid[1]}},
 		{name: "invalid mode", locations: valid, mode: "flying"},
 	} {
@@ -451,6 +452,59 @@ func TestCoordinateLocation(t *testing.T) {
 			}
 			if tc.name == "latitude first" && (location.Lat != 51.5 || location.Lon != -.1) {
 				t.Fatal("coordinate order changed")
+			}
+		})
+	}
+}
+
+func journeyLimitLocations(count int) []placeLocation {
+	locations := make([]placeLocation, count)
+	for i := range locations {
+		locations[i] = placeLocation{Lat: 51, Lon: float64(i) / 100000, Source: placeSourceCoordinates}
+	}
+	return locations
+}
+
+func TestJourneyStopLimit(t *testing.T) {
+	for _, emptyWaypoint := range []bool{false, true} {
+		name := "located waypoint"
+		if emptyWaypoint {
+			name = "empty waypoint"
+		}
+		t.Run(name, func(t *testing.T) {
+			var w Workspace
+			ref, err := w.createJourneyWithLocations(journeyLimitLocations(5000), journeyManual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			j, _ := w.journey(ref)
+			if len(j.Stops) != 5000 {
+				t.Fatal("creation changed stop count")
+			}
+			if err := w.replaceJourneyLocations(ref, journeyLimitLocations(4999)); err != nil {
+				t.Fatal(err)
+			}
+			var location *placeLocation
+			if !emptyWaypoint {
+				location = &placeLocation{Lat: 51, Lon: .001, Source: placeSourceCoordinates}
+			}
+			if err := w.insertJourneyWaypoint(ref, j.Stops[0].ID, location); err != nil || len(j.Stops) != 5000 {
+				t.Fatal("could not insert the final permitted stop", err)
+			}
+			before := *j
+			before.Stops = slices.Clone(j.Stops)
+			revision := w.liveRevision
+			if err := w.insertJourneyWaypoint(ref, j.Stops[0].ID, location); err == nil {
+				t.Fatal("insertion exceeded the stop limit")
+			}
+			if !reflect.DeepEqual(j, &before) || w.liveRevision != revision {
+				t.Fatal("rejected insertion changed state or history")
+			}
+			if err := w.undoJourney(ref); err != nil || len(j.Stops) != 4999 {
+				t.Fatal("rejected insertion changed undo", err)
+			}
+			if err := w.replaceJourneyLocations(ref, journeyLimitLocations(5000)); err != nil {
+				t.Fatal("could not replace stops at the limit", err)
 			}
 		})
 	}

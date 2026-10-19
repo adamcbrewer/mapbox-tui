@@ -29,6 +29,8 @@ Use absolute file paths. `load_track` returns the file's `track_id` and its
 that server process.
 
 A file can contain recorded tracks, planned routes and standalone waypoints.
+Each imported item accepts up to 100,000 points across its segments and attached
+waypoints. An oversized item rejects the whole import without thinning.
 A whole-file summary includes all its geometry. Use `item_id` when asking about
 one recorded activity, rather than treating a file's total distance as distance
 travelled.

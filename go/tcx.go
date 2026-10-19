@@ -92,7 +92,9 @@ func parseTCX(d *xml.Decoder) (*Document, error) {
 					segment = -1
 					continue
 				}
-				t.appendPoint(p, &segment, kind)
+				if err := t.appendImportedPoint(p, &segment, kind); err != nil {
+					return true, err
+				}
 			}
 			return true, nil
 		case v.Name.Local == "CoursePoint" && parent == "Course":
@@ -104,7 +106,9 @@ func parseTCX(d *xml.Decoder) (*Document, error) {
 				return true, err
 			}
 			if p, ok := raw.point(); ok {
-				t.Waypoints = append(t.Waypoints, p)
+				if err := t.appendImportedWaypoint(p); err != nil {
+					return true, err
+				}
 			}
 			return true, nil
 		}

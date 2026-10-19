@@ -128,11 +128,17 @@ func parseFIT(r io.ReadSeeker) (*Document, error) {
 					e := r.AltitudeScaled()
 					p.Elevation = &e
 				}
-				t.appendPoint(p, &segment, kind)
+				if err := t.appendImportedPoint(p, &segment, kind); err != nil {
+					return nil, err
+				}
 			case typedef.MesgNumCoursePoint:
 				p := mesgdef.NewCoursePoint(&message)
 				if p.PositionLat != basetype.Sint32Invalid && p.PositionLong != basetype.Sint32Invalid {
-					t.Waypoints = append(t.Waypoints, Point{Lon: p.PositionLongDegrees(), Lat: p.PositionLatDegrees(), Name: p.Name, Time: fitTime(p.Timestamp)})
+					if err := t.appendImportedWaypoint(Point{
+						Lon: p.PositionLongDegrees(), Lat: p.PositionLatDegrees(), Name: p.Name, Time: fitTime(p.Timestamp),
+					}); err != nil {
+						return nil, err
+					}
 				}
 			case typedef.MesgNumEvent:
 				e := mesgdef.NewEvent(&message)

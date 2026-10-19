@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const maxRoutedJourneyStops = 25
+
 type journeyMode string
 
 const (
@@ -121,8 +123,11 @@ func routingLocations(stops []journeyStop, mode journeyMode) ([]placeLocation, e
 	if limit == 0 {
 		return nil, fmt.Errorf("choose Walking, Cycling or Driving to calculate a route")
 	}
-	if len(stops) < 2 || len(stops) > 25 {
-		return nil, fmt.Errorf("Mapbox accepts 2–25 locations; this plan has %d; remove stops or choose Offline", len(stops))
+	if len(stops) < 2 || len(stops) > maxRoutedJourneyStops {
+		return nil, fmt.Errorf(
+			"Mapbox accepts 2–%d locations; this plan has %d; remove stops or choose Offline",
+			maxRoutedJourneyStops, len(stops),
+		)
 	}
 	locations := make([]placeLocation, 0, len(stops))
 	var distance float64

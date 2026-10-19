@@ -11,6 +11,8 @@ import (
 	"unicode"
 )
 
+const maxJourneyStops = 5000
+
 var coordinateNumberPrefix = regexp.MustCompile(`^[+-]?(([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]*)?|\.)?$`)
 
 type placeLocation struct {
@@ -121,8 +123,8 @@ func prepareInitialJourney(intent journeyIntent) (journeyIntent, *Track, error) 
 	if intent.Mode != journeyManual && intent.Mode.limitKM() == 0 {
 		return journeyIntent{}, nil, fmt.Errorf("unknown journey routing mode")
 	}
-	if len(intent.Stops) < 2 {
-		return journeyIntent{}, nil, fmt.Errorf("at least two stops are required")
+	if err := validateJourneyStopCount(len(intent.Stops)); err != nil {
+		return journeyIntent{}, nil, err
 	}
 	stops := make([]journeyStop, len(intent.Stops))
 	for i, stop := range intent.Stops {
@@ -147,8 +149,8 @@ func (w *Workspace) applyInitialJourney(ref ItemRef, intent journeyIntent, track
 }
 
 func journeyStopsFromLocations(locations []placeLocation, nextID int) ([]journeyStop, error) {
-	if len(locations) < 2 {
-		return nil, fmt.Errorf("at least two stops are required")
+	if err := validateJourneyStopCount(len(locations)); err != nil {
+		return nil, err
 	}
 	stops := make([]journeyStop, len(locations))
 	for i, location := range locations {
@@ -359,7 +361,20 @@ func (w *Workspace) undoJourney(ref ItemRef) error {
 	return nil
 }
 
+func validateJourneyStopCount(count int) error {
+	if count < 2 {
+		return fmt.Errorf("at least two stops are required")
+	}
+	if count > maxJourneyStops {
+		return fmt.Errorf("at most %d stops are supported", maxJourneyStops)
+	}
+	return nil
+}
+
 func journeyTrack(stops []journeyStop) (*Track, error) {
+	if err := validateJourneyStopCount(len(stops)); err != nil {
+		return nil, err
+	}
 	t := &Track{Name: "Planned journey"}
 	segment := -1
 	for i, stop := range stops {

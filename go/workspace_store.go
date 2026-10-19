@@ -182,8 +182,8 @@ func (v savedWorkspace) validate() error {
 		if journey.Mode != journeyManual && journey.Mode.limitKM() == 0 {
 			return fmt.Errorf("invalid journey mode")
 		}
-		if len(journey.Stops) < 2 || len(journey.Stops) > 1000 {
-			return fmt.Errorf("invalid journey stop count")
+		if err := validateJourneyStopCount(len(journey.Stops)); err != nil {
+			return fmt.Errorf("invalid journey stop count: %w", err)
 		}
 		if len(journey.Name) > 1024 || cleanPlaceText(journey.Name) != journey.Name {
 			return fmt.Errorf("invalid journey name")

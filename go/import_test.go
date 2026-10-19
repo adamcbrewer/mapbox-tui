@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -404,6 +405,147 @@ func TestImportedFormatsWorkThroughMCPAndViewer(t *testing.T) {
 				!strings.Contains(m.ui.notice, "Could not open track file")
 			if failedImportLostRoute {
 				t.Fatal("failed import discarded the existing route")
+			}
+		})
+	}
+}
+
+func importPointLimitFixture(t *testing.T, format string, counts []int) []byte {
+	t.Helper()
+	var body strings.Builder
+	switch format {
+	case "gpx", "gpx-route":
+		body.WriteString("<gpx>")
+		for _, count := range counts {
+			if format == "gpx-route" {
+				body.WriteString("<rte>" + strings.Repeat(`<rtept lat="51" lon="0"/>`, count) + "</rte>")
+				continue
+			}
+			body.WriteString("<trk><trkseg>" + strings.Repeat(`<trkpt lat="51" lon="0"/>`, count/2))
+			body.WriteString("</trkseg><trkseg>" + strings.Repeat(`<trkpt lat="51" lon="0"/>`, count-count/2))
+			body.WriteString("</trkseg></trk>")
+		}
+		body.WriteString("</gpx>")
+	case "tcx":
+		body.WriteString("<TrainingCenterDatabase><Courses>")
+		point := "<Trackpoint><Position><LatitudeDegrees>51</LatitudeDegrees>" +
+			"<LongitudeDegrees>0</LongitudeDegrees></Position></Trackpoint>"
+		for _, count := range counts {
+			body.WriteString("<Course><Track>" + strings.Repeat(point, count/2) + "</Track><Track>")
+			body.WriteString(strings.Repeat(point, count-count/2) + "</Track></Course>")
+		}
+		body.WriteString("</Courses></TrainingCenterDatabase>")
+	case "kml-track", "kml-waypoints":
+		body.WriteString(`<kml xmlns:gx="http://www.google.com/kml/ext/2.2">`)
+		for _, count := range counts {
+			body.WriteString("<Placemark>")
+			if format == "kml-track" {
+				body.WriteString("<gx:Track>" + strings.Repeat("<gx:coord>0 51</gx:coord>", count) + "</gx:Track>")
+			} else {
+				body.WriteString("<MultiGeometry>" + strings.Repeat("<Point><coordinates>0,51</coordinates></Point>", count))
+				body.WriteString("</MultiGeometry>")
+			}
+			body.WriteString("</Placemark>")
+		}
+		body.WriteString("</kml>")
+	case "kml":
+		body.WriteString("<kml>")
+		for _, count := range counts {
+			body.WriteString("<Placemark><MultiGeometry><LineString><coordinates>")
+			body.WriteString(strings.Repeat("0,51 ", count/2))
+			body.WriteString("</coordinates></LineString><LineString><coordinates>")
+			body.WriteString(strings.Repeat("0,51 ", count-count/2))
+			body.WriteString("</coordinates></LineString></MultiGeometry></Placemark>")
+		}
+		body.WriteString("</kml>")
+	case "fit", "fit-waypoints":
+		var out bytes.Buffer
+		record := mesgdef.NewRecord(nil).SetPositionLatDegrees(51).SetPositionLongDegrees(0).ToMesg(nil)
+		if format == "fit-waypoints" {
+			record = mesgdef.NewCoursePoint(nil).SetPositionLatDegrees(51).SetPositionLongDegrees(0).ToMesg(nil)
+		}
+		for _, count := range counts {
+			file := proto.FIT{Messages: []proto.Message{
+				mesgdef.NewFileId(nil).SetType(typedef.FileActivity).ToMesg(nil),
+			}}
+			for range count {
+				file.Messages = append(file.Messages, record)
+			}
+			if err := encoder.New(&out).Encode(&file); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return out.Bytes()
+	default:
+		t.Fatalf("unknown fixture format %q", format)
+	}
+	return []byte(body.String())
+}
+
+func TestImportedRecordingPointLimit(t *testing.T) {
+	for _, format := range []string{"gpx", "gpx-route", "tcx", "kml", "kml-track", "kml-waypoints", "fit", "fit-waypoints"} {
+		t.Run(format, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				counts []int
+				reject bool
+			}{
+				{name: "at limit", counts: []int{100000}},
+				{name: "over limit", counts: []int{100001}, reject: true},
+				{name: "independent recordings", counts: []int{60000, 60000}},
+				{name: "reject entire document", counts: []int{1, 100001}, reject: true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					path := importFile(t, "limit."+format, importPointLimitFixture(t, format, tc.counts))
+					d, err := loadDocument(path)
+					if tc.reject {
+						if err == nil || d != nil || !strings.Contains(err.Error(), "100000") {
+							t.Fatal("oversized recording was accepted or lost its limit error", err)
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(d.Items) != len(tc.counts) {
+						t.Fatal("import merged independent recordings")
+					}
+					for i, count := range tc.counts {
+						if len(d.Items[i].Track.Points)+len(d.Items[i].Track.Waypoints) != count {
+							t.Fatal("import dropped recorded points")
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestImportedRecordingLimitIncludesWaypoints(t *testing.T) {
+	for _, format := range []string{"tcx", "kml"} {
+		t.Run(format, func(t *testing.T) {
+			body := string(importPointLimitFixture(t, format, []int{99999}))
+			waypoint := "<CoursePoint><Position><LatitudeDegrees>51</LatitudeDegrees>" +
+				"<LongitudeDegrees>0</LongitudeDegrees></Position></CoursePoint>"
+			end := "</Course>"
+			if format == "kml" {
+				waypoint = "<Point><coordinates>0,51</coordinates></Point>"
+				end = "</MultiGeometry>"
+			}
+			for _, count := range []int{1, 2} {
+				t.Run(strconv.Itoa(count)+" waypoints", func(t *testing.T) {
+					data := strings.Replace(body, end, strings.Repeat(waypoint, count)+end, 1)
+					d, err := loadDocument(importFile(t, "limit."+format, []byte(data)))
+					if count == 2 {
+						if err == nil || d != nil || !strings.Contains(err.Error(), "100000") {
+							t.Fatal("waypoints bypassed the recording limit", err)
+						}
+						return
+					}
+					if err != nil || len(d.Items[0].Track.Waypoints) != 1 || len(d.Items[0].Track.Points) != 99999 {
+						t.Fatal("recording at the combined limit lost geometry", err)
+					}
+				})
 			}
 		})
 	}

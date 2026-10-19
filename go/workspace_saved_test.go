@@ -666,3 +666,24 @@ func TestCompleteImportRepairPreservesActivePlayback(t *testing.T) {
 		t.Fatal("repair changed the active selection or playback")
 	}
 }
+
+func TestSavedJourneyStopLimit(t *testing.T) {
+	var w Workspace
+	if _, err := w.createJourneyWithLocations(journeyLimitLocations(5000), journeyManual); err != nil {
+		t.Fatal(err)
+	}
+	store := workspaceStore{directory: t.TempDir()}
+	checkpoint := saveTestWorkspace(t, &w, store, false)
+	restored, _, err := prepareWorkspace(checkpoint.path)
+	if err != nil || len(restored.documents[0].document.Items[0].Journey.Stops) != 5000 {
+		t.Fatal("saved journey lost stops at the limit", err)
+	}
+	manifest := checkpoint.manifest
+	manifest.Journeys[0].Stops = append(manifest.Journeys[0].Stops, nil)
+	if _, err := store.save(manifest, checkpoint); err == nil {
+		t.Fatal("saved workspace accepted too many stops")
+	}
+	if _, err := readWorkspace(checkpoint.path); err != nil {
+		t.Fatal("rejected save damaged the original workspace", err)
+	}
+}

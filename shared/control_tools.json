@@ -361,7 +361,7 @@
         "stops": {
           "type": "array",
           "minItems": 2,
-          "maxItems": 1000,
+          "maxItems": 5000,
           "items": {
             "type": "object",
             "properties": {
@@ -526,7 +526,7 @@
         "stops": {
           "type": "array",
           "minItems": 2,
-          "maxItems": 1000,
+          "maxItems": 5000,
           "items": {
             "type": "object",
             "properties": {

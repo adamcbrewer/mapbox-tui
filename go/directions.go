@@ -119,8 +119,8 @@ func (p *directionsClient) resolve(
 			"check account limits/token permissions or choose Offline")
 	case http.StatusUnprocessableEntity:
 		return nil, fmt.Errorf(
-			"Mapbox rejected this %s plan (HTTP 422); check locations and limits: 25 stops, %.0f km; choose Offline if needed",
-			mode.label(), mode.limitKM(),
+			"Mapbox rejected this %s plan (HTTP 422); check locations and limits: %d stops, %.0f km; choose Offline if needed",
+			mode.label(), maxRoutedJourneyStops, mode.limitKM(),
 		)
 	case http.StatusOK:
 	default:

@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const maxImportedPoints = 100000
+
 func loadTrack(path string) (*Track, error) {
 	d, err := loadDocument(path)
 	if err != nil {
@@ -202,6 +204,29 @@ func prepareTrackWithNameCleaner(t *Track, cleanName func(string) string) error 
 	if t.Bounds[2]-t.Bounds[0] > 180 {
 		return fmt.Errorf("antimeridian bounds are not supported")
 	}
+	return nil
+}
+
+func (t *Track) checkImportPointLimit() error {
+	if len(t.Points)+len(t.Waypoints) >= maxImportedPoints {
+		return fmt.Errorf("imported recording exceeds %d points including waypoints; split it before importing", maxImportedPoints)
+	}
+	return nil
+}
+
+func (t *Track) appendImportedPoint(p Point, segment *int, kind string) error {
+	if err := t.checkImportPointLimit(); err != nil {
+		return err
+	}
+	t.appendPoint(p, segment, kind)
+	return nil
+}
+
+func (t *Track) appendImportedWaypoint(p Point) error {
+	if err := t.checkImportPointLimit(); err != nil {
+		return err
+	}
+	t.Waypoints = append(t.Waypoints, p)
 	return nil
 }
 

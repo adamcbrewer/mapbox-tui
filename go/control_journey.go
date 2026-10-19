@@ -127,10 +127,6 @@ func (m *viewer) executeJourneyControl(
 			if err != nil {
 				break
 			}
-			if len(j.Stops) >= 1000 {
-				err = fmt.Errorf("at most 1000 stops are supported")
-				break
-			}
 			err = m.workspace.insertJourneyWaypoint(ref, a.After, &location)
 		case "journey.stop.set":
 			var location placeLocation

@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strconv"
 	"testing"
 )
 
@@ -55,7 +56,7 @@ func TestControlJourneyRejectedInsertionsPreserveState(t *testing.T) {
 	}{
 		{name: "unknown stop", count: 2, after: 99},
 		{name: "destination", count: 2, after: 2},
-		{name: "stop limit", count: 1000, after: 1},
+		{name: "stop limit", count: 5000, after: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := journeyViewer(t)
@@ -111,6 +112,40 @@ func TestControlInvalidJourneyCreationDoesNotAllocateIdentity(t *testing.T) {
 			}))
 			if ref := controlTestRef(t, response); ref.DocumentID != 1 {
 				t.Fatal("invalid creation consumed a document identity", ref)
+			}
+		})
+	}
+}
+
+func TestControlJourneyStopLimit(t *testing.T) {
+	m := journeyViewer(t)
+	stops := make([]controlStop, 5000)
+	for i := range stops {
+		stops[i] = controlStop{Lat: 51, Lon: float64(i) / 100000}
+	}
+	response, _ := m.applyControl(controlTestRequest(m, "journey.create", map[string]any{
+		"mode": "offline", "stops": stops,
+	}))
+	ref := controlTestRef(t, response)
+	for _, count := range []int{5000, 5001} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			values := append(slices.Clone(stops), controlStop{Lat: 51})[:count]
+			for _, action := range []string{"journey.create", "journey.stops"} {
+				args := map[string]any{"stops": values}
+				if action == "journey.create" {
+					args["mode"] = "offline"
+				} else {
+					args["ref"] = ref
+				}
+				before := m.workspace.liveRevision
+				response, _ := m.applyControl(controlTestRequest(m, action, args))
+				if count == 5000 {
+					if response.Error != nil || !response.Changed {
+						t.Fatal("remote journey rejected the permitted stop count", action, response)
+					}
+				} else if response.Error == nil || response.Changed || m.workspace.liveRevision != before {
+					t.Fatal("oversized remote journey changed state", action, response)
+				}
 			}
 		})
 	}

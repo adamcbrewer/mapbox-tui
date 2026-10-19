@@ -288,8 +288,10 @@ discovery reclaims missing or refused endpoints after crashes. Timeouts alone
 don't mark a viewer dead. Any process running as the same OS user can connect.
 
 Protocol version 1 sends one newline-delimited JSON request/response per
-connection. Requests are limited to 64 KiB, responses to 4 MiB and concurrent
-connections to 32. Connections have deadlines. Oversized results return
+connection. Requests are limited to 512 KiB, responses to 4 MiB and concurrent
+connections to 32. The request limit accommodates 5,000-stop journey creation
+and replacement; provider route calculations retain their separate 25-stop limit.
+Connections have deadlines. Oversized results return
 `response_too_large`; inspect `changed` and the operation before retrying.
 
 Parsing and provider work run outside the update loop. Typed requests/results

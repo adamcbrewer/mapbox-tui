@@ -21,7 +21,7 @@ import (
 )
 
 const controlVersion = 1
-const controlLimit = 64 << 10
+const controlLimit = 512 << 10
 const controlResponseLimit = 4 << 20
 
 var sessionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{0,47}$`)

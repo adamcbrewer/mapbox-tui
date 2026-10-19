@@ -7,6 +7,11 @@ explore the map, or open several files together:
 ./bin/mapbox-tui ride.gpx course.tcx
 ```
 
+Each imported track, route, activity or KML placemark supports up to 100,000
+points, counting all its segments and attached waypoints. If an item exceeds
+that cap, the whole file is rejected; split the recording before importing.
+Accepted geometry keeps every point and works offline.
+
 Use `--help` for command options and `?` in the viewer for shortcuts.
 Use `--version` to print the build version and commit without starting the viewer.
 
@@ -243,6 +248,11 @@ favourite has changed, reopen Favourites before editing it again.
 `/` searches for a place without changing your activity or journey. Ctrl-J
 opens the journey planner. Both accept **latitude, longitude** offline;
 Mapbox enables named-place search and walking, cycling or driving routes.
+Journeys support up to 5,000 stops, including start, destination and unset
+waypoints. The same cap applies to editing, startup arguments, remote control
+and saved workspaces. Walking, cycling and driving route calculations retain
+their separate 25-stop limit; returned path points do not count as stops.
+
 For names or addresses, type at least three characters, choose a suggested match
 with Up/Down, then press Enter.
 
