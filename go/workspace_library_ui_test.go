@@ -126,6 +126,34 @@ func TestWorkspaceLibrarySearchDoesNotCancelPendingListing(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLibraryPathAfterSearch(t *testing.T) {
+	for _, key := range []string{"p", "tab"} {
+		t.Run(key, func(t *testing.T) {
+			m := themeViewer(t, 70, 24, false)
+			openTestWorkspaceLibrary(t, m)
+			m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: '/'})
+			m.Update(tea.PasteMsg{Content: "Search query"})
+			savedKey(m, tea.KeyEnter)
+			code := rune('p')
+			if key == "tab" {
+				code = tea.KeyTab
+			}
+			m.updateWorkspaceLibrary(tea.KeyPressMsg{Code: code})
+			if key == "tab" {
+				savedKey(m, tea.KeyTab)
+			}
+			if m.savedWork.mode != "open" || m.ui.search.Value() != "" || !m.ui.search.Focused() {
+				t.Fatal("search text leaked into workspace path input")
+			}
+			path := "/" + strings.Repeat("folder/", 50) + "workspace.json"
+			m.Update(tea.PasteMsg{Content: path})
+			if m.ui.search.Value() != path {
+				t.Fatal("workspace path retained the short search limit")
+			}
+		})
+	}
+}
+
 func TestWorkspaceLibraryMarksActiveCheckpointAndOffersActions(t *testing.T) {
 	m := themeViewer(t, 70, 24, false)
 	cp, err := m.saveWorkspaceCheckpoint("Active workspace", false)

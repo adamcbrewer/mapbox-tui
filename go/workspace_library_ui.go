@@ -51,9 +51,6 @@ func (m *viewer) acceptWorkspaceLibrary(result workspaceLibraryReady) tea.Cmd {
 
 func (m *viewer) filterWorkspaceLibrary() {
 	anchor := m.savedWork.anchor
-	if len(m.savedWork.entries) > 0 {
-		anchor = m.savedWork.entries[m.savedWork.selected].path
-	}
 	entries := []workspaceListing{}
 	query := strings.ToLower(strings.TrimSpace(m.savedWork.query))
 	for _, entry := range m.savedWork.allEntries {
@@ -152,15 +149,16 @@ func (m *viewer) updateWorkspaceLibrary(msg tea.KeyPressMsg) tea.Cmd {
 		if count > 0 && m.savedWork.entries[m.savedWork.selected].problem == "" {
 			return m.beginSavedOpen(m.savedWork.entries[m.savedWork.selected].path)
 		}
-	case "tab":
-		m.savedWork.request++
-		m.savedWork.busy = false
-		return m.browseSavedWorkspaces()
-	case "p":
+	case "tab", "p":
 		m.savedWork.request++
 		m.savedWork.mode, m.savedWork.busy = "open", false
 		m.ui.notice = ""
-		return m.ui.search.Focus()
+		cmd := m.workspaceNameInput("Workspace JSON path", "")
+		m.ui.search.CharLimit = 4096
+		if msg.String() == "tab" {
+			return m.browseSavedWorkspaces()
+		}
+		return cmd
 	case "r":
 		return m.loadWorkspaceLibrary()
 	case "home":
