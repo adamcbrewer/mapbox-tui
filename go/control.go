@@ -28,11 +28,13 @@ type controlOperation struct {
 	routeRevision uint64
 	cancel        context.CancelFunc
 	transition    string
+	activitySeen  bool
 }
 
 type viewerControl struct {
 	server     *sessionServer
 	operations map[string]*controlOperation
+	activity   controlActivity
 }
 
 type controlLoaded struct {
@@ -85,6 +87,7 @@ func (m *viewer) handleControl(msg controlMessage) tea.Cmd {
 		return nil
 	}
 	response, cmd := m.applyControl(msg.request)
+	m.receiveControlActivity(msg.request, response)
 	msg.reply <- response
 	return cmd
 }

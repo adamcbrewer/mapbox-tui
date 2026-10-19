@@ -152,6 +152,12 @@ uses plain corners and breadcrumb separators. The terminal controls the font.
 Theme switching updates widget styles in place, preserving dialog selection,
 file-picker location, text input/focus, scroll offsets and playback position.
 
+Command notifications invert the current palette's `text` and `background` roles:
+`text` fills each toast, and `background` colours its lettering and spinner.
+Existing notifications recolour during theme changes and previews without
+resetting their order or two-second completion timers. Custom palettes use the
+same roles.
+
 The workspace stores activity slots, not RGB colours. Map and profile cells retain
 their roles/slots; colours are resolved when painting. The cached elevation grid
 can therefore be recoloured without rebuilding geometry. Drawing priority and

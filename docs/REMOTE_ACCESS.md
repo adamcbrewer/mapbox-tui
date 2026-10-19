@@ -181,6 +181,17 @@ playback `speed`/`available_speeds`.
 
 ## Operations and retries
 
+The viewer stacks small, high-contrast notifications at the top-right of the map,
+with the newest command first and one terminal row of space between messages.
+Each command has its own spinner while running
+and stays visible for two seconds after completion or failure. Commands run
+immediately. Up to five notifications appear, with fewer on short maps and an
+overflow count for larger bursts.
+Notifications use readable names, such as "Moving camera" or "Track loaded".
+Background status queries and retries of retained operations don't duplicate,
+reorder or extend them. This is command feedback, not a connection count or a
+network latency reading.
+
 Responses include session/request IDs, working-copy `generation`, live `revision`,
 `state`, `changed`, `outcome_known` and a message. They may include `result` or an
 `error` with `code`, `message` and `recovery`. Mutations return an `operation_id`

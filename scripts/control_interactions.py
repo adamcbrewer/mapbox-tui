@@ -32,6 +32,10 @@ def remote(env, session, *args, success=True):
     return run(env, "remote", "--session", session, *args, "--json", success=success)
 
 
+def activity(session):
+    return tmux("capture-pane", "-p", "-t", session).splitlines()[0]
+
+
 def wait_for(predicate):
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -63,6 +67,23 @@ def main():
             duplicate = subprocess.run([str(BINARY), "--name", "main", "--no-provider"],
                                        env=env, capture_output=True, text=True, timeout=10)
             assert duplicate.returncode != 0 and "already running" in duplicate.stderr, duplicate
+            assert "Remote:" not in activity("main")
+            remote(env, identity, "camera", "animation", "--enabled=false")
+            wait_for(lambda: "Remote: Animation updated" in activity("main"))
+            remote(env, identity, "status", "--summary")
+            wait_for(lambda: "Remote:" not in activity("main"))
+            remote(env, identity, "theme", "set", "--theme", "nord")
+            remote(env, identity, "camera", "animation", "--enabled=false")
+            remote(env, identity, "camera", "set", "--zoom", "12", "--animate=false")
+            expected = ["Remote: Camera updated", "Remote: Animation updated", "Remote: Theme updated"]
+            def stack_visible():
+                rows = tmux("capture-pane", "-p", "-t", "main").splitlines()
+                return all(label in rows[index * 2] for index, label in enumerate(expected))
+            wait_for(stack_visible)
+            remote(env, "second", "theme", "set", "--theme", "paper")
+            label = wait_for(lambda: (text if "Remote: Theme updated" in text else None)
+                             if (text := activity("second")) else None)
+            assert label.isascii(), label
             # Keep a modal dialog open while remote commands change the workspace.
             tmux("send-keys", "-t", "main", "C-k")
             response = remote(env, identity, "load", "fixtures/example.gpx")
@@ -100,6 +121,9 @@ def main():
                     updated = mcp.call(action, {"args": args, "request_id": action,
                         "generation": current["generation"], "expected_revision": current["revision"]})
                     assert not updated["result"].get("isError", False), updated
+                    label = {"viewer_theme_set": "Theme updated", "viewer_playback_speed": "Playback speed updated",
+                             "viewer_camera_animation": "Animation updated"}[action]
+                    wait_for(lambda: f"Remote: {label}" in activity("main"))
                 current = mcp.call("viewer_status", {"args": {}})["result"]["structuredContent"]
                 animated = mcp.call("viewer_camera_set", {
                     "args": {"zoom": 13, "animate": True}, "wait_visual": True,
