@@ -55,12 +55,13 @@ type controlActivity struct {
 }
 
 type controlNotification struct {
-	requestID string
-	action    string
-	state     string
-	conflict  bool
-	retained  bool
-	expires   time.Time
+	requestID      string
+	action         string
+	state          string
+	conflict       bool
+	routingFailure bool
+	retained       bool
+	expires        time.Time
 }
 
 func controlLabel(action string) controlActionLabel {
@@ -94,12 +95,15 @@ func (m *viewer) receiveControlActivity(request controlRequest, response control
 func (n *controlNotification) update(response controlResponse, now time.Time) {
 	n.state = response.State
 	n.conflict = response.Error != nil && strings.HasSuffix(response.Error.Code, "_conflict")
+	n.routingFailure = response.Error != nil &&
+		(response.Error.Code == "routing_failed" || response.Error.Code == "routing_unavailable")
 	n.expires = now.Add(controlActivityDuration)
 }
 
 func (n controlNotification) label(op *controlOperation, now time.Time, ascii bool) string {
 	label := controlLabel(n.action)
-	if op != nil && op.routeID != 0 && (n.state == "pending" || n.state == "failed") {
+	routing := n.routingFailure || (op != nil && op.routeID != 0 && n.state == "pending")
+	if routing {
 		label = controlLabel("journey.calculate")
 	}
 	if n.state == "pending" {

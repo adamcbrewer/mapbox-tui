@@ -244,6 +244,47 @@ func TestControlActivityRoutingFailurePreservesAppliedEdit(t *testing.T) {
 	}
 }
 
+func TestControlActivityRoutingPreflightFailurePreservesAppliedEdit(t *testing.T) {
+	for _, failure := range []string{"offline", "unacknowledged", "disconnected", "distance"} {
+		t.Run(failure, func(t *testing.T) {
+			t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
+			m := journeyViewer(t)
+			m.preferences.BillingAcceptedVersion = billingNoticeVersion
+			m.preferences.Offline = false
+			m.directions = newDirectionsClient("token")
+			m.directions.client.Transport = fakeTransport(func(*http.Request) (*http.Response, error) {
+				t.Fatal("routing preflight made a directions request")
+				return nil, nil
+			})
+			stops := []controlStop{{Lat: 51.5, Lon: -0.1}, {Lat: 51.6, Lon: -0.2}}
+			code := "routing_unavailable"
+			switch failure {
+			case "offline":
+				m.preferences.Offline = true
+			case "unacknowledged":
+				m.preferences.BillingAcceptedVersion = 0
+			case "disconnected":
+				m.directions = nil
+			case "distance":
+				stops[1] = controlStop{Lat: 80, Lon: 150}
+				code = "routing_failed"
+			}
+			request := controlTestRequest(m, "journey.create", map[string]any{"mode": "walking", "stops": stops})
+			response, cmd := activityControl(m, request)
+			if response.State != "failed" || response.Error == nil || response.Error.Code != code ||
+				!response.Changed || cmd != nil || m.control.operations[request.ID].routeID != 0 {
+				t.Fatal("expected a retained edit with no route request", response)
+			}
+			if _, err := m.workspace.journey(controlTestRef(t, response)); err != nil {
+				t.Fatal("routing preflight discarded the journey", err)
+			}
+			if m.control.activity.text != "Remote: Route calculation failed" {
+				t.Fatal("routing preflight misreported the applied edit", m.control.activity.text)
+			}
+		})
+	}
+}
+
 func TestControlActivityCancellationOfCompletedOperation(t *testing.T) {
 	m := journeyViewer(t)
 	request := controlTestRequest(m, "camera.set", map[string]any{"zoom": 12, "animate": false})
