@@ -90,21 +90,8 @@ func (m *viewer) executeJourneyControl(
 				"choose a supported mode",
 			), nil
 		}
-		if len(a.Stops) < 2 {
-			return m.fail(
-				r,
-				"invalid_arguments",
-				"at least two stops are required",
-				"supply start and destination",
-			), nil
-		}
-		stops := make([]journeyStop, len(a.Stops))
-		for i, stop := range a.Stops {
-			location, _ := controlLocation(&stop.Lat, &stop.Lon)
-			stops[i] = journeyStop{ID: i + 1, Location: &location}
-		}
-		// Validate before allocating an identity or changing the active selection.
-		if _, err = journeyTrack(stops); err != nil {
+		ref, err = m.workspace.createJourneyWithLocations(controlLocations(a.Stops), mode)
+		if err != nil {
 			return m.fail(
 				r,
 				"invalid_arguments",
@@ -112,11 +99,7 @@ func (m *viewer) executeJourneyControl(
 				"correct the stops",
 			), nil
 		}
-		ref = m.workspace.createJourney()
 		j, _ = m.workspace.journey(ref)
-		err = m.workspace.editJourneyIntent(ref, journeyIntent{Stops: stops, Mode: mode})
-		j.nextID, j.modeChosen = len(stops), true
-		j.history = nil
 	} else {
 		j, err = m.workspace.journey(ref)
 		if err != nil {
@@ -137,39 +120,18 @@ func (m *viewer) executeJourneyControl(
 				err = m.workspace.setJourneyMode(ref, mode)
 			}
 		case "journey.stops":
-			if len(a.Stops) < 2 {
-				err = fmt.Errorf("at least two stops are required")
-				break
-			}
-			stops := make([]journeyStop, len(a.Stops))
-			for i, stop := range a.Stops {
-				location, _ := controlLocation(&stop.Lat, &stop.Lon)
-				stops[i] = journeyStop{ID: j.nextID + i + 1, Location: &location}
-			}
-			err = m.workspace.editJourney(ref, stops)
-			if err == nil {
-				j.nextID += len(stops)
-			}
+			err = m.workspace.replaceJourneyLocations(ref, controlLocations(a.Stops))
 		case "journey.stop.add":
 			var location placeLocation
 			location, err = controlLocation(a.Lat, a.Lon)
 			if err != nil {
 				break
 			}
-			index := slices.IndexFunc(j.Stops, func(stop journeyStop) bool { return stop.ID == a.After })
-			if index < 0 || index == len(j.Stops)-1 {
-				err = fmt.Errorf("after must identify a stop before the destination")
-				break
-			}
 			if len(j.Stops) >= 1000 {
 				err = fmt.Errorf("at most 1000 stops are supported")
 				break
 			}
-			stops := slices.Insert(slices.Clone(j.Stops), index+1, journeyStop{ID: j.nextID + 1, Location: &location})
-			err = m.workspace.editJourney(ref, stops)
-			if err == nil {
-				j.nextID++
-			}
+			err = m.workspace.insertJourneyWaypoint(ref, a.After, &location)
 		case "journey.stop.set":
 			var location placeLocation
 			location, err = controlLocation(a.Lat, a.Lon)
@@ -261,4 +223,12 @@ func (m *viewer) executeJourneyControl(
 	response.Result = controlJSON(m.journeyStatus(ref, j))
 	client := m.directions
 	return response, func() tea.Msg { defer cancel(); return request.run(client) }
+}
+
+func controlLocations(stops []controlStop) []placeLocation {
+	locations := make([]placeLocation, len(stops))
+	for i, stop := range stops {
+		locations[i], _ = controlLocation(&stop.Lat, &stop.Lon)
+	}
+	return locations
 }

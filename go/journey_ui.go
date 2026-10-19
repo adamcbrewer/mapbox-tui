@@ -65,12 +65,7 @@ func (m *viewer) openJourney() tea.Cmd {
 	}
 	if _, err := m.workspace.journey(m.planner.ref); err != nil {
 		m.cancelPlaceSearch()
-		// Creating a workspace item normally activates it. Keep the inspected
-		// activity (including its playback) independent of the planner target.
-		selection := m.workspace.selection
-		m.workspace.selection = nil
-		ref := m.workspace.newJourney()
-		m.workspace.selection = selection
+		ref := m.workspace.createJourney()
 		m.planner = journeyUI{ref: ref, searchID: m.planner.searchID}
 	}
 	if err := m.workspace.setVisible(m.planner.ref, true); err != nil {
@@ -268,9 +263,8 @@ func (m *viewer) applyJourneyLocation(location placeLocation) tea.Cmd {
 	}
 	revision := j.revision
 	if m.planner.addingWaypoint {
-		j.nextID++
-		stops := slices.Insert(slices.Clone(j.Stops), len(j.Stops)-1, journeyStop{ID: j.nextID, Location: &location})
-		err = m.workspace.editJourney(m.planner.ref, stops)
+		after := j.Stops[len(j.Stops)-2].ID
+		err = m.workspace.insertJourneyWaypoint(m.planner.ref, after, &location)
 	} else {
 		err = m.workspace.setJourneyLocation(m.planner.ref, m.planner.stopID, location)
 	}

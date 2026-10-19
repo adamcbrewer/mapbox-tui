@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -59,6 +60,10 @@ func TestNativeJourneyStartsAfterImportsAndOnlyOnce(t *testing.T) {
 		t.Fatal("native startup lost imports, selection or journey state")
 	}
 	ref := m.planner.ref
+	initialStops := slices.Clone(j.Stops)
+	if err := m.workspace.undoJourney(ref); err == nil {
+		t.Fatal("startup initialization was recorded as an undoable edit")
+	}
 	if cmd := m.startJourneyFromArgs(); cmd != nil || m.planner.ref != ref || len(m.workspace.documents) != 3 {
 		t.Fatal("startup journey was created more than once")
 	}
@@ -67,6 +72,12 @@ func TestNativeJourneyStartsAfterImportsAndOnlyOnce(t *testing.T) {
 	}
 	if j.Stops[2].ID == j.Stops[3].ID {
 		t.Fatal("new waypoint reused a startup stop ID")
+	}
+	if err := m.workspace.undoJourney(ref); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(j.Stops, initialStops) || j.Mode != journeyManual {
+		t.Fatal("undo did not restore the initialized startup journey")
 	}
 }
 

@@ -1,10 +1,171 @@
 package main
 
 import (
+	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"testing"
 )
+
+func TestJourneyInitializationOwnsStateAndPreservesRecording(t *testing.T) {
+	for _, mode := range []journeyMode{journeyManual, journeyWalking, journeyCycling, journeyDriving} {
+		for _, existingDraft := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/existing=%v", mode.label(), existingDraft), func(t *testing.T) {
+				var w Workspace
+				if _, err := w.open("../fixtures/example.gpx"); err != nil {
+					t.Fatal(err)
+				}
+				w.setPlaybackPlaying(true)
+				selection := w.selection
+				locations := []placeLocation{
+					{Name: "Start", Lon: -.1, Lat: 51.5, Source: placeSourceCoordinates},
+					{Name: "Café", Lon: -.15, Lat: 51.55, Source: placeSourceMapboxSearch,
+						ProviderID: "cafe", Attribution: "© Mapbox"},
+					{Name: "End", Lon: -.2, Lat: 51.6, Source: placeSourceCoordinates},
+				}
+				var ref ItemRef
+				var err error
+				if existingDraft {
+					ref = w.createJourney()
+					if err := w.addJourneyWaypoint(ref); err != nil {
+						t.Fatal(err)
+					}
+					err = w.initializeJourney(ref, locations, mode)
+				} else {
+					ref, err = w.createJourneyWithLocations(locations, mode)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				j, _ := w.journey(ref)
+				if j.Mode != mode || !j.modeChosen || !j.hasCompleteLocations() {
+					t.Fatal("initialization lost the chosen mode or locations")
+				}
+				for i, stop := range j.Stops {
+					if stop.ID != i+1 || *stop.Location != locations[i] {
+						t.Fatal("initialization lost stop identities or location metadata")
+					}
+				}
+				locations[1].Name = "Changed caller input"
+				if j.Stops[1].Location.Name != "Café" {
+					t.Fatal("journey retained mutable caller storage")
+				}
+				if w.selection != selection || !selection.playback.Playing {
+					t.Fatal("initialization interrupted the imported recording")
+				}
+				if err := w.undoJourney(ref); err == nil {
+					t.Fatal("initialization retained undo history")
+				}
+				if err := w.addJourneyWaypoint(ref); err != nil {
+					t.Fatal(err)
+				}
+				if j.Stops[2].ID != 4 {
+					t.Fatal("initialization did not establish the next stop identity")
+				}
+			})
+		}
+	}
+}
+
+func TestJourneyRejectedPlansPreserveState(t *testing.T) {
+	valid := []placeLocation{{Lon: 0, Lat: 51}, {Lon: 1, Lat: 52}}
+	for _, tc := range []struct {
+		name      string
+		locations []placeLocation
+		mode      journeyMode
+	}{
+		{name: "no stops"},
+		{name: "one stop", locations: valid[:1]},
+		{name: "invalid coordinates", locations: []placeLocation{{Lon: math.NaN()}, valid[1]}},
+		{name: "invalid mode", locations: valid, mode: "flying"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var w Workspace
+			ref := w.createJourney()
+			j, _ := w.journey(ref)
+			before := *j
+			before.Stops = slices.Clone(j.Stops)
+			revision, nextID := w.liveRevision, w.nextID
+			if _, err := w.createJourneyWithLocations(tc.locations, tc.mode); err == nil {
+				t.Fatal("invalid creation accepted")
+			}
+			if err := w.initializeJourney(ref, tc.locations, tc.mode); err == nil {
+				t.Fatal("invalid initialization accepted")
+			}
+			if tc.mode == journeyManual {
+				if err := w.replaceJourneyLocations(ref, tc.locations); err == nil {
+					t.Fatal("invalid replacement accepted")
+				}
+			}
+			if !reflect.DeepEqual(j, &before) || len(w.documents) != 1 ||
+				w.liveRevision != revision || w.nextID != nextID {
+				t.Fatal("rejected plan changed the journey or workspace identity")
+			}
+		})
+	}
+}
+
+func TestJourneyMutationRejectsMissingReferences(t *testing.T) {
+	var w Workspace
+	ref := ItemRef{DocumentID: 99, ItemID: 1}
+	locations := []placeLocation{{Lon: 0, Lat: 51}, {Lon: 1, Lat: 52}}
+	for _, err := range []error{
+		w.initializeJourney(ref, locations, journeyManual),
+		w.replaceJourneyLocations(ref, locations),
+		w.insertJourneyWaypoint(ref, 1, &locations[0]),
+		w.addJourneyWaypoint(ref),
+	} {
+		if err == nil {
+			t.Fatal("mutation accepted a missing journey")
+		}
+	}
+	if len(w.documents) != 0 || w.liveRevision != 0 {
+		t.Fatal("missing-reference mutations changed workspace")
+	}
+}
+
+func TestJourneyWaypointInsertionOwnsLocationAndPreservesRoutingOnFailure(t *testing.T) {
+	var w Workspace
+	locations := directionsTestLocations()
+	ref, err := w.createJourneyWithLocations(locations, journeyWalking)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := w.journey(ref)
+	request, err := w.beginJourneyRoute(t.Context(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.cancelJourneyRoutes)
+	before := slices.Clone(j.Stops)
+	revision, requestID, nextID := w.liveRevision, j.requestID, j.nextID
+	invalid := placeLocation{Lon: math.NaN(), Lat: 51}
+	if err := w.insertJourneyWaypoint(ref, j.Stops[0].ID, &invalid); err == nil {
+		t.Fatal("invalid waypoint was accepted")
+	}
+	if !slices.Equal(j.Stops, before) || w.liveRevision != revision ||
+		j.requestID != requestID || j.nextID != nextID || !j.Busy || request.ctx.Err() != nil {
+		t.Fatal("rejected waypoint changed the journey or cancelled routing")
+	}
+	location := placeLocation{Name: "Waypoint", Lon: -.15, Lat: 51.55, Source: placeSourceCoordinates}
+	if err := w.insertJourneyWaypoint(ref, j.Stops[0].ID, &location); err != nil {
+		t.Fatal(err)
+	}
+	location.Name = "Changed caller input"
+	if j.Stops[1].ID != nextID+1 || j.Stops[1].Location.Name != "Waypoint" {
+		t.Fatal("insertion consumed an ID on failure or retained caller storage")
+	}
+	if request.ctx.Err() == nil || j.Busy || j.revision == request.revision {
+		t.Fatal("successful waypoint insertion did not invalidate the old route")
+	}
+	if err := w.undoJourney(ref); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(j.Stops, before) {
+		t.Fatal("failed insertion affected the next undo")
+	}
+}
 
 func TestJourneyEditsKeepIdentityAndImportsAndReverseEntireOrder(t *testing.T) {
 	d, err := loadDocument("../fixtures/example.gpx")
@@ -172,6 +333,52 @@ func TestJourneyEditsAndUndoReuseImportedProfiles(t *testing.T) {
 				t.Fatal("undo did not restore the empty draft")
 			}
 		})
+	}
+}
+
+func TestJourneyWaypointIDsSurviveUndo(t *testing.T) {
+	var w Workspace
+	ref := w.newJourney()
+	j, _ := w.journey(ref)
+	original := slices.Clone(j.Stops)
+	if err := w.addJourneyWaypoint(ref); err != nil {
+		t.Fatal(err)
+	}
+	addedID := j.Stops[1].ID
+	if err := w.undoJourney(ref); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(j.Stops, original) {
+		t.Fatal("undo did not restore the endpoints")
+	}
+	if err := w.addJourneyWaypoint(ref); err != nil {
+		t.Fatal(err)
+	}
+	if j.Stops[1].ID <= addedID {
+		t.Fatal("waypoint insertion reused an undone stop ID")
+	}
+}
+
+func TestJourneyRejectedLocationPreservesState(t *testing.T) {
+	for _, location := range []placeLocation{
+		{Lon: math.NaN(), Lat: 51},
+		{Lon: 0, Lat: 91},
+		{Lon: 0, Lat: 51, Source: "unknown"},
+	} {
+		var w Workspace
+		ref := w.newJourney()
+		j, _ := w.journey(ref)
+		before := slices.Clone(j.Stops)
+		selection, revision := w.selection, w.liveRevision
+		if err := w.setJourneyLocation(ref, j.Stops[0].ID, location); err == nil {
+			t.Fatal("invalid location was accepted")
+		}
+		if !slices.Equal(j.Stops, before) || w.selection != selection || w.liveRevision != revision {
+			t.Fatal("rejected location changed journey, selection or revision")
+		}
+		if err := w.undoJourney(ref); err == nil {
+			t.Fatal("rejected location added an undo entry")
+		}
 	}
 }
 

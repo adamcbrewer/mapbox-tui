@@ -76,6 +76,12 @@ active recording alone. Human and agent playback commands use the same workspace
 setters and revision tracking. Animation uses a shared viewer setter; only UI
 changes save the preference.
 
+Workspace journey operations own initial stop identities, chosen mode and undo
+history, as well as replacement and waypoint insertion. Initializing a plan leaves
+no empty draft to undo. Successful edits allocate stop IDs monotonically, including
+after undo; rejected edits preserve the plan and its routing state. Viewer, startup
+and live-control callers choose selection, camera and routing presentation separately.
+
 CLI and MCP validate arguments against the same embedded JSON schemas. Edits
 advance the live revision; replacing or clearing the working copy changes its
 generation. Saved checkpoints have separate revisions for storage conflicts.

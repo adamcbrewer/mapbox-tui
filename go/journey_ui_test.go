@@ -102,6 +102,56 @@ func TestJourneyViewerManualEditReverseAndReopen(t *testing.T) {
 	}
 }
 
+func TestOpeningPlannerPreservesRecordingSelectionAndPlayback(t *testing.T) {
+	m := journeyViewer(t)
+	if _, err := m.workspace.open("../fixtures/example.gpx"); err != nil {
+		t.Fatal(err)
+	}
+	m.workspace.setPlaybackPlaying(true)
+	selection := m.workspace.selection
+	m.openJourney()
+	if m.workspace.selection != selection || !selection.playback.Playing {
+		t.Fatal("opening a planner replaced selection or interrupted playback")
+	}
+	ref := m.planner.ref
+	m.closeDialog()
+	m.openJourney()
+	if m.planner.ref != ref || m.workspace.selection != selection || len(m.workspace.documents) != 2 {
+		t.Fatal("reopening a planner changed its journey or recording")
+	}
+}
+
+func TestJourneyLocatedWaypointInsertionIsOneUndoableEdit(t *testing.T) {
+	m := journeyViewer(t)
+	m.openJourney()
+	enterJourneyCoordinate(m, 0, "51.5,-0.1")
+	enterJourneyCoordinate(m, 1, "51.6,-0.2")
+	j, _ := m.workspace.journey(m.planner.ref)
+	before := slices.Clone(j.Stops)
+	location := placeLocation{
+		Name: "Favourite", Lon: -.15, Lat: 51.55, Source: placeSourceCoordinates,
+		ProviderID: "saved-place", Attribution: "Retained credit",
+	}
+	m.editNewWaypoint()
+	m.applyJourneyLocation(location)
+	if len(j.Stops) != 3 || *j.Stops[1].Location != location ||
+		j.Stops[0] != before[0] || j.Stops[2] != before[1] {
+		t.Fatal("waypoint insertion changed endpoints or location metadata")
+	}
+	insertedID := j.Stops[1].ID
+	if err := m.workspace.undoJourney(m.planner.ref); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(j.Stops, before) {
+		t.Fatal("one undo did not remove the located waypoint")
+	}
+	m.editNewWaypoint()
+	m.applyJourneyLocation(location)
+	if j.Stops[1].ID <= insertedID {
+		t.Fatal("planner reused an undone waypoint ID")
+	}
+}
+
 func TestDisconnectedJourneySearchIsDisabledButManualPlanningWorks(t *testing.T) {
 	m := journeyViewer(t)
 	m.openJourney()
