@@ -81,8 +81,10 @@ def main():
                 return all(label in rows[index * 2] for index, label in enumerate(expected))
             wait_for(stack_visible)
             remote(env, "second", "theme", "set", "--theme", "paper")
-            label = wait_for(lambda: (text if "Remote: Theme updated" in text else None)
-                             if (text := activity("second")) else None)
+            def ascii_activity_visible():
+                text = activity("second")
+                return text if "Remote: Theme updated" in text else None
+            label = wait_for(ascii_activity_visible)
             assert label.isascii(), label
             # Keep a modal dialog open while remote commands change the workspace.
             tmux("send-keys", "-t", "main", "C-k")
