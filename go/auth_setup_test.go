@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTokenStdinLoginAndLogoutWithoutCLI(t *testing.T) {
@@ -112,5 +114,50 @@ func TestReadAuthInputCancellationAndSecretFormat(t *testing.T) {
 		if err := checkPublicTokenFormat(token); err == nil {
 			t.Fatal("non-public or malformed token was accepted")
 		}
+	}
+}
+
+func TestReadAuthInputFromPipedStdin(t *testing.T) {
+	input, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	defer writer.Close()
+	previous := os.Stdin
+	os.Stdin = input
+	defer func() { os.Stdin = previous }()
+	if _, err := writer.WriteString("pk.piped-token\n"); err != nil {
+		t.Fatal(err)
+	}
+	value, err := readAuthInput(t.Context(), authStreams{in: os.Stdin}, false)
+	if err != nil || value != "pk.piped-token" {
+		t.Fatal("piped stdin was not read", err)
+	}
+}
+
+func TestReadAuthInputCancelsBlockedPipe(t *testing.T) {
+	input, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	defer writer.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := readAuthInput(ctx, authStreams{in: input}, false)
+		result <- err
+	}()
+	timer := time.AfterFunc(20*time.Millisecond, cancel)
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("pipe input did not return cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled pipe input remained blocked")
 	}
 }

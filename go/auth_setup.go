@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -37,9 +38,17 @@ func readAuthInput(ctx context.Context, streams authStreams, hidden bool) (strin
 		}()
 	}
 	inputReader := streams.in
+	var inputFile *os.File
 	if file, ok := streams.in.(*os.File); ok {
-		if info, err := file.Stat(); err == nil && info.Mode().IsRegular() {
+		info, err := file.Stat()
+		regular := err == nil && info.Mode().IsRegular()
+		windowsPipe := runtime.GOOS == "windows" && err == nil && info.Mode()&os.ModeNamedPipe != 0
+		if regular || windowsPipe {
+			// cancelreader otherwise opens CONIN$ for redirected Windows stdin.
 			inputReader = io.LimitReader(file, 4097)
+		}
+		if windowsPipe {
+			inputFile = file
 		}
 	}
 	reader, err := cancelreader.NewReader(inputReader)
@@ -47,7 +56,13 @@ func readAuthInput(ctx context.Context, streams authStreams, hidden bool) (strin
 		return "", fmt.Errorf("prepare authentication input: %w", err)
 	}
 	cancelled := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() { reader.Cancel(); close(cancelled) })
+	stop := context.AfterFunc(ctx, func() {
+		reader.Cancel()
+		if inputFile != nil {
+			inputFile.Close()
+		}
+		close(cancelled)
+	})
 	defer func() {
 		if !stop() {
 			<-cancelled
