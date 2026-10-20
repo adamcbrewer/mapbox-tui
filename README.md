@@ -6,9 +6,11 @@
 [![Builds: Linux, macOS and Windows](https://img.shields.io/badge/builds-Linux%20%7C%20macOS%20%7C%20Windows-blue)](#platforms)
 
 A terminal map viewer and journey planner for GPX, FIT, TCX and KML files,
-with a JSON CLI and local MCP server. Desgined to work with Mapbox for place, search and road routing, can be used offline.
+with a JSON CLI and local MCP server. Mapbox adds basemaps, place search and road
+routing; local files and straight-line journeys work offline.
 
-[Getting started](#getting-started) · [MCP](#agent-workflow) ·
+[Getting started](#getting-started) · [Usage](#usage) ·
+[Agent usage](docs/AGENT_USAGE.md) ·
 [Themes](#themes) · [Other terminal maps](#other-terminal-map-projects)
 
 ![Mapbox TUI showing the Country ride near London, with an elevation profile](docs/images/mapbox-tui.png)
@@ -28,14 +30,22 @@ switching, journey planning and copying a command to reopen the journey.
   recorded timing where available and labelled estimates otherwise.
 - **Multiple files.** Load activities and planned routes together, select or hide
   individual items, and compare elevation profiles on a shared distance axis.
-- **Journey planning.** Pick stops on the map and reorder waypoints. Manual plans
-  work offline; Mapbox provides place search and walking, cycling and driving
+- **Journey planning.** Pick stops on the map and reorder waypoints. Straight-line
+  plans work offline; Mapbox provides place search and walking, cycling and driving
   routes.
 - **Favourite places.** Save commonly used locations locally, then find, rename
   or remove them. Reuse saved places offline in quick search or as journey stops.
   See [favourites controls](docs/USAGE.md#favourite-places).
-- **Shareable plans, locations and preferances.** Planned journey cli arguments can be copied and shared or bookmarked: reopen stops, travel mode and loaded files.
- Road routes are recalculated when reopened.
+- **Shareable journey commands.** Copy stops, travel mode and imported file paths
+  into a command to reopen the plan. Road routes recalculate; preferences aren't
+  included.
+- **Saved workspaces.** Manually save and reopen files, journeys and unfinished
+  drafts. Search, sort, rename, duplicate or delete saves. Original import files
+  required; no autosave or automatic session/crash recovery.
+- **Remembered preferences.** Keep theme, ASCII, animation, elevation and last
+  centre/zoom across launches. [Safe start](docs/USAGE.md#saved-viewer-preferences)
+  bypasses saved preferences; [Start clean](docs/USAGE.md#saved-workspaces) empties
+  the working workspace without deleting saves.
 - **CLI and MCP.** Get JSON summaries, inspect points by distance and render
   ANSI-free text maps. The local MCP server keeps loaded files, selection and
   visibility in its own workspace.
@@ -47,9 +57,7 @@ switching, journey planning and copying a command to reopen the journey.
   replay recordings without an account. Connected features include Mapbox
   basemaps, search, road routing and an optional traffic overlay in the viewer.
 - **Rendering and controls.** Braille and ASCII rendering, full keyboard and mouse
-  navigation, map rotation, six built-in colour palettes and supports custom themes.
-
-See [Usage](docs/USAGE.md) for controls, imports and playback details.
+  navigation, map rotation, six built-in colour palettes and custom themes.
 
 ## Getting started
 
@@ -75,63 +83,13 @@ For basemaps, place search and road routing, [connect Mapbox](#mapbox).
 Before authenticating, [review billing risks](#free-usage-and-billing) and set up
 usage alerts. Monitoring usage and charges is your responsibility.
 
-## Agent workflow
+## Usage
 
-MCP lets your agent inspect files, compare activities and render text maps.
-Loaded files, selection and visibility carry over between requests.
+**Using it yourself?** See [Usage](docs/USAGE.md) for keyboard shortcuts, CLI
+commands and saved workspaces.
 
-This repository includes project-local configurations for Codex and OpenCode.
-Build with `make build`, then start your agent in this checkout. See
-[project MCP setup](docs/MCP.md#project-setup) for connection checks.
-
-For other clients, add the binary as a local stdio server in your agent's MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "mapbox-tui": {
-      "command": "/absolute/path/to/mapbox-tui/bin/mapbox-tui",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-Use your actual repository path. If your client uses a different config format,
-the command and argument are the same.
-
-### Example prompts
-
-Once connected, give your agent the absolute path to the repo and try:
-
-```txt
-Open fixtures/example.gpx with mapbox-tui. What's in it? Summarise the recorded activity separately from the planned route and waypoints.
-```
-
-```txt
-Find the recorded point nearest 1 km, then show me an offline ASCII map of the activity at 60 by 20 cells.
-```
-
-```txt
-Also load fixtures/waypoints.gpx. Hide Optional spur, keep the waypoints visible and render the workspace. Then show the spur again and redraw it.
-```
-
-Those examples use synthetic fixtures and work offline. For a recorded ride, try:
-
-```txt
-Open fixtures/country-ride.gpx. Summarise its distance and elevation, inspect the point nearest 90 km, then render an offline map of the whole ride.
-```
-
-To control a running map, start `mapbox-tui --name main`. Use
-`mapbox-tui remote --session main status --json` from another terminal, or ask
-an MCP agent to find `main` with `viewer_sessions` and use its UUID with the
-`viewer_*` tools. Standalone MCP tools keep a separate workspace.
-
-See [remote access](docs/REMOTE_ACCESS.md) for commands and agent setup.
-Place-name lookup and screenshots still need terminal control.
-
-See [MCP notes](docs/MCP.md) for workspace rendering and measurement details.
-The [tool schemas](shared/tools.json) describe the available calls.
+**Using an agent?** See [Agent usage](docs/AGENT_USAGE.md) for MCP setup, live
+viewer control and example prompts.
 
 ## Mapbox
 
@@ -190,30 +148,6 @@ check at viewer startup, including in offline mode.
 See [Mapbox billing and usage guidance](docs/MAPBOX.md#free-usage-and-billing)
 for recommendations, statistics limitations and unattended CLI/MCP setup.
 
-## Terminal and CLI
-
-```sh
-./bin/mapbox-tui ride.gpx course.tcx
-./bin/mapbox-tui summary fixtures/example.gpx
-./bin/mapbox-tui inspect fixtures/example.gpx --point-index 3
-./bin/mapbox-tui render fixtures/example.gpx --no-provider --json
-```
-
-Use `fixtures/country-ride.gpx` in the same CLI commands to try the longer ride.
-
-In the viewer, Ctrl-O opens files, Ctrl-L manages loaded items, `/` searches
-for places and Ctrl-J opens the journey planner. Ctrl-K opens the command
-palette from any panel or dialog; Esc returns to the previous view.
-
-In quick search or a journey location editor, Alt-S saves or removes the selected
-address or town from favourites. Ctrl-F opens saved favourites for offline reuse.
-
-`summary` and `inspect` return JSON. `render` gives you a text map; add `--json`
-for scene metadata too. CLI and MCP maps are ANSI-free.
-
-Use `./bin/mapbox-tui --help` or a subcommand's `--help` for options.
-[Usage notes](docs/USAGE.md) cover controls, imports and playback.
-
 ## Other terminal map projects
 
 There are some other great TUI projects out there which I drew inspiration from, but feature support and active development made me decide to take a fresh approach.
@@ -231,10 +165,12 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Visual comparison of imported routes | ✓ | - | - | - |
 | Choose colours for individual imported activities | (proposed) | - | - | - |
 | Journey planning with waypoints | ✓ | - | - | - |
-| Saved favourite places / bookmarks | ✓ (offline reuse) | Not documented | [Saved views via bookmark plugin](https://github.com/Kohei-Wada/ttymap#bundled-plugins) | Not documented |
+| Saved favourite places / bookmarks | ✓ (offline reuse) | - | [Saved views via bookmark plugin](https://github.com/Kohei-Wada/ttymap#bundled-plugins) | - |
 | Walking, cycling and driving routes | Mapbox | - | - | - |
 | Copy a command to recreate a journey | ✓ | - | - | - |
-| Restore the last planned journey after restart | (proposed) | - | - | - |
+| Save and reopen workspaces | ✓ (manual; original imports required) | - | - | - |
+| Automatically save UI preferences and last camera view | ✓ | - | - | - |
+| Automatic session/crash recovery | Deferred | - | - | - |
 | Headless map rendering | ANSI-free text via CLI/MCP | - | ANSI snapshots via CLI | ANSI frames via Rust SDK |
 | JSON activity summaries and point inspection | ✓ | - | - | - |
 | Local MCP server with a session workspace | ✓ | - | - | - |
@@ -248,8 +184,11 @@ The main idea is Mapbox TUI would bring activity files, journey planning and CLI
 | Persistent disk tile cache | (in-memory only) | ✓ | ✓ | ✓ |
 
 This is just a comparison of documented workflows, checked **14 October 2026**, not a feature audit.
-The favourites/bookmarks row was checked **16 October 2026**.
-The linked project READMEs describe their current capabilities.
+Favourites and persistence/recovery rows checked **20 October 2026**, including ttymap's
+[configuration](https://github.com/Kohei-Wada/ttymap/blob/main/docs/configuration.md)
+and [bookmark implementation](https://github.com/Kohei-Wada/ttymap/blob/main/runtime/lua/plugin/bookmark.lua).
+`-` means unsupported or not documented. Named view bookmarks aren't full workspace
+saves or automatic last-view restoration. Other rows retain their check dates above.
 
 ## Themes
 
@@ -325,7 +264,8 @@ local workflow and terminal prerequisites.
 ## Further reading and other docs
 
 - [Usage](docs/USAGE.md)
-- [MCP](docs/MCP.md)
+- [Agent usage](docs/AGENT_USAGE.md)
+- [Remote access reference](docs/REMOTE_ACCESS.md)
 - [Mapbox](docs/MAPBOX.md)
 - [Development](docs/DEVELOPMENT.md)
 - [Release reference for maintainers](docs/RELEASING.md)

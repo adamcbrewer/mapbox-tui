@@ -29,4 +29,4 @@ and the fixes are pushed. Leave outstanding feedback unresolved.
 - Workspace lifecycle, selection, playback and scene changes: [architecture](docs/ARCHITECTURE.md#shared-model-and-rendering).
 - Provider changes: [loading, caching and attribution policies](docs/MAPBOX.md).
 - Theme changes: [palette format and API](docs/THEMES.md).
-- CLI/MCP contract changes: [usage](docs/USAGE.md), [MCP notes](docs/MCP.md) and [tool schemas](shared/tools.json).
+- CLI/MCP contract changes: [usage](docs/USAGE.md), [agent usage](docs/AGENT_USAGE.md) and [tool schemas](shared/tools.json).
