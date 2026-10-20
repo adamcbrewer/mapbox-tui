@@ -34,6 +34,12 @@ Example client config. Replace the path; client-specific format may differ.
 
 ## Standalone MCP
 
+Standalone MCP rendering uses the same authentication selection as the viewer
+and CLI: `MAPBOX_ACCESS_TOKEN` overrides a saved public token or shared CLI login.
+Run `mapbox-tui auth login` to choose a method before starting MCP. Token entry
+needs no Mapbox CLI; account-usage reporting still needs a saved CLI login.
+See [authentication setup](MAPBOX.md#runtime-configuration).
+
 These nine tools share state for the server process. Use absolute paths and IDs
 returned by `load_track`/`list_tracks`. Exact arguments: [tool schemas](../shared/tools.json).
 

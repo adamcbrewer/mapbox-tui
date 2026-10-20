@@ -17,6 +17,8 @@ type cliCommand struct {
 	Items         bool
 	Frames        int
 	AuthAction    string
+	AuthMethod    string
+	TokenStdin    bool
 	Usage         bool
 	AcceptBilling bool
 }
@@ -359,6 +361,11 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 	}
 	fs := flag.NewFlagSet("auth "+command.AuthAction, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	var browser bool
+	if command.AuthAction == "login" {
+		fs.BoolVar(&browser, "browser", false, "use the Mapbox CLI browser login")
+		fs.BoolVar(&command.TokenStdin, "token-stdin", false, "read a public Mapbox token from standard input")
+	}
 	if command.AuthAction == "login" || command.AuthAction == "online" {
 		fs.BoolVar(&command.AcceptBilling, "accept-billing", false, "acknowledge billing risks and enable online features")
 	}
@@ -374,21 +381,41 @@ func parseAuthCLI(argv []string, output io.Writer) (cliCommand, error) {
 	if err != nil || len(paths) != 0 {
 		return command, fmt.Errorf("invalid auth arguments; see 'mapbox-tui auth --help'")
 	}
+	if browser && command.TokenStdin {
+		return command, fmt.Errorf("choose either --browser or --token-stdin")
+	}
+	if browser {
+		command.AuthMethod = "browser"
+	}
+	if command.TokenStdin {
+		command.AuthMethod = "token"
+	}
 	return command, nil
 }
 
 func printAuthHelp(output io.Writer) {
-	fmt.Fprintln(output, "Usage: mapbox-tui auth login [--accept-billing]\n       mapbox-tui auth logout\n"+
+	fmt.Fprintln(output, "Usage: mapbox-tui auth login [--browser | --token-stdin] [--accept-billing]\n       mapbox-tui auth logout\n"+
 		"       mapbox-tui auth status [--json] [--usage]\n       mapbox-tui auth online [--accept-billing]\n       mapbox-tui auth offline\n\n"+
-		"Login opens Mapbox's browser flow to sign in or create an account. The optional\n"+
-		"Mapbox CLI owns OAuth, saved credentials and refresh. Credentials live in\n"+
+		"Interactive login offers hidden public API token entry or browser login.\n"+
+		"--browser skips the choice; --token-stdin reads a public token from a pipe/file.\n"+
+		"Public tokens need no CLI and are validated before saving privately alongside\n"+
+		"settings.json in the platform's mapbox-tui config directory (credentials.json).\n"+
+		"The file also selects the active method. Invalid saved tokens never fall back\n"+
+		"to a different account. Switching to browser login removes the saved public token.\n\n"+
+		"For browser login, the optional Mapbox CLI owns OAuth, storage and refresh in\n"+
 		"~/.mapbox/credentials.json for the shared default profile; MAPBOX_CONFIG_DIR\n"+
 		"can relocate them. Login/logout/status report the resolved path on your machine.\n"+
-		"Logout removes that shared login; it doesn't revoke public or environment tokens.\n\n"+
+		"Logout removes the selected credentials and disables fallback. Token logout keeps\n"+
+		"the CLI login; browser logout removes the shared CLI login. Neither revokes tokens\n"+
+		"or clears MAPBOX_ACCESS_TOKEN, which always overrides the selected method.\n\n"+
+		"On a machine without a browser, open the printed login URL on another device.\n"+
+		"After authorizing, paste its failed localhost callback URL into the waiting login\n"+
+		"terminal and press Enter. Keep that original login running; expired or unrelated\n"+
+		"callbacks cannot complete it. Alternatively, use a known MAPBOX_ACCESS_TOKEN.\n\n"+
 		"Offline imports, measurements, playback and offline journeys need no account.\n"+
 		"Mapbox maps and place search need your account's public token. A configured\n"+
-		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise mapbox-tui retrieves a public\n"+
-		"token through the saved login. An empty variable disables automatic discovery.\n\n"+
+		"MAPBOX_ACCESS_TOKEN works without the CLI; otherwise the selected saved token or\n"+
+		"CLI login is used. An empty variable disables automatic discovery.\n\n"+
 		"Install the optional Mapbox CLI (tested with v0.3.0): "+mapboxInstallURL+"\n"+
 		"mapbox-tui finds mapbox on PATH; MAPBOX_TUI_CLI can select its executable explicitly.\n"+
 		"Create an account/email verification: "+mapboxSignupURL+"\n"+

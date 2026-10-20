@@ -21,10 +21,11 @@ type credentialResult struct {
 }
 
 type mapboxLoginReady struct {
-	id  uint64
-	ctx context.Context
-	cli *mapboxCLI
-	err error
+	id        uint64
+	ctx       context.Context
+	cli       *mapboxCLI
+	err       error
+	tokenOnly bool
 }
 
 type mapboxDependencyResult struct {
@@ -38,9 +39,10 @@ type mapboxLoginDone struct {
 }
 
 type viewerMapboxLogin struct {
-	ctx     context.Context
-	cli     *mapboxCLI
-	streams authStreams
+	ctx       context.Context
+	cli       *mapboxCLI
+	streams   authStreams
+	tokenOnly bool
 }
 
 func (m *viewer) connectionNotice() string {
@@ -69,16 +71,11 @@ func (c *viewerMapboxLogin) SetStdin(input io.Reader)   { c.streams.in = input }
 func (c *viewerMapboxLogin) SetStdout(output io.Writer) { c.streams.out = output }
 func (c *viewerMapboxLogin) SetStderr(output io.Writer) { c.streams.err = output }
 func (c *viewerMapboxLogin) Run() error {
-	file, err := mapboxCredentialFile()
-	if err != nil {
-		return err
+	command := cliCommand{AuthAction: "login"}
+	if c.tokenOnly {
+		command.AuthMethod = "token"
 	}
-	fmt.Fprintf(c.streams.out, "Mapbox credentials: %s (shared default profile)\n", file)
-	err = c.cli.login(c.ctx, c.streams)
-	if err == nil {
-		fmt.Fprintf(c.streams.out, "Mapbox login saved by the CLI at %s\n", file)
-	}
-	return err
+	return performMapboxLogin(c.ctx, command, c.streams, c.cli)
 }
 
 func (m *viewer) cancelAuth() {
@@ -219,6 +216,9 @@ func (m *viewer) acceptCredentials(result credentialResult) tea.Cmd {
 			m.openDialog(dialogMapbox)
 		}
 		file, err := mapboxCredentialFile()
+		if selected, loadErr := loadAppCredentials(); loadErr == nil && selected.Method == "token" {
+			file, err = appCredentialsPath()
+		}
 		m.authMessage = "Login succeeded; rendering source: " + credential.source
 		if err == nil {
 			m.authMessage = "Login saved at " + file + "; rendering source: " + credential.source
@@ -272,6 +272,20 @@ func (m *viewer) beginMapboxLogin() tea.Cmd {
 	return func() tea.Msg {
 		cli, err := findMapboxCLIWithTelemetry(ctx, telemetry)
 		return mapboxLoginReady{id: id, ctx: ctx, cli: cli, err: err}
+	}
+}
+
+func (m *viewer) beginMapboxTokenLogin() tea.Cmd {
+	if !m.preferences.billingAccepted() {
+		return m.openBilling(billingTokenSignIn)
+	}
+	m.cancelPlaceSearch()
+	m.cancelAuth()
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.authCancel, m.authBusy = cancel, true
+	id := m.authID
+	return func() tea.Msg {
+		return mapboxLoginReady{id: id, ctx: ctx, tokenOnly: true}
 	}
 }
 
@@ -334,6 +348,10 @@ func (m *viewer) mapboxActions() []viewerCommand {
 			}
 		}
 		actions = append(actions, first)
+		actions = append(actions, viewerCommand{title: "Enter public API token", action: "token"})
+		if m.mapboxConnected() && m.authCLI.State == "ready" {
+			actions = append(actions, viewerCommand{title: "Change sign-in method", action: "login"})
+		}
 	}
 	return append(actions,
 		viewerCommand{title: "Billing guidance", action: "billing"},
@@ -384,6 +402,8 @@ func (m *viewer) updateMapboxDialog(key string) tea.Cmd {
 			return m.checkMapboxSetup()
 		case "login":
 			return m.beginMapboxLogin()
+		case "token":
+			return m.beginMapboxTokenLogin()
 		case "credits":
 			return m.openMapboxCredits()
 		case "telemetry":
@@ -424,6 +444,14 @@ func (m *viewer) mapboxDialogContent(width, height int) (string, string, string)
 		connection := "Mapbox: not connected"
 		if m.mapboxConnected() {
 			connection = "Mapbox: connected"
+			switch m.credential.source {
+			case "saved_token":
+				connection += " · saved public token"
+			case "environment":
+				connection += " · environment token"
+			case "login":
+				connection += " · browser login"
+			}
 		}
 		if m.preferences.Offline {
 			connection += " · offline"

@@ -65,6 +65,7 @@ const (
 	billingShowGuidance
 	billingEnableOnline
 	billingSignIn
+	billingTokenSignIn
 )
 
 func (m *viewer) openBilling(intent billingIntent) tea.Cmd {
@@ -120,6 +121,9 @@ func (m *viewer) acceptBilling() tea.Cmd {
 	m.backDialog()
 	if intent == billingSignIn {
 		return m.beginMapboxLogin()
+	}
+	if intent == billingTokenSignIn {
+		return m.beginMapboxTokenLogin()
 	}
 	return m.setMapboxOffline(false)
 }
@@ -225,6 +229,9 @@ func (m *viewer) usageAccountSummary() []string {
 	rows := []string{account}
 	if m.credential.source == "environment" && m.credential.token != "" {
 		rows = append(rows, "Map token: environment; account may differ")
+	}
+	if m.credential.source == "saved_token" && m.credential.token != "" {
+		rows = append(rows, "Map token: saved public token; account may differ")
 	}
 	return rows
 }

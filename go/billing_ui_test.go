@@ -11,6 +11,23 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestUsageSummaryDistinguishesSuppliedTokensFromSavedLoginAccount(t *testing.T) {
+	for _, source := range []string{"environment", "saved_token"} {
+		t.Run(source, func(t *testing.T) {
+			m := authTestViewer(t)
+			m.usage.Account = "savedaccount"
+			m.credential = renderingCredential{source: source, token: "pk.supplied-token"}
+			text := strings.Join(m.usageAccountSummary(), "\n")
+			if !strings.Contains(text, "savedaccount (saved login)") || !strings.Contains(text, "account may differ") {
+				t.Fatal("usage summary conflated supplied token and saved-login account")
+			}
+			if strings.Contains(text, "pk.supplied-token") {
+				t.Fatal("usage summary exposed the token")
+			}
+		})
+	}
+}
+
 func TestViewerGatesExistingTokenAndStillFetchesStartupUsage(t *testing.T) {
 	for _, offline := range []bool{false, true} {
 		name := "first use"

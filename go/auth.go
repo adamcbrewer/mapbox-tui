@@ -67,6 +67,8 @@ type authUsage struct {
 type authStatus struct {
 	Profile        string                 `json:"profile"`
 	CredentialFile string                 `json:"credential_file"`
+	TokenFile      string                 `json:"token_file"`
+	SelectedMethod string                 `json:"selected_method"`
 	CLI            mapboxDependencyStatus `json:"cli"`
 	CLIVersion     string                 `json:"cli_version,omitempty"`
 	CLITelemetry   bool                   `json:"cli_telemetry"`
@@ -125,7 +127,7 @@ func resolveCredential(ctx context.Context) renderingCredential {
 }
 
 func resolveCredentialWithTelemetry(ctx context.Context, telemetry *bool) renderingCredential {
-	if credential, explicit := environmentCredential(); explicit {
+	if credential, explicit := configuredCredential(); explicit {
 		return credential
 	}
 	cli, dependency := checkMapboxCLIWithTelemetry(ctx, telemetry)
@@ -205,7 +207,13 @@ func collectAuthStatusWith(
 		Login:     authSection{State: "unknown"},
 		Rendering: renderingStatus{Source: "none", Validity: "unchecked", Streets: authSection{State: "not_checked"}},
 	}
-	credential, explicit := environmentCredential()
+	status.TokenFile, _ = appCredentialsPath()
+	selection, selectionErr := loadAppCredentials()
+	status.SelectedMethod = selection.Method
+	if selectionErr != nil {
+		status.SelectedMethod = "unavailable"
+	}
+	credential, explicit := configuredCredential()
 	cli, dependency := checkMapboxCLI(ctx)
 	status.CLI = dependency
 	if cli == nil {
@@ -245,7 +253,14 @@ func collectAuthStatusWith(
 		status.Rendering.Source = "none"
 	}
 	if credential.token != "" {
-		if cli != nil {
+		if credential.source == "saved_token" {
+			validated, err := validatePublicToken(ctx, credential.token)
+			status.Rendering.Validity = validated.Validity
+			status.Rendering.Account, status.Rendering.TokenID = validated.Account, validated.TokenID
+			if err != nil {
+				status.Rendering.Guidance = err.Error()
+			}
+		} else if cli != nil {
 			cli.tokenMetadata(ctx, credential.token, &status.Rendering)
 		}
 		if err := requireMapboxOnline(credential.token); err != nil {
@@ -308,6 +323,7 @@ func (s authStatus) text() string {
 			s.CLI.InstallURL)
 	}
 	fmt.Fprintf(&out, "Profile: %s\nCredentials: %s (owned by Mapbox CLI)\n", s.Profile, s.CredentialFile)
+	fmt.Fprintf(&out, "Selected method: %s\nToken/selection file: %s (owned by Mapbox TUI)\n", s.SelectedMethod, s.TokenFile)
 	if s.CLI.State != "ready" {
 		fmt.Fprintln(&out, "Login: not checked (Mapbox CLI unavailable)")
 	} else {
@@ -387,36 +403,15 @@ func runAuth(ctx context.Context, command cliCommand, streams authStreams) error
 		_, err = io.WriteString(streams.out, status.text())
 		return err
 	}
-	file, err := mapboxCredentialFile()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(streams.out, "Mapbox credentials: %s (shared default profile)\n", file)
-	cli, err := findMapboxCLI(ctx)
-	if err != nil {
-		return err
-	}
 	if command.AuthAction == "logout" {
-		var result struct {
-			LoggedOut bool `json:"logged_out"`
-		}
-		if err := cli.query(ctx, []string{"auth", "logout"}, nil, &result); err != nil {
-			return err
-		}
-		if !result.LoggedOut {
-			fmt.Fprintf(streams.out, "No saved Mapbox login at %s\n", file)
-			return nil
-		}
-		fmt.Fprintf(streams.out, "Shared Mapbox login removed from %s; environment tokens and other running apps are unaffected\n", file)
-		return nil
+		return logoutMapbox(ctx, streams)
 	}
-	if err := cli.login(ctx, streams); err != nil {
+	if err := performMapboxLogin(ctx, command, streams, nil); err != nil {
 		return err
 	}
 	if _, err := saveMapboxOffline(false); err != nil {
 		return err
 	}
-	fmt.Fprintf(streams.out, "Mapbox login saved by the CLI at %s\n", file)
 	credential := resolveCredential(ctx)
 	if credential.token == "" {
 		fmt.Fprintln(streams.out, "Login succeeded; maps are not ready:", credential.guidance)

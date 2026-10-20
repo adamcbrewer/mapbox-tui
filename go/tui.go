@@ -329,7 +329,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.authCancel()
 			m.authCancel = nil
 		}
-		credential, _ := environmentCredential()
+		credential, _ := configuredCredential()
 		if v.status.State == "ready" || credential.token != "" {
 			return m, m.discoverCredentials(false, true)
 		}
@@ -350,8 +350,10 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dirty = true
 			return m, nil
 		}
-		m.authCLI = mapboxDependencyStatus{State: "ready", Path: v.cli.path}
-		command := &viewerMapboxLogin{ctx: v.ctx, cli: v.cli}
+		if v.cli != nil {
+			m.authCLI = mapboxDependencyStatus{State: "ready", Path: v.cli.path}
+		}
+		command := &viewerMapboxLogin{ctx: v.ctx, cli: v.cli, tokenOnly: v.tokenOnly}
 		return m, tea.Exec(command, func(err error) tea.Msg { return mapboxLoginDone{id: v.id, err: err} })
 	case mapboxLoginDone:
 		if v.id != m.authID {

@@ -16,13 +16,15 @@ through account setup/status; human CLI renders print the short notice too.
 Use `--no-provider` or MCP's
 `provider: "none"` to skip basemap requests even with a configured token.
 
-Runtime credentials use `MAPBOX_ACCESS_TOKEN` first, then the default public token
-retrieved through a saved official Mapbox CLI login. An explicitly empty
-environment variable disables discovery. Repo-local token files aren't read.
+Runtime credentials use `MAPBOX_ACCESS_TOKEN` first, then the selected saved public
+token or official Mapbox CLI login. With no selection, the existing CLI login is
+used. An explicitly empty environment variable disables discovery. Repo-local
+token files aren't read.
 The CLI is an optional, separately installed runtime helper, located on PATH or
 through `MAPBOX_TUI_CLI`. It owns OAuth/storage/refresh in `~/.mapbox/`, or
-`MAPBOX_CONFIG_DIR`; `mapbox-tui` never reads private credential files or saves a second
-token copy. Auth commands report the resolved credential path. See
+`MAPBOX_CONFIG_DIR`; Mapbox TUI never reads or writes that private OAuth file or
+saves a CLI-derived token copy. Entered public tokens have a separate app-owned
+credential file. Auth commands report both locations. See
 [runtime configuration](#runtime-configuration) for setup and overrides. Synthetic basemap geometry is internal to
 the rendering benchmark.
 
@@ -148,7 +150,28 @@ Mapbox CLI owns the shared `default` profile at `~/.mapbox/credentials.json`;
 `MAPBOX_CONFIG_DIR` relocates it. `MAPBOX_TUI_CLI` selects a CLI executable
 outside `PATH`. Credentials are owner-only JSON files, rather than an OS keychain.
 
-For scripts, a public token can override the saved login:
+`mapbox-tui auth login` offers **Enter public API token** or **Browser login** in
+an interactive terminal. Use arrow keys to choose, Enter to continue or Esc to
+cancel. The viewer's **Sign in to Mapbox** uses the same choice;
+**Enter public API token** is also available when the CLI is missing. Entry is
+hidden and the public `pk.` token is validated with Mapbox before saving. Secret
+`sk.` and temporary `tk.` tokens are not accepted for saved-token setup.
+
+Entered tokens and the selected method live in
+`~/.config/mapbox-tui/credentials.json` on Linux (`XDG_CONFIG_HOME` relocates it;
+other systems use their platform config directory). The file is created
+atomically with owner-only permissions, separate from ordinary settings and the
+CLI's OAuth file. Token setup leaves the shared CLI login intact. Successful
+browser login selects the CLI and removes the previously entered public token.
+Standalone Mapbox CLI does not read the app-owned file; `MAPBOX_ACCESS_TOKEN`
+can supply the same public token to both tools.
+Invalid or unreadable saved credentials never silently fall back to another
+account. Without a saved selection, an existing CLI login keeps working.
+
+For scripts, skip the choice with `auth login --browser`, or save a public token
+from a pipe/file with `auth login --token-stdin --accept-billing`. Tokens aren't
+accepted as command arguments. A public token can also override the saved method
+for a process:
 
 ```sh
 MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/mapbox-tui
@@ -156,24 +179,64 @@ MAPBOX_ACCESS_TOKEN="pk.your-public-token" ./bin/mapbox-tui
 ```
 
 An explicitly empty `MAPBOX_ACCESS_TOKEN` disables credential discovery and
-first-run setup. `.env` and repo-local token files aren't loaded. Tokens stay
-runtime-only. Restart a viewer or MCP process to rediscover credentials, or
-use the viewer's Mapbox account setup action.
+first-run setup. `.env` and repo-local token files aren't loaded. Environment and
+CLI-derived tokens stay runtime-only. Restart a viewer or MCP process to
+rediscover credentials, or use the viewer's Mapbox account setup action.
 
 `--no-provider` (MCP: `provider: "none"`) disables the basemap. Search and
 routing still use available credentials independently of basemap visibility.
 Imports, inspection, playback and manual journey coordinates work offline.
 
-`auth status` reports login, rendering-token source, validity and Streets
+`auth status` reports both credential paths, selected method, CLI login account,
+rendering-token source, validity and Streets
 access; a Streets probe only runs when online use is acknowledged and enabled.
 `--usage` adds current-month account/token statistics for app-related products. Completed reports exit
-zero even when sections are unavailable. `auth logout` removes the shared CLI
-profile without revoking public tokens or clearing other running processes.
+zero even when sections are unavailable. Saved public tokens can be validated
+without the CLI. Account usage still belongs to the named saved CLI account,
+which can differ from the public token's account.
+
+`auth logout` clears the selected method and disables automatic fallback. Token
+logout removes the entered public token and leaves the shared CLI login intact;
+browser logout removes the shared CLI profile. Neither revokes tokens, clears
+environment overrides nor changes credentials held by other running processes.
 
 The viewer saves billing acknowledgement, offline mode, traffic and CLI-telemetry preferences in
 `~/.config/mapbox-tui/settings.json` on Linux (`XDG_CONFIG_HOME` relocates it).
 Theme, camera, workspace and travel-mode choices last for the session. CLI
 telemetry is opt-in and an explicit environment opt-out takes precedence.
+
+### Logging in on a machine without a browser
+
+Run `mapbox-tui auth login --browser` in an interactive terminal on the remote
+machine and leave it running. Open its printed Mapbox login URL in a browser on
+another device. After signing in or creating an account, the browser redirects to a
+localhost address that fails to load. Copy that complete address, including
+`code` and `state`, into the waiting login terminal and press Enter. Complete this
+within the CLI's five-minute callback window; an expired URL or one from another
+login attempt cannot complete it. Check the original terminal for the final
+login result. This also works during in-app login.
+
+If you already have a public Mapbox token, choose token entry in `auth login`, or
+set `MAPBOX_ACCESS_TOKEN` on the remote machine as shown above. Maps, search and
+routing need neither browser login nor the optional CLI. The existing billing
+acknowledgement and offline controls still apply; account-usage reporting needs
+a saved CLI login.
+
+Alternatively, run `mapbox auth login` on a machine with a browser, then securely
+transfer its `~/.mapbox/credentials.json` to the remote user's `~/.mapbox/` directory.
+Use the configured directory instead if `MAPBOX_CONFIG_DIR` is set on either
+machine. On Unix, restrict the destination directory to mode `0700` and the file
+to `0600`. The remote machine needs the Mapbox CLI to use and refresh that login.
+Treat this as moving a login: using both copies can conflict when refresh tokens
+rotate. Billing acknowledgement and offline preferences are configured separately
+on the remote machine.
+
+Keep tokens and credential files out of repositories and shared logs; see the
+[credential-handling guidance](https://github.com/lirantal/npm-security-best-practices#9-no-plaintext-secrets-in-env-files).
+
+Browser authorization is still required somewhere for a new login or account.
+Pasting the callback forwards it only to the local CLI listener; the CLI owns
+authorization validation, token exchange, storage and refresh as usual.
 
 ## Mapbox requests
 
@@ -303,6 +366,13 @@ The raw Traffic Data licence requirements alone do not establish Traffic v1 tile
 entitlements. Traffic-aware Directions and route incident details remain separate.
 
 ## Authentication and account reporting
+
+Browser login gives the CLI OAuth access and refresh tokens. Mapbox TUI uses that
+login to retrieve the account's existing default public token for maps, search
+and routing; it does not create a new public token. A public token created in the
+[Mapbox Console](https://docs.mapbox.com/accounts/guides/tokens/) can serve the same
+purpose through `MAPBOX_ACCESS_TOKEN`, subject to its scopes and restrictions,
+but does not provide the CLI's refreshable account login.
 
 `mapbox-tui auth login` delegates browser signup/sign-in to the official CLI with a
 seven-minute whole-process bound. JSON/account children have a 15-second bound,

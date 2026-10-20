@@ -88,6 +88,32 @@ func TestViewerCancelledQueuedLoginDoesNotLaunchCLI(t *testing.T) {
 	}
 }
 
+func TestViewerTokenSetupConfirmsBillingWithoutCLIAndPreservesOfflineOnFailure(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("MAPBOX_TUI_ACCEPT_BILLING", "")
+	if _, err := saveMapboxOffline(true); err != nil {
+		t.Fatal(err)
+	}
+	m := authTestViewer(t)
+	m.preferences.Offline = true
+	m.authCLI.State = "missing"
+	m.openDialog(dialogMapbox)
+	selectMapboxAction(t, m, "token")
+	m.updateMapboxDialog("enter")
+	if m.ui.dialog != dialogMapboxBilling || m.billingIntent != billingTokenSignIn {
+		t.Fatal("token setup bypassed billing acknowledgement")
+	}
+	ready := m.acceptBilling()().(mapboxLoginReady)
+	if !ready.tokenOnly || ready.cli != nil || !m.preferences.Offline {
+		t.Fatal("token setup needed CLI or enabled online use before success")
+	}
+	m.Update(mapboxLoginDone{id: ready.id, err: &mapboxFailure{code: "cancelled"}})
+	settings, err := loadAppSettings()
+	if err != nil || !settings.Offline || !m.preferences.Offline {
+		t.Fatal("cancelled viewer token setup enabled online use", err)
+	}
+}
+
 func TestViewerAuthReplacementPreservesWorkspaceCameraAndRejectsOldWork(t *testing.T) {
 	m := authTestViewer(t)
 	document, err := loadDocument("../fixtures/example.gpx")

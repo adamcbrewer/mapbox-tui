@@ -26,11 +26,27 @@ func TestCLIAuthCommandsAndSetupHelp(t *testing.T) {
 			t.Fatal("invalid auth arguments were accepted")
 		}
 	}
+	for _, test := range []struct{ flag, method string }{
+		{flag: "--browser", method: "browser"},
+		{flag: "--token-stdin", method: "token"},
+	} {
+		t.Run(test.method, func(t *testing.T) {
+			command, err := parseCLI([]string{"auth", "login", test.flag}, io.Discard)
+			if err != nil || command.AuthMethod != test.method {
+				t.Fatal("explicit login method was not parsed", err)
+			}
+		})
+	}
+	if _, err := parseCLI([]string{"auth", "login", "--browser", "--token-stdin"}, io.Discard); err == nil {
+		t.Fatal("conflicting authentication methods were accepted")
+	}
 	var help bytes.Buffer
 	if _, err := parseCLI([]string{"auth", "--help"}, &help); err != flag.ErrHelp {
 		t.Fatal("auth help did not return the normal help result", err)
 	}
-	for _, text := range []string{mapboxInstallURL, mapboxSignupURL, "MAPBOX_CONFIG_DIR", "Offline imports", "statistics"} {
+	for _, text := range []string{
+		mapboxInstallURL, mapboxSignupURL, "MAPBOX_CONFIG_DIR", "Offline imports", "statistics", "failed localhost callback",
+	} {
 		if !strings.Contains(help.String(), text) {
 			t.Fatal("auth help omitted setup/account requirements", text)
 		}

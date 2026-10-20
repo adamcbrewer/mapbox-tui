@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/x/term"
 )
 
 const mapboxInstallURL = "https://github.com/mapbox/mapbox-cli#install-a-released-binary"
@@ -312,6 +314,13 @@ func (c *mapboxCLI) login(ctx context.Context, streams authStreams) error {
 	defer cancel()
 	cmd := c.loginCommand(ctx)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = streams.in, streams.out, streams.err
+	if input, ok := streams.in.(*os.File); ok && term.IsTerminal(input.Fd()) {
+		stop, err := watchMapboxCallbacks(ctx, streams)
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return &mapboxFailure{code: "timeout"}

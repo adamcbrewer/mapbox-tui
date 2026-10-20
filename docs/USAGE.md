@@ -23,6 +23,9 @@ Authenticated accounts still check usage at viewer startup, even while offline.
 `--no-provider` only disables the basemap; it is separate from this offline mode.
 The CLI equivalents are `mapbox-tui auth offline` and `mapbox-tui auth online`.
 
+For login using a browser on another device, a known public token or a transferred
+CLI login, see [remote authentication](MAPBOX.md#logging-in-on-a-machine-without-a-browser).
+
 ## Map and panels
 
 Keys apply to the focused view. Hide Files or Journey with Ctrl-B for keyboard
@@ -186,7 +189,7 @@ below are placeholders. `summary`/`inspect` return JSON; maps are ANSI-free.
 | Map and metadata | `mapbox-tui render FILE --no-provider --json` | `text` plus `scene`; single-file item/point selectors supported |
 | Map dimensions | `--width 60 --height 20` | Render/bench only; terminal cells |
 | Basemap off | `--no-provider` | Viewer/render; search and traffic separate; legacy `--provider none` also accepted |
-| Mapbox login / logout | `mapbox-tui auth login` / `mapbox-tui auth logout` | Optional Mapbox CLI; [setup and billing](MAPBOX.md) |
+| Mapbox login / logout | `mapbox-tui auth login` / `mapbox-tui auth logout` | Choose public token or browser; CLI needed for browser login; [setup and billing](MAPBOX.md) |
 | Account status / usage | `mapbox-tui auth status --json --usage` | Omit `--usage` for status only; may make an online basemap probe |
 | Persistent offline / online | `mapbox-tui auth offline` / `mapbox-tui auth online` | Online requires billing acknowledgement |
 | Explicit billing acceptance | `mapbox-tui auth online --accept-billing` | Also accepted by `auth login`; review billing guidance first |

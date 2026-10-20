@@ -1195,6 +1195,8 @@ def auth_setup(binary):
                 if not (folder / "settings/mapbox-tui/settings.json").exists():
                     wait_for(lambda s: "billing risks" in s)
                     tmux("send-keys", "-t", "poc:0.0", "Tab", "Enter")
+                wait_for(lambda s: "Choose login method" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
                 wait_for(lambda s: "Mapbox setup" in s and marker.exists())
                 assert json.loads(marker.read_text()) == [True, True, True], "login did not inherit terminal streams"
                 send("\x1b")
@@ -1261,6 +1263,174 @@ def auth_setup(binary):
             finally:
                 tmux("kill-session", "-t", "poc", check=False)
     print(f"{binary.name}: dependency-aware setup actions, installation help/recheck, palette login, stdout notice and terminal restoration passed")
+
+
+@isolated_settings
+def auth_callback(binary):
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        helper, callback = folder / "mapbox", folder / "callback"
+        marker, received = folder / "terminal.json", folder / "received.json"
+        pid_file = folder / "pid"
+        schema = mapbox_test_schema()
+        helper.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\nfrom pathlib import Path\n"
+            "from http.server import BaseHTTPRequestHandler, HTTPServer\n"
+            "from urllib.parse import parse_qs, urlsplit\n"
+            "if '--version' in sys.argv:\n    print('mapbox 0.3.0')\n"
+            f"elif '--schema' in sys.argv:\n    print({schema!r})\n"
+            "elif 'login' in sys.argv:\n"
+            f"    Path({str(marker)!r}).write_text(json.dumps([os.isatty(i) for i in range(3)]))\n"
+            "    class Callback(BaseHTTPRequestHandler):\n"
+            "        def log_message(self, *args):\n            pass\n"
+            "        def do_GET(self):\n"
+            "            self.send_response(200)\n            self.end_headers()\n"
+            "            query = parse_qs(urlsplit(self.path).query)\n"
+            "            self.server.valid = query == {'code': ['synthetic-code'], 'state': ['synthetic-state']}\n"
+            f"            Path({str(received)!r}).write_text(json.dumps(self.server.valid))\n"
+            "    server = HTTPServer(('127.0.0.1', 0), Callback)\n"
+            "    server.timeout = 30\n    server.valid = False\n"
+            f"    Path({str(callback)!r}).write_text(f'http://localhost:{{server.server_port}}/callback?code=synthetic-code&state=synthetic-state')\n"
+            "    print('Waiting for authorization', flush=True)\n"
+            "    server.handle_request()\n    server.server_close()\n"
+            "    sys.exit(0 if server.valid else 1)\n"
+            "else:\n    sys.exit(1)\n"
+        )
+        helper.chmod(0o755)
+        for scenario in ("cli", "viewer", "wrong-state", "cancelled"):
+            config = folder / scenario
+            env = dict(os.environ, MAPBOX_ACCESS_TOKEN="", MAPBOX_TUI_CLI=str(helper),
+                       MAPBOX_CONFIG_DIR=str(folder / "credentials"), XDG_CONFIG_HOME=str(config),
+                       MAPBOX_TUI_ACCEPT_BILLING="1", MAPBOX_TUI_TEST_PID_FILE=str(pid_file), TERM="xterm-256color")
+            subprocess.run([str(binary), "auth", "offline"], env=env, check=True, capture_output=True)
+            args = [str(ROOT / "fixtures/example.gpx")] if scenario == "viewer" else ["auth", "login"]
+            command = shlex.join(["env", *(f"{key}={env[key]}" for key in (
+                "MAPBOX_ACCESS_TOKEN", "MAPBOX_TUI_CLI", "MAPBOX_CONFIG_DIR", "XDG_CONFIG_HOME",
+                "MAPBOX_TUI_ACCEPT_BILLING", "MAPBOX_TUI_TEST_PID_FILE", "TERM")),
+                "python3", str(ROOT / "scripts/terminal_runner.py"),
+                str(binary), *args])
+            tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
+            try:
+                if scenario == "viewer":
+                    wait_for(lambda s: "Paused 1x" in s)
+                    send("\x0bMapbox")
+                    wait_for(lambda s: "Mapbox account" in s)
+                    send("\r")
+                    wait_for(lambda s: "Mapbox setup" in s and "Sign in" in s)
+                    select_mapbox_action("Sign in to Mapbox")
+                    send("\r")
+                wait_for(lambda s: "Choose login method" in s)
+                tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
+                wait_for(lambda s: "Waiting for authorization" in s and callback.exists())
+                assert json.loads(marker.read_text()) == [True, True, True], "callback login lost terminal streams"
+                if scenario == "cancelled":
+                    os.kill(int(pid_file.read_text()), signal.SIGINT)
+                else:
+                    send("https://example.invalid/callback?code=synthetic-code&state=synthetic-state\r")
+                    wait_for(lambda s: "expected http://localhost:PORT/callback" in s)
+                    assert not received.exists(), "invalid callback reached the listener"
+                    value = callback.read_text()
+                    if scenario == "wrong-state":
+                        value = value.replace("state=synthetic-state", "state=wrong-state")
+                    send(value + "\r")
+                if scenario == "viewer":
+                    wait_for(lambda s: "Mapbox setup" in s and "login saved by the CLI" not in s)
+                    send("\x1b")
+                    wait_for(lambda s: active_modal(s, "Commands"))
+                    send("\x1b")
+                    wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
+                    send("q")
+                expected_exit = 0 if scenario in ("cli", "viewer") else 1
+                wait_for(lambda s: f"TERMINAL_RESTORED=TrueEXIT={expected_exit}" in re.sub(r"\s+", "", s))
+                if scenario != "cancelled":
+                    assert json.loads(received.read_text()) == (scenario != "wrong-state"), "wrong callback result"
+                settings = json.loads((config / "mapbox-tui/settings.json").read_text())
+                assert settings["offline"] == (expected_exit != 0), "failed login changed offline mode"
+                assert not (folder / "credentials").exists(), "callback handling created credential files"
+            finally:
+                tmux("kill-session", "-t", "poc", check=False)
+                for path in (callback, marker, received, pid_file):
+                    path.unlink(missing_ok=True)
+    print(f"{binary.name}: CLI/viewer callback paste, invalid URL, wrong state, cancellation and terminal restoration passed")
+
+
+@isolated_settings
+def auth_token_input(binary):
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        for scenario in ("picker-cancelled", "cli-rejected", "cli-cancelled", "viewer-rejected", "viewer-cancelled"):
+            config = folder / scenario
+            viewer = scenario.startswith("viewer")
+            env = dict(os.environ, MAPBOX_ACCESS_TOKEN="", MAPBOX_TUI_CLI=str(folder / "missing"),
+                       XDG_CONFIG_HOME=str(config), MAPBOX_TUI_ACCEPT_BILLING="1", TERM="xterm-256color")
+            subprocess.run([str(binary), "auth", "offline"], env=env, check=True, capture_output=True)
+            args = [str(ROOT / "fixtures/example.gpx")] if viewer else ["auth", "login"]
+            command = shlex.join(["env", *(f"{key}={env[key]}" for key in (
+                "MAPBOX_ACCESS_TOKEN", "MAPBOX_TUI_CLI", "XDG_CONFIG_HOME", "MAPBOX_TUI_ACCEPT_BILLING", "TERM")),
+                "python3", str(ROOT / "scripts/terminal_runner.py"), str(binary), *args])
+            tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
+            try:
+                if viewer:
+                    wait_for(lambda s: "Paused 1x" in s)
+                    send("\x0bMapbox")
+                    wait_for(lambda s: "Mapbox account" in s)
+                    send("\r")
+                    wait_for(lambda s: "Mapbox setup" in s and "Check failed:" in s)
+                    select_mapbox_action("Enter public API token")
+                    send("\r")
+                else:
+                    wait_for(lambda s: "Choose login method" in s)
+                    if scenario == "picker-cancelled":
+                        tmux("send-keys", "-t", "poc:0.0", "Escape")
+                    else:
+                        send("\r")
+                if scenario != "picker-cancelled":
+                    wait_for(lambda s: "Public API token (hidden)" in s)
+                    send("sk.this-must-never-echo")
+                    assert "sk.this-must-never-echo" not in capture(), "private token input was echoed"
+                    send("\x03" if scenario.endswith("cancelled") else "\r")
+                if viewer:
+                    wait_for(lambda s: "Mapbox setup" in s and ("cancelled" in s or "public Mapbox token" in s))
+                    send("\x1b")
+                    wait_for(lambda s: active_modal(s, "Commands"))
+                    send("\x1b")
+                    wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
+                    send("q")
+                expected_exit = 0 if viewer else 1
+                screen = wait_for(lambda s: f"TERMINAL_RESTORED=TrueEXIT={expected_exit}" in re.sub(r"\s+", "", s))
+                assert "sk.this-must-never-echo" not in screen, "token leaked into feedback"
+                assert not (config / "mapbox-tui/credentials.json").exists(), "failed entry saved a credential"
+                assert json.loads((config / "mapbox-tui/settings.json").read_text())["offline"], "failed entry enabled online mode"
+            finally:
+                tmux("kill-session", "-t", "poc", check=False)
+        config = folder / "saved-token"
+        env = dict(os.environ, MAPBOX_TUI_CLI=str(folder / "missing"), XDG_CONFIG_HOME=str(config))
+        env.pop("MAPBOX_ACCESS_TOKEN", None)
+        subprocess.run([str(binary), "auth", "offline"], env=env, check=True, capture_output=True)
+        credentials = config / "mapbox-tui/credentials.json"
+        credentials.write_text(json.dumps({"method": "token", "public_token": "pk.synthetic-offline-token"}))
+        credentials.chmod(0o600)
+        command = shlex.join(["env", "-u", "MAPBOX_ACCESS_TOKEN", f"MAPBOX_TUI_CLI={folder / 'missing'}",
+                              f"XDG_CONFIG_HOME={config}", "TERM=xterm-256color", "python3",
+                              str(ROOT / "scripts/terminal_runner.py"), str(binary), str(ROOT / "fixtures/example.gpx")])
+        tmux("new-session", "-d", "-s", "poc", "-x", "120", "-y", "40", command)
+        try:
+            wait_for(lambda s: "Offline maps" in s and "Paused 1x" in s)
+            send("\x0bMapbox")
+            wait_for(lambda s: "Mapbox settings" in s)
+            send("\r")
+            screen = wait_for(lambda s: "Mapbox settings" in s and "saved public token" in s)
+            assert "pk.synthetic-offline-token" not in screen, "saved token leaked into viewer settings"
+            send("\x1b")
+            wait_for(lambda s: active_modal(s, "Commands"))
+            send("\x1b")
+            wait_for(lambda s: "Commands" not in s and "Paused 1x" in s)
+            send("q")
+            wait_for(lambda s: "TERMINAL_RESTORED=TrueEXIT=0" in re.sub(r"\s+", "", s))
+        finally:
+            tmux("kill-session", "-t", "poc", check=False)
+    print(f"{binary.name}: CLI/viewer token setup without CLI, hidden input, rejection/cancellation, saved-token offline startup and terminal restoration passed")
 
 
 @isolated_settings
@@ -1938,6 +2108,8 @@ if __name__ == "__main__":
                 live_playback(ROOT / "bin" / name)
             else:
                 auth_setup(ROOT / "bin" / name)
+                auth_callback(ROOT / "bin" / name)
+                auth_token_input(ROOT / "bin" / name)
                 billing_usage(ROOT / "bin" / name)
                 traffic_menu(ROOT / "bin" / name)
                 nested_modals(ROOT / "bin" / name)

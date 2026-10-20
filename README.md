@@ -100,18 +100,26 @@ Mapbox offers product-specific free allowances. See the
 You can either sign up directly through the [Mapbox Console](https://console.mapbox.com/)
  or during a [Mapbox MCP server connection](https://docs.mapbox.com/accounts/guides/signup/#sign-up-with-mapbox-mcp-server-connection).
 
-If you install the optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install) you can then sign in via:
+Choose hidden public API token entry or browser login:
 
 ```sh
 ./bin/mapbox-tui auth login
 ./bin/mapbox-tui auth status
 ```
 
-The viewer, CLI and MCP reuse that login and your saved billing-risk acknowledgement.
+Public tokens created in the Mapbox Console need no CLI. Browser login requires the
+optional [official Mapbox CLI](https://github.com/mapbox/mapbox-cli#install), which owns
+the shared OAuth credentials and refresh. Entered tokens are saved privately in the
+Mapbox TUI config directory. `MAPBOX_ACCESS_TOKEN` overrides either method.
+
+The viewer, CLI and MCP reuse the selected method and your saved billing-risk acknowledgement.
 CLI login and in-app login present the same confirmation before enabling online features.
 
 You can also supply a public token through `MAPBOX_ACCESS_TOKEN` for scripts. `--no-provider` disables the basemap, even having authed;
 local file inspection and manual journey planning work without Mapbox.
+
+For a server or other machine without a browser, see
+[remote authentication options](docs/MAPBOX.md#logging-in-on-a-machine-without-a-browser).
 
 Mapbox requests use your account and may incur charges. See the
 [Mapbox notes](docs/MAPBOX.md) for configuration, usage, caching and
