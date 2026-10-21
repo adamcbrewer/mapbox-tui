@@ -81,7 +81,9 @@ python3 tools/harness/report.py
   This exercises the same command deadline used for tests, without relying on
   how fast your machine runs a test. No import test runs in this example.
 
-`--fault` records the deliberate problem separately from the proposed repair.
+`--fault` records the requested problem separately from the proposed repair.
+The receipt also records when that problem was actually introduced. If setup
+stops earlier, the report won't claim we tried the requested failure example.
 These outcomes don't mean the repair is bad. They mean we couldn't judge it.
 The script must still report what actually happened if another problem stops
 the run first, such as Go being unavailable.
@@ -136,7 +138,8 @@ format version 1. Depending on how far the run got, you'll find:
   recorded in the instructions or result.
 - `result.json`: the outcome, timings, checks, environment and identities of the
   task, source and runner. This is the receipt. Fault examples also record the
-  requested fault, and missing source/dependency results name the blocker.
+  requested fault and, once introduced, `fault_injected`. Missing source/dependency
+  results name the blocker.
 - `events.jsonl`: a chronological diary, one event per line, with unique IDs and
   UTC timestamps.
 - `*.stdout` and `*.stderr`: command output and diagnostics. `snapshot.stdout`
@@ -144,7 +147,10 @@ format version 1. Depending on how far the run got, you'll find:
 
 The receipt starts as `incomplete`. When the run finishes, the script replaces
 it in one operation with the final result. Ctrl+C, SIGTERM and timeouts stop the
-current command and its process group, keeping partial logs. A crash, SIGKILL or machine
+current command and its process group, keeping partial logs. Once checks have
+stopped and the outcome is decided, further cancellation signals are ignored
+while the script finishes saving that result and its final event.
+A crash, SIGKILL or machine
 shutdown may leave an incomplete record. Recovery comes in #106; this pilot
 has no automatic retries or guarantee of crash-safe records.
 
@@ -152,13 +158,20 @@ The outcome codes distinguish `calibration_passed`, `repair_failed`,
 `calibration_failed`, `blocked`, `invalid_input`, `timeout`, `cancelled` and
 `incomplete`. The report explains them in plain English.
 
-Individual test results use `passed`, `assertion_failed` or `blocked`. A command
+Individual test results use `passed`, `assertion_failed`, `build_failed` or `blocked`. A command
 exiting successfully isn't enough: the named test and all three expected
-subtests must pass. Compiler errors and missing dependencies are blockers, not
-proof that we've reproduced the intended bug.
+subtests must pass. A repair that introduces a compiler error is `repair_failed`.
+Build failures before the repair and missing dependencies are blockers. None
+of those failures proves we've reproduced the intended bug.
 Tools that exist but cannot start (such as a missing execute permission or an
 invalid executable format) also produce `blocked`. An unreadable patch file
 remains `invalid_input`.
+Setup problems such as a full temporary filesystem produce `blocked`, provided
+the report directory can still be written. If evidence can't be saved either,
+the runner may exit with an incomplete record rather than a final receipt.
+The HTML report only describes a successful repair when its receipt also records
+the original code passing, the deliberate bug failing and the repaired code passing.
+This catches inconsistent records; it doesn't authenticate them or rerun tests.
 
 Each run tries one candidate, with no repair retries. Model and Pi fields are
 null, and model cost is zero because neither is used. Execution cost is unknown.

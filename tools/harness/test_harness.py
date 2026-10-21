@@ -9,8 +9,9 @@ import time
 import unittest
 from unittest.mock import patch
 
+import run as runner
 from report import render, render_run
-from run import HERE, Run, Stop, apply_patch, classify_test
+from run import HERE, Run, Stop, apply_patch, check_test, classify_test
 
 
 class CalibrationTests(unittest.TestCase):
@@ -35,6 +36,73 @@ class CalibrationTests(unittest.TestCase):
         failure = json.dumps({"Action": "fail", "Test": self.task["test"]}).encode()
         self.assertEqual(classify_test(failure, 1, self.task), "assertion_failed")
         self.assertEqual(classify_test(b'{"Action":"fail"}', 1, self.task), "blocked")
+
+    def test_build_failures_depend_on_stage_but_missing_dependencies_stay_blocked(self):
+        outputs = (b'{"Action":"build-fail","ImportPath":"mapbox-tui/go"}',
+                   b'{"Action":"fail","FailedBuild":"mapbox-tui/go"}',
+                   b'{"Action":"output","Output":"FAIL mapbox-tui/go [build failed]"}')
+        run = Run(self.root)
+        (run.path / "test.stderr").write_bytes(b"")
+        for output in outputs:
+            for stage in ("baseline", "seed", "candidate"):
+                with self.subTest(stage=stage, output=output):
+                    check = {"id": stage, "exit_code": 1, "stderr": "test.stderr"}
+                    with self.assertRaises(Stop) as caught:
+                        check_test(run, stage, check, output, self.task)
+                    self.assertEqual(caught.exception.outcome, "repair_failed" if stage == "candidate" else "blocked")
+                    self.assertEqual(check["outcome"], "build_failed")
+        (run.path / "test.stderr").write_text("module lookup disabled by GOPROXY=off")
+        with self.assertRaises(Stop) as caught:
+            check_test(run, "candidate", check, outputs[0], self.task)
+        self.assertEqual(caught.exception.outcome, "blocked")
+        self.assertEqual(check["outcome"], "blocked")
+        self.assertEqual(run.result["blocker"], "missing_dependency")
+
+    def test_setup_io_failure_is_blocked_but_unreadable_patch_is_invalid(self):
+        with patch("run.REPORTS", self.root), patch("sys.argv", ["run.py", "--demo", "empty"]), \
+             patch.object(Run, "command", return_value=({"exit_code": 0}, b"go version")), \
+             patch("run.tempfile.TemporaryDirectory", side_effect=OSError("No space left on device")):
+            self.assertEqual(runner.main(), 1)
+        result = json.loads(next(self.root.glob("runs/*/result.json")).read_text())
+        self.assertEqual(result["outcome"], "blocked")
+        self.assertIn("No space left", result["reason"])
+        reports = self.root / "input"
+        with patch("run.REPORTS", reports), \
+             patch("sys.argv", ["run.py", "--patch", str(self.root / "missing.patch")]):
+            self.assertEqual(runner.main(), 1)
+        result = json.loads(next(reports.glob("runs/*/result.json")).read_text())
+        self.assertEqual(result["outcome"], "invalid_input")
+
+    def test_signals_during_finalization_do_not_interrupt_receipt_or_event(self):
+        write_json = runner.write_json
+        event = Run.event
+        handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+
+        def interrupted_write(path, value):
+            if "ended_at" in value:
+                os.kill(os.getpid(), signal.SIGTERM)
+            write_json(path, value)
+
+        def interrupted_event(run, kind, **fields):
+            if kind == "run_finished":
+                os.kill(os.getpid(), signal.SIGINT)
+            event(run, kind, **fields)
+
+        for outcome in ("calibration_passed", "cancelled", "blocked", "timeout"):
+            with self.subTest(outcome=outcome):
+                reports = self.root / outcome
+                with patch("run.REPORTS", reports), patch("sys.argv", ["run.py", "--demo", "empty"]), \
+                     patch("run.calibrate", side_effect=Stop(outcome, "decided result")), \
+                     patch("run.write_json", side_effect=interrupted_write), \
+                     patch.object(Run, "event", interrupted_event):
+                    self.assertEqual(runner.main(), 0 if outcome == "calibration_passed" else 1)
+                path = next(reports.glob("runs/*/result.json"))
+                self.assertEqual(json.loads(path.read_text())["outcome"], outcome)
+                events = [json.loads(line) for line in path.with_name("events.jsonl").read_text().splitlines()]
+                self.assertEqual(events[-1]["kind"], "run_finished")
+                self.assertEqual(events[-1]["outcome"], outcome)
+                for sig, handler in handlers.items():
+                    self.assertEqual(signal.getsignal(sig), handler)
 
     def test_rejects_patch_to_verifier(self):
         run = Run(self.root)
@@ -161,6 +229,30 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(json.loads((run.path / "result.json").read_text())["outcome"], "incomplete")
         self.assertEqual(run.result["checks"][-1]["outcome"], "timeout")
 
+    def test_launch_time_counts_towards_deadline(self):
+        run = Run(self.root)
+        launch = subprocess.Popen
+        children = []
+
+        def slow_launch(*args, **kwargs):
+            process = launch(*args, **kwargs)
+            children.append(process)
+            run.deadline = time.monotonic() - 1
+            return process
+
+        try:
+            with patch("run.subprocess.Popen", side_effect=slow_launch):
+                with self.assertRaises(Stop) as caught:
+                    run.command("slow-launch", [sys.executable, "-c", "pass"], self.root)
+            self.assertEqual(caught.exception.outcome, "timeout")
+            self.assertEqual(run.result["checks"][-1]["outcome"], "timeout")
+            self.assertIsNotNone(children[0].poll())
+        finally:
+            for child in children:
+                if child.poll() is None:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+
     def test_empty_report_and_unreadable_record_are_honest(self):
         progress = json.loads((HERE / "progress.json").read_text())
         page = render(self.root, progress)
@@ -215,6 +307,40 @@ class CalibrationTests(unittest.TestCase):
             self.assertIn("Unreadable record", page)
             self.assertNotIn("The proposed repair passed this check.", page)
 
+    def test_report_requires_consistent_checks_before_reporting_success(self):
+        path = self.root / "runs/example/result.json"
+        checks = [{"id": name, "outcome": outcome, "exit_code": code} for name, outcome, code in (
+            ("baseline", "passed", 0), ("seed", "assertion_failed", 1), ("candidate", "passed", 0))]
+        run = {"schema_version": 1, "candidate": "good", "outcome": "calibration_passed", "checks": checks}
+        self.assertIn("The proposed repair passed this check.", render_run(path, self.root, run))
+        invalid = [[], checks[:2], checks[::-1], checks + [checks[-1]]]
+        for index, field, value in ((0, "outcome", "blocked"), (1, "outcome", "passed"),
+                                    (1, "exit_code", None), (1, "exit_code", 0),
+                                    (2, "outcome", "build_failed"), (2, "exit_code", 1)):
+            changed = [dict(check) for check in checks]
+            changed[index][field] = value
+            invalid.append(changed)
+        for bad_checks in invalid:
+            with self.subTest(checks=bad_checks):
+                run["checks"] = bad_checks
+                page = render_run(path, self.root, run)
+                self.assertIn("Unreadable record", page)
+                self.assertNotIn("The proposed repair passed this check.", page)
+
+    def test_report_only_describes_faults_that_were_injected(self):
+        path = self.root / "runs/example/result.json"
+        for fault, description in (("missing-source", "Remove the importer"),
+                                   ("missing-dependency", "Use an empty, temporary Go dependency cache"),
+                                   ("timeout", "Run a Python command that waits")):
+            with self.subTest(fault=fault):
+                run = {"schema_version": 1, "candidate": "good", "fault": fault,
+                       "outcome": "blocked", "reason": "Pinned base commit is unavailable", "checks": []}
+                page = render_run(path, self.root, run)
+                self.assertNotIn(description, page)
+                self.assertIn("no record that the deliberate problem was introduced", page)
+                run["fault_injected"] = fault
+                self.assertIn(description, render_run(path, self.root, run))
+
     def test_report_does_not_judge_repairs_when_setup_fails(self):
         path = self.root / "runs/example/result.json"
         for fault, outcome, blocker, explanation in (
@@ -223,7 +349,7 @@ class CalibrationTests(unittest.TestCase):
             ("timeout", "timeout", None, "stopped at its time limit"),
         ):
             with self.subTest(fault=fault):
-                run = {"schema_version": 1, "candidate": "good", "fault": fault,
+                run = {"schema_version": 1, "candidate": "good", "fault": fault, "fault_injected": fault,
                        "outcome": outcome, "blocker": blocker, "checks": []}
                 page = render_run(path, self.root, run)
                 self.assertIn(explanation, page)

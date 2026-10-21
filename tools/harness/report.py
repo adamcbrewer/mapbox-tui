@@ -87,11 +87,23 @@ def render_run(path, reports, run):
         "Use the supplied patch file.", "A usable request is needed before we can judge a repair.",
         "Keep input or tool problems separate from failed repairs.",
     ))
-    if str(run.get("fault")) in FAULT_EXAMPLES:
-        title, tried, expected, purpose = FAULT_EXAMPLES[str(run["fault"])]
+    fault = run.get("fault_injected")
+    if isinstance(fault, str) and fault == run.get("fault") and fault in FAULT_EXAMPLES:
+        title, tried, expected, purpose = FAULT_EXAMPLES[fault]
+    elif run.get("fault"):
+        title = "Requested a setup-failure example"
+        tried = "Start the example. There is no record that the deliberate problem was introduced."
+        expected = "Introduce the requested problem, then check how the runner handles it."
+        purpose = "Keep a requested experiment separate from what actually ran."
     recorded_checks = run.get("checks", [])
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) for check in recorded_checks))
+    if known and run.get("outcome") == "calibration_passed":
+        stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
+        known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
+                 [check.get("outcome") for check in stages] == ["passed", "assertion_failed", "passed"] and
+                 stages[0].get("exit_code") == 0 and stages[2].get("exit_code") == 0 and
+                 isinstance(stages[1].get("exit_code"), int) and stages[1]["exit_code"] != 0)
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
     if candidate in ("empty", "wrong") and outcome == "repair_failed":
@@ -106,12 +118,12 @@ def render_run(path, reports, run):
         result = "A required source file was missing, so no import tests ran. The repair has not been judged."
     if outcome == "blocked" and run.get("blocker") == "missing_dependency":
         result = "Required Go dependencies were unavailable, so the original code could not be built. The repair has not been judged."
-    if run.get("fault") == "timeout" and outcome == "timeout":
+    if fault == "timeout" and outcome == "timeout":
         result = "The runner stopped at its time limit. The repair has not been judged; see the steps to find which command stopped."
     checks = []
     names = {"baseline": "Original code", "seed": "Deliberately broken code", "candidate": "Code after the proposed repair",
              "timeout-probe": "Deliberately slow command (not an import test)"}
-    answers = {"passed": "test passed", "assertion_failed": "test failed", "blocked": "could not check",
+    answers = {"passed": "test passed", "assertion_failed": "test failed", "build_failed": "code could not be built", "blocked": "could not check",
                "incomplete": "no final result", "timeout": "time limit reached", "cancelled": "stopped"}
     for check in recorded_checks if known else []:
         if check.get("id") in names:
@@ -130,7 +142,8 @@ def render_run(path, reports, run):
 <p>Saved status: <code>{escape(run.get('outcome', 'unknown'))}</code>.
 Diagnostic: {escape(run.get('reason', 'No final explanation recorded'))}</p>
 <p>Candidate label in the saved record: {escape(candidate if candidate is not None else 'not loaded')}.</p>
-<p>Deliberate setup fault: {escape(run.get('fault', 'none'))}.</p>
+<p>Requested setup fault: {escape(run.get('fault', 'none'))}.
+Fault introduced: {escape(run.get('fault_injected', 'not recorded'))}.</p>
 <p>Started: {escape(run.get('started_at', 'not recorded'))}. Human approval is separate from these checks.</p></details>
 <p class="meta">{escape(elapsed)}. <a href="{link}">Receipt</a>
 <code title="Run ID: {run_id}">{escape(path.parent.name[:8])}</code></p>

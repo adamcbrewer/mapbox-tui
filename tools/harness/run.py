@@ -45,6 +45,7 @@ class Run:
         self.started = time.monotonic()
         self.deadline = self.started + 600
         self.launching = False
+        self.finalizing = False
         self.cancel_requested = False
         self.result = {
             "schema_version": 1, "run_id": self.path.name, "attempt": 1,
@@ -58,7 +59,7 @@ class Run:
         write_json(self.path / "result.json", self.result)
 
     def cancel(self, signum, frame):
-        if self.cancel_requested:
+        if self.cancel_requested or self.finalizing:
             return
         self.cancel_requested = True
         if not self.launching:
@@ -100,6 +101,9 @@ class Run:
                         self.launching = False
                     if self.cancel_requested:
                         raise KeyboardInterrupt
+                    remaining = self.deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(args, 0)
                     check["exit_code"] = process.wait(timeout=remaining)
                     check["outcome"] = "passed" if process.returncode == 0 else "failed"
                 except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
@@ -132,7 +136,44 @@ def classify_test(output, exit_code, task):
         return "passed"
     if exit_code != 0 and terminal.get(test) == "fail":
         return "assertion_failed"
+    if exit_code != 0 and any(event.get("Action") == "build-fail" or
+                             event.get("FailedBuild") or
+                             ("Test" not in event and "[build failed]" in event.get("Output", ""))
+                             for event in events):
+        return "build_failed"
     return "blocked"
+
+
+def check_test(run, stage, check, output, task):
+    check["outcome"] = classify_test(output, check["exit_code"], task)
+    diagnostics = output + (run.path / check["stderr"]).read_bytes()
+    missing_dependency = b"module lookup disabled by GOPROXY=off" in diagnostics
+    if missing_dependency:
+        check["outcome"] = "blocked"
+    run.event("test_classified", check=check)
+    if missing_dependency:
+        run.result["blocker"] = "missing_dependency"
+        raise Stop("blocked", f"{stage}: required Go dependencies are unavailable; downloads are disabled")
+    if check["outcome"] == "build_failed":
+        if stage == "candidate":
+            raise Stop("repair_failed", "The proposed repair could not be built; inspect the compiler logs")
+        raise Stop("blocked", f"{stage}: source could not be built; inspect the compiler logs")
+    if check["outcome"] == "blocked":
+        raise Stop("blocked", f"{stage}: check did not produce the required test results; inspect logs")
+    if stage == "baseline" and check["outcome"] != "passed":
+        raise Stop("calibration_failed", "Original behaviour did not pass")
+    if stage == "seed" and (check["outcome"] != "assertion_failed" or
+                            task["failure_message"].encode() not in output):
+        raise Stop("calibration_failed", "Seed did not reproduce the intended assertion failure")
+    if stage == "candidate" and check["outcome"] != "passed":
+        raise Stop("repair_failed", "Candidate did not restore the expected import behaviour")
+
+
+def read_input(path):
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        raise Stop("invalid_input", str(error)) from error
 
 
 def apply_patch(run, checkout, patch, name, allowed):
@@ -154,13 +195,13 @@ def apply_patch(run, checkout, patch, name, allowed):
 
 
 def calibrate(run, patch, fault=None):
-    task_bytes = (HERE / "task.json").read_bytes()
+    task_bytes = read_input(HERE / "task.json")
     task = json.loads(task_bytes)
     run.result.update(task=task["id"], task_sha256=digest(task_bytes), base_commit=task["base_commit"],
                       patch_sha256=digest(patch), workflow="imports", suite_version=1)
     (run.path / "task.json").write_bytes(task_bytes)
     (run.path / "candidate.patch").write_bytes(patch)
-    seed = (HERE / "fixtures/seed.patch").read_bytes()
+    seed = read_input(HERE / "fixtures/seed.patch")
     if digest(seed) != task["seed_sha256"]:
         raise Stop("invalid_input", "Seed identity does not match the task")
     run.deadline = run.started + task["deadline_seconds"]
@@ -184,6 +225,7 @@ def calibrate(run, patch, fault=None):
         if fault == "missing-source":
             name = "go/import.go"
             (checkout / name).unlink()
+            run.result["fault_injected"] = fault
             run.event("fault_injected", fault=fault, removed_source=name)
         for name, expected in task["source_sha256"].items():
             if not (checkout / name).is_file():
@@ -194,9 +236,11 @@ def calibrate(run, patch, fault=None):
         env_overrides = None
         if fault == "missing-dependency":
             env_overrides = {"GOMODCACHE": str(checkout / ".empty-module-cache")}
+            run.result["fault_injected"] = fault
             run.event("fault_injected", fault=fault, environment_overrides=env_overrides)
         if fault == "timeout":
             run.deadline = min(run.deadline, time.monotonic() + 1)
+            run.result["fault_injected"] = fault
             run.event("fault_injected", fault=fault, command_budget_seconds=1,
                       description="A sleeping Python command exercises the deadline; no import test runs.")
             run.command("timeout-probe", [sys.executable, "-c", "import time; print('Waiting deliberately', flush=True); time.sleep(60)"], checkout)
@@ -208,21 +252,7 @@ def calibrate(run, patch, fault=None):
                 apply_patch(run, checkout, patch, "candidate", task["allowed_files"])
             check, output = run.command(stage, task["command"], checkout, env_overrides)
             check["source_sha256"] = digest((checkout / "go/import.go").read_bytes())
-            check["outcome"] = classify_test(output, check["exit_code"], task)
-            run.event("test_classified", check=check)
-            if check["outcome"] == "blocked":
-                diagnostics = output + (run.path / check["stderr"]).read_bytes()
-                if b"module lookup disabled by GOPROXY=off" in diagnostics:
-                    run.result["blocker"] = "missing_dependency"
-                    raise Stop("blocked", f"{stage}: required Go dependencies are unavailable; downloads are disabled")
-                raise Stop("blocked", f"{stage}: check did not produce the required test results; inspect logs")
-            if stage == "baseline" and check["outcome"] != "passed":
-                raise Stop("calibration_failed", "Original behaviour did not pass")
-            if stage == "seed" and (check["outcome"] != "assertion_failed" or
-                                    task["failure_message"].encode() not in output):
-                raise Stop("calibration_failed", "Seed did not reproduce the intended assertion failure")
-            if stage == "candidate" and check["outcome"] != "passed":
-                raise Stop("repair_failed", "Candidate did not restore the expected import behaviour")
+            check_test(run, stage, check, output, task)
     run.result.update(outcome="calibration_passed", reason="Focused calibration passed; human review pending")
 
 
@@ -240,9 +270,9 @@ def main():
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = signal.signal(signum, run.cancel)
-        patch = b"" if args.demo == "empty" else (
+        patch = b"" if args.demo == "empty" else read_input(
             args.patch or HERE / "fixtures" / f"{args.demo}.patch"
-        ).read_bytes()
+        )
         run.result["candidate"] = args.demo or "local-patch"
         if args.fault:
             run.result["fault"] = args.fault
@@ -251,14 +281,20 @@ def main():
         run.result.update(outcome=error.outcome, reason=error.reason)
     except KeyboardInterrupt:
         run.result.update(outcome="cancelled", reason="Run interrupted")
-    except (OSError, ValueError) as error:
+    except OSError as error:
+        run.result.update(outcome="blocked", reason=f"Could not prepare or save the check: {error}")
+    except ValueError as error:
         run.result.update(outcome="invalid_input", reason=str(error))
     finally:
-        run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
-        write_json(run.path / "result.json", run.result)
-        run.event("run_finished", outcome=run.result["outcome"])
-        for signum, handler in previous_handlers.items():
-            signal.signal(signum, handler)
+        # Once checks stop, finish saving the decided outcome despite further signals.
+        run.finalizing = True
+        try:
+            run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
+            write_json(run.path / "result.json", run.result)
+            run.event("run_finished", outcome=run.result["outcome"])
+        finally:
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
     print(f"{run.result['outcome']}: {run.result.get('reason', 'See evidence')}")
     print(run.path / "result.json")
     return 0 if run.result["outcome"] == "calibration_passed" else 1
