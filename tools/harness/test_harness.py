@@ -1,9 +1,13 @@
 import json
+import os
 from pathlib import Path
+import signal
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from report import render, render_run
 from run import HERE, Run, Stop, apply_patch, classify_test
@@ -46,6 +50,104 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(caught.exception.outcome, "blocked")
         self.assertEqual(run.result["checks"][0]["outcome"], "blocked")
         self.assertIn("command_finished", (run.path / "events.jsonl").read_text())
+
+    def test_unlaunchable_tools_are_blocked(self):
+        tool = self.root / "tool"
+        tool.write_text("not an executable format\n")
+        for mode in (0o644, 0o755):
+            with self.subTest(mode=mode):
+                tool.chmod(mode)
+                run = Run(self.root)
+                with self.assertRaises(Stop) as caught:
+                    run.command("tool", [str(tool)], self.root)
+                self.assertEqual(caught.exception.outcome, "blocked")
+                self.assertEqual(run.result["checks"][0]["outcome"], "blocked")
+                self.assertIn("command_finished", (run.path / "events.jsonl").read_text())
+
+    def test_termination_stops_command_group_and_finishes_receipt(self):
+        tool = self.root / "go"
+        tool.write_text(f"#!{sys.executable}\n" +
+                        "import json, os, subprocess, sys, time\n"
+                        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+                        "print(json.dumps([os.getpid(), child.pid]), flush=True)\n"
+                        "time.sleep(60)\n")
+        tool.chmod(0o755)
+        for termination in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=termination):
+                reports = self.root / str(termination)
+                command = [sys.executable, "-c",
+                           "import sys; from pathlib import Path; import run; "
+                           "run.REPORTS = Path(sys.argv[1]); sys.argv = ['run.py', '--demo', 'empty']; "
+                           "raise SystemExit(run.main())", str(reports)]
+                process = subprocess.Popen(command, cwd=HERE, env={**os.environ, "PATH": str(self.root)},
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                pids = []
+                try:
+                    deadline = time.monotonic() + 10
+                    while time.monotonic() < deadline:
+                        paths = list(reports.glob("runs/*/go-version.stdout"))
+                        if paths and paths[0].read_text().strip():
+                            pids = json.loads(paths[0].read_text())
+                            break
+                        if process.poll() is not None:
+                            self.fail(f"Runner exited before starting its tool: {process.communicate()}")
+                        time.sleep(0.01)
+                    self.assertTrue(pids, "Tool did not announce readiness")
+                    process.send_signal(termination)
+                    output, errors = process.communicate(timeout=10)
+                    self.assertEqual(process.returncode, 1, (output, errors))
+                    result = json.loads(paths[0].with_name("result.json").read_text())
+                    self.assertEqual(result["outcome"], "cancelled")
+                    self.assertEqual(result["checks"][-1]["outcome"], "cancelled")
+                    events = [json.loads(line) for line in paths[0].with_name("events.jsonl").read_text().splitlines()]
+                    self.assertEqual(events[-1]["kind"], "run_finished")
+                    self.assertEqual(events[-1]["outcome"], "cancelled")
+                    deadline = time.monotonic() + 5
+                    for pid in pids:
+                        status = Path(f"/proc/{pid}/stat")
+                        while True:
+                            try:
+                                if status.read_text().split()[2] == "Z":
+                                    break
+                            except FileNotFoundError:
+                                break
+                            self.assertLess(time.monotonic(), deadline, f"Process {pid} is still running")
+                            time.sleep(0.01)
+                finally:
+                    if pids:
+                        try:
+                            os.killpg(pids[0], signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate()
+
+    def test_cancellation_during_launch_waits_for_process_handle(self):
+        run = Run(self.root)
+        launch = subprocess.Popen
+        children = []
+
+        def interrupted_launch(*args, **kwargs):
+            process = launch(*args, **kwargs)
+            children.append(process)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return process
+
+        previous = signal.signal(signal.SIGTERM, run.cancel)
+        try:
+            with patch("run.subprocess.Popen", side_effect=interrupted_launch):
+                with self.assertRaises(Stop) as caught:
+                    run.command("slow", [sys.executable, "-c", "import time; time.sleep(60)"], self.root)
+            self.assertEqual(caught.exception.outcome, "cancelled")
+            self.assertEqual(run.result["checks"][-1]["outcome"], "cancelled")
+            self.assertIsNotNone(children[0].poll())
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+            for child in children:
+                if child.poll() is None:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
 
     def test_deadline_keeps_partial_evidence(self):
         run = Run(self.root)

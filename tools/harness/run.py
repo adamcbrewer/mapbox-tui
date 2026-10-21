@@ -44,6 +44,8 @@ class Run:
         self.path.mkdir(parents=True)
         self.started = time.monotonic()
         self.deadline = self.started + 600
+        self.launching = False
+        self.cancel_requested = False
         self.result = {
             "schema_version": 1, "run_id": self.path.name, "attempt": 1,
             "started_at": now(), "outcome": "incomplete", "checks": [],
@@ -54,6 +56,13 @@ class Run:
             "runner_sha256": digest(Path(__file__).read_bytes()),
         }
         write_json(self.path / "result.json", self.result)
+
+    def cancel(self, signum, frame):
+        if self.cancel_requested:
+            return
+        self.cancel_requested = True
+        if not self.launching:
+            raise KeyboardInterrupt
 
     def event(self, kind, **fields):
         with (self.path / "events.jsonl").open("a") as output:
@@ -75,19 +84,32 @@ class Run:
         env = {**os.environ, "MAPBOX_ACCESS_TOKEN": "", "GOWORK": "off", "GOPROXY": "off",
                "GOTOOLCHAIN": "local", "GOFLAGS": "", **(env_overrides or {})}
         with (self.path / check["stdout"]).open("wb") as out, (self.path / check["stderr"]).open("wb") as err:
+            process = None
             try:
                 try:
-                    process = subprocess.Popen(args, cwd=cwd, env=env, stdout=out, stderr=err,
-                                               start_new_session=True)
-                except FileNotFoundError as error:
-                    check["outcome"] = "blocked"
-                    raise Stop("blocked", f"Missing executable: {args[0]}") from error
-                try:
+                    self.launching = True
+                    try:
+                        process = subprocess.Popen(args, cwd=cwd, env=env, stdout=out, stderr=err,
+                                                   start_new_session=True)
+                    except OSError as error:
+                        check["outcome"] = "blocked"
+                        reason = (f"Missing executable: {args[0]}" if isinstance(error, FileNotFoundError)
+                                  else f"Cannot launch {args[0]}: {error}")
+                        raise Stop("blocked", reason) from error
+                    finally:
+                        self.launching = False
+                    if self.cancel_requested:
+                        raise KeyboardInterrupt
                     check["exit_code"] = process.wait(timeout=remaining)
                     check["outcome"] = "passed" if process.returncode == 0 else "failed"
                 except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
+                    self.cancel_requested = True
+                    if process is not None:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        process.wait()
                     check["outcome"] = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "cancelled"
                     raise Stop(check["outcome"], f"Stopped during {name}") from error
             finally:
@@ -214,7 +236,10 @@ def main():
     args = parser.parse_args()
     run = Run(REPORTS)
     run.event("run_started")
+    previous_handlers = {}
     try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.signal(signum, run.cancel)
         patch = b"" if args.demo == "empty" else (
             args.patch or HERE / "fixtures" / f"{args.demo}.patch"
         ).read_bytes()
@@ -225,13 +250,15 @@ def main():
     except Stop as error:
         run.result.update(outcome=error.outcome, reason=error.reason)
     except KeyboardInterrupt:
-        run.result.update(outcome="cancelled", reason="Interrupted by user")
+        run.result.update(outcome="cancelled", reason="Run interrupted")
     except (OSError, ValueError) as error:
         run.result.update(outcome="invalid_input", reason=str(error))
     finally:
         run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
         write_json(run.path / "result.json", run.result)
         run.event("run_finished", outcome=run.result["outcome"])
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
     print(f"{run.result['outcome']}: {run.result.get('reason', 'See evidence')}")
     print(run.path / "result.json")
     return 0 if run.result["outcome"] == "calibration_passed" else 1

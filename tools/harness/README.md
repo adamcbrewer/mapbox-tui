@@ -143,8 +143,8 @@ format version 1. Depending on how far the run got, you'll find:
   is an exception: it contains the source archive, not readable text.
 
 The receipt starts as `incomplete`. When the run finishes, the script replaces
-it in one operation with the final result. Cancellation and timeouts stop the
-current command and its process group, keeping partial logs. A crash or machine
+it in one operation with the final result. Ctrl+C, SIGTERM and timeouts stop the
+current command and its process group, keeping partial logs. A crash, SIGKILL or machine
 shutdown may leave an incomplete record. Recovery comes in #106; this pilot
 has no automatic retries or guarantee of crash-safe records.
 
@@ -156,6 +156,9 @@ Individual test results use `passed`, `assertion_failed` or `blocked`. A command
 exiting successfully isn't enough: the named test and all three expected
 subtests must pass. Compiler errors and missing dependencies are blockers, not
 proof that we've reproduced the intended bug.
+Tools that exist but cannot start (such as a missing execute permission or an
+invalid executable format) also produce `blocked`. An unreadable patch file
+remains `invalid_input`.
 
 Each run tries one candidate, with no repair retries. Model and Pi fields are
 null, and model cost is zero because neither is used. Execution cost is unknown.
