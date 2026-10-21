@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "xml-leading-bom-v1",
+  "synthetic": true,
+  "base_commit": "57f8887f287b6969f31b0d7c3ada5afe3683db53",
+  "expected_behaviour": "Leading UTF-8 BOM preserves GPX, TCX and KML imports. Misplaced markers and unexpected leading text remain invalid.",
+  "fixture_provenance": "Synthetic inline GPX and TCX/KML constants in the pinned Go test sources; no personal activity files.",
+  "source_sha256": {
+    "go/import.go": "e7e48b18b3e677abe1c7c9b8a7be8a6426c3a25732fda58ac91c1c2e327ad44a",
+    "go/import_edge_test.go": "4c5d5b6c5b7a0af03c488c922472535eaf4382ecd774be09ae9f0317bf890e4a",
+    "go/import_test.go": "ef6116ba857453cc3c661ba5b0e7fe19565bc4dc3bd1db3bc6c651900c83bca8"
+  },
+  "seed_sha256": "ec48f97697fb770fa6c4ce3045838bca82408f9267e65893f26b051d48e04f87",
+  "allowed_files": [
+    "go/import.go"
+  ],
+  "test": "TestXMLImportsAcceptLeadingUTF8BOM",
+  "cases": [
+    "pin.gpx",
+    "ride.tcx",
+    "map.kml"
+  ],
+  "command": [
+    "go",
+    "test",
+    "./go",
+    "-run",
+    "^TestXMLImportsAcceptLeadingUTF8BOM$",
+    "-count=1",
+    "-json"
+  ],
+  "failure_message": "UTF-8 BOM changed or prevented XML import",
+  "deadline_seconds": 600,
+  "repair_attempts": 1
+}

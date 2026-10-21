@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-21",
+  "source": "GitHub issues #102, #103 and #111; this file records human decisions",
+  "stage": "Define",
+  "status": "awaiting-review",
+  "next": "Compare the working repair, ineffective repair and setup-failure examples. Review this Define slice before preparing its PR or starting Connect.",
+  "decisions": [
+    "This is a developer tool, separate from the shipped map app. We will connect the AI later.",
+    "We chose rootless Podman for disposable test containers in Connect (#104). Pi will stay outside; Bubblewrap is not needed initially. This is a decision, not an implemented sandbox.",
+    "For now, we only run prepared, trusted changes on the host. The container restrictions must be demonstrated before running AI-written code.",
+    "Results and reports stay on this machine, outside Git history."
+  ],
+  "blockers": [],
+  "questions": [
+    "Why did we deliberately break working code before trying a repair?",
+    "How is an ineffective repair different from a missing dependency or a timed-out command?",
+    "What could still be wrong with a change even if this import test passes?"
+  ]
+}

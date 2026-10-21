@@ -1,0 +1,11 @@
+--- a/go/import.go
++++ b/go/import.go
+@@ -82,7 +82,7 @@
+ 	}
+ 	var header [12]byte
+ 	n, _ := f.ReadAt(header[:], 0)
+-	format := "FIT"
++	format := "fit"
+ 	var document *Document
+ 	if (n == len(header) && string(header[8:]) == ".FIT") || strings.EqualFold(filepath.Ext(path), ".fit") {
+ 		document, err = parseFIT(reader)
