@@ -29,6 +29,10 @@ script removes the temporary source copy when it exits normally.
 
 ## Try it
 
+This pilot runs checks on Linux only. On other systems, the runner saves a
+`blocked` result before launching any commands. Windows and macOS execution
+support can come later; the generated HTML report can still be opened there.
+
 You'll need Python 3.11+, Git and Go 1.27.1, with the project's Go dependencies
 already cached. Run these from the repository root. No Python packages or Node
 installs are needed. This tool isn't part of the shipped binary or release archive.
@@ -108,7 +112,8 @@ python3 tools/harness/run.py --patch /path/to/repair.patch
 ```
 
 Only edits to the existing `go/import.go` are allowed. Changes to tests, unrelated
-files, file modes or paths outside that scope are rejected.
+files, file modes or paths outside that scope are rejected. Git reads the patch
+metadata for this check, so words inside source strings don't count as file operations.
 
 That restriction doesn't make arbitrary code safe to run. Tests still run as
 your user and inherit your environment. Only use trusted patches you've reviewed.

@@ -111,6 +111,52 @@ class CalibrationTests(unittest.TestCase):
             apply_patch(run, self.root, patch, "bad", self.task["allowed_files"])
         self.assertEqual(caught.exception.outcome, "invalid_input")
 
+    def test_patch_source_text_is_not_treated_as_file_metadata(self):
+        source = self.root / "go/import.go"
+        source.parent.mkdir()
+        before = 'var label = "old mode; new file mode; deleted file mode"\n'
+        after = 'var label = "new mode; rename from; copy from"\n'
+        source.write_text(before)
+        change = ('--- a/go/import.go\n+++ b/go/import.go\n@@ -1 +1 @@\n-' + before + '+' + after).encode()
+        run = Run(self.root)
+        apply_patch(run, self.root, change, "candidate", self.task["allowed_files"])
+        self.assertEqual(source.read_text(), after)
+
+    def test_patch_metadata_still_rejects_file_operations(self):
+        source = self.root / "go/import.go"
+        source.parent.mkdir()
+        source.write_text("package main\n")
+        for metadata in (
+            "diff --git a/go/import.go b/go/import.go\nold mode 100644\nnew mode 100755\n",
+            "--- a/go/import.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-package main\n",
+            "--- /dev/null\n+++ b/go/import.go\n@@ -0,0 +1 @@\n+package main\n",
+            "diff --git a/go/import.go b/go/other.go\nsimilarity index 100%\nrename from go/import.go\nrename to go/other.go\n",
+            "diff --git a/go/import.go b/go/other.go\nsimilarity index 100%\ncopy from go/import.go\ncopy to go/other.go\n",
+        ):
+            with self.subTest(metadata=metadata):
+                run = Run(self.root)
+                with self.assertRaises(Stop) as caught:
+                    apply_patch(run, self.root, metadata.encode(), "candidate", ["go/import.go", "go/other.go"])
+                self.assertEqual(caught.exception.outcome, "invalid_input")
+                self.assertNotIn("candidate-apply", [check["id"] for check in run.result["checks"]])
+                self.assertEqual(source.read_text(), "package main\n")
+
+    def test_unsupported_platforms_save_blocked_without_launching_commands(self):
+        for platform in ("win32", "darwin"):
+            with self.subTest(platform=platform):
+                reports = self.root / platform
+                with patch("run.REPORTS", reports), patch("sys.argv", ["run.py", "--demo", "empty"]), \
+                     patch("run.sys.platform", platform), patch("run.subprocess.Popen") as launch:
+                    self.assertEqual(runner.main(), 1)
+                    launch.assert_not_called()
+                path = next(reports.glob("runs/*/result.json"))
+                result = json.loads(path.read_text())
+                self.assertEqual(result["outcome"], "blocked")
+                self.assertEqual(result["checks"], [])
+                self.assertIn("Linux only", result["reason"])
+                events = [json.loads(line) for line in path.with_name("events.jsonl").read_text().splitlines()]
+                self.assertEqual(events[-1]["kind"], "run_finished")
+
     def test_missing_executable_is_blocked(self):
         run = Run(self.root)
         with self.assertRaises(Stop) as caught:
@@ -306,6 +352,35 @@ class CalibrationTests(unittest.TestCase):
             })
             self.assertIn("Unreadable record", page)
             self.assertNotIn("The proposed repair passed this check.", page)
+
+    def test_malformed_check_fields_do_not_hide_other_runs(self):
+        progress = json.loads((HERE / "progress.json").read_text())
+        valid = Run(self.root)
+        valid.result.update(candidate="wrong", outcome="repair_failed")
+        runner.write_json(valid.path / "result.json", valid.result)
+        for field in ("id", "outcome"):
+            for value in ([], {}, None, 3):
+                run = Run(self.root)
+                check = {"id": "baseline", "outcome": "blocked", field: value}
+                run.result.update(outcome="blocked", checks=[check])
+                runner.write_json(run.path / "result.json", run.result)
+        page = render(self.root, progress)
+        self.assertEqual(page.count("Unreadable record"), 8)
+        self.assertIn("This failure is the expected answer", page)
+        self.assertIn(valid.path.name[:8], page)
+
+    def test_missing_go_report_does_not_claim_the_repair_was_known_good(self):
+        path = self.root / "runs/example/result.json"
+        for candidate in ("good", "wrong", "empty", "local-patch"):
+            with self.subTest(candidate=candidate):
+                run = {"schema_version": 1, "candidate": candidate, "outcome": "blocked",
+                       "reason": "Missing executable: go", "checks": []}
+                page = render_run(path, self.root, run)
+                self.assertIn("The check could not start without Go", page)
+                self.assertIn("Go was unavailable", page)
+                self.assertNotIn("working repair", page)
+                self.assertNotIn("working-repair", page)
+                self.assertIn(f"Candidate label in the saved record: {candidate}.", page)
 
     def test_report_requires_consistent_checks_before_reporting_success(self):
         path = self.root / "runs/example/result.json"

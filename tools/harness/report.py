@@ -70,7 +70,7 @@ FILE_GUIDE = {
     "reports/harness/runs/<run-id>/": "Evidence from one experiment. Within it, task.json preserves the instructions, seed.patch preserves the deliberately broken change, and candidate.patch preserves the proposed repair.",
     "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open this file.",
     "events.jsonl (inside a run folder)": "A chronological diary, with one event per line: a command started, finished, or a test result was recorded.",
-    "*.stdout / *.stderr (inside a run folder)": "Command output and diagnostics. Usually only needed to investigate a problem. baseline and seed refer to the original and deliberately broken code; candidate refers to the proposed repair. scope checks allowed files; apply records applying a patch. go-version records the compiler version.",
+    "*.stdout / *.stderr (inside a run folder)": "Command output and diagnostics. Usually only needed to investigate a problem. baseline and seed refer to the original and deliberately broken code; candidate refers to the proposed repair. scope checks allowed files; metadata checks file operations such as renaming or deleting; apply records applying a patch. go-version records the compiler version.",
     "snapshot.stdout": "An exception to the readable logs: this contains the archived source copy. snapshot.stderr contains any archive-command diagnostics.",
     "reports/harness/*.log": "Checks run on the harness implementation, separate from the individual experiments.",
 }
@@ -97,7 +97,8 @@ def render_run(path, reports, run):
         purpose = "Keep a requested experiment separate from what actually ran."
     recorded_checks = run.get("checks", [])
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
-             and all(isinstance(check, dict) for check in recorded_checks))
+             and all(isinstance(check, dict) and isinstance(check.get("id"), str)
+                     and isinstance(check.get("outcome"), str) for check in recorded_checks))
     if known and run.get("outcome") == "calibration_passed":
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
@@ -109,8 +110,8 @@ def render_run(path, reports, run):
     if candidate in ("empty", "wrong") and outcome == "repair_failed":
         result += " This failure is the expected answer for this example."
     if outcome == "blocked" and run.get("reason") == "Missing executable: go":
-        title = "Try a working repair when Go is unavailable"
-        tried = "Start the working-repair example without access to the Go test tool."
+        title = "The check could not start without Go"
+        tried = "Start the requested run without access to the Go test tool."
         expected = "Stop and explain that the tests could not run."
         purpose = "Distinguish a missing tool from a repair that was tested and failed."
         result = "Go was unavailable, so the repair could not be checked."

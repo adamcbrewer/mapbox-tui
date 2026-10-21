@@ -72,6 +72,8 @@ class Run:
                                      "kind": kind, **fields}) + "\n")
 
     def command(self, name, args, cwd, env_overrides=None):
+        if sys.platform != "linux":
+            raise Stop("blocked", "This harness pilot runs checks on Linux only")
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise Stop("timeout", "Run deadline reached")
@@ -186,8 +188,10 @@ def apply_patch(run, checkout, patch, name, allowed):
         names = [row.split(b"\t", 2)[2].decode() for row in output.split(b"\0") if row]
     except (IndexError, UnicodeDecodeError):
         names = []
-    forbidden = (b"new file mode", b"deleted file mode", b"old mode", b"new mode", b"rename from", b"copy from")
-    if check["exit_code"] or not names or set(names) - set(allowed) or any(x in patch for x in forbidden):
+    if check["exit_code"] or not names or set(names) - set(allowed):
+        raise Stop("invalid_input", "Patch must only edit the existing allowed source file")
+    check, metadata = run.command(name + "-metadata", ["git", "apply", "--summary", str(path)], checkout)
+    if check["exit_code"] or metadata.strip():
         raise Stop("invalid_input", "Patch must only edit the existing allowed source file")
     check, _ = run.command(name + "-apply", ["git", "apply", "--whitespace=error", str(path)], checkout)
     if check["exit_code"]:
