@@ -4,7 +4,7 @@
   "source": "GitHub issues #102, #103, #104 and #111; Adam selected #104 as next on 22 October 2026",
   "stage": "Connect",
   "status": "awaiting-review",
-  "next": "Review the prepared Pi SDK tool-loop checkpoint, then connect the live model-backed execution path. Adam completed Pi sign-in; local status recognises openai subscription auth with gpt-6.1-sol selected. Local limits are ten model requests and 4096 output tokens per request. No model requests have occurred; live execution is not enabled yet. Stored sign-in recognition does not establish successful model access or human acceptance of the next slice.",
+  "next": "Review the second live Luna attempt: its patch passed all three required import cases. Compare its diagnosis and candidate patch with the first failed attempt in Earlier Pi runs. Discuss the evidence before accepting this Connect checkpoint or starting #105.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -25,13 +25,42 @@
     "Adam clarified that both subscription provider and exact model must be configurable for Codex or Claude. The current local Codex choice is not a hard-coded provider/model. Existing setup was verified with two catalogue models for each of openai and anthropic, using isolated temporary configuration and no model calls. Live execution remains a later checkpoint.",
     "The first login attempt failed before browser authorisation because the wrapper omitted the installation ID callback. Reproduced with the real SDK, then fixed by persisting/reusing Pi's existing settings identity and passing the harness app name. Known error messages are now actionable without printing token responses. A temporary-settings check reached the browser authorisation prompt and cancelled cleanly; real account sign-in remains for Adam.",
     "Adam confirmed sign-in. The local setup status reports signedIn true, provider openai, model gpt-6.1-sol and subscription auth. Zero model calls have been made; live model execution remains disabled. No live model access or checkpoint acceptance is inferred from this sign-in status.",
-    "Adam asked to commit the prepared Pi tool wiring, subscription setup and reporting changes, then explain where each part lives. This authorises the commit; it does not close #104 or mark a live model run complete."
+    "Adam asked to commit the prepared Pi tool wiring, subscription setup and reporting changes, then explain where each part lives. This authorises the commit; it does not close #104 or mark a live model run complete.",
+    "Adam asked to run the agent. Added a subscription model path, request/payload guards and model identity/usage evidence. A circular CLI import stalled the first launch before model work; cancellation removed its Pi process and three startup containers. A separate CLI entry point and real-process startup check fix that wiring error.",
+    "The next launch reached the real OpenAI subscription adapter. It omitted the output-token cap, so our payload guard blocked before inference and before any edit. A no-network reproduction with the actual adapter and dummy OAuth credential confirms zero fetch calls. OpenAI preview-limitations documentation explicitly lists max_output_tokens as unsupported. No API billing fallback or relaxed limit was used.",
+    "Adam asked to switch the local model from gpt-6.1-sol to gpt-6-luna. Subscription auth and existing request/output limits are retained. This changes model selection only; it does not authorise removing the hard output-token cap. Historical Sol receipts retain their original model identity.",
+    "Adam authorised running without a hard output-token cap, retaining timeouts and analysing actual usage. Local gpt-6-luna subscription settings now use maxOutputTokensPerRequest null, ten model requests, low reasoning, one edit/check, 12 tools and a ten-minute deadline. Each provider request also has a two-minute HTTP timeout. API-key fallback and automatic retries remain disabled.",
+    "The first real Luna run completed in 96.0761 seconds with five model requests and six tool calls. It read the three permitted files, searched import.go, edited once and requested the fixed sandboxed test. Its candidate failed all GPX/TCX/KML cases; Luna acknowledged the failure. All four containers were removed. Outcome repair_failed is a model repair failure, not an execution/setup blocker or stage approval.",
+    "Complete provider usage for that run: 51,284 input tokens, 329 output tokens, 51,613 total; zero cached-input and zero reasoning tokens reported. Largest response 172 output tokens; no response exceeded the earlier 4096-token cap. Input and output are totals across five requests, including repeated conversation history. One run does not establish typical usage or a future output bound. Local evidence: reports/harness/pi/runs/743759ebfff84ae48c2c6ac3236aa7e4/.",
+    "After the plain-language explanation of the first failed attempt, Adam asked to try again with bounded timings. Kept Luna, subscription auth, no hard output cap, ten requests, 12 tools, one edit/check, a ten-minute deadline and two-minute provider request timeouts. Added one generic prompt instruction to trace the failing input through source and state the cause before editing. No known repair, tool, fixture or test change was supplied.",
+    "The second live run da117ff76b74443f8928767e8107a585 passed the fixed GPX/TCX/KML import check in 98.7124 seconds, with five model requests and six tool calls. The baseline passed, the seed failed and the candidate passed. All four containers were removed. This is a passing focused test and a completed Connect attempt, not independent verification, human acceptance or issue completion.",
+    "Second-run complete provider usage: 51,540 input tokens, including 12,288 cached input; 507 output tokens, zero reasoning reported; 52,047 total. Largest response 255 output tokens. Compared with the first run: 434 more total tokens (0.84%), similar runtime, and a different repair outcome. Across both attempts: 102,824 input + 836 output = 103,660 total tokens. Timing limits do not guarantee negligible token usage. One attempt per prompt is insufficient to establish why the outcome changed.",
+    "Adam narrowed current provider support to OpenAI only and explicitly deferred Claude. Keep model choice configurable within OpenAI; Claude live support is no longer a completion requirement for #104. This does not accept the stage or remove the approved-repository-instructions requirement.",
+    "Adam asked what two Needs inspection badges meant. The prepared cancelled run was a deliberate cancellation demonstration with confirmed process/container cleanup. The earlier Sol run was cancelled before inference because of a circular startup import that was subsequently fixed. Added separate report annotations; original receipt outcomes remain cancelled. Generic cancelled, failed, blocked and unfinished runs now receive specific labels."
   ],
   "blockers": [],
   "questions": [
-    "Which parts did the prepared Pi walkthrough prove, and which still need a live model run?",
-    "Why must the runner reject an out-of-scope request even when it comes through Pi?",
-    "Why does repeating the same edit operation return its earlier result rather than change the file again?",
-    "How do a repair passing its check, subscription access and human approval differ?"
-  ]
+    "How do a deliberate cancellation, a setup bug and a failed repair differ?",
+    "Why is confirming cleanup separate from deciding whether a repair works?",
+    "Why does passing the fixed test still leave broader verification and human approval outstanding?"
+  ],
+  "provider_scope": [
+    "openai"
+  ],
+  "run_annotations": {
+    "e23ce48f30124d539e5fcfb037f29198": {
+      "kind": "cancellation-test",
+      "title": "Pi tools: deliberate cancellation",
+      "label": "Cleanup confirmed",
+      "summary": "We deliberately stopped this prepared run to test cancellation. The Pi process stopped and all four containers were removed. Its repair check was left unfinished; no AI model ran.",
+      "evidence": "reports/harness/pi-tool-loop-verification.json, cancellation checkpoint"
+    },
+    "88f022e353494b3f92a577792f69afdd": {
+      "kind": "fixed-startup-bug",
+      "title": "Pi: earlier startup bug",
+      "label": "Startup bug fixed",
+      "summary": "An earlier startup bug stalled Pi. We cancelled this run before any model requests, then fixed the startup code. All three containers were removed. This historical run did not produce a repair result.",
+      "evidence": "reports/harness/pi-live-verification.json, initial_cli_cancelled; later successful Luna run da117ff76b74443f8928767e8107a585"
+    }
+  }
 }

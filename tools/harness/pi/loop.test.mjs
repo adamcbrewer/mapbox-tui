@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { runScriptedLoop, schemas } from "./loop.mjs";
+import { runScriptedLoop, runToolLoop, schemas } from "./loop.mjs";
+import { boundedStream } from "./live.mjs";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { prepareLoginOptions, requireSubscription, setupErrorMessage, validateConfig } from "./setup.mjs";
 
 test("real SDK uses only the four explicit tools and returns structured refusals", async () => {
@@ -48,12 +50,14 @@ test("local model and request limits are explicit; extra settings and API mode f
   const config = { provider: "openai", model: "chosen-locally", auth: "subscription",
     maxOutputTokensPerRequest: 1024, maxModelRequests: 4 };
   assert.equal(validateConfig(config), config);
+  assert.equal(validateConfig({ ...config, maxOutputTokensPerRequest: null }).maxOutputTokensPerRequest, null);
   for (const invalid of [{ ...config, model: null }, { ...config, auth: "api_key" },
+    { ...config, provider: "anthropic" },
     { ...config, maxModelRequests: 0 }, { ...config, maxOutputTokensPerRequest: 8193 },
     { ...config, apiKey: "must-not-be-here" }]) assert.throws(() => validateConfig(invalid));
 });
 
-test("local setup preserves the chosen subscription provider and model for Codex and Claude", async () => {
+test("local setup preserves the chosen OpenAI subscription model", async () => {
   const credentials = { async read() {}, async list() { return []; },
     async modify(_provider, fn) { return fn(undefined); }, async delete() {} };
   const runtime = await ModelRuntime.create({ credentials, modelsPath: null,
@@ -62,7 +66,7 @@ test("local setup preserves the chosen subscription provider and model for Codex
   try {
     copyFileSync(new URL("./setup.mjs", import.meta.url), join(temporary, "setup.mjs"));
     symlinkSync(new URL("./node_modules", import.meta.url), join(temporary, "node_modules"), "dir");
-    for (const provider of ["openai", "anthropic"]) {
+    for (const provider of ["openai"]) {
       assert.equal(runtime.getProvider(provider).auth.oauth.isSubscription, true);
       const models = runtime.getModels(provider).slice(0, 2);
       assert.equal(models.length, 2);
@@ -130,4 +134,169 @@ test("login diagnostics explain known failures without exposing token responses 
     new Error("private-token", { cause: Object.assign(new Error("private-token"), { code: "ENOTFOUND" }) })]) {
     assert.ok(!setupErrorMessage(error).includes("private-token"));
   }
+});
+
+async function preparedLive(replies, maxModelRequests = 10) {
+  const sent = [], options = [], requests = { count: 0 };
+  const runtime = await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false,
+    refreshOnCreate: false, credentials: { async read() {}, async list() { return []; } } });
+  runtime.registerProvider("live-test", { name: "Offline live-path test", api: "live-test",
+    baseUrl: "https://example.invalid", apiKey: "offline-placeholder",
+    models: [{ id: "prepared", name: "Prepared", reasoning: false, input: ["text"],
+      contextWindow: 64000, maxTokens: 8192,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+    streamSimple(model, _context, requestOptions) {
+      options.push(requestOptions);
+      const next = replies.shift();
+      assert.ok(next, "No unexpected provider request");
+      const message = { role: "assistant", api: model.api, provider: model.provider, model: model.id,
+        timestamp: Date.now(), usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, ...next };
+      const stream = createAssistantMessageEventStream();
+      stream.push(message.stopReason === "error"
+        ? { type: "error", reason: "error", error: message }
+        : { type: "done", reason: message.stopReason, message });
+      return stream;
+    } });
+  const model = runtime.getModel("live-test", "prepared");
+  const config = { provider: "live-test", model: "prepared", auth: "subscription",
+    maxOutputTokensPerRequest: 1024, maxModelRequests };
+  const emit = value => sent.push(value);
+  const streamFunction = boundedStream(runtime, model, config, requests, emit, () => {});
+  return { sent, options, requests, runtime, model, config, emit, streamFunction, thinkingLevel: "low" };
+}
+
+function toolReply(name, args, id = name) {
+  return { content: [{ type: "toolCall", id, name, arguments: args }], stopReason: "toolUse" };
+}
+
+test("live path lets the SDK choose tools and enforces request options without network", async () => {
+  const execution = await preparedLive([
+    toolReply("harness_read", { file: "/etc/passwd" }),
+    toolReply("harness_check", { preset: "xml-leading-bom" }),
+    { content: [{ type: "text", text: "The check passed; human review pending." }], stopReason: "stop" },
+  ]);
+  const called = [];
+  await runToolLoop({ task: { id: "live-path", expected_behaviour: "Repair" }, maxToolCalls: 12 },
+    async request => {
+      called.push(request.name);
+      return { outcome: request.name === "harness_read" ? "rejected" : "passed",
+        explanation: "Prepared test result", evidence: "events.jsonl", file: null, operation_id: null };
+    }, execution.emit, execution);
+  assert.deepEqual(called, ["harness_read", "harness_check"]);
+  assert.equal(execution.requests.count, 3);
+  assert.equal(execution.sent.find(event => event.type === "context").mode, "live-subscription");
+  assert.equal(execution.sent.at(-1).modelCostUsd, null);
+  for (const options of execution.options) {
+    assert.equal(options.maxTokens, 1024);
+    assert.equal(options.maxRetries, 0);
+    assert.equal(options.reasoning, "low");
+    assert.equal(options.transport, "sse");
+    const payload = { model: "prepared", max_output_tokens: 1024, tools: schemas };
+    assert.doesNotThrow(() => options.onPayload(payload));
+    assert.throws(() => options.onPayload({ ...payload, max_output_tokens: 1025 }));
+    assert.throws(() => options.onPayload({ ...payload, tools: [...schemas, { name: "bash" }] }));
+    assert.throws(() => options.onPayload({ ...payload, model: "different-model" }));
+  }
+});
+
+test("request exhaustion stops before another provider call", async () => {
+  const execution = await preparedLive([toolReply("harness_read", { file: "go/import.go" })], 1);
+  let tools = 0;
+  await assert.rejects(runToolLoop({ task: { id: "budget" }, maxToolCalls: 12 }, async () => {
+    tools++;
+    return { outcome: "ok", explanation: "Read", evidence: "events.jsonl", file: "go/import.go", operation_id: null };
+  }, execution.emit, execution), error => error.outcome === "budget_exhausted");
+  assert.equal(tools, 1);
+  assert.equal(execution.options.length, 1);
+});
+
+test("truncated tool calls and provider failures cannot execute or expose private diagnostics", async () => {
+  for (const reply of [
+    { ...toolReply("harness_edit", { file: "go/import.go" }), stopReason: "length" },
+    { content: [], stopReason: "error", errorMessage: "401 private-token" },
+  ]) {
+    const execution = await preparedLive([reply]);
+    let tools = 0;
+    await assert.rejects(runToolLoop({ task: { id: "failed" }, maxToolCalls: 12 }, async () => {
+      tools++;
+    }, execution.emit, execution));
+    assert.equal(tools, 0);
+    assert.ok(!JSON.stringify(execution.sent).includes("private-token"));
+    assert.ok(!execution.sent.some(event => event.type === "finished"));
+  }
+});
+
+test("real live CLI reaches the subscription guard without hanging or contacting a model", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "mapbox-pi-live-start-"));
+  try {
+    const packagePath = new URL(".", import.meta.url).pathname;
+    const result = spawnSync(process.execPath, ["--permission", "--allow-net",
+      `--allow-fs-read=${packagePath}`, `--allow-fs-read=${temporary}`, `--allow-fs-write=${temporary}`,
+      new URL("./cli.mjs", import.meta.url).pathname], {
+      cwd: temporary, encoding: "utf8", timeout: 5000,
+      env: { HOME: temporary, PI_OFFLINE: "1", PI_CODING_AGENT_DIR: temporary },
+      input: JSON.stringify({ mode: "live", authDir: temporary, task: { id: "startup" }, maxToolCalls: 12,
+        config: { provider: "openai", model: "gpt-6.1-sol", auth: "subscription",
+          maxModelRequests: 1, maxOutputTokensPerRequest: 1024 } }) + "\n",
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    const outcome = JSON.parse(result.stdout);
+    assert.equal(outcome.type, "failed");
+    assert.match(outcome.reason, /Subscription sign-in is required/);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("actual OpenAI subscription adapter drops the hard cap and our guard stops before fetch", async () => {
+  const credential = { type: "oauth", access: "dummy-subscription-token", refresh: "dummy-refresh",
+    expires: Date.now() + 3600000 };
+  const runtime = await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false, refreshOnCreate: false,
+    credentials: { async read(provider) { return provider === "openai" ? credential : undefined; },
+      async list() { return [{ providerId: "openai", type: "oauth" }]; } } });
+  const model = runtime.getModel("openai", "gpt-6.1-sol");
+  const config = { provider: "openai", model: model.id, auth: "subscription",
+    maxModelRequests: 1, maxOutputTokensPerRequest: 4096 };
+  const sent = [], requests = { count: 0 };
+  const savedFetch = globalThis.fetch;
+  let fetches = 0;
+  globalThis.fetch = async () => { fetches++; throw new Error("Unexpected network"); };
+  try {
+    const stream = boundedStream(runtime, model, config, requests, event => sent.push(event), () => {});
+    const result = await stream(model, { messages: [{ role: "user", content: "No inference", timestamp: Date.now() }] }).result();
+    assert.equal(result.stopReason, "error");
+    assert.match(requests.failure.message, /omitted.*output-token cap/);
+    assert.equal(fetches, 0);
+    assert.ok(sent.some(event => event.type === "model_payload_rejected"));
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test("explicitly uncapped subscription payload keeps model/tool guards and records raw usage", async () => {
+  const execution = await preparedLive([{ content: [{ type: "text", text: "Done" }], stopReason: "stop" }]);
+  execution.config.maxOutputTokensPerRequest = null;
+  const original = execution.runtime.streamSimple.bind(execution.runtime);
+  execution.runtime.streamSimple = (model, context, options) => {
+    assert.equal(options.maxTokens, undefined);
+    const payload = { model: model.id, tools: schemas };
+    assert.doesNotThrow(() => options.onPayload(payload));
+    assert.throws(() => options.onPayload({ ...payload, model: "other" }));
+    assert.throws(() => options.onPayload({ ...payload, tools: [{ name: "bash" }] }));
+    execution.requests.failure = undefined;
+    options.onProviderStreamEvent({ type: "response.completed", response: { usage: {
+      input_tokens: 120, input_tokens_details: { cached_tokens: 20 },
+      output_tokens: 5000, output_tokens_details: { reasoning_tokens: 3000 }, total_tokens: 5120,
+    } } });
+    return original(model, context, options);
+  };
+  await runToolLoop({ task: { id: "uncapped" }, maxToolCalls: 12 }, async () => {}, execution.emit, execution);
+  const usage = execution.sent.find(event => event.type === "model_usage").usage;
+  assert.deepEqual(usage, { inputTokens: 120, outputTokens: 5000, cachedInputTokens: 20,
+    reasoningTokens: 3000, totalTokens: 5120 });
+  assert.equal(execution.options.length, 1);
+  assert.equal(execution.options[0].timeoutMs, 120000);
+  assert.equal(execution.options[0].maxRetries, 0);
 });

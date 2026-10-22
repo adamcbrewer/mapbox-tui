@@ -49,6 +49,7 @@ class StageReportTests(unittest.TestCase):
         page = report.render_saved(self.reports, "connect").read_text()
         self.assertIn("Pi tools: prepared working repair", page)
         self.assertIn("No AI model ran.", page)
+        self.assertIn("Model: none (prepared responses). Tokens used: 0.", page)
         self.assertIn("Prepared only", page)
         self.assertIn('<option value="pi-session.json">Pi conversation</option>', page)
         self.assertTrue((self.reports / "snapshots/connect/pi/runs/scripted/context.json").is_file())
@@ -77,6 +78,86 @@ class StageReportTests(unittest.TestCase):
         self.assertNotIn('id="sandbox"', page.read_text())
         self.assertIn("without AI or containers", page.read_text())
         self.assertIn("Historical checkpoint", page.read_text())
+
+    def test_cancelled_annotations_require_matching_run_and_confirmed_cleanup(self):
+        source = self.source("cancelled-example")
+        path = source / "runs/cancelled-example/result.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(outcome="cancelled", workflow="pi-scripted-tools", model_requests=0, tool_calls=0,
+                       containers=[{"removed": True}])
+        annotation = {"kind": "cancellation-test", "title": "Deliberate cancellation",
+                      "label": "Cleanup confirmed", "summary": "Stopped deliberately; cleanup was confirmed.",
+                      "evidence": "saved-checkpoint.json"}
+        page = report.render_run(path, source, receipt)
+        self.assertIn("Run cancelled", page)
+        self.assertNotIn("Cleanup confirmed", page)
+        page = report.render_run(path, source, receipt, annotation=annotation)
+        self.assertIn("Cleanup confirmed", page)
+        self.assertIn("original run outcome remains cancelled", page)
+        self.assertEqual(receipt["outcome"], "cancelled")
+        receipt["containers"][0]["removed"] = False
+        page = report.render_run(path, source, receipt, annotation=annotation)
+        self.assertNotIn("Cleanup confirmed", page)
+        self.assertIn("Run cancelled", page)
+        receipt["containers"][0]["removed"] = True
+        receipt["workflow"] = "pi-live-tools"
+        annotation.update(kind="fixed-startup-bug", title="Earlier startup bug", label="Startup bug fixed")
+        page = report.render_run(path, source, receipt, annotation=annotation)
+        self.assertIn("Startup bug fixed", page)
+        receipt["model_requests"] = 1
+        page = report.render_run(path, source, receipt, annotation=annotation)
+        self.assertNotIn("Startup bug fixed", page)
+        self.assertIn("Run cancelled", page)
+
+    def test_live_report_names_model_and_requires_actual_startup_and_check_evidence(self):
+        source = self.source("live-example")
+        path = source / "runs/live-example/result.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(candidate="model", workflow="pi-live-tools", outcome="live_repair_passed",
+                       provider="openai", model="gpt-6.1-sol", startup_verified=True, model_requests=3,
+                       model_usage=[{"usage": {"output": 42}}])
+        page = report.render_run(path, source, receipt)
+        self.assertIn("AI-written repair passed", page)
+        self.assertIn("openai / gpt-6.1-sol", page)
+        self.assertIn("3 model request attempts", page)
+        self.assertIn("Recorded output tokens: 42", page)
+        self.assertIn("Input and total token usage were not reported", page)
+        self.assertIn("As expected", page)
+        receipt["token_summary"] = {"totals": {"inputTokens": 100, "cachedInputTokens": 20,
+                                   "outputTokens": 50, "reasoningTokens": 10, "totalTokens": 150},
+                                   "requests_with_usage": 2, "requests_without_usage": 1, "complete": False,
+                                   "largest_response_output_tokens": 30, "responses_over_4096_output_tokens": 0}
+        receipt["provider_usage"] = [{"request": 1, "usage": {"inputTokens": 70, "outputTokens": 30, "totalTokens": 100}},
+                                    {"request": 1, "usage": {"inputTokens": 70, "outputTokens": 30, "totalTokens": 100}},
+                                    {"request": 2, "usage": {"inputTokens": 30, "outputTokens": 20, "totalTokens": 50}}]
+        page = report.render_run(path, source, receipt)
+        self.assertIn("Recorded tokens: 150", page)
+        self.assertIn("100 input + 50 output", page)
+        self.assertIn("included in input", page)
+        self.assertIn("included in output", page)
+        self.assertIn("totals are partial", page)
+        self.assertIn("Partial usage record", page)
+        self.assertIn("Usage per request: openai / gpt-6.1-sol", page)
+        self.assertEqual(page.count('Request 1: <strong>100 tokens</strong> (70 input + 30 output)'), 1)
+        self.assertIn('Request 2: <strong>50 tokens</strong> (30 input + 20 output)', page)
+        receipt["startup_verified"] = False
+        page = report.render_run(path, source, receipt)
+        self.assertNotIn("As expected", page)
+        self.assertIn("Unreadable record", page)
+
+    def test_live_token_report_distinguishes_missing_usage_from_no_model_requests(self):
+        source = self.source("missing-usage")
+        path = source / "runs/missing-usage/result.json"
+        receipt = {"schema_version": 1, "workflow": "pi-live-tools", "outcome": "cancelled",
+                   "provider": "openai", "model": "gpt-6-luna", "model_requests": 1,
+                   "model_usage": [{"usage": {"output": 0}}]}
+        page = report.render_run(path, source, receipt)
+        self.assertIn("openai / gpt-6-luna", page)
+        self.assertIn("Token usage: not reported", page)
+        self.assertNotIn("Tokens used: 0", page)
+        receipt["model_requests"] = 0
+        page = report.render_run(path, source, receipt)
+        self.assertIn("Tokens used: 0. No model requests were made", page)
 
     def test_saved_evidence_survives_source_removal_and_bundle_move(self):
         source, _ = self.restore_define()

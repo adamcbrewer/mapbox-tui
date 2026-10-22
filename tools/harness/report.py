@@ -41,6 +41,7 @@ FAULT_EXAMPLES = {
 OUTCOMES = {
     "calibration_passed": "The proposed repair passed this check.",
     "scripted_loop_passed": "The real Pi tool loop completed using prepared responses. No AI model ran.",
+    "live_repair_passed": "The AI-written repair passed the fixed import check. Human review is still pending.",
     "repair_failed": "The proposed repair did not pass this check.",
     "calibration_failed": "The setup did not produce the expected working and broken examples.",
     "blocked": "We couldn’t complete the checks. This does not tell us whether the repair works.",
@@ -48,7 +49,7 @@ OUTCOMES = {
     "timeout": "The run reached its time limit before finishing.",
     "cancelled": "The run was stopped before finishing.",
     "incomplete": "No final result was recorded. The run may still be working or may have stopped unexpectedly.",
-    "budget_exhausted": "The tool-call limit was reached. This does not count as a completed repair.",
+    "budget_exhausted": "A tool or model limit was reached. This does not count as a completed repair.",
 }
 GLOSSARY = {
     "Harness": "The software around the AI that controls the task, tools, checks and saved evidence.",
@@ -57,7 +58,7 @@ GLOSSARY = {
     "Calibration": "Trying examples with known answers to see whether our checking process reports them correctly.",
     "Baseline": "The starting code used for comparison. Here it works; a real repair task may start with broken code.",
     "Seed patch": "A change that deliberately plants a bug in the temporary copy.",
-    "Candidate patch": "The proposed repair we are testing. In these demos it was prepared in advance, not written by AI.",
+    "Candidate patch": "The proposed repair we are testing. Prepared examples use a supplied patch; live Pi runs save the model's edit.",
     "Patch": "A file listing code lines to add or remove.",
     "Fixture": "Prepared example input used by a test, rather than your personal activity data.",
     "Run / attempt / check": "A run is one execution of a task. An attempt is one proposed solution within it. A check is an individual test or validation step. This pilot tries one solution per run.",
@@ -72,9 +73,9 @@ FILE_GUIDE = {
     "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. With an immutable prepared image ID, it can check a trusted repair in containers. No host execution fallback.",
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
-    "tools/harness/pi_run.py": "Exercises Pi's four controlled tools with prepared responses. Python owns the disposable source, limits and sandboxed checks; no model call is enabled yet.",
+    "tools/harness/pi_run.py": "Runs prepared replies or the configured subscription through four controlled tools. Python owns the disposable source, limits and sandboxed checks. A live attempt can stop before inference if its limits cannot be enforced.",
     "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
-    "context.json / pi-session.json": "The exact prompt, tool definitions and prepared Pi conversation. These demonstrate tool wiring, not AI reasoning or subscription access.",
+    "context.json / pi-session.json": "The prompt, tool definitions and Pi conversation. Check the mode: prepared replies test wiring; live runs use the recorded subscription model.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
     "tools/harness/fixtures/*.patch": "The deliberate bug and prepared example repairs.",
     "tools/harness/report.py": "Builds this HTML page from saved records. It does not run tests.",
@@ -127,7 +128,7 @@ def embedded_evidence(reports, link_root=None):
     return json.dumps(evidence, ensure_ascii=True).replace("<", "\\u003c")
 
 
-def render_run(path, reports, run, link_root=None):
+def render_run(path, reports, run, link_root=None, annotation=None):
     candidate = run.get("candidate")
     title, tried, expected, purpose = EXAMPLES.get(str(candidate), (
         "Check a supplied repair" if candidate else "Request could not be loaded",
@@ -146,7 +147,7 @@ def render_run(path, reports, run, link_root=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed"):
+    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
                  [check.get("outcome") for check in stages] == ["passed", "assertion_failed", "passed"] and
@@ -154,6 +155,10 @@ def render_run(path, reports, run, link_root=None):
                  isinstance(stages[1].get("exit_code"), int) and stages[1]["exit_code"] != 0)
         if run.get("outcome") == "scripted_loop_passed":
             known = known and run.get("startup_verified") is True and run.get("tool_calls") == 6
+        if run.get("outcome") == "live_repair_passed":
+            known = (known and run.get("startup_verified") is True and run.get("workflow") == "pi-live-tools"
+                     and isinstance(run.get("model_requests"), int) and run["model_requests"] > 0
+                     and bool(run.get("model")) and bool(run.get("provider")))
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
     if candidate in ("empty", "wrong") and outcome == "repair_failed":
@@ -201,13 +206,84 @@ def render_run(path, reports, run, link_root=None):
         if outcome in ("cancelled", "timeout"):
             title = "Pi tools: interrupted run"
             expected = "An interrupted check is unfinished. Inspect container cleanup and the separate Pi-process cancellation evidence."
-    matched = outcome in ("calibration_passed", "scripted_loop_passed") or (candidate in ("wrong", "empty") and outcome == "repair_failed")
-    label = "As expected" if matched else "Needs inspection"
+    identity = ""
+    tokens = ""
+    if run.get("workflow") == "pi-scripted-tools":
+        identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
+    if run.get("workflow") == "pi-live-tools":
+        title = "Pi: model repair attempt"
+        if outcome == "blocked":
+            title = "Pi: subscription request blocked"
+            result = run.get("reason", result)
+        tried = "Let the configured subscription model investigate and propose one edit using the four controlled tools."
+        expected = "The original passes, the planted bug fails, and an effective model repair passes the fixed sandboxed test."
+        purpose = "Trace model decisions through enforced tools to an actual check. One passing fixture does not prove broader repair ability."
+        usage = run.get("model_usage", [])
+        output = sum(item.get("usage", {}).get("output", 0) for item in usage if isinstance(item, dict))
+        model = f'{escape(run.get("provider", "unknown"))} / {escape(run.get("model", "unknown"))}'
+        identity = (f'<p class="meta"><output><strong>Model:</strong> {model}. Subscription. '
+                    f'{run.get("model_requests", 0)} model request attempts.</output></p>')
+        summary = run.get("token_summary")
+        if isinstance(summary, dict):
+            totals = summary["totals"]
+            identity += (f'<p class="model-usage"><output><strong>Recorded tokens: {totals["totalTokens"]:,}</strong>. '
+                         f'{totals["inputTokens"]:,} input + {totals["outputTokens"]:,} output. '
+                         f'{"Complete" if summary["complete"] else "Partial"} usage record.</output></p>')
+            reasoning = totals["reasoningTokens"]
+            reasoning_text = f"{reasoning:,}" if isinstance(reasoning, int) else "not reported"
+            cap = run.get("budgets", {}).get("output_tokens_per_request")
+            tokens = (f'<p><output>Token receipts: {summary["requests_with_usage"]} requests with usage; '
+                      f'{summary["requests_without_usage"]} dispatched requests without usage. '
+                      f'Recorded totals are {"complete" if summary["complete"] else "partial"}.</output></p>'
+                      f'<p><output>Cached input: {totals["cachedInputTokens"]:,}, included in input. '
+                      f'Reasoning: {reasoning_text}, included in output. Do not add these subsets again.</output></p>'
+                      f'<p><output>Largest response: {summary["largest_response_output_tokens"]:,} output tokens. '
+                      f'Responses above the earlier 4,096-token cap: {summary["responses_over_4096_output_tokens"]}.</output></p>'
+                      f'<p>Output limit: {"no hard cap; provider default" if cap is None else escape(str(cap))}. '
+                      'Each request includes conversation history, so input tokens can accumulate across turns. '
+                      'A timeout can leave usage unreported; missing usage is not zero consumption.</p>')
+            requests = {row["request"]: row["usage"] for row in run.get("provider_usage", [])}
+            if requests:
+                rows = ''.join(f'<li><output>Request {escape(number)}: <strong>{usage["totalTokens"]:,} tokens</strong> '
+                               f'({usage["inputTokens"]:,} input + {usage["outputTokens"]:,} output).</output></li>'
+                               for number, usage in requests.items())
+                tokens += f'<p><strong>Usage per request: {model}</strong></p><ul>{rows}</ul>'
+        elif run.get("model_requests") == 0:
+            identity += '<p class="model-usage"><output>Tokens used: 0. No model requests were made.</output></p>'
+        elif output > 0:
+            identity += (f'<p class="model-usage"><output>Recorded output tokens: {output:,}. '
+                         'Input and total token usage were not reported.</output></p>')
+        else:
+            identity += '<p class="model-usage"><output>Token usage: not reported. Missing usage does not mean zero tokens.</output></p>'
+        tokens += '<p>Actual subscription charge is not reported.</p>'
+    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed") or (candidate in ("wrong", "empty") and outcome == "repair_failed")
+    labels = {"cancelled": "Run cancelled", "timeout": "Time limit reached", "incomplete": "Run unfinished",
+              "repair_failed": "Repair check failed", "blocked": "Check could not run", "invalid_input": "Invalid request",
+              "budget_exhausted": "Limit reached", "calibration_failed": "Startup checks failed"}
+    label = "As expected" if matched else labels.get(outcome, "Unknown result")
     tone = "pass" if matched else "attention"
+    note = ""
+    if outcome == "cancelled" and annotation:
+        containers = run.get("containers", [])
+        cleaned = isinstance(containers, list) and bool(containers) and all(
+            isinstance(item, dict) and item.get("removed") is True for item in containers)
+        cancellation_test = (annotation.get("kind") == "cancellation-test" and
+                             run.get("workflow") == "pi-scripted-tools")
+        startup_fix = (annotation.get("kind") == "fixed-startup-bug" and run.get("workflow") == "pi-live-tools" and
+                       run.get("model_requests") == 0 and run.get("tool_calls") == 0)
+        if cleaned and (cancellation_test or startup_fix):
+            title, label, result = annotation["title"], annotation["label"], annotation["summary"]
+            tone = "pass"
+            tried = "Deliberately stop the prepared check." if cancellation_test else "Start the earlier live Pi wiring."
+            expected = "Confirm that owned processes stop and containers are removed. The repair check remains unfinished."
+            purpose = "Distinguish a completed cancellation check or fixed startup bug from an unresolved repair."
+            note = (f'<p>Recorded explanation: {escape(annotation["evidence"])}. '
+                    'The original run outcome remains cancelled; this label does not mean its repair passed.</p>')
     mode = "Container requested" if run.get("execution_mode") == "rootless-podman" else "Host runner"
     return f'''<article class="run">
-<header class="run-heading"><h3>{escape(title)}</h3><span class="badge {tone}">{label}</span></header>
+<header class="run-heading"><h3>{escape(title)}</h3><span class="badge {tone}">{escape(label)}</span></header>
 <p>{escape(result)}</p>
+{identity}
 {('<ol class="check-steps">' + ''.join(checks) + '</ol>') if checks else '<p class="meta">No import test results recorded.</p>'}
 <p class="meta">{mode}. {escape(elapsed)}. <a href="{link}" data-evidence="{link}">Receipt</a>
 <code title="Run ID: {run_id}">{escape(path.parent.name[:8])}</code></p>
@@ -215,6 +291,8 @@ def render_run(path, reports, run, link_root=None):
 <dl class="explanation"><dt>What we tried</dt><dd>{escape(tried)}</dd><dt>Expected</dt><dd>{escape(expected)}</dd>
 <dt>Why it matters</dt><dd>{escape(purpose)}</dd></dl>
 {execution}
+{tokens}
+{note}
 <p>Saved status: <code>{escape(run.get('outcome', 'unknown'))}</code>.
 Diagnostic: {escape(run.get('reason', 'No final explanation recorded'))}</p>
 <p>Candidate label in the saved record: {escape(candidate if candidate is not None else 'not loaded')}.</p>
@@ -348,17 +426,19 @@ def render(reports, progress, *, link_root=None, snapshot=None):
         except (ValueError, OSError):
             run = {}
         candidate = (run.get("candidate"), run.get("outcome") if run.get("outcome") in ("cancelled", "timeout") else "attempt")
-        row = render_run(path, reports, run, link_root)
+        row = render_run(path, reports, run, link_root,
+                         annotation=progress.get("run_annotations", {}).get(path.parent.name))
         if candidate in pi_latest:
             pi_history.append(pi_latest[candidate])
         pi_latest[candidate] = row
-    pi_rows = "".join(pi_latest.values()) + history(pi_history, "Earlier Pi wiring runs")
+    pi_rows = "".join(pi_latest.values()) + history(pi_history, "Earlier Pi runs")
     pi_section = f'''<section id="pi" aria-labelledby="pi-title"><h2 id="pi-title">Can Pi use our controlled tools?</h2>
-<p>Prepared responses exercise the real SDK. No AI model, subscription usage or API billing is involved.</p>
+<p>Prepared examples test the tool wiring without AI. Live attempts use the named subscription model and record its requests and usage.</p>
 {pi_rows}<details><summary>What to inspect and learn</summary>
 <p>In Events, find the refused host-file read and the replayed edit. The source changes once. Compare the good and wrong test results.
 Context preserves the prompt and four tool schemas; Pi conversation preserves their requests and replies.</p>
-<p>The model will choose actions later. Our runner must enforce which actions are allowed, even when a request comes through Pi.</p>
+<p>In a live attempt, compare the model's investigation, proposed edit and final test result. Our runner enforces which actions are allowed.
+Passing the fixed test, the model saying “done” and human approval are separate.</p>
 </details></section>''' if pi_rows and not define else ''
     saved_links = '<a href="index.html">Latest report</a>' + ''.join(
         f'<a href="{stage.lower()}.html">{stage}</a>' for stage in STAGES
@@ -386,7 +466,7 @@ Context preserves the prompt and four tool schemas; Pi conversation preserves th
     glossary = {key: value for key, value in GLOSSARY.items() if not define or key not in ("Podman", "Sandbox readiness")}
     intro = ('A known bug and prepared repairs test whether our checker reports the right answer. '
              'These checks ran on the host, without AI or containers.' if define else
-             'Prepared repairs test our checker. Separate sandbox probes test the execution boundary. No AI is involved yet.')
+             'Prepared repairs test our checker and tools. Sandbox probes test the execution boundary. Pi attempts below record model settings and whether inference could start.')
     takeaway = ('Known working and ineffective repairs test the checker. A focused test passing and human approval are separate results.'
                 if define else 'A repair passing its test, a sandbox respecting its limits, and your approval are three separate results.')
     return f'''<!doctype html>
@@ -429,10 +509,12 @@ main, aside {{ min-width: 0; }} main > section {{ margin-bottom: 32px; scroll-ma
 .check-steps li {{ border-top: 3px solid currentColor; padding-top: 8px; min-width: 0; }}
 .check-steps span {{ color: var(--report-muted); font-size: .75rem; display: block; }}
 .check-steps strong {{ font-size: .86rem; display: block; margin-top: 5px; }}
-details {{ margin-top: 12px; }} summary {{ cursor: pointer; color: var(--report-link); font-size: .88rem; padding: 5px 0; }}
+details {{ margin-top: 12px; font-size: .85rem; }} .run details p {{ font-size: inherit; }}
+summary {{ cursor: pointer; color: var(--report-link); font-size: .88rem; padding: 5px 0; }}
 details[open] > summary {{ margin-bottom: 12px; }} .history {{ border-top: 1px solid var(--report-line); padding-top: 8px; margin-top: 20px; }}
 dt {{ font-weight: 650; margin-top: 16px; }} dd {{ margin: 4px 0 12px; color: var(--report-muted); }}
 code {{ overflow-wrap: anywhere; font-size: .85em; }} ul, ol {{ padding-left: 22px; }} li {{ margin-bottom: 8px; }}
+output {{ font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }}
 aside {{ border-left: 1px solid var(--report-line); padding-left: 24px; position: sticky; top: 24px; font-size: .88rem; }}
 aside section {{ margin-bottom: 28px; }} aside h2 {{ font-size: 1rem; }} aside p, aside li {{ color: var(--report-muted); }}
 .review-links {{ padding-left: 20px; }} .review-links a {{ display: block; padding: 3px 0; }}
@@ -510,7 +592,7 @@ Receipt links open the evidence drawer. Select the result, task, events, patches
 <li><strong>Use:</strong> try real tasks under human supervision, starting with imports.</li>
 </ol><ul>{items(progress["decisions"])}</ul>
 <p>Obstacles: {escape('; '.join(progress['blockers']) or 'none recorded')}.</p></details>
-<details><summary>Is the AI getting better at repairs?</summary><p>No comparisons yet. These are prepared experiments without an AI.
+<details><summary>Is the AI getting better at repairs?</summary><p>No comparisons yet. Prepared examples test the harness; one live attempt cannot establish a trend.
 Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
@@ -519,7 +601,7 @@ Later we'll compare repeated AI attempts on the same tasks and settings. These t
 <li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
 <section id="takeaway"><h2>What to take away</h2>
 <div class="lesson"><p>{escape(takeaway)}</p></div>
-<p>{'Connect is the next stage: demonstrate controlled execution before connecting Pi. Container isolation was not implemented in Define.' if define else 'Pi will choose investigation and repair steps. Our runner must enforce the permitted files, execution limits and required checks.'}</p>
+<p>{'Connect is the next stage: demonstrate controlled execution before connecting Pi. Container isolation was not implemented in Define.' if define else 'Pi chooses investigation and repair steps. Our runner enforces the permitted files, execution limits and required checks.'}</p>
 <details><summary>Questions for our discussion</summary><ul>{items(progress["questions"])}</ul></details></section>
 <section><h2>Before the next step</h2><p>{escape(STATE_LABELS[progress["status"]])}. Passing tests never mark this reviewed automatically.</p>
 <details><summary>Next scope and checkpoint notes</summary><p>{escape(progress["next"])}</p></details></section></aside></div>

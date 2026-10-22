@@ -179,10 +179,36 @@ def scripted_calls(tools, demo):
             {"name": "harness_check", "args": {"preset": "xml-leading-bom"}}]
 
 
-def pi_loop(run, tools, temporary, demo):
+def load_live_config():
+    config = json.loads((HERE / "pi/config.local.json").read_text())
+    if not isinstance(config, dict) or set(config) != {
+            "provider", "model", "auth", "maxModelRequests", "maxOutputTokensPerRequest"}:
+        raise Stop("invalid_input", "Use the five preferences in pi/config.example.json")
+    if (config["auth"] != "subscription" or config["provider"] != "openai" or
+            not isinstance(config["model"], str) or not config["model"].strip()):
+        raise Stop("invalid_input", "Choose provider openai, subscription auth and an exact model")
+    for name, maximum in (("maxModelRequests", 12), ("maxOutputTokensPerRequest", 8192)):
+        if name == "maxOutputTokensPerRequest" and config[name] is None:
+            continue
+        if type(config[name]) is not int or not 1 <= config[name] <= maximum:
+            raise Stop("invalid_input", f"{name} must be an integer from 1 to {maximum}")
+    return config
+
+
+def pi_loop(run, tools, temporary, demo, config=None):
     package = HERE / "pi"
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(temporary),
            "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(temporary / "agent")}
+    payload = {"type": "start", "task": run.task, "maxToolCalls": MAX_CALLS}
+    permissions = []
+    if config:
+        auth_dir = Path.home() / ".pi/agent"
+        if not (auth_dir / "auth.json").is_file():
+            raise Stop("blocked", "Pi subscription sign-in is missing; run pi/setup.mjs login")
+        permissions = ["--allow-net", "--allow-fs-read=" + str(auth_dir), "--allow-fs-write=" + str(auth_dir)]
+        payload.update(mode="live", config=config, authDir=str(auth_dir))
+    else:
+        payload["calls"] = scripted_calls(tools, demo)
     with (run.path / "pi.stderr").open("wb") as stderr:
         process = None
         try:
@@ -190,15 +216,14 @@ def pi_loop(run, tools, temporary, demo):
             try:
                 process = subprocess.Popen(["node", "--permission", "--allow-fs-read=" + str(package),
                                             "--allow-fs-read=" + str(temporary), "--allow-fs-write=" + str(temporary),
-                                            str(package / "loop.mjs")], cwd=temporary, env=env,
+                                            *permissions,
+                                            str(package / "cli.mjs")], cwd=temporary, env=env,
                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr,
                                            start_new_session=True)
             finally:
                 run.launching = False
             if run.cancel_requested:
                 raise KeyboardInterrupt
-            payload = {"type": "start", "calls": scripted_calls(tools, demo), "task": run.task,
-                       "maxToolCalls": MAX_CALLS}
             process.stdin.write((json.dumps(payload) + "\n").encode())
             process.stdin.flush()
             with selectors.DefaultSelector() as selector:
@@ -212,7 +237,7 @@ def pi_loop(run, tools, temporary, demo):
                     if not chunk:
                         raise Stop("blocked", "Pi exited before completing its loop; see pi.stderr")
                     buffer += chunk
-                    if len(buffer) > 128 * 1024:
+                    if len(buffer) > 2 * 1024 * 1024:
                         raise Stop("invalid_input", "Pi protocol message exceeds its limit")
                     while b"\n" in buffer:
                         line, buffer = buffer.split(b"\n", 1)
@@ -221,6 +246,20 @@ def pi_loop(run, tools, temporary, demo):
                             raise Stop("invalid_input", "Pi protocol requires an object")
                         if message.get("type") == "context":
                             write_json(run.path / "context.json", message)
+                        elif message.get("type") in ("model_request", "model_response", "model_payload", "model_payload_rejected", "model_dispatch", "model_usage"):
+                            run.event(message["type"], **{key: value for key, value in message.items() if key != "type"})
+                            if message["type"] == "model_request":
+                                run.result["model_requests"] = message["request"]
+                            elif message["type"] == "model_response":
+                                run.result.setdefault("model_usage", []).append(message)
+                            elif message["type"] == "model_dispatch":
+                                run.result["model_requests_dispatched"] += 1
+                            elif message["type"] == "model_usage":
+                                run.result.setdefault("provider_usage", []).append(message)
+                        elif message.get("type") == "session":
+                            write_json(run.path / "pi-session.json", message)
+                        elif message.get("type") == "failed":
+                            raise Stop(message.get("outcome", "blocked"), message.get("reason", "Pi stopped"))
                         elif message.get("type") == "tool":
                             if not isinstance(message.get("id"), str):
                                 raise Stop("invalid_input", "Pi tool request is missing its ID")
@@ -231,7 +270,8 @@ def pi_loop(run, tools, temporary, demo):
                             write_json(run.path / "pi-session.json", message)
                             if process.wait(timeout=max(0.1, run.deadline - time.monotonic())) != 0:
                                 raise Stop("blocked", "Pi reported a failed exit")
-                            if not tools.checked or message.get("toolResults") != len(payload["calls"]):
+                            expected = tools.calls if config else len(payload["calls"])
+                            if not tools.checked or message.get("toolResults") != expected or (config and tools.edits != 1):
                                 raise Stop("incomplete", "Pi did not finish the required tool sequence")
                             return
                         else:
@@ -248,10 +288,25 @@ def pi_loop(run, tools, temporary, demo):
                 process.stdout.close()
 
 
+def token_summary(records, dispatched):
+    by_request = {item["request"]: item["usage"] for item in records}
+    usage = list(by_request.values())
+    totals = {name: sum(row[name] for row in usage) for name in
+              ("inputTokens", "cachedInputTokens", "outputTokens", "totalTokens")}
+    totals["reasoningTokens"] = (sum(row["reasoningTokens"] for row in usage)
+                                if all(row["reasoningTokens"] is not None for row in usage) else None)
+    return {"requests_with_usage": len(usage), "requests_without_usage": max(0, dispatched - len(usage)),
+            "complete": len(usage) == dispatched, "totals": totals,
+            "largest_response_output_tokens": max((row["outputTokens"] for row in usage), default=0),
+            "responses_over_4096_output_tokens": sum(row["outputTokens"] > 4096 for row in usage)}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Exercise the real Pi SDK tool loop with prepared responses, without model calls.")
+    parser = argparse.ArgumentParser(description="Run controlled Pi tools with prepared replies or a subscription model.")
     parser.add_argument("--image", required=True, help="Immutable prepared local image ID")
-    parser.add_argument("--demo", required=True, choices=("good", "wrong"))
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--demo", choices=("good", "wrong"))
+    mode.add_argument("--live", action="store_true", help="Use the subscription and limits in pi/config.local.json")
     args = parser.parse_args()
     run = ContainerRun(REPORTS / "pi", args.image)
     run.result.update(workflow="pi-scripted-tools", candidate=args.demo, pi_version="1.2.0",
@@ -259,9 +314,19 @@ def main():
                       budgets={"tool_calls": MAX_CALLS, "repair_attempts": 1, "deadline_seconds": 600,
                                "model_requests": 0},
                       source_sha256={str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in
-                                     [Path(__file__), HERE / "pi/loop.mjs", HERE / "pi/package-lock.json"]})
+                                     [Path(__file__), HERE / "pi/loop.mjs", HERE / "pi/live.mjs",
+                                      HERE / "pi/setup.mjs", HERE / "pi/cli.mjs", HERE / "pi/package-lock.json"]})
     previous = {signum: signal.signal(signum, run.cancel) for signum in (signal.SIGINT, signal.SIGTERM)}
     try:
+        config = load_live_config() if args.live else None
+        if config:
+            run.result.update(workflow="pi-live-tools", candidate="model", candidate_source="AI",
+                              provider=config["provider"], model=config["model"], auth=config["auth"],
+                              model_cost_usd=None, model_requests=0, model_requests_dispatched=0,
+                              reasoning="low", model_usage=[])
+            run.result["budgets"].update(model_requests=config["maxModelRequests"],
+                                         output_tokens_per_request=config["maxOutputTokensPerRequest"], retries=0)
+        write_json(run.path / "result.json", run.result)
         preflight(run)
         run.result["outcome"] = "incomplete"
         run.prepare()
@@ -270,11 +335,12 @@ def main():
             checkout = Path(source)
             prepare_checkout(run, checkout)
             tools = Tools(run, checkout)
-            pi_loop(run, tools, Path(agent), args.demo)
+            pi_loop(run, tools, Path(agent), args.demo, config)
             run.result["tool_calls"] = tools.calls
             if run.result["outcome"] == "passed":
-                run.result.update(outcome="scripted_loop_passed",
-                                  reason="Prepared responses exercised Pi tools and the sandboxed check; no AI ran")
+                run.result.update(outcome="live_repair_passed" if config else "scripted_loop_passed",
+                                  reason="The AI-written repair passed the fixed import check; human review remains pending" if config else
+                                  "Prepared responses exercised Pi tools and the sandboxed check; no AI ran")
     except Stop as error:
         run.result.update(outcome=error.outcome, reason=error.reason)
     except KeyboardInterrupt:
@@ -283,6 +349,11 @@ def main():
         run.result.update(outcome="blocked", reason=f"Cannot complete the Pi tool loop: {error}")
     finally:
         run.finalizing = True
+        if "tools" in locals():
+            run.result["tool_calls"] = tools.calls
+        if run.result.get("workflow") == "pi-live-tools":
+            run.result["token_summary"] = token_summary(run.result.get("provider_usage", []),
+                                                         run.result["model_requests_dispatched"])
         run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
         write_json(run.path / "result.json", run.result)
         run.event("run_finished", outcome=run.result["outcome"])
@@ -290,7 +361,7 @@ def main():
             signal.signal(signum, handler)
     print(f"{run.result['outcome']}: {run.result.get('reason', 'See evidence')}")
     print(run.path / "result.json")
-    return 0 if run.result["outcome"] == "scripted_loop_passed" else 1
+    return 0 if run.result["outcome"] in ("scripted_loop_passed", "live_repair_passed") else 1
 
 
 if __name__ == "__main__":

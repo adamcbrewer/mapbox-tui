@@ -125,6 +125,58 @@ class PiToolTests(unittest.TestCase):
         loop.assert_not_called()
         self.assertFalse(self.run.result["startup_verified"])
 
+    def test_live_failure_after_passing_check_stays_stopped(self):
+        config = {"provider": "openai", "model": "chosen-model", "auth": "subscription",
+                  "maxModelRequests": 2, "maxOutputTokensPerRequest": 1024}
+
+        def fail_after_check(*_args):
+            self.run.result["outcome"] = "passed"
+            raise Stop("budget_exhausted", "No final model request allowed")
+
+        with patch.object(pi_run, "ContainerRun", return_value=self.run), \
+                patch.object(pi_run, "load_live_config", return_value=config), \
+                patch.object(pi_run, "preflight"), patch.object(self.run, "prepare", create=True), \
+                patch.object(pi_run, "prepare_checkout"), patch.object(pi_run, "Tools", return_value=self.tools), \
+                patch.object(pi_run, "pi_loop", side_effect=fail_after_check), \
+                patch.object(sys, "argv", ["pi_run.py", "--image", "sha256:" + "a" * 64, "--live"]):
+            self.assertEqual(pi_run.main(), 1)
+        self.assertEqual(self.run.result["outcome"], "budget_exhausted")
+        self.assertIsNone(self.run.result["model_cost_usd"])
+
+    def test_invalid_live_config_does_not_start_sandbox_or_pi(self):
+        with patch.object(pi_run, "ContainerRun", return_value=self.run), \
+                patch.object(pi_run, "load_live_config", side_effect=Stop("invalid_input", "Bad limits")), \
+                patch.object(pi_run, "preflight") as preflight, patch.object(pi_run, "pi_loop") as loop, \
+                patch.object(sys, "argv", ["pi_run.py", "--image", "sha256:" + "a" * 64, "--live"]):
+            self.assertEqual(pi_run.main(), 1)
+        preflight.assert_not_called()
+        loop.assert_not_called()
+
+    def test_live_configuration_only_allows_openai_models(self):
+        config = {"provider": "openai", "model": "locally-chosen", "auth": "subscription",
+                  "maxModelRequests": 10, "maxOutputTokensPerRequest": None}
+        with patch.object(Path, "read_text", return_value=json.dumps(config)):
+            self.assertEqual(pi_run.load_live_config(), config)
+        config["provider"] = "anthropic"
+        with patch.object(Path, "read_text", return_value=json.dumps(config)), self.assertRaises(Stop) as error:
+            pi_run.load_live_config()
+        self.assertEqual(error.exception.outcome, "invalid_input")
+
+    def test_token_summary_counts_cache_and_reasoning_as_subsets_and_reports_missing_usage(self):
+        rows = [{"request": 1, "usage": {"inputTokens": 100, "cachedInputTokens": 20,
+                 "outputTokens": 5000, "reasoningTokens": 4000, "totalTokens": 5100}},
+                {"request": 2, "usage": {"inputTokens": 200, "cachedInputTokens": 40,
+                 "outputTokens": 30, "reasoningTokens": 10, "totalTokens": 230}}]
+        result = pi_run.token_summary(rows + rows[:1], 3)
+        self.assertEqual(result["totals"], {"inputTokens": 300, "cachedInputTokens": 60,
+                         "outputTokens": 5030, "reasoningTokens": 4010, "totalTokens": 5330})
+        self.assertEqual(result["requests_with_usage"], 2)
+        self.assertEqual(result["requests_without_usage"], 1)
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["largest_response_output_tokens"], 5000)
+        self.assertEqual(result["responses_over_4096_output_tokens"], 1)
+        self.assertTrue(pi_run.token_summary(rows, 2)["complete"])
+
 
 if __name__ == "__main__":
     unittest.main()
