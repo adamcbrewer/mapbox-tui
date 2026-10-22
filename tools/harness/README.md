@@ -1,5 +1,9 @@
 # Developer harness pilot
 
+Current stage: Connect ([#104](https://github.com/adamcbrewer/mapbox-tui/issues/104)).
+The first slice checks runtime prerequisites. The prepared repair experiments
+below remain the Define pilot; they still run trusted code on the host.
+
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
 building it in small steps.
@@ -133,6 +137,60 @@ package, we'll review the required
 [npm security guidance](https://github.com/lirantal/npm-security-best-practices),
 including pinned dependencies and disabled lifecycle scripts.
 
+## Check the planned container runtime
+
+From this worktree's root:
+
+```sh
+python3 tools/harness/sandbox.py
+python3 tools/harness/report.py
+xdg-open reports/harness/index.html
+```
+
+The readiness command asks local Podman for its runtime description. It requires
+Linux, a normal user, rootless operation, cgroups v2 with CPU/memory/process
+controllers, and seccomp support. It forces local inspection even if Podman is
+configured to use a remote connection. The shared runner gives the inspection
+30 seconds, saves partial logs and handles Ctrl+C/SIGTERM.
+
+Expect `runtime_ready` and exit 0 only when those prerequisites are reported.
+A missing or unsuitable runtime returns `blocked` and exit 1. A timeout or
+cancellation keeps that separate outcome. The report explains the result under
+"Is the container runtime ready?" and links to its receipt.
+
+This checks prerequisites only. It does not start a container, build or pull an
+image, run a candidate, or make the existing host calibration command safe for
+AI-written changes. Runtime reports alone don't prove access restrictions or
+resource enforcement. The next slice still needs a pinned image with prepared
+dependencies, actual container execution and the host-file/network denial and
+timeout/cancellation cleanup demonstrations from #104. Pi remains disconnected.
+
+On 22 October 2026 this worktree's live check stopped because `podman` is missing.
+Installing the system package needs administrator access (`sudo` requires a
+password). No system package or container configuration was changed. Docker being
+available does not satisfy the agreed rootless Podman prerequisite.
+
+Review the successful decision path and deliberate rejection paths with:
+
+```sh
+python3 -m unittest discover -s tools/harness -p 'test_sandbox.py' -v
+```
+
+These tests supply prepared runtime descriptions, including rootful, remote,
+incomplete and missing-controller examples. They prove the decision and receipt
+handling, not live container isolation. The missing-runtime test proves there is
+no fallback command. Existing harness tests cover the shared command deadline
+and process cancellation behaviour.
+
+Readiness receipts and command logs stay under
+`reports/harness/sandbox-preflight/runs/<run-id>/`, separate from import repair
+measurements. `runtime_ready` is not a verified repair or human approval.
+
+The prerequisites follow the [Podman info documentation](https://docs.podman.io/en/latest/markdown/podman-info.1.html)
+and [rootless resource-limit documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
+We also consulted the required [npm security guidance](https://github.com/lirantal/npm-security-best-practices).
+This slice adds no package dependencies; Pi/Node installation remains later work.
+
 ## What gets saved
 
 Each run gets a folder under `reports/harness/runs/<run-id>/`. The records use
@@ -188,7 +246,10 @@ loses that local history.
 
 `progress.json` separately records our decisions and review status: planned,
 active, blocked, awaiting-review or reviewed. Tests don't change that status.
-The page covers Define; later stage history and run timelines aren't built yet.
+The snapshot records #103 as closed and #104 (Connect) as started, with live
+container execution blocked on Podman being installed. The experiments still
+cover Define; container execution, Pi, later stage history and run timelines
+aren't built yet. Runtime-readiness records are shown separately.
 
 ## Check the implementation
 

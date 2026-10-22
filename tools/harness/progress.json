@@ -1,20 +1,27 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-21",
-  "source": "GitHub issues #102, #103 and #111; this file records human decisions",
-  "stage": "Define",
-  "status": "awaiting-review",
-  "next": "Compare the working repair, ineffective repair and setup-failure examples. Review this Define slice before preparing its PR or starting Connect.",
+  "updated_at": "2026-10-22",
+  "source": "GitHub issues #102, #103, #104 and #111; Adam selected #104 as next on 22 October 2026",
+  "stage": "Connect",
+  "status": "blocked",
+  "next": "Adam approved committing the readiness slice and proceeding. Prepare the container execution slice; Podman must be installed before the live checks for normal execution, denied host-file/network access and timeout/cancellation cleanup. Pi remains disconnected.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. We will connect the AI later.",
+    "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
     "We chose rootless Podman for disposable test containers in Connect (#104). Pi will stay outside; Bubblewrap is not needed initially. This is a decision, not an implemented sandbox.",
     "For now, we only run prepared, trusted changes on the host. The container restrictions must be demonstrated before running AI-written code.",
-    "Results and reports stay on this machine, outside Git history."
+    "Results and reports stay on this machine, outside Git history.",
+    "Pi chooses investigation and repair steps within permitted tools. Our runner enforces scope, execution, budgets, required checks and stopping conditions.",
+    "Connect adds startup checks and structured tool outcomes. Recover (#106) adds a compact session handoff reconciled against files, journal and receipts.",
+    "The first Connect slice inspects local Podman runtime prerequisites and records a separate readiness receipt. It does not execute candidates or demonstrate container isolation.",
+    "After the readiness walkthrough, Adam asked to commit and proceed on 22 October 2026. This approves the readiness slice; later container and Pi checkpoints still need their own evidence and review."
   ],
-  "blockers": [],
+  "blockers": [
+    "Podman is not installed here. Installing the system package needs administrator access; sudo requires a password. No live container checks have run."
+  ],
   "questions": [
-    "Why did we deliberately break working code before trying a repair?",
-    "How is an ineffective repair different from a missing dependency or a timed-out command?",
-    "What could still be wrong with a change even if this import test passes?"
+    "What does Podman prevent that restricted agent tools alone cannot?",
+    "Which decisions belong to Pi, and which must our runner enforce?",
+    "How do we show that a setup problem stops model work before it starts?"
   ]
 }

@@ -56,10 +56,12 @@ GLOSSARY = {
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
-    "Podman": "The container tool chosen for a disposable test environment in Connect (#104). It is not used by this pilot yet.",
+    "Podman": "The container tool chosen for a disposable test environment in Connect (#104). The readiness check only inspects its reported features; container execution is not implemented yet.",
+    "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
 }
 FILE_GUIDE = {
     "tools/harness/run.py": "Conducts the experiment and saves its evidence.",
+    "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. It does not start a container or execute a repair.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
     "tools/harness/fixtures/*.patch": "The deliberate bug and prepared example repairs.",
     "tools/harness/report.py": "Builds this HTML page from saved records. It does not run tests.",
@@ -68,6 +70,7 @@ FILE_GUIDE = {
     "tools/harness/README.md": "Commands and instructions for using and reviewing this pilot.",
     "reports/harness/index.html": "This report. Open it first; rebuild it after new runs.",
     "reports/harness/runs/<run-id>/": "Evidence from one experiment. Within it, task.json preserves the instructions, seed.patch preserves the deliberately broken change, and candidate.patch preserves the proposed repair.",
+    "reports/harness/sandbox-preflight/runs/<run-id>/": "Separate runtime-readiness receipts and Podman inspection logs. These are not repair attempts or proof of container isolation.",
     "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open this file.",
     "events.jsonl (inside a run folder)": "A chronological diary, with one event per line: a command started, finished, or a test result was recorded.",
     "*.stdout / *.stderr (inside a run folder)": "Command output and diagnostics. Usually only needed to investigate a problem. baseline and seed refer to the original and deliberately broken code; candidate refers to the proposed repair. scope checks allowed files; metadata checks file operations such as renaming or deleting; apply records applying a patch. go-version records the compiler version.",
@@ -151,13 +154,43 @@ Fault introduced: {escape(run.get('fault_injected', 'not recorded'))}.</p>
 </article>'''
 
 
+def render_preflights(reports):
+    rows = []
+    for path in (reports / "sandbox-preflight/runs").glob("*/result.json"):
+        try:
+            result = json.loads(path.read_text())
+            if not isinstance(result, dict):
+                raise ValueError("Receipt must be an object")
+        except (ValueError, OSError):
+            result = {}
+        outcome = result.get("outcome")
+        if outcome == "runtime_ready":
+            summary = "Podman reports the required features. Container isolation still needs to be demonstrated."
+        elif outcome == "blocked":
+            summary = "We couldn't check the required runtime. Container execution remains blocked."
+        else:
+            summary = "No completed readiness decision is available. Inspect the receipt before continuing."
+        link = escape(path.relative_to(reports).as_posix())
+        rows.append((str(result.get("started_at", "")), f'''<article class="run">
+<p><strong>{escape(summary)}</strong></p>
+<p>{escape(result.get('reason', 'No final explanation recorded'))}</p>
+<p>No candidate code or container was run by this readiness check. A runtime feature report does not prove that access is denied or limits are enforced.</p>
+<p class="meta">Started: {escape(result.get('started_at', 'not recorded'))}.
+<a href="{link}">Readiness receipt</a></p></article>'''))
+    return "".join(row for _, row in sorted(rows)) or '<p>No sandbox readiness checks recorded.</p>'
+
+
 def render(reports, progress):
     if progress["status"] not in STATES or progress["stage"] not in STAGES:
         raise ValueError("Unknown progress stage or status")
-    milestones = "".join(
-        f'<li><strong>{stage}</strong><span>{escape(STATE_LABELS[progress["status"]]) if stage == progress["stage"] else "Later"}</span></li>'
-        for stage in STAGES
-    )
+    milestones = []
+    for index, stage in enumerate(STAGES):
+        current = stage == progress["stage"]
+        label = STATE_LABELS[progress["status"]] if current else (
+            "Earlier stage" if index < STAGES.index(progress["stage"]) else "Later")
+        marker = ' aria-current="step"' if current else ""
+        milestones.append(f'<li{marker}><strong>{stage}</strong><span>{escape(label)}</span></li>')
+    milestones = "".join(milestones)
     rows = []
     records = []
     for path in (reports / "runs").glob("*/result.json"):
@@ -190,7 +223,7 @@ h1 {{ font-size: 2rem; margin: 0 0 8px; }} h2 {{ font-size: 1.15rem; margin-top:
 p, li {{ line-height: 1.55; }} small, .meta {{ color: var(--report-muted); font-size: .85rem; }}
 .stages {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; list-style: none; padding: 0; }}
 .stages li {{ border-top: 4px solid #8294a4; padding-top: 10px; }}
-.stages li:first-child {{ border-color: #236fba; }} .stages span {{ display: block; font-size: .8rem; }}
+.stages li[aria-current="step"] {{ border-color: #236fba; }} .stages span {{ display: block; font-size: .8rem; }}
 .review {{ border-left: 4px solid #236fba; padding: 1px 20px; background: var(--report-panel); }}
 ul {{ padding-left: 22px; }} a {{ color: var(--report-link); }} a:focus-visible {{ outline: 2px solid currentColor; }}
 .empty {{ padding: 16px; background: var(--report-panel); }}
@@ -200,14 +233,15 @@ ul {{ padding-left: 22px; }} a {{ color: var(--report-link); }} a:focus-visible 
 </style></head><body><main>
 <h1>Can we tell whether a repair works?</h1>
 <p>We’re building a tool that will let an AI try fixing a bug, check its work and bring you the change to review.</p>
-<section class="review"><h2>Right now: test the checking process</h2>
+<p><strong>Current stage:</strong> {escape(progress["stage"])}. {escape(STATE_LABELS[progress["status"]])}.</p>
+<section class="review"><h2>Prepared examples: test the checking process</h2>
 <p><strong>No AI is involved in these examples.</strong> A Python script tries prepared changes with known answers.
 We need to know it reports those answers correctly before asking an AI to supply a repair.</p>
 <p>The script copies a known version of mapbox-tui into a temporary folder. Your working source files stay untouched.</p></section>
 <p class="meta">Saved local report, generated {escape(now())}. Rebuild it to include new runs.</p>
 <ol class="stages">{milestones}</ol>
 <details><summary>How this fits into the bigger plan</summary><ol>
-<li><strong>Define, our current stage:</strong> agree the task and prove that our checking process can spot a known bug and repair.</li>
+<li><strong>Define:</strong> agree the task and prove that our checking process can spot a known bug and repair.</li>
 <li><strong>Connect:</strong> let Pi, the AI runtime, investigate and propose a repair.</li>
 <li><strong>Verify:</strong> independently check the exact change and run the wider required tests.</li>
 <li><strong>Recover:</strong> handle stopped runs and unfinished changes.</li>
@@ -226,6 +260,9 @@ They may stop before any import test runs. An unfinished check tells us nothing 
 <p>Each entry below is one run. A failed repair can be the expected answer in these demonstrations.
 A missing tool, source file or dependency means we couldn’t check the repair. A time limit means the run stopped unfinished.</p>
 {records}
+<h2>Is the container runtime ready?</h2>
+<p>This Connect checkpoint inspects the local Podman runtime, separately from the prepared repair examples. No AI is involved.</p>
+{render_preflights(reports)}
 <h2>What should I review?</h2>
 <p>{escape(progress["next"])}</p>
 <p><strong>Our discussion:</strong> {escape(STATE_LABELS[progress["status"]])}. Passing tests never mark this reviewed automatically.</p>
@@ -251,6 +288,7 @@ These timings alone don’t show improved repair ability.</p>
 <p class="meta">Progress source: {escape(progress["source"])}. Decisions updated {escape(progress["updated_at"])}.
 Run source: local runs/*/result.json. Raw records stay in reports/harness/.</p>
 <p><a href="https://github.com/adamcbrewer/mapbox-tui/issues/103">Define scope #103</a>
+and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/104">Connect scope #104</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement plan #111</a>.</p>
 </main></body></html>'''
 
