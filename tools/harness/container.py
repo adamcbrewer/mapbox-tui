@@ -65,6 +65,7 @@ class ContainerRun(Run):
                 raise ValueError("Container retains capabilities")
             if config["Annotations"]["io.podman.annotations.userns"] != "nomap":
                 raise ValueError("Container user namespace changed")
+            # Podman's outer IDs are intermediate IDs; the invoking UID/GID is 0 there.
             for mapping in (config["IDMappings"]["UidMap"], config["IDMappings"]["GidMap"]):
                 if not mapping:
                     raise ValueError("Missing user namespace mapping")

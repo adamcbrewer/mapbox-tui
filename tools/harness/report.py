@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 
 from run import HERE, REPORTS, ROOT, digest, now, write_json
 
@@ -147,12 +148,17 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed"):
+    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
+        failed = run["outcome"] == "repair_failed"
+        candidate_outcomes = ("assertion_failed", "build_failed") if failed else ("passed",)
+        candidate_exit = stages[-1].get("exit_code") if stages else None
         known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
-                 [check.get("outcome") for check in stages] == ["passed", "assertion_failed", "passed"] and
-                 stages[0].get("exit_code") == 0 and stages[2].get("exit_code") == 0 and
-                 isinstance(stages[1].get("exit_code"), int) and stages[1]["exit_code"] != 0)
+                 [check.get("outcome") for check in stages[:2]] == ["passed", "assertion_failed"] and
+                 stages[2].get("outcome") in candidate_outcomes and
+                 type(stages[0].get("exit_code")) is int and stages[0]["exit_code"] == 0 and
+                 type(stages[1].get("exit_code")) is int and stages[1]["exit_code"] != 0 and
+                 type(candidate_exit) is int and (candidate_exit != 0 if failed else candidate_exit == 0))
         if run.get("outcome") == "scripted_loop_passed":
             known = known and run.get("startup_verified") is True and run.get("tool_calls") == 6
         if run.get("outcome") == "live_repair_passed":
@@ -161,7 +167,9 @@ def render_run(path, reports, run, link_root=None, annotation=None):
                      and bool(run.get("model")) and bool(run.get("provider")))
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
-    if candidate in ("empty", "wrong") and outcome == "repair_failed":
+    expected_failure = (candidate in ("empty", "wrong") and outcome == "repair_failed" and
+                        stages[2]["outcome"] == "assertion_failed")
+    if expected_failure:
         result += " This failure is the expected answer for this example."
     if outcome == "blocked" and run.get("reason") == "Missing executable: go":
         title = "The check could not start without Go"
@@ -212,7 +220,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
     if run.get("workflow") == "pi-live-tools":
         title = "Pi: model repair attempt"
-        if outcome == "blocked":
+        if outcome in ("blocked", "invalid_input"):
             title = "Pi: subscription request blocked"
             result = run.get("reason", result)
         tried = "Let the configured subscription model investigate and propose one edit using the four controlled tools."
@@ -220,7 +228,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         purpose = "Trace model decisions through enforced tools to an actual check. One passing fixture does not prove broader repair ability."
         usage = run.get("model_usage", [])
         output = sum(item.get("usage", {}).get("output", 0) for item in usage if isinstance(item, dict))
-        model = f'{escape(run.get("provider", "unknown"))} / {escape(run.get("model", "unknown"))}'
+        model = f'{escape(run.get("provider") or "unknown")} / {escape(run.get("model") or "not selected")}'
         identity = (f'<p class="meta"><output><strong>Model:</strong> {model}. Subscription. '
                     f'{run.get("model_requests", 0)} model request attempts.</output></p>')
         summary = run.get("token_summary")
@@ -256,7 +264,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         else:
             identity += '<p class="model-usage"><output>Token usage: not reported. Missing usage does not mean zero tokens.</output></p>'
         tokens += '<p>Actual subscription charge is not reported.</p>'
-    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed") or (candidate in ("wrong", "empty") and outcome == "repair_failed")
+    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed") or expected_failure
     labels = {"cancelled": "Run cancelled", "timeout": "Time limit reached", "incomplete": "Run unfinished",
               "repair_failed": "Repair check failed", "blocked": "Check could not run", "invalid_input": "Invalid request",
               "budget_exhausted": "Limit reached", "calibration_failed": "Startup checks failed"}
@@ -627,17 +635,7 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 </body></html>'''
 
 
-def save_stage(reports, progress, source, *, source_ref, restored=False):
-    if progress["stage"] not in STAGES or progress["status"] not in STATES:
-        raise ValueError("Unknown progress stage or status")
-    name = progress["stage"].lower()
-    destination = reports / "snapshots" / name
-    if restored and destination.exists():
-        raise ValueError(f"The {name} snapshot already exists; use --refresh-saved to render it again")
-    receipts = [path for folder in RUN_FOLDERS
-                for path in sorted((source / folder).glob("*/result.json"))]
-    if restored and not receipts:
-        raise ValueError("Restoration needs original evidence; no saved receipts were found")
+def capture_stage(destination, progress, source, receipts, source_ref, restored):
     destination.mkdir(parents=True, exist_ok=True)
     for path in receipts:
         relative = path.parent.relative_to(source)
@@ -651,13 +649,44 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
                 "progress_sha256": digest((destination / "progress.json").read_bytes()),
                 "receipt_sha256": {path.relative_to(destination).as_posix(): digest(path.read_bytes()) for path in saved_receipts}}
     write_json(destination / "snapshot.json", snapshot)
+
+
+def save_stage(reports, progress, source, *, source_ref, restored=False):
+    if progress["stage"] not in STAGES or progress["status"] not in STATES:
+        raise ValueError("Unknown progress stage or status")
+    name = progress["stage"].lower()
+    destination = reports / "snapshots" / name
+    if restored and destination.exists():
+        raise ValueError(f"The {name} snapshot already exists; use --refresh-saved to render it again")
+    receipts = [path for folder in RUN_FOLDERS
+                for path in sorted((source / folder).glob("*/result.json"))]
+    if restored and not receipts:
+        raise ValueError("Restoration needs original evidence; no saved receipts were found")
+    if restored:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f".{name}-", dir=destination.parent) as temporary:
+            staging = Path(temporary)
+            capture_stage(staging, progress, source, receipts, source_ref, restored)
+            staging.rename(destination)
+    else:
+        capture_stage(destination, progress, source, receipts, source_ref, restored)
     return name
 
 
 def render_saved(reports, name):
     source = reports / "snapshots" / name
-    progress = json.loads((source / "progress.json").read_text())
+    progress_bytes = (source / "progress.json").read_bytes()
     snapshot = json.loads((source / "snapshot.json").read_text())
+    if digest(progress_bytes) != snapshot["progress_sha256"]:
+        raise ValueError(f"Saved {name} progress does not match its snapshot hash")
+    receipts = {path.relative_to(source).as_posix(): path for folder in RUN_FOLDERS
+                for path in (source / folder).glob("*/result.json")}
+    if receipts.keys() != snapshot["receipt_sha256"].keys():
+        raise ValueError(f"Saved {name} receipt inventory does not match its snapshot")
+    for relative, path in receipts.items():
+        if digest(path.read_bytes()) != snapshot["receipt_sha256"][relative]:
+            raise ValueError(f"Saved {name} receipt does not match its snapshot hash: {relative}")
+    progress = json.loads(progress_bytes)
     target = reports / f"{name}.html"
     target.write_text(render(source, progress, link_root=reports, snapshot=snapshot))
     return target

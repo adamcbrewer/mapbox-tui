@@ -180,6 +180,81 @@ class StageReportTests(unittest.TestCase):
             report.save_stage(self.reports, dict(self.progress, stage="Define"), source,
                               source_ref="a" * 40, restored=True)
 
+    def test_failed_restoration_leaves_no_partial_snapshot_and_can_be_retried(self):
+        source = self.source("restore-retry")
+        progress = dict(self.progress, stage="Define")
+        copytree = shutil.copytree
+
+        def interrupted_copy(*args, **kwargs):
+            copytree(*args, **kwargs)
+            raise OSError("Copy interrupted after writing evidence")
+
+        with patch("report.shutil.copytree", side_effect=interrupted_copy), self.assertRaises(OSError):
+            report.save_stage(self.reports, progress, source, source_ref="a" * 40, restored=True)
+        self.assertFalse((self.reports / "snapshots/define").exists())
+        self.assertEqual(list((self.reports / "snapshots").iterdir()), [])
+        report.save_stage(self.reports, progress, source, source_ref="a" * 40, restored=True)
+        self.assertIn("Historical checkpoint", report.render_saved(self.reports, "define").read_text())
+
+    def test_saved_hash_and_inventory_mismatches_do_not_overwrite_existing_report(self):
+        for changed in ("progress", "receipt", "missing", "extra"):
+            with self.subTest(changed=changed):
+                reports = self.root / changed
+                source = self.source("snapshot-" + changed)
+                report.save_stage(reports, dict(self.progress, stage="Define"), source, source_ref="a" * 40, restored=True)
+                page = report.render_saved(reports, "define")
+                original = page.read_bytes()
+                snapshot = reports / "snapshots/define"
+                receipt = next(snapshot.glob("runs/*/result.json"))
+                if changed == "progress":
+                    (snapshot / "progress.json").write_text(json.dumps(dict(self.progress, stage="Define", status="reviewed")))
+                elif changed == "receipt":
+                    receipt.write_text(json.dumps({"schema_version": 1, "outcome": "calibration_passed", "checks": []}))
+                elif changed == "missing":
+                    receipt.unlink()
+                else:
+                    extra = snapshot / "runs/extra/result.json"
+                    extra.parent.mkdir()
+                    extra.write_text("{}")
+                with self.assertRaisesRegex(ValueError, "snapshot"):
+                    report.render_saved(reports, "define")
+                self.assertEqual(page.read_bytes(), original)
+
+    def test_expected_repair_failures_require_all_three_consistent_checks(self):
+        source = self.source("expected-failure")
+        path = source / "runs/expected-failure/result.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(outcome="repair_failed", candidate="wrong")
+        receipt["checks"][-1].update(outcome="assertion_failed", exit_code=1)
+        for candidate in ("wrong", "empty"):
+            receipt["candidate"] = candidate
+            self.assertIn("As expected", report.render_run(path, source, receipt))
+            checks = receipt["checks"]
+            invalid_cases = [[], checks[:-1], list(reversed(checks)), checks + checks[-1:],
+                             [dict(check, exit_code=0) for check in checks],
+                             [*checks[:-1], dict(checks[-1], outcome="passed", exit_code=0)],
+                             [*checks[:-1], dict(checks[-1], exit_code=None)]]
+            for invalid in invalid_cases:
+                with self.subTest(candidate=candidate, checks=invalid):
+                    page = report.render_run(path, source, dict(receipt, checks=invalid))
+                    self.assertNotIn("As expected", page)
+                    self.assertNotIn("failure is the expected answer", page)
+                    self.assertIn("Unreadable record", page)
+
+    def test_build_failure_remains_a_failed_repair_without_expected_failure_badge(self):
+        source = self.source("build-failed-repair")
+        path = source / "runs/build-failed-repair/result.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(outcome="repair_failed")
+        receipt["checks"][-1].update(outcome="build_failed", exit_code=1)
+        for candidate in ("model", "wrong", "empty"):
+            with self.subTest(candidate=candidate):
+                page = report.render_run(path, source, dict(receipt, candidate=candidate))
+                self.assertIn("Repair check failed", page)
+                self.assertIn("code could not be built", page)
+                self.assertNotIn("Unreadable record", page)
+                self.assertNotIn("As expected", page)
+
     def test_style_refresh_does_not_recapture_progress_or_evidence(self):
         _, _ = self.restore_define()
         snapshot = self.reports / "snapshots/define"

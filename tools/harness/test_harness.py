@@ -427,7 +427,11 @@ class CalibrationTests(unittest.TestCase):
 
     def test_report_explains_expected_failure_without_disguising_a_blocker(self):
         path = self.root / "runs/1234567890/result.json"
-        run = {"schema_version": 1, "candidate": "wrong", "outcome": "repair_failed", "checks": []}
+        run = {"schema_version": 1, "candidate": "wrong", "outcome": "repair_failed", "checks": [
+            {"id": "baseline", "outcome": "passed", "exit_code": 0},
+            {"id": "seed", "outcome": "assertion_failed", "exit_code": 1},
+            {"id": "candidate", "outcome": "assertion_failed", "exit_code": 1},
+        ]}
         page = render_run(path, self.root, run)
         self.assertIn("This failure is the expected answer", page)
         self.assertIn("did not pass this check", page)
@@ -467,7 +471,11 @@ class CalibrationTests(unittest.TestCase):
     def test_malformed_check_fields_do_not_hide_other_runs(self):
         progress = json.loads((HERE / "progress.json").read_text())
         valid = Run(self.root)
-        valid.result.update(candidate="wrong", outcome="repair_failed")
+        valid.result.update(candidate="wrong", outcome="repair_failed", checks=[
+            {"id": "baseline", "outcome": "passed", "exit_code": 0},
+            {"id": "seed", "outcome": "assertion_failed", "exit_code": 1},
+            {"id": "candidate", "outcome": "assertion_failed", "exit_code": 1},
+        ])
         runner.write_json(valid.path / "result.json", valid.result)
         for field in ("id", "outcome"):
             for value in ([], {}, None, 3):

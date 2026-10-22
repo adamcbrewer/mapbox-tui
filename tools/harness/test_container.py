@@ -109,6 +109,16 @@ class ContainerTests(unittest.TestCase):
         data[0]["EffectiveCaps"] = None
         self.run.validate_container(data, self.checkout)
 
+    def test_rootless_mappings_use_intermediate_ids_and_exclude_zero(self):
+        for kind in ("UidMap", "GidMap"):
+            data = self.description(self.checkout)
+            data[0]["HostConfig"]["IDMappings"][kind] = ["0:1000:1"]
+            self.run.validate_container(data, self.checkout)
+            for mapping in (["0:0:1"], ["0:1:10", "10:0:1"], ["0:-1:2"]):
+                data[0]["HostConfig"]["IDMappings"][kind] = mapping
+                with self.subTest(kind=kind, mapping=mapping), self.assertRaises(Stop):
+                    self.run.validate_container(data, self.checkout)
+
     def test_missing_log_configuration_prevents_container_start(self):
         data = self.description(self.checkout)
         del data[0]["HostConfig"]["LogConfig"]

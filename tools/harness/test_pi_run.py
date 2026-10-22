@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pi_run
 from pi_run import MAX_CALLS, Tools, pi_loop
+from report import render_run
 from run import HERE, Run, Stop, digest
 
 
@@ -168,13 +169,24 @@ class PiToolTests(unittest.TestCase):
         self.assertIsNone(self.run.result["model_cost_usd"])
 
     def test_invalid_live_config_does_not_start_sandbox_or_pi(self):
-        with patch.object(pi_run, "ContainerRun", return_value=self.run), \
-                patch.object(pi_run, "load_live_config", side_effect=Stop("invalid_input", "Bad limits")), \
-                patch.object(pi_run, "preflight") as preflight, patch.object(pi_run, "pi_loop") as loop, \
-                patch.object(sys, "argv", ["pi_run.py", "--image", "sha256:" + "a" * 64, "--live"]):
-            self.assertEqual(pi_run.main(), 1)
-        preflight.assert_not_called()
-        loop.assert_not_called()
+        for failure in (Stop("invalid_input", "Bad limits"), FileNotFoundError("Missing config"),
+                        json.JSONDecodeError("Malformed config", "{", 0)):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(pi_run, "ContainerRun", return_value=self.run), \
+                    patch.object(pi_run, "load_live_config", side_effect=failure), \
+                    patch.object(pi_run, "preflight") as preflight, patch.object(pi_run, "pi_loop") as loop, \
+                    patch.object(sys, "argv", ["pi_run.py", "--image", "sha256:" + "a" * 64, "--live"]):
+                self.assertEqual(pi_run.main(), 1)
+            preflight.assert_not_called()
+            loop.assert_not_called()
+            receipt = json.loads((self.run.path / "result.json").read_text())
+            self.assertEqual(receipt["workflow"], "pi-live-tools")
+            self.assertEqual(receipt["candidate"], "model")
+            self.assertIsNone(receipt["model"])
+            self.assertEqual(receipt["model_requests"], 0)
+            page = render_run(self.run.path / "result.json", self.run.path.parent.parent, receipt)
+            self.assertIn("Pi: subscription request blocked", page)
+            self.assertNotIn("prepared ineffective repair", page)
 
     def test_live_configuration_only_allows_openai_models(self):
         config = {"provider": "openai", "model": "locally-chosen", "auth": "subscription",

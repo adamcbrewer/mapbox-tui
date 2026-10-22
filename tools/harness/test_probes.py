@@ -38,9 +38,28 @@ class ProbeTests(unittest.TestCase):
                 receipt = next(reports.glob("sandbox-probes/runs/*/result.json"))
                 result = json.loads(receipt.read_text())
                 self.assertEqual(result["probe_confirmed"], ready and removed)
+                self.assertFalse(result["isolation_demonstrated"])
                 page = render_probes(reports)
                 self.assertEqual("its container was removed" in page, ready and removed)
                 self.assertEqual(result["human_acceptance"], "pending")
+
+    def test_isolation_is_demonstrated_only_by_a_successful_boundary_probe(self):
+        for passed in (True, False):
+            reports = self.root / str(passed)
+
+            def boundary(run, _checkout):
+                if not passed:
+                    raise Stop("blocked", "Probe failed")
+                run.result.update(outcome="boundary_passed", boundary_probes_passed=True)
+
+            with self.subTest(passed=passed), patch("probes.REPORTS", reports), \
+                    patch("sys.argv", ["probes.py", "--image", self.image, "--phase", "boundary"]), \
+                    patch("probes.preflight"), patch.object(ContainerRun, "prepare"), \
+                    patch("probes.boundary_probe", side_effect=boundary):
+                self.assertEqual(probes.main(), 0 if passed else 1)
+            receipt = json.loads(next(reports.glob("sandbox-probes/runs/*/result.json")).read_text())
+            self.assertEqual(receipt["isolation_demonstrated"], passed)
+            self.assertEqual(receipt["probe_confirmed"], passed)
 
     def test_report_rejects_inconsistent_probe_receipts_and_escapes_failures(self):
         directory = self.root / "sandbox-probes/runs/example"

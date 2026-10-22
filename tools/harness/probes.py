@@ -99,6 +99,7 @@ def main():
                     bool(run.result["containers"]) and all(item["removed"] for item in run.result["containers"]))
             else:
                 run.result["probe_confirmed"] = run.result["outcome"] == "boundary_passed"
+                run.result["isolation_demonstrated"] = run.result["probe_confirmed"]
             run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
             write_json(run.path / "result.json", run.result)
             run.event("run_finished", outcome=run.result["outcome"])

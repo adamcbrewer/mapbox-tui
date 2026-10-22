@@ -327,21 +327,23 @@ def main():
     mode.add_argument("--live", action="store_true", help="Use the subscription and limits in pi/config.local.json")
     args = parser.parse_args()
     run = ContainerRun(REPORTS / "pi", args.image)
-    run.result.update(workflow="pi-scripted-tools", candidate=args.demo, pi_version="1.2.0",
-                      model="scripted (no AI)", startup_verified=False, human_acceptance="pending",
+    run.result.update(workflow="pi-live-tools" if args.live else "pi-scripted-tools",
+                      candidate="model" if args.live else args.demo, pi_version="1.2.0",
+                      model=None if args.live else "scripted (no AI)", startup_verified=False, human_acceptance="pending",
                       budgets={"tool_calls": MAX_CALLS, "repair_attempts": 1, "deadline_seconds": 600,
                                "model_requests": 0},
                       source_sha256={str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in
                                      [Path(__file__), HERE / "pi/loop.mjs", HERE / "pi/live.mjs",
                                       HERE / "pi/setup.mjs", HERE / "pi/cli.mjs", HERE / "pi/package-lock.json"]})
+    if args.live:
+        run.result.update(candidate_source="AI", model_cost_usd=None, model_requests=0,
+                          model_requests_dispatched=0, model_usage=[])
+        run.result["budgets"]["model_requests"] = None
     previous = {signum: signal.signal(signum, run.cancel) for signum in (signal.SIGINT, signal.SIGTERM)}
     try:
         config = load_live_config() if args.live else None
         if config:
-            run.result.update(workflow="pi-live-tools", candidate="model", candidate_source="AI",
-                              provider=config["provider"], model=config["model"], auth=config["auth"],
-                              model_cost_usd=None, model_requests=0, model_requests_dispatched=0,
-                              reasoning="low", model_usage=[])
+            run.result.update(provider=config["provider"], model=config["model"], auth=config["auth"], reasoning="low")
             run.result["budgets"].update(model_requests=config["maxModelRequests"],
                                          output_tokens_per_request=config["maxOutputTokensPerRequest"], retries=0)
         write_json(run.path / "result.json", run.result)
