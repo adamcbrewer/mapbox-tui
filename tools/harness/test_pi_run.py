@@ -1,0 +1,130 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+import pi_run
+from pi_run import MAX_CALLS, Tools, pi_loop
+from run import HERE, Run, Stop, digest
+
+
+class PiToolTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.checkout = self.root / "copy"
+        (self.checkout / "go").mkdir(parents=True)
+        for file, content in (("import.go", "one\n"), ("import_test.go", "protected\n"),
+                              ("import_edge_test.go", "protected\n")):
+            (self.checkout / "go" / file).write_text(content)
+        self.run = Run(self.root / "reports")
+        self.run.task = json.loads((HERE / "task.json").read_text())
+        self.run.task["source_sha256"] = {file: digest((self.checkout / file).read_bytes())
+                                          for file in self.run.task["source_sha256"]}
+        self.tools = Tools(self.run, self.checkout)
+        self.edit = {"file": "go/import.go", "operation_id": "one", "expected_sha256": digest(b"one\n"),
+                     "old": "one", "new": "two"}
+
+    def test_scope_and_symlink_escape(self):
+        for file in ("/etc/passwd", "../go/import.go", "go/../go/import.go", "go/new.go"):
+            self.assertEqual(self.tools.dispatch("harness_read", {"file": file})["outcome"], "rejected")
+        path = self.checkout / "go/import.go"
+        path.unlink()
+        path.symlink_to(HERE / "task.json")
+        self.assertEqual(self.tools.dispatch("harness_read", {"file": "go/import.go"})["outcome"], "rejected")
+        self.assertEqual(self.tools.dispatch("harness_edit", self.edit)["outcome"], "rejected")
+
+    def test_hash_edit_replay_conflict_and_single_attempt(self):
+        self.assertEqual(self.tools.dispatch("harness_edit", {**self.edit, "expected_sha256": "stale"})["outcome"], "rejected")
+        self.assertEqual(self.tools.dispatch("harness_edit", self.edit)["outcome"], "ok")
+        self.assertTrue(self.tools.dispatch("harness_edit", self.edit)["replayed"])
+        for invalid in ({**self.edit, "new": "three"}, {**self.edit, "operation_id": "two"},
+                        {**self.edit, "file": "go/import_test.go"}):
+            self.assertEqual(self.tools.dispatch("harness_edit", invalid)["outcome"], "rejected")
+        self.assertEqual((self.checkout / "go/import.go").read_text(), "two\n")
+        self.assertIn("+two", (self.run.path / "candidate.patch").read_text())
+
+    def test_unknown_tools_and_arbitrary_checks_are_rejected_without_execution(self):
+        with patch.object(self.run, "command") as command:
+            for name, args in (("bash", {"command": "echo unsafe"}),
+                               ("harness_check", {"preset": "go test ./..."}),
+                               ("harness_read", {"file": "go/import.go", "extra": True})):
+                self.assertEqual(self.tools.dispatch(name, args)["outcome"], "rejected")
+            command.assert_not_called()
+
+    def test_read_search_and_call_deadline_budgets(self):
+        (self.checkout / "go/import.go").write_text("one\n" * 6000)
+        result = self.tools.dispatch("harness_read", {"file": "go/import.go"})
+        self.assertTrue(result["truncated"])
+        self.assertEqual(len(result["text"]), 16384)
+        result = self.tools.dispatch("harness_search", {"file": "go/import.go", "text": "one"})
+        self.assertEqual(len(result["matches"]), 20)
+        self.assertTrue(result["truncated"])
+        self.tools.calls = MAX_CALLS
+        with self.assertRaises(Stop) as error:
+            self.tools.dispatch("harness_read", {"file": "go/import.go"})
+        self.assertEqual(error.exception.outcome, "budget_exhausted")
+        self.tools.calls = 0
+        self.run.deadline = time.monotonic() - 1
+        with self.assertRaises(Stop) as error:
+            self.tools.dispatch("harness_read", {"file": "go/import.go"})
+        self.assertEqual(error.exception.outcome, "timeout")
+
+    def test_protected_test_change_prevents_check(self):
+        (self.checkout / "go/import_test.go").write_text("tampered")
+        with patch.object(self.run, "command") as command, self.assertRaises(Stop):
+            self.tools.dispatch("harness_check", {"preset": "xml-leading-bom"})
+        command.assert_not_called()
+
+    def fake_node(self):
+        binary = self.root / "node"
+        binary.write_text(f"#!{sys.executable}\nimport os, time\nfrom pathlib import Path\n"
+                          f"Path({str(self.root / 'pid')!r}).write_text(str(os.getpid()))\ntime.sleep(30)\n")
+        binary.chmod(0o755)
+        return patch.dict(os.environ, {"PATH": str(self.root)})
+
+    def assert_child_removed(self):
+        pid = int((self.root / "pid").read_text())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    def test_timeout_removes_waiting_pi_process(self):
+        self.run.deadline = time.monotonic() + 0.3
+        with self.fake_node(), self.assertRaises(Stop) as error:
+            pi_loop(self.run, self.tools, self.root, "good")
+        self.assertEqual(error.exception.outcome, "timeout")
+        self.assert_child_removed()
+
+    def test_cancellation_during_pi_launch_cleans_up_child(self):
+        popen = subprocess.Popen
+
+        def cancel_after_launch(*args, **kwargs):
+            process = popen(*args, **kwargs)
+            until = time.monotonic() + 2
+            while not (self.root / "pid").exists() and time.monotonic() < until:
+                time.sleep(0.01)
+            self.run.cancel_requested = True
+            return process
+
+        with self.fake_node(), patch("pi_run.subprocess.Popen", side_effect=cancel_after_launch), self.assertRaises(KeyboardInterrupt):
+            pi_loop(self.run, self.tools, self.root, "good")
+        self.assert_child_removed()
+
+    def test_failed_preflight_does_not_start_pi(self):
+        with patch.object(pi_run, "ContainerRun", return_value=self.run), \
+                patch.object(pi_run, "preflight", side_effect=Stop("blocked", "No sandbox")), \
+                patch.object(pi_run, "pi_loop") as loop, \
+                patch.object(sys, "argv", ["pi_run.py", "--image", "sha256:" + "a" * 64, "--demo", "good"]):
+            self.assertEqual(pi_run.main(), 1)
+        loop.assert_not_called()
+        self.assertFalse(self.run.result["startup_verified"])
+
+
+if __name__ == "__main__":
+    unittest.main()

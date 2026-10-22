@@ -1,9 +1,12 @@
 # Developer harness pilot
 
 Current stage: Connect ([#104](https://github.com/adamcbrewer/mapbox-tui/issues/104)).
-The approved readiness slice is committed as `ae10aa7`. The first live container
-checkpoint now passes and awaits discussion. The original repair command
-still runs trusted code on the host.
+The reviewed container and reporting slice is committed locally as `f61485f`.
+Adam asked to commit and continue. The next slice connects Pi's four controlled
+tools using prepared responses, with zero AI model calls. See the
+[Pi checkpoint and Fish commands](pi/README.md). Live model execution remains
+disabled; Adam selected his existing Codex subscription and local model choice.
+The original repair command still runs trusted code on the host.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
@@ -84,7 +87,8 @@ xdg-open reports/harness/connect.html
 
 Rebuilding Connect leaves Define unchanged. Each stage keeps its own progress,
 provenance and copied receipts/logs under `reports/harness/snapshots/<stage>/`.
-Each HTML file embeds those five evidence file types, so the drawer also works
+Each HTML file embeds the result, task, events and patches, plus Pi context and
+conversation where recorded, so the drawer also works
 when you open the HTML directly from disk or copy it elsewhere on its own.
 Copy both stage pages to keep their navigation links working. Include the
 `snapshots/` folder when you also want original-file links and the remaining logs.
@@ -249,7 +253,8 @@ measurements. `runtime_ready` is not a verified repair or human approval.
 The prerequisites follow the [Podman info documentation](https://docs.podman.io/en/latest/markdown/podman-info.1.html)
 and [rootless resource-limit documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
 We also consulted the required [npm security guidance](https://github.com/lirantal/npm-security-best-practices).
-This slice adds no package dependencies; Pi/Node installation remains later work.
+Readiness itself adds no package dependencies. Pi now has its own separate
+[developer package](pi/README.md).
 
 ## Container execution draft
 
@@ -366,7 +371,8 @@ References: [Podman create](https://docs.podman.io/en/latest/markdown/podman-cre
 [container inspection](https://docs.podman.io/en/latest/markdown/podman-container-inspect.1.html),
 [container removal](https://docs.podman.io/en/latest/markdown/podman-rm.1.html), and
 the required [npm security guidance](https://github.com/lirantal/npm-security-best-practices).
-No Node dependencies are introduced.
+The container implementation itself uses Python; the Pi checkpoint has its own
+separate Node dependencies.
 
 ## What gets saved
 

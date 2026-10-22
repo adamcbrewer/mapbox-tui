@@ -4,24 +4,34 @@
   "source": "GitHub issues #102, #103, #104 and #111; Adam selected #104 as next on 22 October 2026",
   "stage": "Connect",
   "status": "awaiting-review",
-  "next": "Discuss the first live container checkpoint: a working repair passed, an ineffective repair failed, dummy host-file/network access was denied, kernel limits were observed, and timeout/SIGTERM cleanup was confirmed. Review the report and examples before connecting Pi. The readiness slice is committed as ae10aa7; this container slice remains local and uncommitted.",
+  "next": "Review the prepared Pi SDK tool-loop checkpoint, then connect the live model-backed execution path. Adam completed Pi sign-in; local status recognises openai subscription auth with gpt-6.1-sol selected. Local limits are ten model requests and 4096 output tokens per request. No model requests have occurred; live execution is not enabled yet. Stored sign-in recognition does not establish successful model access or human acceptance of the next slice.",
   "decisions": [
-    "This is a developer tool, separate from the shipped map app. We will connect the AI later.",
+    "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
     "Rootless Podman now runs the trusted calibration checks in disposable containers. Pi will stay outside; Bubblewrap is not needed initially.",
-    "The container boundary has passed trusted live demonstrations. No AI-written changes or model runs have been executed; review this checkpoint before Pi integration.",
+    "The container boundary passed trusted live demonstrations. Adam then asked to commit and continue; this is recorded separately from approval of later Pi/model checkpoints.",
     "Results and reports stay on this machine, outside Git history.",
     "Pi chooses investigation and repair steps within permitted tools. Our runner enforces scope, execution, budgets, required checks and stopping conditions.",
     "Connect adds startup checks and structured tool outcomes. Recover (#106) adds a compact session handoff reconciled against files, journal and receipts.",
     "The first Connect slice inspects local Podman runtime prerequisites and records a separate readiness receipt. It does not execute candidates or demonstrate container isolation.",
     "After the readiness walkthrough, Adam asked to commit and proceed on 22 October 2026. This approves the readiness slice; later container and Pi checkpoints still need their own evidence and review.",
     "The first live checkpoint used Podman v6.1.4 and a fixed prepared image ID. Good passed, wrong failed as intended, dummy host access was denied and timeout/cancellation containers were confirmed removed. Kernel resource settings were read, not stress-tested.",
-    "The app session lacked the CPU controller while the user manager already delegated it. A transient systemd user service reports CPU, memory and pids; no sudo or global configuration change was needed."
+    "The app session lacked the CPU controller while the user manager already delegated it. A transient systemd user service reports CPU, memory and pids; no sudo or global configuration change was needed.",
+    "Adam asked to commit and continue after reviewing the container/report work. It is committed locally as f61485f; nothing has been pushed.",
+    "Adam wants provider and model selectable locally, using whichever supported subscription he has. He currently has a Codex subscription. API-key billing is not authorised as a fallback.",
+    "Pi v1.2.0 is pinned in a separate developer package, with install scripts disabled and this machine's existing seven-day npm cooldown preserved.",
+    "The first Pi slice uses prepared responses through the actual SDK and four controlled Python tools. Project checks still run in restricted rootless Podman containers. This does not test AI reasoning or establish subscription access.",
+    "Adam selected local defaults: provider openai, model gpt-6.1-sol, subscription auth, ten model requests and 4096 output tokens per request. Pi needs its own supported sign-in; Codex tokens are not copied. Live model execution stays disabled for this checkpoint.",
+    "Adam clarified that both subscription provider and exact model must be configurable for Codex or Claude. The current local Codex choice is not a hard-coded provider/model. Existing setup was verified with two catalogue models for each of openai and anthropic, using isolated temporary configuration and no model calls. Live execution remains a later checkpoint.",
+    "The first login attempt failed before browser authorisation because the wrapper omitted the installation ID callback. Reproduced with the real SDK, then fixed by persisting/reusing Pi's existing settings identity and passing the harness app name. Known error messages are now actionable without printing token responses. A temporary-settings check reached the browser authorisation prompt and cancelled cleanly; real account sign-in remains for Adam.",
+    "Adam confirmed sign-in. The local setup status reports signedIn true, provider openai, model gpt-6.1-sol and subscription auth. Zero model calls have been made; live model execution remains disabled. No live model access or checkpoint acceptance is inferred from this sign-in status.",
+    "Adam asked to commit the prepared Pi tool wiring, subscription setup and reporting changes, then explain where each part lives. This authorises the commit; it does not close #104 or mark a live model run complete."
   ],
   "blockers": [],
   "questions": [
-    "Why does reporting available controllers differ from observing their applied kernel limits?",
-    "Why must timeout or cancellation confirm container removal separately from stopping the Podman client?",
-    "Which decisions should Pi make, and which restrictions must our runner enforce?"
+    "Which parts did the prepared Pi walkthrough prove, and which still need a live model run?",
+    "Why must the runner reject an out-of-scope request even when it comes through Pi?",
+    "Why does repeating the same edit operation return its earlier result rather than change the file again?",
+    "How do a repair passing its check, subscription access and human approval differ?"
   ]
 }

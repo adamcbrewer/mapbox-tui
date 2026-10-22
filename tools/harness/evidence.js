@@ -12,6 +12,8 @@
     'events.jsonl': 'The recorded sequence of events, shown in order.',
     'candidate.patch': 'The proposed repair. Added lines are green; removed lines are amber.',
     'seed.patch': 'The change that deliberately planted the bug for this experiment.',
+    'context.json': 'The exact prompt, permitted tool schemas and scripted-loop settings.',
+    'pi-session.json': 'Prepared Pi requests and runner replies. No AI model generated this conversation.',
   };
   let activeRun;
   let trigger;

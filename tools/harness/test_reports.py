@@ -36,6 +36,33 @@ class StageReportTests(unittest.TestCase):
         report.save_stage(self.reports, progress, source, source_ref="a" * 40, restored=True)
         return source, report.render_saved(self.reports, "define")
 
+    def test_pi_receipts_keep_prepared_responses_distinct_and_embed_context(self):
+        source = self.source("connect-example")
+        directory = source / "pi/runs/scripted"
+        directory.mkdir(parents=True)
+        receipt = json.loads((source / "runs/connect-example/result.json").read_text())
+        receipt.update(workflow="pi-scripted-tools", outcome="scripted_loop_passed", startup_verified=True, tool_calls=6)
+        (directory / "result.json").write_text(json.dumps(receipt))
+        (directory / "context.json").write_text('{"prompt":"Prepared only"}')
+        (directory / "pi-session.json").write_text('{"modelCalls":0}')
+        report.save_stage(self.reports, self.progress, source, source_ref="b" * 40)
+        page = report.render_saved(self.reports, "connect").read_text()
+        self.assertIn("Pi tools: prepared working repair", page)
+        self.assertIn("No AI model ran.", page)
+        self.assertIn("Prepared only", page)
+        self.assertIn('<option value="pi-session.json">Pi conversation</option>', page)
+        self.assertTrue((self.reports / "snapshots/connect/pi/runs/scripted/context.json").is_file())
+        cancelled = source / "pi/runs/cancelled"
+        cancelled.mkdir()
+        (cancelled / "result.json").write_text(json.dumps({**receipt, "outcome": "cancelled"}))
+        page = report.render(source, self.progress)
+        self.assertIn("Pi tools: interrupted run", page)
+        self.assertIn("The real Pi tool loop completed using prepared responses.", page)
+        receipt["checks"].pop()
+        (directory / "result.json").write_text(json.dumps(receipt))
+        result = report.render_run(directory / "result.json", source, receipt)
+        self.assertNotIn("As expected", result)
+
     def test_connect_refresh_preserves_define_page_and_saved_inputs(self):
         _, page = self.restore_define()
         originals = {path: path.read_bytes() for path in self.reports.rglob("*") if path.is_file()}

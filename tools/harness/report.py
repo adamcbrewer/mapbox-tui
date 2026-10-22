@@ -9,7 +9,8 @@ from run import HERE, REPORTS, ROOT, digest, now, write_json
 
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
-EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch")
+EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json")
+RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs")
 
 
 def escape(value):
@@ -39,6 +40,7 @@ FAULT_EXAMPLES = {
 }
 OUTCOMES = {
     "calibration_passed": "The proposed repair passed this check.",
+    "scripted_loop_passed": "The real Pi tool loop completed using prepared responses. No AI model ran.",
     "repair_failed": "The proposed repair did not pass this check.",
     "calibration_failed": "The setup did not produce the expected working and broken examples.",
     "blocked": "We couldn’t complete the checks. This does not tell us whether the repair works.",
@@ -46,10 +48,11 @@ OUTCOMES = {
     "timeout": "The run reached its time limit before finishing.",
     "cancelled": "The run was stopped before finishing.",
     "incomplete": "No final result was recorded. The run may still be working or may have stopped unexpectedly.",
+    "budget_exhausted": "The tool-call limit was reached. This does not count as a completed repair.",
 }
 GLOSSARY = {
     "Harness": "The software around the AI that controls the task, tools, checks and saved evidence.",
-    "Model / agent / Pi": "The model is the AI. An agent uses a model and tools to attempt a task. Pi will provide that tool-using loop later; it is not connected here yet.",
+    "Model / agent / Pi": "The model is the AI. An agent uses a model and tools to attempt a task. Pi supplies that loop. Prepared responses can test its wiring without calling a model.",
     "Checker / verifier": "Code that runs required checks and records their results. It does not understand or approve the code like a person.",
     "Calibration": "Trying examples with known answers to see whether our checking process reports them correctly.",
     "Baseline": "The starting code used for comparison. Here it works; a real repair task may start with broken code.",
@@ -69,6 +72,9 @@ FILE_GUIDE = {
     "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. With an immutable prepared image ID, it can check a trusted repair in containers. No host execution fallback.",
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
+    "tools/harness/pi_run.py": "Exercises Pi's four controlled tools with prepared responses. Python owns the disposable source, limits and sandboxed checks; no model call is enabled yet.",
+    "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
+    "context.json / pi-session.json": "The exact prompt, tool definitions and prepared Pi conversation. These demonstrate tool wiring, not AI reasoning or subscription access.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
     "tools/harness/fixtures/*.patch": "The deliberate bug and prepared example repairs.",
     "tools/harness/report.py": "Builds this HTML page from saved records. It does not run tests.",
@@ -100,7 +106,7 @@ def history(rows, label):
 
 def embedded_evidence(reports, link_root=None):
     evidence = {}
-    for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs"):
+    for folder in RUN_FOLDERS:
         for receipt in sorted((reports / folder).glob("*/result.json")):
             files = {}
             for name in EVIDENCE_FILES:
@@ -140,12 +146,14 @@ def render_run(path, reports, run, link_root=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    if known and run.get("outcome") == "calibration_passed":
+    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
                  [check.get("outcome") for check in stages] == ["passed", "assertion_failed", "passed"] and
                  stages[0].get("exit_code") == 0 and stages[2].get("exit_code") == 0 and
                  isinstance(stages[1].get("exit_code"), int) and stages[1]["exit_code"] != 0)
+        if run.get("outcome") == "scripted_loop_passed":
+            known = known and run.get("startup_verified") is True and run.get("tool_calls") == 6
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
     if candidate in ("empty", "wrong") and outcome == "repair_failed":
@@ -185,7 +193,15 @@ def render_run(path, reports, run, link_root=None):
         execution = (f'<p><strong>Execution:</strong> requested rootless Podman with image <code>{escape(run.get("image"))}</code>.</p>'
                      f'<p>{escape(cleanup)} '
                      'A passing repair check does not establish the full isolation boundary. Review the separate sandbox demonstrations below.</p>')
-    matched = outcome == "calibration_passed" or (candidate in ("wrong", "empty") and outcome == "repair_failed")
+    if run.get("workflow") == "pi-scripted-tools":
+        title = "Pi tools: prepared working repair" if candidate == "good" else "Pi tools: prepared ineffective repair"
+        tried = "Use the real Pi SDK to read/search, reject a host-file read, edit once, replay that edit and request the approved test."
+        expected = "A working repair passes; an ineffective repair fails. Both must refuse the host-file read and clean up containers."
+        purpose = "Check tool wiring before asking an AI to choose actions. The responses and repairs are prepared, with zero model calls."
+        if outcome in ("cancelled", "timeout"):
+            title = "Pi tools: interrupted run"
+            expected = "An interrupted check is unfinished. Inspect container cleanup and the separate Pi-process cancellation evidence."
+    matched = outcome in ("calibration_passed", "scripted_loop_passed") or (candidate in ("wrong", "empty") and outcome == "repair_failed")
     label = "As expected" if matched else "Needs inspection"
     tone = "pass" if matched else "attention"
     mode = "Container requested" if run.get("execution_mode") == "rootless-podman" else "Host runner"
@@ -322,6 +338,28 @@ def render(reports, progress, *, link_root=None, snapshot=None):
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
     items = lambda values: "".join(f"<li>{escape(value)}</li>" for value in values)
     define = progress["stage"] == "Define"
+    pi_history = []
+    pi_latest = {}
+    for path in sorted((reports / "pi/runs").glob("*/result.json"), key=lambda path: path.stat().st_mtime):
+        try:
+            run = json.loads(path.read_text())
+            if not isinstance(run, dict):
+                raise ValueError("Receipt must be an object")
+        except (ValueError, OSError):
+            run = {}
+        candidate = (run.get("candidate"), run.get("outcome") if run.get("outcome") in ("cancelled", "timeout") else "attempt")
+        row = render_run(path, reports, run, link_root)
+        if candidate in pi_latest:
+            pi_history.append(pi_latest[candidate])
+        pi_latest[candidate] = row
+    pi_rows = "".join(pi_latest.values()) + history(pi_history, "Earlier Pi wiring runs")
+    pi_section = f'''<section id="pi" aria-labelledby="pi-title"><h2 id="pi-title">Can Pi use our controlled tools?</h2>
+<p>Prepared responses exercise the real SDK. No AI model, subscription usage or API billing is involved.</p>
+{pi_rows}<details><summary>What to inspect and learn</summary>
+<p>In Events, find the refused host-file read and the replayed edit. The source changes once. Compare the good and wrong test results.
+Context preserves the prompt and four tool schemas; Pi conversation preserves their requests and replies.</p>
+<p>The model will choose actions later. Our runner must enforce which actions are allowed, even when a request comes through Pi.</p>
+</details></section>''' if pi_rows and not define else ''
     saved_links = '<a href="index.html">Latest report</a>' + ''.join(
         f'<a href="{stage.lower()}.html">{stage}</a>' for stage in STAGES
         if link_root and (link_root / "snapshots" / stage.lower() / "snapshot.json").is_file())
@@ -343,6 +381,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
 {render_preflights(reports, link_root)}</details></section>'''
     guide = {key: value for key, value in FILE_GUIDE.items() if not define or key not in (
         "tools/harness/sandbox.py", "tools/harness/container.py", "tools/harness/probes.py",
+        "tools/harness/pi_run.py", "tools/harness/pi/config.local.json", "context.json / pi-session.json",
         "reports/harness/sandbox-preflight/runs/<run-id>/")}
     glossary = {key: value for key, value in GLOSSARY.items() if not define or key not in ("Podman", "Sandbox readiness")}
     intro = ('A known bug and prepared repairs test whether our checker reports the right answer. '
@@ -435,7 +474,7 @@ aside {{ position: static; border-left: 0; border-top: 1px solid var(--report-li
 </style></head><body><div class="shell">
 <a class="skip" href="#results">Skip to results</a>
 <header class="masthead"><strong>Mapbox TUI / Developer harness</strong><nav aria-label="Report sections">
-<a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if not define else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
+<a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if not define else ''}{'<a href="#pi">Pi tools</a>' if pi_section else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
 {saved_nav}
 <div class="intro"><span class="badge review-state">{escape(progress["stage"])}: {escape(STATE_LABELS[progress["status"]])}</span>
 <h1>{escape(progress['stage'])}: {'repair calibration' if define else 'controlled test execution'}</h1>
@@ -456,11 +495,12 @@ Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 Setup problems such as missing tools or dependencies mean we couldn't judge the repair.</p></details>
 </section>
 {sandbox}
+{pi_section}
 <section id="reference" aria-labelledby="reference-title"><h2 id="reference-title">Reference, when you need it</h2>
 <details id="glossary"><summary>Words explained</summary><dl>{definitions(glossary)}</dl></details>
 <details id="file-guide"><summary>Files and evidence explained</summary>
 <p><code>tools/harness/</code> contains scripts. <code>reports/harness/</code> contains local, Git-ignored evidence.
-Receipt links open the evidence drawer. Select Result, Task, Events or either patch without leaving this page.</p><dl>{definitions(guide)}</dl></details>
+Receipt links open the evidence drawer. Select the result, task, events, patches or Pi context/conversation without leaving this page.</p><dl>{definitions(guide)}</dl></details>
 <details><summary>The roadmap and recorded decisions</summary><ol>
 <li><strong>Define:</strong> agree the task and prove that our checking process can spot a known bug and repair.</li>
 <li><strong>Connect:</strong> let Pi, the AI runtime, investigate and propose a repair.</li>
@@ -495,7 +535,8 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 <p id="evidence-run" class="meta"></p><p id="evidence-description"></p>
 <div class="evidence-tools"><label for="evidence-file">File</label><select id="evidence-file">
 <option value="result.json">Result</option><option value="task.json">Task</option><option value="events.jsonl">Events</option>
-<option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option></select>
+<option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option>
+<option value="context.json">Context</option><option value="pi-session.json">Pi conversation</option></select>
 <a id="evidence-original">Open original file</a></div></div>
 <p id="evidence-status" role="status"></p><pre id="evidence-content" role="region" tabindex="0" aria-label="Evidence file contents"></pre>
 </dialog>
@@ -511,7 +552,7 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
     destination = reports / "snapshots" / name
     if restored and destination.exists():
         raise ValueError(f"The {name} snapshot already exists; use --refresh-saved to render it again")
-    receipts = [path for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs")
+    receipts = [path for folder in RUN_FOLDERS
                 for path in sorted((source / folder).glob("*/result.json"))]
     if restored and not receipts:
         raise ValueError("Restoration needs original evidence; no saved receipts were found")
@@ -520,7 +561,7 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
         relative = path.parent.relative_to(source)
         shutil.copytree(path.parent, destination / relative, symlinks=True, dirs_exist_ok=True)
     write_json(destination / "progress.json", progress)
-    saved_receipts = [path for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs")
+    saved_receipts = [path for folder in RUN_FOLDERS
                       for path in sorted((destination / folder).glob("*/result.json"))]
     snapshot = {"schema_version": 1, "stage": progress["stage"], "captured_at": now(),
                 "source_ref": source_ref, "restored": restored,
