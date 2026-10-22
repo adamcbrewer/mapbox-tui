@@ -19,6 +19,12 @@ automatic instruction loading. Retries, context compaction and cache warming
 are also off. Prepared examples follow a supplied sequence; the live model
 chooses its own calls.
 
+Python supplies the task's approved `AGENTS.md` from the pinned source snapshot.
+Its recorded hash must match before Pi starts. The effective text and hash are
+saved in Context; local or nested instruction files aren't discovered. Repository
+guidance applies within the four tools and fixed check allowed for this task.
+Earlier saved runs predate this addition and retain their original context.
+
 The scripted Pi process runs in Node with a temporary home and no credentials in
 its environment. It can access this developer package and its temporary folder;
 Node permissions block network access and starting other processes. Python
@@ -170,6 +176,10 @@ There are at most ten model requests, each with a two-minute HTTP timeout.
 The full run has a ten-minute deadline including startup, plus the existing
 cleanup allowance. These limits aren't a total-token or cash cap, and stopping
 a client doesn't guarantee a provider immediately stops generation.
+The two-minute timer covers the whole response stream, including a provider
+that sends headers and then stops replying. Container check logs are capped at
+2 MiB combined stdout/stderr; exceeding that stops the check and triggers cleanup.
+Podman's duplicate on-disk container logging is disabled.
 We also enforce 12 tool calls, one edit, one check and the 600-second deadline.
 The actual provider payload is checked before sending; saving a preference alone
 isn't proof that a provider enforces it. Model and provider retries,

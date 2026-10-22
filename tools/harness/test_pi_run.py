@@ -40,6 +40,30 @@ class PiToolTests(unittest.TestCase):
         self.assertEqual(self.tools.dispatch("harness_read", {"file": "go/import.go"})["outcome"], "rejected")
         self.assertEqual(self.tools.dispatch("harness_edit", self.edit)["outcome"], "rejected")
 
+    def test_repository_instructions_require_the_approved_file_and_hash(self):
+        path = self.checkout / "AGENTS.md"
+        content = b"Keep the importer compatible.\n"
+        task = {"instructions_sha256": {"AGENTS.md": digest(content)}}
+        path.write_bytes(content)
+        self.assertEqual(pi_run.repository_instructions(task, self.checkout),
+                         [{"file": "AGENTS.md", "sha256": digest(content), "text": content.decode()}])
+        for invalid in (b"Changed instructions", b"x" * (pi_run.LIMIT + 1), b""):
+            path.write_bytes(invalid)
+            with self.assertRaises(Stop):
+                pi_run.repository_instructions(task, self.checkout)
+        path.unlink()
+        path.symlink_to(HERE / "task.json")
+        with self.assertRaises(Stop):
+            pi_run.repository_instructions(task, self.checkout)
+        with self.assertRaises(Stop):
+            pi_run.repository_instructions({}, self.checkout)
+
+    def test_missing_approved_instructions_prevents_a_live_pi_process(self):
+        with patch("pi_run.subprocess.Popen") as process, self.assertRaises(Stop) as error:
+            pi_loop(self.run, self.tools, self.root, None, {"provider": "openai"})
+        process.assert_not_called()
+        self.assertEqual(error.exception.outcome, "invalid_input")
+
     def test_hash_edit_replay_conflict_and_single_attempt(self):
         self.assertEqual(self.tools.dispatch("harness_edit", {**self.edit, "expected_sha256": "stale"})["outcome"], "rejected")
         self.assertEqual(self.tools.dispatch("harness_edit", self.edit)["outcome"], "ok")

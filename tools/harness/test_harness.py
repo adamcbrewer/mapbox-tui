@@ -178,6 +178,100 @@ class CalibrationTests(unittest.TestCase):
                 self.assertEqual(run.result["checks"][0]["outcome"], "blocked")
                 self.assertIn("command_finished", (run.path / "events.jsonl").read_text())
 
+    def test_output_limit_bounds_stdout_and_stderr_and_stops_noisy_process(self):
+        launch = subprocess.Popen
+        for streams in ((1,), (2,), (1, 2)):
+            with self.subTest(streams=streams):
+                run = Run(self.root)
+                children = []
+
+                def tracked_launch(*args, **kwargs):
+                    process = launch(*args, **kwargs)
+                    children.append(process)
+                    return process
+
+                script = f"import os\nwhile True:\n for fd in {streams!r}: os.write(fd, b'x' * 4096)"
+                with patch("run.subprocess.Popen", side_effect=tracked_launch), self.assertRaises(Stop) as caught:
+                    run.command("noisy", [sys.executable, "-c", script], self.root, output_limit=65536)
+                self.assertEqual(caught.exception.outcome, "budget_exhausted")
+                self.assertEqual(run.result["checks"][-1]["outcome"], "budget_exhausted")
+                self.assertEqual(sum((run.path / f"noisy.{stream}").stat().st_size
+                                     for stream in ("stdout", "stderr")), 65536)
+                for fd in streams:
+                    self.assertGreater((run.path / ("noisy.stdout" if fd == 1 else "noisy.stderr")).stat().st_size, 0)
+                self.assertIsNotNone(children[0].poll())
+                self.assertTrue(children[0].stdout.closed)
+                self.assertTrue(children[0].stderr.closed)
+                event = json.loads((run.path / "events.jsonl").read_text().splitlines()[-1])
+                self.assertEqual(event["kind"], "command_finished")
+                self.assertEqual(event["check"]["outcome"], "budget_exhausted")
+
+    def test_bounded_output_preserves_both_streams_up_to_the_exact_limit(self):
+        for limit in (12, 13):
+            with self.subTest(limit=limit):
+                run = Run(self.root)
+                check, output = run.command("small", [sys.executable, "-c",
+                                                      "import os; os.write(1, b'output'); os.write(2, b'errors')"],
+                                            self.root, output_limit=limit)
+                self.assertEqual(check["outcome"], "passed")
+                self.assertEqual(output, b"output")
+                self.assertEqual((run.path / "small.stderr").read_bytes(), b"errors")
+                self.assertEqual(check["output_limit_bytes"], limit)
+
+    def test_bounded_output_keeps_partial_logs_when_the_deadline_expires(self):
+        run = Run(self.root)
+        run.deadline = time.monotonic() + 0.2
+        with self.assertRaises(Stop) as caught:
+            run.command("slow", [sys.executable, "-c",
+                                 "import os, time; os.write(1, b'output'); os.write(2, b'errors'); time.sleep(60)"],
+                        self.root, output_limit=1024)
+        self.assertEqual(caught.exception.outcome, "timeout")
+        self.assertEqual((run.path / "slow.stdout").read_bytes(), b"output")
+        self.assertEqual((run.path / "slow.stderr").read_bytes(), b"errors")
+
+    def test_output_budget_kills_descendants_even_after_the_client_exits(self):
+        run = Run(self.root)
+        pid_file = self.root / "child.pid"
+        child = ("import os, sys, time\n"
+                 "while os.getppid() == int(sys.argv[1]): time.sleep(0.001)\n"
+                 "while True: os.write(1, b'x' * 4096)")
+        script = ("import os, subprocess, sys\n"
+                  f"process = subprocess.Popen([sys.executable, '-c', {child!r}, str(os.getpid())])\n"
+                  f"open({str(pid_file)!r}, 'w').write(str(process.pid))\n")
+        try:
+            with self.assertRaises(Stop) as caught:
+                run.command("descendant", [sys.executable, "-c", script], self.root, output_limit=65536)
+            self.assertEqual(caught.exception.outcome, "budget_exhausted")
+            child_pid = int(pid_file.read_text())
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    if Path(f"/proc/{child_pid}/stat").read_text().split()[2] == "Z":
+                        break
+                except FileNotFoundError:
+                    break
+                self.assertLess(time.monotonic(), deadline, "Noisy descendant is still running")
+                time.sleep(0.01)
+        finally:
+            if pid_file.exists():
+                try:
+                    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_cancellation_interrupts_bounded_output_capture(self):
+        run = Run(self.root)
+        previous = signal.signal(signal.SIGTERM, run.cancel)
+        try:
+            with self.assertRaises(Stop) as caught:
+                run.command("cancel", [sys.executable, "-c",
+                                       "import os, signal, time; os.write(1, b'output'); os.kill(os.getppid(), signal.SIGTERM); time.sleep(60)"],
+                            self.root, output_limit=1024)
+            self.assertEqual(caught.exception.outcome, "cancelled")
+            self.assertEqual(run.result["checks"][-1]["outcome"], "cancelled")
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+
     def test_termination_stops_command_group_and_finishes_receipt(self):
         tool = self.root / "go"
         tool.write_text(f"#!{sys.executable}\n" +

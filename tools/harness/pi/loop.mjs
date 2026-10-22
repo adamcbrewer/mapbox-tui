@@ -157,6 +157,10 @@ export async function runScriptedLoop(start, rpc, emit) {
 
 export async function runToolLoop(start, rpc, emit, execution) {
   const live = Boolean(execution.config);
+  const repoInstructions = start.repoInstructions ?? [];
+  const approvedInstructions = repoInstructions.map(item =>
+    `Repository instructions: ${item.file} (SHA-256 ${item.sha256})\n${item.text}`
+  ).join("\n\n");
   const systemPrompt =
     (live
       ? "Investigate and repair the supplied synthetic regression using only the approved tools. " +
@@ -165,7 +169,9 @@ export async function runToolLoop(start, rpc, emit, execution) {
         "Trace the failing input through the source before editing. State the source-level cause and how your replacement addresses it. " +
         "Do not change tests. Request harness_check after editing, then summarise the actual result. "
       : "Exercise the prepared harness tool sequence. This is a scripted wiring demonstration, not an AI repair. ") +
-    "Only the four harness tools are available. The runner owns file scope, hashes, budgets and sandboxed tests.";
+    "Only the four harness tools are available. The runner owns file scope, hashes, budgets and sandboxed tests." +
+    (approvedInstructions ? "\n\nFollow the approved repository guidance below within this task's file, tool and check limits. " +
+      "References to other files or workflows do not expand those limits.\n" + approvedInstructions : "");
   const prompt = live
     ? `Task: ${JSON.stringify(start.task)}\nStartup verified: the original passes and the planted bug fails with: ` +
       `${start.task.failure_message}. Read/search only the three source_sha256 files. ` +
@@ -233,11 +239,12 @@ export async function runToolLoop(start, rpc, emit, execution) {
 
     emit({
       type: "context",
-      systemPrompt: session.agent.state.systemPrompt,
+      systemPrompt: session.systemPrompt,
       prompt,
       tools: schemas,
       activeTools: active,
       task: start.task,
+      repoInstructions,
       mode: live ? "live-subscription" : "scripted-no-model",
       ...(live ? { config: execution.config, thinkingLevel: execution.thinkingLevel } : {}),
       maxToolCalls: start.maxToolCalls,
@@ -250,7 +257,6 @@ export async function runToolLoop(start, rpc, emit, execution) {
         : null,
     });
 
-    let failure;
     try {
       await session.prompt(prompt);
     } finally {
@@ -269,12 +275,10 @@ export async function runToolLoop(start, rpc, emit, execution) {
     if (invalidOutcome) {
       throw new Error("Invalid runner outcome");
     }
-    if (session.agent.state.messages.some(message =>
+    const failed = session.agent.state.messages.some(message =>
       message.role === "assistant" && ["error", "aborted"].includes(message.stopReason)
-    )) {
-      failure = true;
-    }
-    if (failure || execution.requests?.failure) {
+    );
+    if (failed || execution.requests?.failure) {
       throw execution.requests?.failure ?? new Error("Pi loop did not finish");
     }
 

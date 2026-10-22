@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import sandbox
-from container import ContainerRun, ENVIRONMENT, MEMORY
+from container import ContainerRun, ENVIRONMENT, MEMORY, OUTPUT_LIMIT
 from report import render
 from run import HERE, ROOT, Run, Stop
 
@@ -36,12 +36,16 @@ class ContainerTests(unittest.TestCase):
                                 "Annotations": {"io.podman.annotations.userns": "nomap"},
                                 "IDMappings": {"UidMap": ["0:1:65536"], "GidMap": ["0:1:65536"]},
                                 "MemorySwap": MEMORY, "CpuPeriod": 100000, "CpuQuota": 200000,
-                                "PidsLimit": 256, "Devices": [], "VolumesFrom": None,
+                                "PidsLimit": 256, "Devices": [], "VolumesFrom": None, "LogConfig": {"Type": "none"},
                                 "SecurityOpt": ["no-new-privileges", "seccomp=" + str(self.profile)]},
                  "Mounts": ([{"Type": "bind", "Source": str(checkout), "Destination": "/workspace", "RW": False}]
                             if checkout else [])}]
 
-    def fake_command(self, run, name, args, cwd, env_overrides=None):
+    def fake_command(self, run, name, args, cwd, env_overrides=None, output_limit=None):
+        if name in ("baseline", "seed", "candidate", "go-version"):
+            self.assertEqual(output_limit, OUTPUT_LIMIT)
+        else:
+            self.assertIsNone(output_limit)
         self.calls.append((name, args, run.finalizing, run.cancel_requested, run.deadline))
         output, code = b"", 0
         if name.endswith("-create"):
@@ -64,7 +68,7 @@ class ContainerTests(unittest.TestCase):
                          ["candidate-create", "candidate-inspect", "candidate", "candidate-status", "candidate-remove", "candidate-absent"])
         create = self.calls[0][1]
         for flag in ("--pull=never", "--network=none", "--read-only", "--cap-drop=all", "--unsetenv-all",
-                     "--pids-limit=256", "--memory=1g", "--cpu-quota=200000", "--userns=nomap"):
+                     "--pids-limit=256", "--memory=1g", "--cpu-quota=200000", "--userns=nomap", "--log-driver=none"):
             self.assertIn(flag, create)
         self.assertEqual(create[-len(self.run.test_command):], [self.image, *self.run.test_command[1:]])
         self.assertTrue(self.run.result["candidate_executed"])
@@ -79,7 +83,7 @@ class ContainerTests(unittest.TestCase):
         data = self.description(self.checkout)
         for key, value in (("NetworkMode", "host"), ("ReadonlyRootfs", False),
                            ("Memory", 0), ("PidsLimit", -1), ("Privileged", True),
-                           ("SecurityOpt", ["seccomp=unconfined"])):
+                           ("SecurityOpt", ["seccomp=unconfined"]), ("LogConfig", {"Type": "journald"})):
             changed = copy.deepcopy(data)
             changed[0]["HostConfig"][key] = value
             with self.subTest(key=key), self.assertRaises(Stop):
@@ -104,6 +108,27 @@ class ContainerTests(unittest.TestCase):
         data[0]["BoundingCaps"] = None
         data[0]["EffectiveCaps"] = None
         self.run.validate_container(data, self.checkout)
+
+    def test_missing_log_configuration_prevents_container_start(self):
+        data = self.description(self.checkout)
+        del data[0]["HostConfig"]["LogConfig"]
+        with self.assertRaises(Stop):
+            self.run.validate_container(data, self.checkout)
+
+    def test_output_budget_exhaustion_still_removes_container(self):
+        original = self.fake_command
+
+        def excessive_output(run, name, *args, **kwargs):
+            if name == "candidate":
+                self.assertEqual(kwargs["output_limit"], OUTPUT_LIMIT)
+                raise Stop("budget_exhausted", "Command output exceeded its limit")
+            return original(run, name, *args, **kwargs)
+
+        with patch.object(Run, "command", excessive_output), self.assertRaises(Stop) as caught:
+            self.run.command("candidate", self.run.test_command, self.checkout)
+        self.assertEqual(caught.exception.outcome, "budget_exhausted")
+        self.assertTrue(self.run.result["containers"][-1]["removed"])
+        self.assertIsNone(self.run.result["candidate_executed"])
 
     def test_failed_inspection_never_starts_and_still_removes_container(self):
         with self.patched_command(), patch.object(self.run, "validate_container", side_effect=Stop("blocked", "Unsafe")):

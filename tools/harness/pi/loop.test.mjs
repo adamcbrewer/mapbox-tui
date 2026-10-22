@@ -16,6 +16,7 @@ test("real SDK uses only the four explicit tools and returns structured refusals
   globalThis.fetch = () => { throw new Error("Network must not be used"); };
   try {
     await runScriptedLoop({ task: { id: "offline-contract", expected_behaviour: "Exercise tools" }, maxToolCalls: 4,
+      repoInstructions: [{ file: "AGENTS.md", sha256: "approved-hash", text: "Preserve import compatibility." }],
       calls: [{ name: "harness_read", args: { file: "/etc/passwd" } },
         { name: "harness_check", args: { preset: "xml-leading-bom" } }] }, async request => {
       requests.push(request);
@@ -28,6 +29,10 @@ test("real SDK uses only the four explicit tools and returns structured refusals
   assert.deepEqual(requests.map(request => request.name), ["harness_read", "harness_check"]);
   assert.deepEqual(sent[0].activeTools, schemas.map(schema => schema.name).sort());
   assert.equal(sent[0].mode, "scripted-no-model");
+  assert.match(sent[0].systemPrompt, /Preserve import compatibility/);
+  assert.match(sent[0].systemPrompt, /References to other files or workflows do not expand those limits/);
+  assert.deepEqual(sent[0].repoInstructions,
+    [{ file: "AGENTS.md", sha256: "approved-hash", text: "Preserve import compatibility." }]);
   assert.equal(sent.at(-1).modelCalls, 0);
   assert.equal(sent.at(-1).toolResults, 2);
   assert.equal(sent.at(-1).messages.filter(message => message.role === "toolResult").length, 2);
@@ -209,6 +214,26 @@ test("request exhaustion stops before another provider call", async () => {
   }, execution.emit, execution), error => error.outcome === "budget_exhausted");
   assert.equal(tools, 1);
   assert.equal(execution.options.length, 1);
+});
+
+test("full-response deadline stops an unfinished stream even after it starts", async () => {
+  const execution = await preparedLive([]);
+  let signal;
+  execution.runtime.streamSimple = (_model, _context, options) => {
+    signal = options.signal;
+    const stream = createAssistantMessageEventStream();
+    stream.push({ type: "start", partial: {} });
+    return stream;
+  };
+  execution.streamFunction = boundedStream(execution.runtime, execution.model, execution.config,
+    execution.requests, execution.emit, () => {}, 25);
+  let calls = 0;
+  await assert.rejects(runToolLoop({ task: { id: "stalled-response" }, maxToolCalls: 12 },
+    async () => { calls++; }, execution.emit, execution), error => error.outcome === "timeout");
+  assert.equal(signal.aborted, true);
+  assert.equal(calls, 0);
+  assert.equal(execution.requests.count, 1);
+  assert.ok(!execution.sent.some(event => event.type === "finished"));
 });
 
 test("truncated tool calls and provider failures cannot execute or expose private diagnostics", async () => {

@@ -5,6 +5,9 @@
   "base_commit": "57f8887f287b6969f31b0d7c3ada5afe3683db53",
   "expected_behaviour": "Leading UTF-8 BOM preserves GPX, TCX and KML imports. Misplaced markers and unexpected leading text remain invalid.",
   "fixture_provenance": "Synthetic inline GPX and TCX/KML constants in the pinned Go test sources; no personal activity files.",
+  "instructions_sha256": {
+    "AGENTS.md": "2d0531a989a3a4cc18f5f64ceb9f1f0cd3736a3631d0c78f430da1fe1901ee09"
+  },
   "source_sha256": {
     "go/import.go": "e7e48b18b3e677abe1c7c9b8a7be8a6426c3a25732fda58ac91c1c2e327ad44a",
     "go/import_edge_test.go": "4c5d5b6c5b7a0af03c488c922472535eaf4382ecd774be09ae9f0317bf890e4a",

@@ -20,6 +20,17 @@ LIMIT = 16384
 MAX_CALLS = 12
 
 
+def repository_instructions(task, checkout):
+    expected = task.get("instructions_sha256", {})
+    path = checkout / "AGENTS.md"
+    if set(expected) != {"AGENTS.md"} or path.is_symlink() or not path.is_file():
+        raise Stop("invalid_input", "The task must pin the approved repository AGENTS.md")
+    content = path.read_bytes()
+    if not content or len(content) > LIMIT or digest(content) != expected["AGENTS.md"]:
+        raise Stop("invalid_input", "Repository instructions are missing, oversized or do not match the task")
+    return [{"file": "AGENTS.md", "sha256": digest(content), "text": content.decode("utf-8")}]
+
+
 def prepare_checkout(run, checkout):
     task = run.task
     task_bytes = (HERE / "task.json").read_bytes()
@@ -45,6 +56,9 @@ def prepare_checkout(run, checkout):
     for name, expected in task["source_sha256"].items():
         if not (checkout / name).is_file() or digest((checkout / name).read_bytes()) != expected:
             raise Stop("invalid_input", f"Missing or unexpected source: {name}")
+    run.repo_instructions = repository_instructions(task, checkout)
+    run.result["repo_instructions"] = [{"file": item["file"], "sha256": item["sha256"]}
+                                       for item in run.repo_instructions]
     for stage in ("baseline", "seed"):
         if stage == "seed":
             apply_patch(run, checkout, seed, "seed", task["allowed_files"])
@@ -200,8 +214,11 @@ def pi_loop(run, tools, temporary, demo, config=None):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(temporary),
            "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(temporary / "agent")}
     payload = {"type": "start", "task": run.task, "maxToolCalls": MAX_CALLS}
+    payload["repoInstructions"] = getattr(run, "repo_instructions", [])
     permissions = []
     if config:
+        if not payload["repoInstructions"]:
+            raise Stop("invalid_input", "Approved repository instructions are required before model work")
         auth_dir = Path.home() / ".pi/agent"
         if not (auth_dir / "auth.json").is_file():
             raise Stop("blocked", "Pi subscription sign-in is missing; run pi/setup.mjs login")
@@ -244,29 +261,30 @@ def pi_loop(run, tools, temporary, demo, config=None):
                         message = json.loads(line)
                         if not isinstance(message, dict):
                             raise Stop("invalid_input", "Pi protocol requires an object")
-                        if message.get("type") == "context":
+                        message_type = message.get("type")
+                        if message_type == "context":
                             write_json(run.path / "context.json", message)
-                        elif message.get("type") in ("model_request", "model_response", "model_payload", "model_payload_rejected", "model_dispatch", "model_usage"):
-                            run.event(message["type"], **{key: value for key, value in message.items() if key != "type"})
-                            if message["type"] == "model_request":
+                        elif message_type in ("model_request", "model_response", "model_payload", "model_payload_rejected", "model_dispatch", "model_usage"):
+                            run.event(message_type, **{key: value for key, value in message.items() if key != "type"})
+                            if message_type == "model_request":
                                 run.result["model_requests"] = message["request"]
-                            elif message["type"] == "model_response":
+                            elif message_type == "model_response":
                                 run.result.setdefault("model_usage", []).append(message)
-                            elif message["type"] == "model_dispatch":
+                            elif message_type == "model_dispatch":
                                 run.result["model_requests_dispatched"] += 1
-                            elif message["type"] == "model_usage":
+                            elif message_type == "model_usage":
                                 run.result.setdefault("provider_usage", []).append(message)
-                        elif message.get("type") == "session":
+                        elif message_type == "session":
                             write_json(run.path / "pi-session.json", message)
-                        elif message.get("type") == "failed":
+                        elif message_type == "failed":
                             raise Stop(message.get("outcome", "blocked"), message.get("reason", "Pi stopped"))
-                        elif message.get("type") == "tool":
+                        elif message_type == "tool":
                             if not isinstance(message.get("id"), str):
                                 raise Stop("invalid_input", "Pi tool request is missing its ID")
                             result = tools.dispatch(message.get("name"), message.get("args"))
                             process.stdin.write((json.dumps({"id": message["id"], "result": result}) + "\n").encode())
                             process.stdin.flush()
-                        elif message.get("type") == "finished":
+                        elif message_type == "finished":
                             write_json(run.path / "pi-session.json", message)
                             if process.wait(timeout=max(0.1, run.deadline - time.monotonic())) != 0:
                                 raise Stop("blocked", "Pi reported a failed exit")

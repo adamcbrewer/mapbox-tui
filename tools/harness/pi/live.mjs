@@ -22,10 +22,13 @@ function safeModelFailure(message) {
   return "The model request failed; no provider response or credentials were copied to diagnostics";
 }
 
-export function boundedStream(runtime, model, config, requests, emit, checkSubscription) {
+export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000) {
   return (requestedModel, context, options) => {
     const output = createAssistantMessageEventStream();
     (async () => {
+      let timer;
+      let signal;
+      let onAbort;
       try {
         if (requestedModel.provider !== model.provider || requestedModel.id !== model.id) {
           throw stopped("blocked", "The model identity changed during the run");
@@ -34,16 +37,26 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
           throw stopped("budget_exhausted", "Model-request budget reached; no further request was sent");
         }
         checkSubscription();
+        const controller = new AbortController();
+        signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
+        signal.throwIfAborted();
+        const interrupted = new Promise((_, reject) => {
+          onAbort = () => reject(signal.reason);
+          if (signal.aborted) onAbort();
+          else signal.addEventListener("abort", onAbort, { once: true });
+        });
+        timer = setTimeout(() => controller.abort(stopped("timeout", "The model request reached its full-response time limit")),
+          requestTimeoutMs);
         const request = ++requests.count;
         let providerUsage = null;
         emit({ type: "model_request", request, provider: model.provider, model: model.id,
           maxOutputTokens: config.maxOutputTokensPerRequest, reasoning: "low", maxRetries: 0 });
         const stream = runtime.streamSimple(model, context, {
-          signal: options?.signal,
+          signal,
           ...(config.maxOutputTokensPerRequest === null ? {} : { maxTokens: config.maxOutputTokensPerRequest }),
           reasoning: "low",
           maxRetries: 0,
-          timeoutMs: 120000,
+          timeoutMs: requestTimeoutMs,
           transport: "sse",
           cacheRetention: "none",
           onProviderStreamEvent(event) {
@@ -80,7 +93,10 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
               maxOutputTokens: payload.max_output_tokens ?? null, tools: payload.tools.map(tool => tool.name) });
           },
         });
-        for await (const event of stream) {
+        const iterator = stream[Symbol.asyncIterator]();
+        while (true) {
+          const { value: event, done } = await Promise.race([iterator.next(), interrupted]);
+          if (done) break;
           if (event.type === "done" || event.type === "error") {
             const message = event.message ?? event.error;
             emit({ type: "model_response", request, stopReason: message.stopReason, usage: message.usage, providerUsage });
@@ -102,6 +118,9 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
         output.push({ type: "error", reason: "error", error: message });
         output.end();
+      } finally {
+        clearTimeout(timer);
+        if (onAbort) signal.removeEventListener("abort", onAbort);
       }
     })();
     return output;

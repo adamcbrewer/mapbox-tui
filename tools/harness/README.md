@@ -1,21 +1,21 @@
 # Developer harness pilot
 
 Current stage: Connect ([#104](https://github.com/adamcbrewer/mapbox-tui/issues/104)).
-The reviewed container and reporting slice is committed locally as `f61485f`.
-Adam asked to commit and continue. The next slice connects Pi's four controlled
-tools using prepared responses, with zero AI model calls. See the
-[Pi checkpoint and Fish commands](pi/README.md). Live model execution remains
-disabled; Adam selected his existing Codex subscription and local model choice.
+Pi now connects an OpenAI subscription model to four controlled tools, with
+prepared examples for checking the wiring without AI. Two live Luna attempts
+are recorded locally: one ineffective repair and one that passed the fixed
+import check. See the [Pi checkpoint and Fish commands](pi/README.md).
+The Connect learning checkpoint still awaits review; passing the test isn't approval.
 The original repair command still runs trusted code on the host.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
 building it in small steps.
 
-This is the first part of [#103](https://github.com/adamcbrewer/mapbox-tui/issues/103),
-with the local report from [#111](https://github.com/adamcbrewer/mapbox-tui/issues/111).
-There's no AI involved yet. We're checking that our scripts can tell a working
-repair from an ineffective one, using examples where we already know the answer.
+The prepared calibration below started in [#103](https://github.com/adamcbrewer/mapbox-tui/issues/103),
+with reporting tracked in [#111](https://github.com/adamcbrewer/mapbox-tui/issues/111).
+Those examples use no AI. They check that our scripts distinguish a working
+repair from an ineffective one, using known answers.
 
 ## What happens
 
@@ -174,17 +174,17 @@ That restriction doesn't make arbitrary code safe to run. Tests still run as
 your user and inherit your environment. Only use trusted patches you've reviewed.
 We've chosen rootless Podman for execution isolation in
 [#104](https://github.com/adamcbrewer/mapbox-tui/issues/104). The container execution
-path has passed the first trusted live demonstrations. Pi will stay outside with its model connection; our runner will
-apply allowed changes and run checks inside a disposable container. The container
-will get a project copy, prepared dependencies and resource/time limits, without
+path has passed the trusted live demonstrations. Pi stays outside with its model connection; our runner
+applies allowed changes and runs checks inside a disposable container. The container
+gets a project copy, prepared dependencies and resource/time limits, without
 personal files, credentials, the real checkout, a container-engine socket or
 network access during tests. Bubblewrap isn't needed for this first version.
-We'll demonstrate the restrictions before executing AI-written changes. See the
+The separate probes demonstrated these restrictions before the live model runs. See the
 [Podman documentation](https://docs.podman.io/en/latest/markdown/podman.1.html).
 
-Later, Pi will let the AI use tools to investigate and attempt a repair. This
-checker can stay outside that loop as a separate process. Before adding Pi's Node
-package, we'll review the required
+Pi lets the AI use the controlled tools to investigate and attempt a repair. The
+Python checker stays outside that loop as a separate process. Pi's developer
+package follows the required
 [npm security guidance](https://github.com/lirantal/npm-security-best-practices),
 including pinned dependencies and disabled lifecycle scripts.
 
@@ -213,7 +213,7 @@ Without `--image`, this checks prerequisites only. It does not start a container
 image, run a candidate, or make the existing host calibration command safe for
 AI-written changes. Runtime reports alone don't prove access restrictions or
 resource enforcement. Those observations come from the separate container and
-probe receipts below. Pi remains disconnected.
+probe receipts below. This readiness command doesn't connect Pi.
 
 The initial check on 22 October 2026 stopped because `podman` was missing.
 Installing the system package needs administrator access (`sudo` requires a
@@ -419,8 +419,9 @@ The HTML report only describes a successful repair when its receipt also records
 the original code passing, the deliberate bug failing and the repaired code passing.
 This catches inconsistent records; it doesn't authenticate them or rerun tests.
 
-Each run tries one candidate, with no repair retries. Model and Pi fields are
-null, and model cost is zero because neither is used. Execution cost is unknown.
+Each run tries one candidate, with no repair retries. For the host calibration
+command, model and Pi fields are null and model cost is zero because neither is
+used. Pi runs record their model and token usage separately. Execution cost is unknown.
 Human acceptance stays pending regardless of the test result.
 
 All generated files stay local in the Git-ignored `reports/` directory. No commit,
@@ -429,10 +430,9 @@ loses that local history.
 
 `progress.json` separately records our decisions and review status: planned,
 active, blocked, awaiting-review or reviewed. Tests don't change that status.
-The snapshot records #103 as closed and the first live #104 container checkpoint
-as awaiting discussion. The repair experiments are still prepared examples. Pi,
-later stage history and run timelines aren't built yet. Runtime-readiness
-records are shown separately.
+The saved Define snapshot records #103's historical checkpoint. Connect now
+contains prepared examples, sandbox observations and live Pi attempts. Later
+stages and run timelines aren't built yet. Runtime-readiness records stay separate.
 
 ## Check the implementation
 

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import selectors
 import signal
 import subprocess
 import sys
@@ -71,7 +72,30 @@ class Run:
                                      "event_id": uuid.uuid4().hex, "at": now(),
                                      "kind": kind, **fields}) + "\n")
 
-    def command(self, name, args, cwd, env_overrides=None):
+    def capture_output(self, process, out, err, output_limit):
+        captured = 0
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ, out)
+            selector.register(process.stderr, selectors.EVENT_READ, err)
+            while selector.get_map():
+                remaining = self.deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(process.args, 0)
+                ready = selector.select(remaining)
+                if not ready:
+                    raise subprocess.TimeoutExpired(process.args, remaining)
+                for key, _ in ready:
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    available = output_limit - captured
+                    key.data.write(chunk[:available])
+                    captured += min(len(chunk), available)
+                    if len(chunk) > available:
+                        raise Stop("budget_exhausted", f"Command output exceeded {output_limit} bytes across stdout and stderr")
+
+    def command(self, name, args, cwd, env_overrides=None, output_limit=None):
         if sys.platform != "linux":
             raise Stop("blocked", "This harness pilot runs checks on Linux only")
         remaining = self.deadline - time.monotonic()
@@ -82,6 +106,8 @@ class Run:
                  "outcome": "incomplete", "stdout": name + ".stdout", "stderr": name + ".stderr"}
         if env_overrides:
             check["environment_overrides"] = env_overrides
+        if output_limit is not None:
+            check["output_limit_bytes"] = output_limit
         self.result["checks"].append(check)
         self.event("command_started", check=check)
         env = {**os.environ, "MAPBOX_ACCESS_TOKEN": "", "GOWORK": "off", "GOPROXY": "off",
@@ -92,7 +118,9 @@ class Run:
                 try:
                     self.launching = True
                     try:
-                        process = subprocess.Popen(args, cwd=cwd, env=env, stdout=out, stderr=err,
+                        process = subprocess.Popen(args, cwd=cwd, env=env,
+                                                   stdout=out if output_limit is None else subprocess.PIPE,
+                                                   stderr=err if output_limit is None else subprocess.PIPE,
                                                    start_new_session=True)
                     except OSError as error:
                         check["outcome"] = "blocked"
@@ -103,6 +131,8 @@ class Run:
                         self.launching = False
                     if self.cancel_requested:
                         raise KeyboardInterrupt
+                    if output_limit is not None:
+                        self.capture_output(process, out, err, output_limit)
                     remaining = self.deadline - time.monotonic()
                     if remaining <= 0:
                         raise subprocess.TimeoutExpired(args, 0)
@@ -110,15 +140,22 @@ class Run:
                     check["outcome"] = "passed" if process.returncode == 0 else "failed"
                 except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
                     self.cancel_requested = True
-                    if process is not None:
+                    check["outcome"] = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "cancelled"
+                    raise Stop(check["outcome"], f"Stopped during {name}") from error
+                except Stop as error:
+                    check["outcome"] = error.outcome
+                    raise
+            finally:
+                if process is not None:
+                    if check["exit_code"] is None:
                         try:
                             os.killpg(process.pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
-                        process.wait()
-                    check["outcome"] = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "cancelled"
-                    raise Stop(check["outcome"], f"Stopped during {name}") from error
-            finally:
+                    process.wait()
+                    if output_limit is not None:
+                        process.stdout.close()
+                        process.stderr.close()
                 check.update(ended_at=now(), duration_seconds=round(time.monotonic() - started, 4))
                 self.event("command_finished", check=check)
         return check, (self.path / check["stdout"]).read_bytes()

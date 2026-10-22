@@ -9,6 +9,7 @@ from run import HERE, ROOT, Run, Stop, digest
 
 PODMAN = ["podman", "--remote=false"]
 MEMORY = 1024 * 1024 * 1024
+OUTPUT_LIMIT = 2 * 1024 * 1024
 ENVIRONMENT = {
     "PATH": "/usr/local/go/bin:/usr/bin:/bin", "HOME": "/tmp", "GOCACHE": "/tmp/go-build",
     "GOPATH": "/go", "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOWORK": "off",
@@ -92,6 +93,8 @@ class ContainerRun(Run):
                 raise ValueError("Unexpected container mount")
             if config["Devices"] or config["VolumesFrom"] or item.get("Pod"):
                 raise ValueError("Unexpected device, shared volume or pod")
+            if config["LogConfig"]["Type"] != "none":
+                raise ValueError("Container log storage is not disabled")
         except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
             raise Stop("blocked", f"Container policy could not be confirmed ({error}); refusing to start") from error
 
@@ -158,7 +161,7 @@ class ContainerRun(Run):
                            "--userns=nomap", "--user=65534:65534", "--pid=private", "--ipc=private", "--uts=private",
                            "--cgroupns=private", "--memory=1g", "--memory-swap=1g", "--cpu-period=100000",
                            "--cpu-quota=200000", "--pids-limit=256", "--http-proxy=false", "--unsetenv-all",
-                           "--health-cmd=none", "--systemd=false", "--restart=no",
+                           "--health-cmd=none", "--systemd=false", "--restart=no", "--log-driver=none",
                            "--timeout=" + str(max(1, math.ceil(self.deadline - time.monotonic()))),
                            "--workdir=" + ("/workspace" if checkout else "/tmp"),
                            "--entrypoint=" + ("/usr/local/go/bin/go" if args[0] == "go" else "/bin/sh")]
@@ -182,7 +185,8 @@ class ContainerRun(Run):
             self.event("container_policy_checked", container=container)
             if name == "candidate":
                 self.result["candidate_executed"] = None
-            check, output = super().command(name, PODMAN + ["start", "--attach", container["name"]], ROOT)
+            check, output = super().command(name, PODMAN + ["start", "--attach", container["name"]], ROOT,
+                                            output_limit=OUTPUT_LIMIT)
             if version and (check["exit_code"] != 0 or not output.startswith(b"go version go1.27.1 ")):
                 raise Stop("blocked", "The prepared image must provide Go v1.27.1")
             if check["exit_code"] in (125, 126, 127):
