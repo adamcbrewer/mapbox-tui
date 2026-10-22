@@ -107,6 +107,13 @@ To apply a future design update to saved pages without recapturing their data:
 python3 tools/harness/report.py --refresh-saved
 ```
 
+Refresh checks the saved progress, receipt inventory and every copied evidence
+file, including patches, conversations and logs. Changed, missing or added files
+stop regeneration. Symlink targets are recorded without reading through them.
+Older snapshots without this full inventory need explicit verification against
+their original evidence before recording an inventory; refresh never invents
+that baseline.
+
 Historical restoration accepts `--restore-from COMMIT --evidence DIRECTORY`.
 It requires the original receipts and refuses to replace an existing snapshot.
 Git contains the old progress/code, but the ignored run evidence must also have

@@ -1,6 +1,8 @@
 import argparse
+import hashlib
 import html
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -635,6 +637,30 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 </body></html>'''
 
 
+def evidence_inventory(source):
+    inventory = {}
+
+    def visit(path):
+        relative = path.relative_to(source).as_posix()
+        if path.is_symlink():
+            inventory[relative] = {"kind": "symlink", "target": os.readlink(path)}
+        elif path.is_dir():
+            for child in path.iterdir():
+                visit(child)
+        elif path.is_file():
+            with path.open("rb") as content:
+                inventory[relative] = {"kind": "file", "sha256": hashlib.file_digest(content, "sha256").hexdigest()}
+        else:
+            raise ValueError(f"Unsupported saved evidence entry: {relative}")
+
+    if source.is_symlink():
+        raise ValueError("Saved evidence directory must not be a symlink")
+    for path in source.iterdir():
+        if path.name not in ("progress.json", "snapshot.json"):
+            visit(path)
+    return inventory
+
+
 def capture_stage(destination, progress, source, receipts, source_ref, restored):
     destination.mkdir(parents=True, exist_ok=True)
     for path in receipts:
@@ -647,7 +673,8 @@ def capture_stage(destination, progress, source, receipts, source_ref, restored)
                 "source_ref": source_ref, "restored": restored,
                 "evidence_source": str(source.resolve()),
                 "progress_sha256": digest((destination / "progress.json").read_bytes()),
-                "receipt_sha256": {path.relative_to(destination).as_posix(): digest(path.read_bytes()) for path in saved_receipts}}
+                "receipt_sha256": {path.relative_to(destination).as_posix(): digest(path.read_bytes()) for path in saved_receipts},
+                "evidence_inventory": evidence_inventory(destination)}
     write_json(destination / "snapshot.json", snapshot)
 
 
@@ -686,6 +713,10 @@ def render_saved(reports, name):
     for relative, path in receipts.items():
         if digest(path.read_bytes()) != snapshot["receipt_sha256"][relative]:
             raise ValueError(f"Saved {name} receipt does not match its snapshot hash: {relative}")
+    if not isinstance(snapshot.get("evidence_inventory"), dict):
+        raise ValueError(f"Saved {name} snapshot has no complete evidence inventory; verify original evidence before recapturing")
+    if evidence_inventory(source) != snapshot["evidence_inventory"]:
+        raise ValueError(f"Saved {name} evidence does not match its snapshot inventory")
     progress = json.loads(progress_bytes)
     target = reports / f"{name}.html"
     target.write_text(render(source, progress, link_root=reports, snapshot=snapshot))

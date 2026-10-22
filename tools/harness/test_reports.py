@@ -241,6 +241,77 @@ class StageReportTests(unittest.TestCase):
                     self.assertNotIn("failure is the expected answer", page)
                     self.assertIn("Unreadable record", page)
 
+    def test_every_copied_evidence_file_is_sealed_before_refresh(self):
+        names = (*report.EVIDENCE_FILES, "baseline.stdout", "snapshot.stdout")
+        for name in names:
+            for change in ("modified", "removed"):
+                with self.subTest(name=name, change=change):
+                    identifier = name + "-" + change
+                    reports = self.root / ("reports-" + identifier)
+                    source = self.source(identifier)
+                    original_file = source / "runs" / identifier / name
+                    if name != "result.json":
+                        original_file.write_bytes(b"original evidence\xff")
+                    report.save_stage(reports, dict(self.progress, stage="Define"), source,
+                                      source_ref="a" * 40, restored=True)
+                    page = report.render_saved(reports, "define")
+                    original_page = page.read_bytes()
+                    copied = reports / "snapshots/define/runs" / identifier / name
+                    if change == "modified":
+                        copied.write_bytes(b"changed evidence")
+                    else:
+                        copied.unlink()
+                    with self.assertRaisesRegex(ValueError, "snapshot"):
+                        report.render_saved(reports, "define")
+                    self.assertEqual(page.read_bytes(), original_page)
+
+    def test_added_evidence_and_file_replaced_with_symlink_are_rejected(self):
+        source, page = self.restore_define()
+        snapshot = self.reports / "snapshots/define"
+        copied = snapshot / "runs/define-example/baseline.stdout"
+        original_page = page.read_bytes()
+        extra = copied.with_name("candidate.patch")
+        extra.write_text("Added after capture")
+        with self.assertRaisesRegex(ValueError, "snapshot"):
+            report.render_saved(self.reports, "define")
+        extra.unlink()
+        copied.unlink()
+        copied.symlink_to(source / "runs/define-example/baseline.stdout")
+        with self.assertRaisesRegex(ValueError, "snapshot"):
+            report.render_saved(self.reports, "define")
+        self.assertEqual(page.read_bytes(), original_page)
+
+    def test_symlink_targets_are_recorded_without_reading_their_contents(self):
+        source = self.source("linked-evidence")
+        outside = self.root / "outside.jsonl"
+        outside.write_text("private original")
+        linked = source / "runs/linked-evidence/events.jsonl"
+        linked.symlink_to(outside)
+        linked.with_name("external-directory").symlink_to(self.root / "unavailable-directory", target_is_directory=True)
+        report.save_stage(self.reports, self.progress, source, source_ref="a" * 40)
+        snapshot = self.reports / "snapshots/connect"
+        inventory = json.loads((snapshot / "snapshot.json").read_text())["evidence_inventory"]
+        self.assertEqual(inventory["runs/linked-evidence/events.jsonl"], {"kind": "symlink", "target": str(outside)})
+        outside.write_text("private changed")
+        page = report.render_saved(self.reports, "connect")
+        self.assertNotIn("private changed", page.read_text())
+        copied = snapshot / "runs/linked-evidence/events.jsonl"
+        copied.unlink()
+        copied.symlink_to(self.root / "different-target")
+        with self.assertRaisesRegex(ValueError, "snapshot"):
+            report.render_saved(self.reports, "connect")
+
+    def test_legacy_snapshot_without_evidence_inventory_cannot_silently_refresh(self):
+        _, page = self.restore_define()
+        original_page = page.read_bytes()
+        path = self.reports / "snapshots/define/snapshot.json"
+        snapshot = json.loads(path.read_text())
+        del snapshot["evidence_inventory"]
+        path.write_text(json.dumps(snapshot))
+        with self.assertRaisesRegex(ValueError, "no complete evidence inventory"):
+            report.render_saved(self.reports, "define")
+        self.assertEqual(page.read_bytes(), original_page)
+
     def test_build_failure_remains_a_failed_repair_without_expected_failure_badge(self):
         source = self.source("build-failed-repair")
         path = source / "runs/build-failed-repair/result.json"
