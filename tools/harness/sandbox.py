@@ -6,7 +6,7 @@ import signal
 import sys
 import time
 
-from run import REPORTS, ROOT, Run, Stop, digest, now, write_json
+from run import HERE, REPORTS, ROOT, Run, Stop, calibrate, digest, now, read_input, write_json
 
 
 def runtime_details(info):
@@ -21,8 +21,13 @@ def runtime_details(info):
             raise Stop("blocked", "Podman must run rootless")
         if host["cgroupVersion"] != "v2":
             raise Stop("blocked", "Rootless resource limits require cgroups v2")
-        if not isinstance(controllers, list) or not {"cpu", "memory", "pids"}.issubset(controllers):
-            raise Stop("blocked", "Podman must report CPU, memory and process controllers")
+        if not isinstance(controllers, list) or not all(isinstance(value, str) for value in controllers):
+            raise ValueError("Invalid controller list")
+        missing = sorted({"cpu", "memory", "pids"} - set(controllers))
+        if missing:
+            raise Stop("blocked", "Missing cgroup controllers: " + ", ".join(missing) +
+                       ". Podman reports: " + ", ".join(controllers) +
+                       ". A restricted app session may need the delegated user-unit launch in the README.")
         if security["seccompEnabled"] is not True:
             raise Stop("blocked", "Podman must support seccomp filtering")
         if not isinstance(version, str) or not version:
@@ -30,7 +35,8 @@ def runtime_details(info):
     except (KeyError, TypeError, ValueError) as error:
         raise Stop("blocked", "Podman returned an incomplete or invalid runtime description") from error
     return {"podman_version": version, "rootless": True, "local": True,
-            "cgroup_version": "v2", "controllers": controllers, "seccomp": True}
+            "cgroup_version": "v2", "controllers": controllers, "seccomp": True,
+            "seccomp_profile": security.get("seccompProfilePath")}
 
 
 def preflight(run):
@@ -52,18 +58,34 @@ def preflight(run):
 
 
 def main():
-    argparse.ArgumentParser(description="Check Podman prerequisites without executing candidate code.").parse_args()
-    run = Run(REPORTS / "sandbox-preflight")
+    parser = argparse.ArgumentParser(description="Inspect Podman, or check a prepared repair inside a restricted container.")
+    parser.add_argument("--image", help="Full local image ID (sha256:<64 hex characters>); enables container calibration")
+    parser.add_argument("--demo", choices=("good", "empty", "wrong"), help="Trusted prepared repair; requires --image")
+    args = parser.parse_args()
+    if args.demo and not args.image:
+        parser.error("--demo requires --image; host execution is not a fallback")
+    if args.image:
+        from container import ContainerRun
+        run = ContainerRun(REPORTS, args.image)
+    else:
+        run = Run(REPORTS / "sandbox-preflight")
     run.deadline = run.started + 30
-    run.result.update(workflow="sandbox-preflight", synthetic=False,
+    run.result.update(workflow="container-calibration" if args.image else "sandbox-preflight", synthetic=bool(args.image),
                       preflight_sha256=digest(Path(__file__).read_bytes()),
                       candidate_executed=False, isolation_demonstrated=False)
-    run.event("run_started", workflow="sandbox-preflight")
+    run.event("run_started", workflow=run.result["workflow"])
     previous_handlers = {}
     try:
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = signal.signal(signum, run.cancel)
         preflight(run)
+        if args.image:
+            run.result["outcome"] = "incomplete"
+            run.prepare()
+            run.result["candidate"] = args.demo or "good"
+            candidate = run.result["candidate"]
+            patch = b"" if candidate == "empty" else read_input(HERE / "fixtures" / f"{candidate}.patch")
+            calibrate(run, patch)
     except Stop as error:
         run.result.update(outcome=error.outcome, reason=error.reason)
     except KeyboardInterrupt:
@@ -81,7 +103,7 @@ def main():
                 signal.signal(signum, handler)
     print(f"{run.result['outcome']}: {run.result.get('reason', 'See evidence')}")
     print(run.path / "result.json")
-    return 0 if run.result["outcome"] == "runtime_ready" else 1
+    return 0 if run.result["outcome"] in ("runtime_ready", "calibration_passed") else 1
 
 
 if __name__ == "__main__":

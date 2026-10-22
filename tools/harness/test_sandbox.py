@@ -32,6 +32,8 @@ class SandboxTests(unittest.TestCase):
                 with self.assertRaises(Stop) as caught:
                     sandbox.runtime_details(info)
                 self.assertEqual(caught.exception.outcome, "blocked")
+                if field == "cgroupControllers" and isinstance(value, list):
+                    self.assertIn("Missing cgroup controllers: memory", caught.exception.reason)
         for field in ("rootless", "seccompEnabled"):
             info = copy.deepcopy(self.info)
             info["host"]["security"][field] = False

@@ -344,6 +344,23 @@ class CalibrationTests(unittest.TestCase):
         self.assertNotIn("This failure is the expected answer", page)
         self.assertIn("does not tell us whether the repair works", page)
 
+    def test_report_keeps_latest_blocked_example_in_front_of_earlier_success(self):
+        progress = json.loads((HERE / "progress.json").read_text())
+        for identifier, date, outcome in [("older-success", "2026-10-21", "calibration_passed"),
+                                          ("newer-blocked", "2026-10-22", "blocked")]:
+            directory = self.root / "runs" / identifier
+            directory.mkdir(parents=True)
+            (directory / "result.json").write_text(json.dumps({
+                "schema_version": 1, "candidate": "good", "started_at": date,
+                "checks": [], "outcome": outcome, "execution_mode": "rootless-podman",
+            }))
+        page = render(self.root, progress)
+        visible, earlier = page.split('<details class="history">', 1)
+        self.assertIn('href="runs/newer-blocked/result.json"', visible)
+        self.assertIn("does not tell us whether the repair works", visible)
+        self.assertNotIn('href="runs/older-success/result.json"', visible)
+        self.assertIn('href="runs/older-success/result.json"', earlier)
+
     def test_report_does_not_present_unknown_record_as_success(self):
         path = self.root / "runs/example/result.json"
         for checks in (None, ["not a check"]):

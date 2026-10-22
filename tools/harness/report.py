@@ -1,10 +1,15 @@
+import argparse
 import html
 import json
+from pathlib import Path
+import shutil
+import subprocess
 
-from run import HERE, REPORTS, now
+from run import HERE, REPORTS, ROOT, digest, now, write_json
 
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
+EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch")
 
 
 def escape(value):
@@ -56,22 +61,26 @@ GLOSSARY = {
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
-    "Podman": "The container tool chosen for a disposable test environment in Connect (#104). The readiness check only inspects its reported features; container execution is not implemented yet.",
+    "Podman": "The container tool chosen for a disposable test environment in Connect (#104). Readiness inspects its reported features. Separate live demonstrations check dummy access denials, kernel settings and cleanup.",
     "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
 }
 FILE_GUIDE = {
     "tools/harness/run.py": "Conducts the experiment and saves its evidence.",
-    "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. It does not start a container or execute a repair.",
+    "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. With an immutable prepared image ID, it can check a trusted repair in containers. No host execution fallback.",
+    "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
+    "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
     "tools/harness/fixtures/*.patch": "The deliberate bug and prepared example repairs.",
     "tools/harness/report.py": "Builds this HTML page from saved records. It does not run tests.",
     "tools/harness/progress.json": "Records our stage, decisions and pending discussion. Test results do not update our approval.",
     "tools/harness/test_harness.py": "Tests the Python machinery itself.",
     "tools/harness/README.md": "Commands and instructions for using and reviewing this pilot.",
-    "reports/harness/index.html": "This report. Open it first; rebuild it after new runs.",
+    "reports/harness/index.html": "The latest stage report, with links to saved stage pages.",
+    "reports/harness/define.html / connect.html": "Separate stage reports. Rebuilding Connect leaves the saved Define page unchanged.",
+    "reports/harness/snapshots/<stage>/": "Saved progress, provenance and copied evidence for one stage. Include this folder for original-file links and logs; the viewer's five file types are embedded in the HTML.",
     "reports/harness/runs/<run-id>/": "Evidence from one experiment. Within it, task.json preserves the instructions, seed.patch preserves the deliberately broken change, and candidate.patch preserves the proposed repair.",
     "reports/harness/sandbox-preflight/runs/<run-id>/": "Separate runtime-readiness receipts and Podman inspection logs. These are not repair attempts or proof of container isolation.",
-    "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open this file.",
+    "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open the embedded copy in the evidence drawer.",
     "events.jsonl (inside a run folder)": "A chronological diary, with one event per line: a command started, finished, or a test result was recorded.",
     "*.stdout / *.stderr (inside a run folder)": "Command output and diagnostics. Usually only needed to investigate a problem. baseline and seed refer to the original and deliberately broken code; candidate refers to the proposed repair. scope checks allowed files; metadata checks file operations such as renaming or deleting; apply records applying a patch. go-version records the compiler version.",
     "snapshot.stdout": "An exception to the readable logs: this contains the archived source copy. snapshot.stderr contains any archive-command diagnostics.",
@@ -83,7 +92,36 @@ def definitions(entries):
     return "".join(f"<dt>{escape(term)}</dt><dd>{escape(meaning)}</dd>" for term, meaning in entries.items())
 
 
-def render_run(path, reports, run):
+def history(rows, label):
+    if not rows:
+        return ""
+    return f'<details class="history"><summary>{escape(label)} ({len(rows)})</summary>{"".join(rows)}</details>'
+
+
+def embedded_evidence(reports, link_root=None):
+    evidence = {}
+    for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs"):
+        for receipt in sorted((reports / folder).glob("*/result.json")):
+            files = {}
+            for name in EVIDENCE_FILES:
+                path = receipt.with_name(name)
+                entry = {"href": path.relative_to(link_root or reports).as_posix(), "text": None}
+                try:
+                    if path.is_symlink():
+                        entry["unavailable"] = "Linked files are not embedded."
+                    else:
+                        entry["text"] = path.read_bytes().decode("utf-8")
+                except FileNotFoundError:
+                    entry["unavailable"] = "Not recorded for this run."
+                except (OSError, UnicodeError):
+                    entry["unavailable"] = "This file could not be read as UTF-8 text."
+                files[name] = entry
+            evidence[receipt.relative_to(link_root or reports).as_posix()] = {
+                "run_id": receipt.parent.name, "files": files}
+    return json.dumps(evidence, ensure_ascii=True).replace("<", "\\u003c")
+
+
+def render_run(path, reports, run, link_root=None):
     candidate = run.get("candidate")
     title, tried, expected, purpose = EXAMPLES.get(str(candidate), (
         "Check a supplied repair" if candidate else "Request could not be loaded",
@@ -131,30 +169,46 @@ def render_run(path, reports, run):
                "incomplete": "no final result", "timeout": "time limit reached", "cancelled": "stopped"}
     for check in recorded_checks if known else []:
         if check.get("id") in names:
-            checks.append(f'<li>{names[check["id"]]}: {escape(answers.get(check.get("outcome"), "unknown result"))}.</li>')
+            tone = "pass" if check.get("outcome") == "passed" else "attention"
+            checks.append(f'<li class="{tone}"><span>{names[check["id"]]}</span><strong>{escape(answers.get(check.get("outcome"), "unknown result"))}</strong></li>')
     duration = run.get("duration_seconds")
     elapsed = f"{duration:.2f} seconds" if isinstance(duration, (int, float)) else "Time not recorded"
-    link = escape(path.relative_to(reports).as_posix())
+    link = escape(path.relative_to(link_root or reports).as_posix())
     run_id = escape(path.parent.name)
+    execution = ""
+    if run.get("execution_mode") == "rootless-podman":
+        containers = run.get("containers")
+        cleanup = "Container cleanup records are unavailable."
+        if isinstance(containers, list):
+            removed = sum(isinstance(item, dict) and item.get("removed") is True for item in containers)
+            cleanup = f"Container records: {len(containers)}. Removal confirmed: {removed}."
+        execution = (f'<p><strong>Execution:</strong> requested rootless Podman with image <code>{escape(run.get("image"))}</code>.</p>'
+                     f'<p>{escape(cleanup)} '
+                     'A passing repair check does not establish the full isolation boundary. Review the separate sandbox demonstrations below.</p>')
+    matched = outcome == "calibration_passed" or (candidate in ("wrong", "empty") and outcome == "repair_failed")
+    label = "As expected" if matched else "Needs inspection"
+    tone = "pass" if matched else "attention"
+    mode = "Container requested" if run.get("execution_mode") == "rootless-podman" else "Host runner"
     return f'''<article class="run">
-<h3>{escape(title)}</h3>
-<p><strong>What happened:</strong> {escape(result)}</p>
-<p><strong>What we tried:</strong> {escape(tried)} <strong>Expected:</strong> {escape(expected)}</p>
-<p><strong>Why this example matters:</strong> {escape(purpose)}</p>
-<details><summary>See the steps and technical details</summary>
-{('<ul>' + ''.join(checks) + '</ul>') if checks else '<p>No import test results recorded.</p>'}
+<header class="run-heading"><h3>{escape(title)}</h3><span class="badge {tone}">{label}</span></header>
+<p>{escape(result)}</p>
+{('<ol class="check-steps">' + ''.join(checks) + '</ol>') if checks else '<p class="meta">No import test results recorded.</p>'}
+<p class="meta">{mode}. {escape(elapsed)}. <a href="{link}" data-evidence="{link}">Receipt</a>
+<code title="Run ID: {run_id}">{escape(path.parent.name[:8])}</code></p>
+<details><summary>Explanation and technical details</summary>
+<dl class="explanation"><dt>What we tried</dt><dd>{escape(tried)}</dd><dt>Expected</dt><dd>{escape(expected)}</dd>
+<dt>Why it matters</dt><dd>{escape(purpose)}</dd></dl>
+{execution}
 <p>Saved status: <code>{escape(run.get('outcome', 'unknown'))}</code>.
 Diagnostic: {escape(run.get('reason', 'No final explanation recorded'))}</p>
 <p>Candidate label in the saved record: {escape(candidate if candidate is not None else 'not loaded')}.</p>
 <p>Requested setup fault: {escape(run.get('fault', 'none'))}.
 Fault introduced: {escape(run.get('fault_injected', 'not recorded'))}.</p>
 <p>Started: {escape(run.get('started_at', 'not recorded'))}. Human approval is separate from these checks.</p></details>
-<p class="meta">{escape(elapsed)}. <a href="{link}">Receipt</a>
-<code title="Run ID: {run_id}">{escape(path.parent.name[:8])}</code></p>
 </article>'''
 
 
-def render_preflights(reports):
+def render_preflights(reports, link_root=None):
     rows = []
     for path in (reports / "sandbox-preflight/runs").glob("*/result.json"):
         try:
@@ -170,17 +224,69 @@ def render_preflights(reports):
             summary = "We couldn't check the required runtime. Container execution remains blocked."
         else:
             summary = "No completed readiness decision is available. Inspect the receipt before continuing."
-        link = escape(path.relative_to(reports).as_posix())
+        link = escape(path.relative_to(link_root or reports).as_posix())
+        label = "Ready to start" if outcome == "runtime_ready" else "Needs inspection"
+        tone = "pass" if outcome == "runtime_ready" else "attention"
         rows.append((str(result.get("started_at", "")), f'''<article class="run">
-<p><strong>{escape(summary)}</strong></p>
-<p>{escape(result.get('reason', 'No final explanation recorded'))}</p>
-<p>No candidate code or container was run by this readiness check. A runtime feature report does not prove that access is denied or limits are enforced.</p>
+<header class="run-heading"><h3>Runtime readiness</h3><span class="badge {tone}">{label}</span></header>
+<p>{escape(summary)}</p>
+<details><summary>What this check established</summary><p>{escape(result.get('reason', 'No final explanation recorded'))}</p>
+<p>No candidate code or container was run by this readiness check. A runtime feature report does not prove that access is denied or limits are enforced.</p></details>
 <p class="meta">Started: {escape(result.get('started_at', 'not recorded'))}.
-<a href="{link}">Readiness receipt</a></p></article>'''))
-    return "".join(row for _, row in sorted(rows)) or '<p>No sandbox readiness checks recorded.</p>'
+<a href="{link}" data-evidence="{link}">Readiness receipt</a></p></article>'''))
+    ordered = [row for _, row in sorted(rows)]
+    return (ordered[-1] + history(ordered[:-1], "Earlier readiness checks")) if ordered else '<p>No sandbox readiness checks recorded.</p>'
 
 
-def render(reports, progress):
+def render_probes(reports, link_root=None):
+    rows = []
+    for path in (reports / "sandbox-probes/runs").glob("*/result.json"):
+        try:
+            value = json.loads(path.read_text())
+            if not isinstance(value, dict):
+                raise ValueError("Receipt must be an object")
+        except (ValueError, OSError):
+            value = {}
+        phase = value.get("phase")
+        containers = value.get("containers")
+        removed = (isinstance(containers, list) and bool(containers) and
+                   all(isinstance(item, dict) and item.get("removed") is True for item in containers))
+        checks = value.get("checks", [])
+        outcome = value.get("outcome")
+        expected = {"boundary": "boundary_passed", "timeout": "timeout", "cancel": "cancelled"}
+        confirmed = (str(phase) in expected and value.get("probe_confirmed") is True and
+                     removed and outcome == expected.get(str(phase)))
+        if not isinstance(checks, list) or not any(
+                isinstance(check, dict) and check.get("id") == str(phase) + "-probe" and
+                (check.get("exit_code") == 0 and check.get("outcome") == "passed"
+                 if phase == "boundary" else check.get("outcome") == outcome)
+                for check in checks):
+            confirmed = False
+        messages = {
+            "boundary": "Dummy host-file/network access was denied. Root/source mounts were read-only, and kernel CPU/memory/swap/process settings matched the policy.",
+            "timeout": "The deliberately slow command started, hit its deadline, and its container was removed.",
+            "cancel": "The deliberately slow command started, was cancelled, and its container was removed.",
+        }
+        message = messages.get(str(phase)) if confirmed else "No confirmed demonstration is available. Inspect the receipt before drawing a conclusion."
+        link = escape(path.relative_to(link_root or reports).as_posix())
+        title = {"boundary": "Access and limits", "timeout": "Time limit", "cancel": "Cancellation"}.get(str(phase), "Unknown probe")
+        tone = "pass" if confirmed else "attention"
+        label = "Confirmed" if confirmed else "Unconfirmed"
+        rows.append((str(value.get("started_at", "")), str(phase), f'''<article class="run">
+<header class="run-heading"><h3>{title}</h3><span class="badge {tone}">{label}</span></header>
+<p>{escape(message)}</p>
+{('<p>' + escape(value.get('reason', 'No final explanation recorded')) + '</p>') if not confirmed else ''}
+<p class="meta"><a href="{link}" data-evidence="{link}">Probe receipt</a></p>
+<details><summary>Recorded status and time</summary><p class="meta">Started: {escape(value.get('started_at', 'not recorded'))}.
+Saved outcome: {escape(outcome)}.</p></details></article>'''))
+    ordered = sorted(rows)
+    latest = {phase: date for date, phase, _ in ordered}
+    current = [row for date, phase, row in ordered if date == latest[phase]]
+    earlier = [row for date, phase, row in ordered if date != latest[phase]]
+    return (''.join(current) + history(earlier, "Earlier demonstrations")) if ordered else '<p>No live sandbox demonstrations recorded.</p>'
+
+
+def render(reports, progress, *, link_root=None, snapshot=None):
     if progress["status"] not in STATES or progress["stage"] not in STAGES:
         raise ValueError("Unknown progress stage or status")
     milestones = []
@@ -201,104 +307,274 @@ def render(reports, progress):
         except (ValueError, OSError):
             run = {}
         records.append((path, run))
-    for path, run in sorted(records, key=lambda item: str(item[1].get("started_at", ""))):
-        rows.append(render_run(path, reports, run))
-    records = "".join(rows) if rows else (
+    ordered = sorted(records, key=lambda item: str(item[1].get("started_at", "")))
+    container_mode = any(run.get("execution_mode") == "rootless-podman" for _, run in ordered)
+    selected = {}
+    for path, run in ordered:
+        if run.get("candidate") in ("good", "wrong") and not run.get("fault") and (
+                not container_mode or run.get("execution_mode") == "rootless-podman"):
+            selected[run["candidate"]] = path
+    for path, run in ordered:
+        if path not in selected.values():
+            rows.append(render_run(path, reports, run, link_root))
+    current = "".join(render_run(path, reports, run, link_root) for path, run in ordered if path in selected.values())
+    records = current + history(rows, "Other experiments, including failed and blocked runs") if ordered else (
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
     items = lambda values: "".join(f"<li>{escape(value)}</li>" for value in values)
+    define = progress["stage"] == "Define"
+    saved_links = '<a href="index.html">Latest report</a>' + ''.join(
+        f'<a href="{stage.lower()}.html">{stage}</a>' for stage in STAGES
+        if link_root and (link_root / "snapshots" / stage.lower() / "snapshot.json").is_file())
+    saved_nav = f'<nav class="saved-reports" aria-label="Saved stage reports">{saved_links}</nav>' if snapshot else ''
+    provenance = ''
+    if snapshot:
+        source_note = (f'Restored from Git {snapshot["source_ref"][:12]} and the original local evidence. '
+                       'The original review status is retained; this is a historical snapshot, not the current project status.'
+                       if snapshot.get("restored") else 'Captured from this stage’s local evidence and progress record.')
+        provenance = (f'<details><summary>Snapshot source and date</summary><p>{escape(source_note)}</p>'
+                      f'<p>Captured {escape(snapshot["captured_at"])}. Presented using the current report design.</p></details>')
+    sandbox = '' if define else f'''<section id="sandbox" aria-labelledby="sandbox-title"><div class="section-heading"><div>
+<h2 id="sandbox-title">Does execution stay inside its boundary?</h2>
+<p>Access, resource settings and cleanup are checked separately from repair quality.</p></div></div>
+{render_probes(reports, link_root)}
+<p class="meta">Trusted dummy probes, with no AI involved. Observations apply to this image and environment; they aren't a general security proof. Kernel limits were read, not stress-tested.</p>
+<details class="history"><summary>Runtime readiness and setup history</summary>
+<p>These checks only ask Podman which features are available. They don't run repair code.</p>
+{render_preflights(reports, link_root)}</details></section>'''
+    guide = {key: value for key, value in FILE_GUIDE.items() if not define or key not in (
+        "tools/harness/sandbox.py", "tools/harness/container.py", "tools/harness/probes.py",
+        "reports/harness/sandbox-preflight/runs/<run-id>/")}
+    glossary = {key: value for key, value in GLOSSARY.items() if not define or key not in ("Podman", "Sandbox readiness")}
+    intro = ('A known bug and prepared repairs test whether our checker reports the right answer. '
+             'These checks ran on the host, without AI or containers.' if define else
+             'Prepared repairs test our checker. Separate sandbox probes test the execution boundary. No AI is involved yet.')
+    takeaway = ('Known working and ineffective repairs test the checker. A focused test passing and human approval are separate results.'
+                if define else 'A repair passing its test, a sandbox respecting its limits, and your approval are three separate results.')
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Harness progress</title><style>
-:root {{ color-scheme: light dark; font-family: system-ui, sans-serif;
---report-background: #f8fafc; --report-foreground: #203746; --report-muted: #536878;
---report-panel: #edf4fa; --report-link: #185e9e;
+<title>{escape(progress['stage'])} / Harness review</title><style>
+:root {{ color-scheme: light dark; font-family: Ubuntu, "Segoe UI", sans-serif; font-size: 16px;
+--report-background: #f2f5f8; --report-foreground: #182f46; --report-muted: #526478;
+--report-paper: #fff; --report-panel: #eaf2f6; --report-line: #d4dde5; --report-link: #075e75;
+--report-pass: #216342; --report-pass-bg: #e7f3eb; --report-attention: #805008; --report-attention-bg: #fff0d6;
 background: var(--report-background); color: var(--report-foreground); }}
-body {{ margin: 0 auto; max-width: 1100px; background: var(--report-background); color: var(--report-foreground); }} main {{ padding: 24px; }}
-h3 {{ font-size: 1.05rem; }} .run {{ border-top: 1px solid #8294a4; padding: 12px 0; }}
-.run h3 {{ margin: 8px 0; }} .run p {{ margin: 8px 0; max-width: 80ch; }}
-details {{ margin: 12px 0; }} summary {{ cursor: pointer; color: var(--report-link); }}
-summary:focus-visible {{ outline: 2px solid currentColor; }} dt {{ font-weight: 650; margin-top: 12px; }} dd {{ margin: 4px 0 12px; line-height: 1.5; }}
-code {{ overflow-wrap: anywhere; }}
-h1 {{ font-size: 2rem; margin: 0 0 8px; }} h2 {{ font-size: 1.15rem; margin-top: 28px; }}
-p, li {{ line-height: 1.55; }} small, .meta {{ color: var(--report-muted); font-size: .85rem; }}
-.stages {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; list-style: none; padding: 0; }}
-.stages li {{ border-top: 4px solid #8294a4; padding-top: 10px; }}
-.stages li[aria-current="step"] {{ border-color: #236fba; }} .stages span {{ display: block; font-size: .8rem; }}
-.review {{ border-left: 4px solid #236fba; padding: 1px 20px; background: var(--report-panel); }}
-ul {{ padding-left: 22px; }} a {{ color: var(--report-link); }} a:focus-visible {{ outline: 2px solid currentColor; }}
-.empty {{ padding: 16px; background: var(--report-panel); }}
-@media (max-width: 640px) {{ main {{ padding: 16px; }} .stages {{ grid-template-columns: repeat(3, 1fr); }} }}
-@media (prefers-color-scheme: dark) {{ :root {{ --report-background: #15232f; --report-foreground: #e2edf5;
---report-muted: #b0c5d5; --report-panel: #233c50; --report-link: #a9d0ff; }} }}
-</style></head><body><main>
-<h1>Can we tell whether a repair works?</h1>
-<p>We’re building a tool that will let an AI try fixing a bug, check its work and bring you the change to review.</p>
-<p><strong>Current stage:</strong> {escape(progress["stage"])}. {escape(STATE_LABELS[progress["status"]])}.</p>
-<section class="review"><h2>Prepared examples: test the checking process</h2>
-<p><strong>No AI is involved in these examples.</strong> A Python script tries prepared changes with known answers.
-We need to know it reports those answers correctly before asking an AI to supply a repair.</p>
-<p>The script copies a known version of mapbox-tui into a temporary folder. Your working source files stay untouched.</p></section>
-<p class="meta">Saved local report, generated {escape(now())}. Rebuild it to include new runs.</p>
+* {{ box-sizing: border-box; }} html {{ scroll-padding-top: 24px; }}
+body {{ margin: 0; line-height: 1.55; background: var(--report-background); color: var(--report-foreground); }}
+.shell {{ max-width: 1240px; margin: auto; padding: 36px; }}
+.masthead, .run-heading, .section-heading {{ display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }}
+.masthead {{ border-bottom: 1px solid var(--report-line); padding-bottom: 16px; font-size: .9rem; }}
+.masthead strong {{ font-size: 1.1rem; }} .masthead a {{ margin-left: 16px; }}
+.saved-reports {{ display: flex; flex-wrap: wrap; gap: 16px; padding: 14px 0 0; font-size: .85rem; }}
+.intro {{ padding: 34px 0 22px; max-width: 74ch; }}
+h1 {{ font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -.035em; line-height: 1.12; margin: 14px 0; }}
+h2 {{ font-size: 1.4rem; letter-spacing: -.02em; margin: 0; line-height: 1.3; }}
+h3 {{ font-size: 1.03rem; margin: 0; line-height: 1.45; }} p {{ margin: 10px 0; max-width: 70ch; }}
+a {{ color: var(--report-link); text-underline-offset: 3px; }}
+:focus-visible {{ outline: 3px solid var(--report-link); outline-offset: 4px; }}
+.skip {{ position: absolute; left: -1000px; }} .skip:focus {{ left: 16px; top: 12px; background: var(--report-paper); padding: 8px; }}
+.meta, .stages span {{ color: var(--report-muted); font-size: .82rem; }}
+.badge {{ display: inline-block; flex-shrink: 0; border-radius: 4px; padding: 3px 9px; font-size: .76rem; font-weight: 650; }}
+.pass {{ color: var(--report-pass); }} .badge.pass {{ background: var(--report-pass-bg); }}
+.attention {{ color: var(--report-attention); }} .badge.attention {{ background: var(--report-attention-bg); }}
+.review-state {{ background: var(--report-panel); color: var(--report-link); }}
+.stages {{ display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0 0 30px; }}
+.stages li {{ border-top: 3px solid var(--report-line); padding-top: 8px; font-size: .88rem; }}
+.stages li[aria-current="step"] {{ border-color: var(--report-link); }} .stages span {{ display: block; margin-top: 3px; }}
+.layout {{ display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 36px; align-items: start; }}
+main, aside {{ min-width: 0; }} main > section {{ margin-bottom: 32px; scroll-margin-top: 24px; }}
+.section-heading {{ margin-bottom: 16px; }} .section-heading p {{ margin-bottom: 0; }}
+.section-heading > span {{ color: var(--report-muted); white-space: nowrap; font-size: .8rem; }}
+.run {{ background: var(--report-paper); border: 1px solid var(--report-line); border-radius: 8px; padding: 20px; margin: 12px 0; }}
+.run p {{ font-size: .9rem; }} .run .meta {{ font-size: .77rem; }}
+.check-steps {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; margin: 18px 0; gap: 12px; }}
+.check-steps li {{ border-top: 3px solid currentColor; padding-top: 8px; min-width: 0; }}
+.check-steps span {{ color: var(--report-muted); font-size: .75rem; display: block; }}
+.check-steps strong {{ font-size: .86rem; display: block; margin-top: 5px; }}
+details {{ margin-top: 12px; }} summary {{ cursor: pointer; color: var(--report-link); font-size: .88rem; padding: 5px 0; }}
+details[open] > summary {{ margin-bottom: 12px; }} .history {{ border-top: 1px solid var(--report-line); padding-top: 8px; margin-top: 20px; }}
+dt {{ font-weight: 650; margin-top: 16px; }} dd {{ margin: 4px 0 12px; color: var(--report-muted); }}
+code {{ overflow-wrap: anywhere; font-size: .85em; }} ul, ol {{ padding-left: 22px; }} li {{ margin-bottom: 8px; }}
+aside {{ border-left: 1px solid var(--report-line); padding-left: 24px; position: sticky; top: 24px; font-size: .88rem; }}
+aside section {{ margin-bottom: 28px; }} aside h2 {{ font-size: 1rem; }} aside p, aside li {{ color: var(--report-muted); }}
+.review-links {{ padding-left: 20px; }} .review-links a {{ display: block; padding: 3px 0; }}
+.lesson {{ border-left: 3px solid var(--report-link); padding-left: 16px; margin: 20px 0; }}
+.empty {{ padding: 20px; background: var(--report-panel); }}
+footer {{ border-top: 1px solid var(--report-line); padding-top: 18px; margin-top: 32px; }} footer p {{ max-width: 100ch; }}
+.evidence-viewer {{ position: fixed; inset: 0 0 0 auto; margin: 0; width: min(800px, 100%); height: 100dvh;
+max-width: 100%; max-height: 100dvh; padding: 0; border: 0; border-left: 1px solid var(--report-line);
+background: var(--report-paper); color: var(--report-foreground); box-shadow: -12px 0 48px #0003; }}
+.evidence-viewer[open] {{ display: flex; flex-direction: column; }} .evidence-viewer::backdrop {{ background: #101e2d80; }}
+body.evidence-open {{ overflow: hidden; }}
+.evidence-header {{ padding: 24px; border-bottom: 1px solid var(--report-line); }}
+.evidence-header .run-heading {{ align-items: flex-start; }} .evidence-header h2 {{ font-size: 1.3rem; }}
+.evidence-header p {{ font-size: .85rem; }} .evidence-header .meta {{ overflow-wrap: anywhere; }}
+.evidence-tools {{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }}
+.evidence-viewer button, .evidence-viewer select {{ font: inherit; color: var(--report-foreground);
+background: var(--report-panel); border: 1px solid var(--report-line); border-radius: 4px; padding: 7px 10px; }}
+.evidence-viewer button {{ cursor: pointer; }} .evidence-viewer select {{ max-width: 100%; }}
+#evidence-content {{ overflow: auto; margin: 0; padding: 24px; flex: 1; min-height: 0;
+background: var(--report-paper); color: var(--report-foreground);
+white-space: pre-wrap; overflow-wrap: anywhere; font: .82rem/1.65 ui-monospace, monospace; tab-size: 4; }}
+#evidence-status {{ max-width: none; padding: 10px 24px; margin: 0; background: var(--report-panel); font-size: .8rem; }}
+.patch-add {{ color: var(--report-pass); background: var(--report-pass-bg); }}
+.patch-remove {{ color: var(--report-attention); background: var(--report-attention-bg); }}
+@media (max-width: 960px) {{ .shell {{ padding: 24px; }} .layout {{ grid-template-columns: minmax(0, 1fr) 230px; gap: 24px; }} }}
+@media (max-width: 760px) {{ .layout {{ display: flex; flex-direction: column; }} main, aside {{ width: 100%; }}
+aside {{ position: static; border-left: 0; border-top: 1px solid var(--report-line); padding: 24px 0 0; }}
+.shell {{ padding: 20px; }} .stages {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+.run-heading {{ align-items: flex-start; }} .masthead {{ flex-wrap: wrap; gap: 8px; }}
+.masthead a {{ margin: 0 16px 0 0; }} .section-heading {{ align-items: flex-start; }} .run {{ padding: 16px; }} }}
+@media (max-width: 420px) {{ .check-steps {{ grid-template-columns: 1fr; gap: 8px; }}
+.check-steps li {{ border-top: 0; border-left: 3px solid currentColor; padding: 2px 0 2px 12px; margin: 0; }}
+.check-steps strong {{ margin: 0; }} .run-heading {{ flex-wrap: wrap; gap: 6px; }} }}
+@media (prefers-color-scheme: dark) {{ :root {{ --report-background: #18242f; --report-foreground: #e2ebf2;
+--report-muted: #b4c3cf; --report-paper: #21313f; --report-panel: #263f50; --report-line: #415568;
+--report-link: #96d2e4; --report-pass: #a1ddb9; --report-pass-bg: #244535;
+--report-attention: #f4cd85; --report-attention-bg: #493b24; }} }}
+@media print {{ :root {{ color-scheme: light; }} .shell {{ padding: 0; }} aside {{ position: static; }} .run {{ break-inside: avoid; }} }}
+</style></head><body><div class="shell">
+<a class="skip" href="#results">Skip to results</a>
+<header class="masthead"><strong>Mapbox TUI / Developer harness</strong><nav aria-label="Report sections">
+<a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if not define else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
+{saved_nav}
+<div class="intro"><span class="badge review-state">{escape(progress["stage"])}: {escape(STATE_LABELS[progress["status"]])}</span>
+<h1>{escape(progress['stage'])}: {'repair calibration' if define else 'controlled test execution'}</h1>
+<p>{escape(intro)}</p>
+<p class="meta">{'Historical checkpoint: the labels below retain the status recorded at the time.' if snapshot and snapshot.get('restored') else 'Saved local stage report.'}
+Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <ol class="stages">{milestones}</ol>
-<details><summary>How this fits into the bigger plan</summary><ol>
+<div class="layout"><main>
+<section id="results" aria-labelledby="results-title">
+<div class="section-heading"><div><h2 id="results-title">Does the checker spot a real repair?</h2>
+<p>Compare the latest good and wrong examples{' requested in containers' if container_mode else ''}. A failure in the middle step is expected.</p></div></div>
+{records}
+<details id="experiment-guide"><summary>How to read the three steps</summary>
+<ol><li><strong>Original code:</strong> the import test should pass.</li>
+<li><strong>Deliberately broken code:</strong> remove handling for a UTF-8 marker at the start of a file. The same test should fail.</li>
+<li><strong>After the repair:</strong> a working repair should pass; an ineffective one should still fail.</li></ol>
+<p>The test checks that a valid marker leaves imported data unchanged, while misplaced markers remain invalid.
+Setup problems such as missing tools or dependencies mean we couldn't judge the repair.</p></details>
+</section>
+{sandbox}
+<section id="reference" aria-labelledby="reference-title"><h2 id="reference-title">Reference, when you need it</h2>
+<details id="glossary"><summary>Words explained</summary><dl>{definitions(glossary)}</dl></details>
+<details id="file-guide"><summary>Files and evidence explained</summary>
+<p><code>tools/harness/</code> contains scripts. <code>reports/harness/</code> contains local, Git-ignored evidence.
+Receipt links open the evidence drawer. Select Result, Task, Events or either patch without leaving this page.</p><dl>{definitions(guide)}</dl></details>
+<details><summary>The roadmap and recorded decisions</summary><ol>
 <li><strong>Define:</strong> agree the task and prove that our checking process can spot a known bug and repair.</li>
 <li><strong>Connect:</strong> let Pi, the AI runtime, investigate and propose a repair.</li>
 <li><strong>Verify:</strong> independently check the exact change and run the wider required tests.</li>
 <li><strong>Recover:</strong> handle stopped runs and unfinished changes.</li>
 <li><strong>Compare:</strong> measure which changes to the harness actually help.</li>
 <li><strong>Use:</strong> try real tasks under human supervision, starting with imports.</li>
-</ol></details>
-<h2>What happens in an experiment?</h2>
-<ol><li><strong>Test working code.</strong> The original import test should pass.</li>
-<li><strong>Deliberately break it.</strong> Remove handling for a marker some files have at their start. The same test should fail.</li>
-<li><strong>Try the proposed repair.</strong> Apply the prepared change and run the test again. A working repair should pass; an ineffective one should fail.</li></ol>
-<p>The test checks that a valid UTF-8 marker leaves imported data unchanged, while misplaced markers remain invalid.
-A failure in step 2 is expected: it shows the test notices the bug we planted.</p>
-<p>Setup-failure examples deliberately interrupt this process with a missing file, missing dependencies or a slow command.
-They may stop before any import test runs. An unfinished check tells us nothing about whether the repair works.</p>
-<h2>What did each experiment show?</h2>
-<p>Each entry below is one run. A failed repair can be the expected answer in these demonstrations.
-A missing tool, source file or dependency means we couldn’t check the repair. A time limit means the run stopped unfinished.</p>
-{records}
-<h2>Is the container runtime ready?</h2>
-<p>This Connect checkpoint inspects the local Podman runtime, separately from the prepared repair examples. No AI is involved.</p>
-{render_preflights(reports)}
-<h2>What should I review?</h2>
-<p>{escape(progress["next"])}</p>
-<p><strong>Our discussion:</strong> {escape(STATE_LABELS[progress["status"]])}. Passing tests never mark this reviewed automatically.</p>
-<ul>{items(progress["questions"])}</ul>
-<p>Start with the working-repair and ineffective-repair examples above. You should be able to explain why their results differ without opening a JSON file.
-“Receipt” opens the saved technical details if you want to investigate further.</p>
-<p><strong>Takeaway:</strong> we are testing whether this checking process can distinguish a working repair from an ineffective one.
-Passing this focused check does not prove the whole change is correct, safe or ready to merge.</p>
-<details><summary>Decisions and remaining obstacles</summary><ul>{items(progress["decisions"])}</ul>
+</ol><ul>{items(progress["decisions"])}</ul>
 <p>Obstacles: {escape('; '.join(progress['blockers']) or 'none recorded')}.</p></details>
-<h2>Words and files explained</h2>
-<p>You normally only need this page. The guides below explain the details when you want to look further.</p>
-<details id="glossary"><summary>What do these words mean?</summary><dl>
-{definitions(GLOSSARY)}
-</dl></details>
-<details id="file-guide"><summary>Which file does what?</summary>
-<p><code>tools/harness/</code> contains the scripts and instructions. <code>reports/harness/</code> contains their generated results, which stay local and Git-ignored.</p><dl>
-{definitions(FILE_GUIDE)}
-</dl></details>
-<h2>Is the AI getting better at repairs?</h2>
-<p>No comparisons yet. These are prepared experiments without an AI. Later we’ll compare repeated AI attempts on the same tasks and settings.
-These timings alone don’t show improved repair ability.</p>
-<p class="meta">Progress source: {escape(progress["source"])}. Decisions updated {escape(progress["updated_at"])}.
-Run source: local runs/*/result.json. Raw records stay in reports/harness/.</p>
+<details><summary>Is the AI getting better at repairs?</summary><p>No comparisons yet. These are prepared experiments without an AI.
+Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
+</section></main>
+<aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
+<ol class="review-links"><li><a href="#results">Compare good and wrong</a>Explain why their final steps differ.</li>
+{('<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
+<li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
+<section id="takeaway"><h2>What to take away</h2>
+<div class="lesson"><p>{escape(takeaway)}</p></div>
+<p>{'Connect is the next stage: demonstrate controlled execution before connecting Pi. Container isolation was not implemented in Define.' if define else 'Pi will choose investigation and repair steps. Our runner must enforce the permitted files, execution limits and required checks.'}</p>
+<details><summary>Questions for our discussion</summary><ul>{items(progress["questions"])}</ul></details></section>
+<section><h2>Before the next step</h2><p>{escape(STATE_LABELS[progress["status"]])}. Passing tests never mark this reviewed automatically.</p>
+<details><summary>Next scope and checkpoint notes</summary><p>{escape(progress["next"])}</p></details></section></aside></div>
+<footer><p class="meta">Generated {escape(now())}. Source: {escape(progress["source"])}.
+{'Local receipts contain the original host calibration experiments.' if define else 'Local receipts include repair, runtime-readiness and sandbox-probe records.'}</p>
 <p><a href="https://github.com/adamcbrewer/mapbox-tui/issues/103">Define scope #103</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/104">Connect scope #104</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement plan #111</a>.</p>
-</main></body></html>'''
+</footer></div>
+<dialog id="evidence-viewer" class="evidence-viewer" aria-labelledby="evidence-title" aria-describedby="evidence-description">
+<div class="evidence-header"><div class="run-heading"><h2 id="evidence-title">Run evidence</h2>
+<button type="button" id="evidence-close" aria-label="Close evidence">Close</button></div>
+<p id="evidence-run" class="meta"></p><p id="evidence-description"></p>
+<div class="evidence-tools"><label for="evidence-file">File</label><select id="evidence-file">
+<option value="result.json">Result</option><option value="task.json">Task</option><option value="events.jsonl">Events</option>
+<option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option></select>
+<a id="evidence-original">Open original file</a></div></div>
+<p id="evidence-status" role="status"></p><pre id="evidence-content" role="region" tabindex="0" aria-label="Evidence file contents"></pre>
+</dialog>
+<script type="application/json" id="evidence-data">{embedded_evidence(reports, link_root)}</script>
+<script id="evidence-script">{(HERE / 'evidence.js').read_text()}</script>
+</body></html>'''
+
+
+def save_stage(reports, progress, source, *, source_ref, restored=False):
+    if progress["stage"] not in STAGES or progress["status"] not in STATES:
+        raise ValueError("Unknown progress stage or status")
+    name = progress["stage"].lower()
+    destination = reports / "snapshots" / name
+    if restored and destination.exists():
+        raise ValueError(f"The {name} snapshot already exists; use --refresh-saved to render it again")
+    receipts = [path for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs")
+                for path in sorted((source / folder).glob("*/result.json"))]
+    if restored and not receipts:
+        raise ValueError("Restoration needs original evidence; no saved receipts were found")
+    destination.mkdir(parents=True, exist_ok=True)
+    for path in receipts:
+        relative = path.parent.relative_to(source)
+        shutil.copytree(path.parent, destination / relative, symlinks=True, dirs_exist_ok=True)
+    write_json(destination / "progress.json", progress)
+    saved_receipts = [path for folder in ("runs", "sandbox-preflight/runs", "sandbox-probes/runs")
+                      for path in sorted((destination / folder).glob("*/result.json"))]
+    snapshot = {"schema_version": 1, "stage": progress["stage"], "captured_at": now(),
+                "source_ref": source_ref, "restored": restored,
+                "evidence_source": str(source.resolve()),
+                "progress_sha256": digest((destination / "progress.json").read_bytes()),
+                "receipt_sha256": {path.relative_to(destination).as_posix(): digest(path.read_bytes()) for path in saved_receipts}}
+    write_json(destination / "snapshot.json", snapshot)
+    return name
+
+
+def render_saved(reports, name):
+    source = reports / "snapshots" / name
+    progress = json.loads((source / "progress.json").read_text())
+    snapshot = json.loads((source / "snapshot.json").read_text())
+    target = reports / f"{name}.html"
+    target.write_text(render(source, progress, link_root=reports, snapshot=snapshot))
+    return target
+
+
+def git_output(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True,
+                          text=True, timeout=10).stdout.strip()
 
 
 def main():
-    progress = json.loads((HERE / "progress.json").read_text())
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    target = REPORTS / "index.html"
-    target.write_text(render(REPORTS, progress))
-    print(target)
+    parser = argparse.ArgumentParser(description="Save a stage report with its evidence, or restore a historical stage.")
+    parser.add_argument("--restore-from", metavar="COMMIT", help="Read historical progress from this Git commit")
+    parser.add_argument("--evidence", type=Path, help="Original report directory; required with --restore-from")
+    parser.add_argument("--refresh-saved", action="store_true", help="Apply the current design to saved snapshots without recapturing evidence")
+    args = parser.parse_args()
+    if bool(args.restore_from) != bool(args.evidence) or (args.refresh_saved and args.restore_from):
+        parser.error("Use --restore-from and --evidence together, separately from --refresh-saved")
+    try:
+        progress = json.loads((HERE / "progress.json").read_text())
+        REPORTS.mkdir(parents=True, exist_ok=True)
+        if args.refresh_saved:
+            for stage in STAGES:
+                if (REPORTS / "snapshots" / stage.lower() / "snapshot.json").is_file():
+                    print(render_saved(REPORTS, stage.lower()))
+        else:
+            if args.restore_from:
+                reference = git_output("rev-parse", "--verify", "--end-of-options", args.restore_from + "^{commit}")
+                saved_progress = json.loads(git_output("show", reference + ":tools/harness/progress.json"))
+                name = save_stage(REPORTS, saved_progress, args.evidence.resolve(), source_ref=reference, restored=True)
+            else:
+                name = save_stage(REPORTS, progress, REPORTS, source_ref=git_output("rev-parse", "HEAD"))
+            print(render_saved(REPORTS, name))
+        current = REPORTS / (progress["stage"].lower() + ".html")
+        if current.is_file():
+            target = REPORTS / "index.html"
+            target.write_bytes(current.read_bytes())
+            print(target)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        parser.error(f"Could not save the report: {error}")
 
 
 if __name__ == "__main__":

@@ -3,25 +3,25 @@
   "updated_at": "2026-10-22",
   "source": "GitHub issues #102, #103, #104 and #111; Adam selected #104 as next on 22 October 2026",
   "stage": "Connect",
-  "status": "blocked",
-  "next": "Adam approved committing the readiness slice and proceeding. Prepare the container execution slice; Podman must be installed before the live checks for normal execution, denied host-file/network access and timeout/cancellation cleanup. Pi remains disconnected.",
+  "status": "awaiting-review",
+  "next": "Discuss the first live container checkpoint: a working repair passed, an ineffective repair failed, dummy host-file/network access was denied, kernel limits were observed, and timeout/SIGTERM cleanup was confirmed. Review the report and examples before connecting Pi. The readiness slice is committed as ae10aa7; this container slice remains local and uncommitted.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. We will connect the AI later.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
-    "We chose rootless Podman for disposable test containers in Connect (#104). Pi will stay outside; Bubblewrap is not needed initially. This is a decision, not an implemented sandbox.",
-    "For now, we only run prepared, trusted changes on the host. The container restrictions must be demonstrated before running AI-written code.",
+    "Rootless Podman now runs the trusted calibration checks in disposable containers. Pi will stay outside; Bubblewrap is not needed initially.",
+    "The container boundary has passed trusted live demonstrations. No AI-written changes or model runs have been executed; review this checkpoint before Pi integration.",
     "Results and reports stay on this machine, outside Git history.",
     "Pi chooses investigation and repair steps within permitted tools. Our runner enforces scope, execution, budgets, required checks and stopping conditions.",
     "Connect adds startup checks and structured tool outcomes. Recover (#106) adds a compact session handoff reconciled against files, journal and receipts.",
     "The first Connect slice inspects local Podman runtime prerequisites and records a separate readiness receipt. It does not execute candidates or demonstrate container isolation.",
-    "After the readiness walkthrough, Adam asked to commit and proceed on 22 October 2026. This approves the readiness slice; later container and Pi checkpoints still need their own evidence and review."
+    "After the readiness walkthrough, Adam asked to commit and proceed on 22 October 2026. This approves the readiness slice; later container and Pi checkpoints still need their own evidence and review.",
+    "The first live checkpoint used Podman v6.1.4 and a fixed prepared image ID. Good passed, wrong failed as intended, dummy host access was denied and timeout/cancellation containers were confirmed removed. Kernel resource settings were read, not stress-tested.",
+    "The app session lacked the CPU controller while the user manager already delegated it. A transient systemd user service reports CPU, memory and pids; no sudo or global configuration change was needed."
   ],
-  "blockers": [
-    "Podman is not installed here. Installing the system package needs administrator access; sudo requires a password. No live container checks have run."
-  ],
+  "blockers": [],
   "questions": [
-    "What does Podman prevent that restricted agent tools alone cannot?",
-    "Which decisions belong to Pi, and which must our runner enforce?",
-    "How do we show that a setup problem stops model work before it starts?"
+    "Why does reporting available controllers differ from observing their applied kernel limits?",
+    "Why must timeout or cancellation confirm container removal separately from stopping the Podman client?",
+    "Which decisions should Pi make, and which restrictions must our runner enforce?"
   ]
 }

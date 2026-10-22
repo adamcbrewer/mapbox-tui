@@ -1,0 +1,7 @@
+ARG GO_IMAGE
+FROM ${GO_IMAGE}
+ENV GOTOOLCHAIN=local GOENV=off CGO_ENABLED=0 GOPATH=/go
+WORKDIR /deps
+COPY go.mod go.sum ./
+RUN test "$(go env GOVERSION)" = go1.27.1 && go mod download && go mod verify
+WORKDIR /workspace

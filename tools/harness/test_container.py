@@ -1,0 +1,225 @@
+import copy
+import json
+from pathlib import Path
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+import sandbox
+from container import ContainerRun, ENVIRONMENT, MEMORY
+from report import render
+from run import HERE, ROOT, Run, Stop
+
+
+class ContainerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.checkout = self.root / "mapbox-calibration-test"
+        self.checkout.mkdir()
+        self.profile = self.root / "seccomp.json"
+        self.profile.write_text("{}")
+        self.image = "sha256:" + "a" * 64
+        self.run = ContainerRun(self.root / "reports", self.image)
+        self.run.seccomp = str(self.profile)
+        self.run.prepared = True
+        self.calls = []
+
+    def description(self, checkout):
+        return [{"Image": self.image, "BoundingCaps": [], "EffectiveCaps": [],
+                 "State": {"Status": "exited", "ExitCode": 0, "OOMKilled": False},
+                 "Config": {"User": "65534:65534", "Env": [f"{k}={v}" for k, v in ENVIRONMENT.items()]},
+                 "HostConfig": {"NetworkMode": "none", "ReadonlyRootfs": True, "Privileged": False,
+                                "PidMode": "private", "IpcMode": "private", "UsernsMode": "private", "Memory": MEMORY,
+                                "Annotations": {"io.podman.annotations.userns": "nomap"},
+                                "IDMappings": {"UidMap": ["0:1:65536"], "GidMap": ["0:1:65536"]},
+                                "MemorySwap": MEMORY, "CpuPeriod": 100000, "CpuQuota": 200000,
+                                "PidsLimit": 256, "Devices": [], "VolumesFrom": None,
+                                "SecurityOpt": ["no-new-privileges", "seccomp=" + str(self.profile)]},
+                 "Mounts": ([{"Type": "bind", "Source": str(checkout), "Destination": "/workspace", "RW": False}]
+                            if checkout else [])}]
+
+    def fake_command(self, run, name, args, cwd, env_overrides=None):
+        self.calls.append((name, args, run.finalizing, run.cancel_requested, run.deadline))
+        output, code = b"", 0
+        if name.endswith("-create"):
+            output = ("b" * 64).encode()
+        elif name.endswith(("-inspect", "-status")):
+            output = json.dumps(self.description(None if name.startswith("go-version") else self.checkout)).encode()
+        elif name.endswith("-absent"):
+            code = 1
+        elif name == "go-version":
+            output = b"go version go1.27.1 linux/amd64\n"
+        return {"id": name, "exit_code": code}, output
+
+    def patched_command(self):
+        return patch.object(Run, "command", lambda run, *args, **kwargs: self.fake_command(run, *args, **kwargs))
+
+    def test_fixed_check_is_inspected_before_start_and_removed_afterwards(self):
+        with self.patched_command():
+            self.run.command("candidate", self.run.test_command, self.checkout)
+        self.assertEqual([call[0] for call in self.calls],
+                         ["candidate-create", "candidate-inspect", "candidate", "candidate-status", "candidate-remove", "candidate-absent"])
+        create = self.calls[0][1]
+        for flag in ("--pull=never", "--network=none", "--read-only", "--cap-drop=all", "--unsetenv-all",
+                     "--pids-limit=256", "--memory=1g", "--cpu-quota=200000", "--userns=nomap"):
+            self.assertIn(flag, create)
+        self.assertEqual(create[-len(self.run.test_command):], [self.image, *self.run.test_command[1:]])
+        self.assertTrue(self.run.result["candidate_executed"])
+        self.assertTrue(self.run.result["containers"][0]["removed"])
+
+    def test_version_check_never_mounts_the_real_checkout(self):
+        with self.patched_command():
+            self.run.command("go-version", ["go", "version"], ROOT)
+        self.assertFalse(any(arg.startswith("--mount") for arg in self.calls[0][1]))
+
+    def test_changed_container_policy_is_rejected(self):
+        data = self.description(self.checkout)
+        for key, value in (("NetworkMode", "host"), ("ReadonlyRootfs", False),
+                           ("Memory", 0), ("PidsLimit", -1), ("Privileged", True),
+                           ("SecurityOpt", ["seccomp=unconfined"])):
+            changed = copy.deepcopy(data)
+            changed[0]["HostConfig"][key] = value
+            with self.subTest(key=key), self.assertRaises(Stop):
+                self.run.validate_container(changed, self.checkout)
+        for field, value in (("Mounts", data[0]["Mounts"] + [{"Type": "bind", "Source": "/home", "RW": False}]),
+                             ("Image", "sha256:" + "c" * 64), ("BoundingCaps", ["CAP_SYS_ADMIN"]), ("Pod", "shared")):
+            changed = copy.deepcopy(data)
+            changed[0][field] = value
+            with self.subTest(field=field), self.assertRaises(Stop):
+                self.run.validate_container(changed, self.checkout)
+        changed = copy.deepcopy(data)
+        changed[0]["Config"]["Env"].append("TOKEN=unexpected")
+        with self.assertRaises(Stop):
+            self.run.validate_container(changed, self.checkout)
+        changed = copy.deepcopy(data)
+        changed[0]["HostConfig"]["IDMappings"]["UidMap"] = ["0:0:65536"]
+        with self.assertRaises(Stop):
+            self.run.validate_container(changed, self.checkout)
+
+    def test_podman_null_capabilities_are_empty_and_real_user_stays_unmapped(self):
+        data = self.description(self.checkout)
+        data[0]["BoundingCaps"] = None
+        data[0]["EffectiveCaps"] = None
+        self.run.validate_container(data, self.checkout)
+
+    def test_failed_inspection_never_starts_and_still_removes_container(self):
+        with self.patched_command(), patch.object(self.run, "validate_container", side_effect=Stop("blocked", "Unsafe")):
+            with self.assertRaises(Stop):
+                self.run.command("baseline", self.run.test_command, self.checkout)
+        self.assertNotIn("baseline", [call[0] for call in self.calls])
+        self.assertTrue(self.run.result["containers"][0]["removed"])
+
+    def test_interrupted_create_and_start_still_receive_cleanup_time(self):
+        original = self.fake_command
+        for phase in ("candidate-create", "candidate"):
+            for outcome in ("cancelled", "timeout"):
+                with self.subTest(phase=phase, outcome=outcome):
+                    self.calls.clear()
+                    self.run.cancel_requested = False
+                    self.run.deadline = time.monotonic() + 30
+
+                    def interrupted(run, name, *args, **kwargs):
+                        if name == phase:
+                            run.cancel_requested = True
+                            run.deadline = time.monotonic() - 1
+                            raise Stop(outcome, "Interrupted")
+                        return original(run, name, *args, **kwargs)
+
+                    with patch.object(Run, "command", interrupted), self.assertRaises(Stop) as caught:
+                        self.run.command("candidate", self.run.test_command, self.checkout)
+                    self.assertEqual(caught.exception.outcome, outcome)
+                    cleanup = [call for call in self.calls if call[0].endswith(("-remove", "-absent"))]
+                    self.assertEqual(len(cleanup), 2)
+                    self.assertTrue(all(call[2] and not call[3] and call[4] > time.monotonic() for call in cleanup))
+                    self.assertTrue(self.run.result["containers"][-1]["removed"])
+                    self.assertTrue(self.run.cancel_requested)
+
+    def test_cleanup_failure_prevents_a_successful_result(self):
+        original = self.fake_command
+
+        def failed_cleanup(run, name, *args, **kwargs):
+            if name.endswith("-absent"):
+                return {"exit_code": 0}, b""
+            return original(run, name, *args, **kwargs)
+
+        with patch.object(Run, "command", failed_cleanup), self.assertRaises(Stop) as caught:
+            self.run.command("candidate", self.run.test_command, self.checkout)
+        self.assertEqual(caught.exception.outcome, "blocked")
+        self.assertFalse(self.run.result["containers"][-1]["removed"])
+
+    def test_arbitrary_commands_and_real_checkout_are_rejected_before_create(self):
+        for name, args, cwd in (("candidate", ["go", "run", "untrusted.go"], self.checkout),
+                                ("arbitrary", ["sh", "-c", "echo unsafe"], self.checkout),
+                                ("candidate-apply", ["git", "apply", "--whitespace=error", str(self.run.path / "candidate.patch")], ROOT),
+                                ("candidate", self.run.test_command, ROOT)):
+            with self.subTest(args=args, cwd=cwd), self.patched_command(), self.assertRaises(Stop):
+                self.run.command(name, args, cwd)
+        self.assertEqual(self.calls, [])
+
+    def test_out_of_memory_is_a_blocker_and_still_removes_the_container(self):
+        original = self.fake_command
+
+        def out_of_memory(run, name, *args, **kwargs):
+            if name.endswith("-status"):
+                data = self.description(self.checkout)
+                data[0]["State"]["OOMKilled"] = True
+                return {"exit_code": 0}, json.dumps(data).encode()
+            return original(run, name, *args, **kwargs)
+
+        with patch.object(Run, "command", out_of_memory), self.assertRaises(Stop) as caught:
+            self.run.command("candidate", self.run.test_command, self.checkout)
+        self.assertEqual(caught.exception.outcome, "blocked")
+        self.assertIn("memory budget", caught.exception.reason)
+        self.assertTrue(self.run.result["containers"][-1]["removed"])
+
+    def test_mutable_images_are_rejected_without_inspection(self):
+        self.run.image = "golang:latest"
+        with self.patched_command(), self.assertRaises(Stop) as caught:
+            self.run.prepare()
+        self.assertEqual(caught.exception.outcome, "invalid_input")
+        self.assertEqual(self.calls, [])
+
+    def test_image_preparation_requires_exact_local_identity_and_seccomp_profile(self):
+        self.run.result["runtime"] = {"seccomp_profile": str(self.profile)}
+        for identity in (self.image, "sha256:" + "c" * 64):
+            with self.subTest(identity=identity), patch.object(Run, "command", return_value=(
+                    {"exit_code": 0}, json.dumps([{"Id": identity, "RepoDigests": []}]).encode())):
+                if identity == self.image:
+                    self.run.prepare()
+                    self.assertIn("seccomp_sha256", self.run.result)
+                else:
+                    with self.assertRaises(Stop):
+                        self.run.prepare()
+        self.profile.unlink()
+        with self.patched_command(), self.assertRaises(Stop):
+            self.run.prepare()
+        self.assertEqual(self.calls, [])
+
+    def test_container_cli_does_not_fall_back_to_host_when_podman_is_missing(self):
+        with patch("sandbox.REPORTS", self.root / "cli"), patch("sys.argv", ["sandbox.py", "--image", self.image]), \
+             patch("sandbox.os.geteuid", return_value=1000), patch("sandbox.sys.platform", "linux"), \
+             patch("run.subprocess.Popen", side_effect=FileNotFoundError("missing")) as launch:
+            self.assertEqual(sandbox.main(), 1)
+        launch.assert_called_once()
+        self.assertEqual(launch.call_args.args[0], ["podman", "--remote=false", "info", "--format=json"])
+        result = json.loads(next((self.root / "cli").glob("runs/*/result.json")).read_text())
+        self.assertEqual(result["outcome"], "blocked")
+        self.assertEqual(result["execution_mode"], "rootless-podman")
+        self.assertEqual(result["containers"], [])
+        self.assertFalse(result["candidate_executed"])
+        page = render(self.root / "cli", json.loads((HERE / "progress.json").read_text()))
+        self.assertIn("requested rootless Podman", page)
+        self.assertIn("Removal confirmed: 0", page)
+        result["containers"] = None
+        path = next((self.root / "cli").glob("runs/*/result.json"))
+        path.write_text(json.dumps(result))
+        page = render(self.root / "cli", json.loads((HERE / "progress.json").read_text()))
+        self.assertIn("Container cleanup records are unavailable", page)
+        self.assertNotIn("Removal confirmed: 0", page)
+
+
+if __name__ == "__main__":
+    unittest.main()

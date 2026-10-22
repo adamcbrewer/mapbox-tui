@@ -1,8 +1,9 @@
 # Developer harness pilot
 
 Current stage: Connect ([#104](https://github.com/adamcbrewer/mapbox-tui/issues/104)).
-The first slice checks runtime prerequisites. The prepared repair experiments
-below remain the Define pilot; they still run trusted code on the host.
+The approved readiness slice is committed as `ae10aa7`. The first live container
+checkpoint now passes and awaits discussion. The original repair command
+still runs trusted code on the host.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
@@ -52,14 +53,60 @@ python3 tools/harness/report.py
 Expect `calibration_passed` and exit code 0 for good. Empty and wrong should
 return `repair_failed` and exit code 1. Those failures are intentional.
 
-Open `reports/harness/index.html` in your browser. The report explains each
-experiment, with a glossary and file guide under "Words and files explained".
-Expand an experiment's details for the technical status and diagnostics. Receipt
-links open the saved JSON results; the short IDs help you find their folders.
+Open `reports/harness/index.html` in your browser. The latest good and wrong
+examples show their three test steps first. Older experiments stay under
+"Other experiments", including failed and blocked runs. The glossary and file
+guide are under "Reference, when you need it".
+Expand an experiment's details for its explanation, technical status and diagnostics.
+Receipt links open an evidence drawer without leaving the report. Use its File
+selector to inspect the result, task, events, candidate patch or seed patch.
+JSON is formatted for reading, events remain in order, and patch additions/removals
+are coloured. Close or Escape returns you to the run. Empty files and files not
+recorded for that run are labelled separately. The short IDs identify run folders.
 
 The report works offline and follows your browser's light or dark preference.
 It isn't live. Run `report.py` again after new experiments, then refresh the page.
-That script only rebuilds the report; it doesn't run tests.
+That script saves the current stage's progress and evidence, then rebuilds its
+HTML page. It doesn't run tests.
+
+### Keep a report for each stage
+
+`report.py` uses the stage recorded in `progress.json` to name the report:
+`define.html`, `connect.html`, and later `verify.html`, `recover.html`,
+`compare.html` and `use.html`. `index.html` is a copy of the latest current-stage
+page. Links at the top switch between saved stages.
+
+```sh
+python3 tools/harness/report.py
+xdg-open reports/harness/define.html
+xdg-open reports/harness/connect.html
+```
+
+Rebuilding Connect leaves Define unchanged. Each stage keeps its own progress,
+provenance and copied receipts/logs under `reports/harness/snapshots/<stage>/`.
+Each HTML file embeds those five evidence file types, so the drawer also works
+when you open the HTML directly from disk or copy it elsewhere on its own.
+Copy both stage pages to keep their navigation links working. Include the
+`snapshots/` folder when you also want original-file links and the remaining logs.
+The source archive (`snapshot.stdout`) and command logs aren't embedded.
+All generated files remain local and Git-ignored.
+
+The Define report was restored from the progress record at commit `6754d3e` and
+the original #103 evidence in the main checkout. It uses the current design and
+is labelled historical. Its recorded review status is retained; #103 is now
+closed. The original evidence wasn't rerun or changed. Define explains the host
+checker; the later Podman demonstrations appear in Connect.
+
+To apply a future design update to saved pages without recapturing their data:
+
+```sh
+python3 tools/harness/report.py --refresh-saved
+```
+
+Historical restoration accepts `--restore-from COMMIT --evidence DIRECTORY`.
+It requires the original receipts and refuses to replace an existing snapshot.
+Git contains the old progress/code, but the ignored run evidence must also have
+survived. Restoration never changes either checkout's tracked files.
 
 In the agent environment, prefix runner commands with `mise exec go@1.27.1 --`.
 The commands above assume Go is already selected. Checks don't download
@@ -122,8 +169,8 @@ metadata for this check, so words inside source strings don't count as file oper
 That restriction doesn't make arbitrary code safe to run. Tests still run as
 your user and inherit your environment. Only use trusted patches you've reviewed.
 We've chosen rootless Podman for execution isolation in
-[#104](https://github.com/adamcbrewer/mapbox-tui/issues/104). It isn't implemented
-in this pilot. Pi will stay outside with its model connection; our runner will
+[#104](https://github.com/adamcbrewer/mapbox-tui/issues/104). The container execution
+path has passed the first trusted live demonstrations. Pi will stay outside with its model connection; our runner will
 apply allowed changes and run checks inside a disposable container. The container
 will get a project copy, prepared dependencies and resource/time limits, without
 personal files, credentials, the real checkout, a container-engine socket or
@@ -156,19 +203,32 @@ configured to use a remote connection. The shared runner gives the inspection
 Expect `runtime_ready` and exit 0 only when those prerequisites are reported.
 A missing or unsuitable runtime returns `blocked` and exit 1. A timeout or
 cancellation keeps that separate outcome. The report explains the result under
-"Is the container runtime ready?" and links to its receipt.
+"Runtime readiness and setup history" and links to its receipt.
 
-This checks prerequisites only. It does not start a container, build or pull an
+Without `--image`, this checks prerequisites only. It does not start a container, build or pull an
 image, run a candidate, or make the existing host calibration command safe for
 AI-written changes. Runtime reports alone don't prove access restrictions or
-resource enforcement. The next slice still needs a pinned image with prepared
-dependencies, actual container execution and the host-file/network denial and
-timeout/cancellation cleanup demonstrations from #104. Pi remains disconnected.
+resource enforcement. Those observations come from the separate container and
+probe receipts below. Pi remains disconnected.
 
-On 22 October 2026 this worktree's live check stopped because `podman` is missing.
+The initial check on 22 October 2026 stopped because `podman` was missing.
 Installing the system package needs administrator access (`sudo` requires a
 password). No system package or container configuration was changed. Docker being
 available does not satisfy the agreed rootless Podman prerequisite.
+
+After Podman was installed, the app session reported only `memory` and `pids`,
+even though the user manager already delegated `cpu` too. This is a per-session
+controller difference, not a missing package or a reason to drop the CPU limit.
+Launching the harness in a temporary systemd user unit reports all three:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/sandbox.py
+```
+
+Run this without sudo. The same prefix can launch container calibration after
+image preparation. The unit is transient; no system-wide delegation settings
+were changed. See [systemd-run](https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html).
 
 Review the successful decision path and deliberate rejection paths with:
 
@@ -190,6 +250,123 @@ The prerequisites follow the [Podman info documentation](https://docs.podman.io/
 and [rootless resource-limit documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
 We also consulted the required [npm security guidance](https://github.com/lirantal/npm-security-best-practices).
 This slice adds no package dependencies; Pi/Node installation remains later work.
+
+## Container execution draft
+
+This is the next #104 slice. Unit tests exercise its policy and cleanup paths.
+The first live checkpoint passed using Podman v6.1.4, a pinned Go image and
+trusted prepared examples. Review this checkpoint before connecting Pi.
+
+The runner requires a complete local image ID, such as the value Podman writes
+to an `--iidfile`. Tags such as `latest` are rejected. Runtime checks never pull
+images or download Go modules. The image must contain Go v1.27.1 at
+`/usr/local/go/bin/go`, plus the task's prepared dependencies in `/go/pkg/mod`.
+
+Image preparation is separate and uses the network. The following recipe
+uses the initial verified Linux/amd64 Go base image.
+It copies only the pinned task's public module files into a temporary build
+context, with no personal files or credentials:
+
+```sh
+HARNESS_GO_BASE='docker.io/library/golang@sha256:e114385c58e7280d2f56d6cf374219dda33fef8eb77f72e9f290ccae6160bd90'
+HARNESS_BASE_COMMIT="$(python3 -c 'import json; print(json.load(open("tools/harness/task.json"))["base_commit"])')"
+HARNESS_IMAGE_CONTEXT="$(mktemp -d)"
+git show "$HARNESS_BASE_COMMIT:go.mod" > "$HARNESS_IMAGE_CONTEXT/go.mod"
+git show "$HARNESS_BASE_COMMIT:go.sum" > "$HARNESS_IMAGE_CONTEXT/go.sum"
+cp tools/harness/Containerfile "$HARNESS_IMAGE_CONTEXT/Containerfile"
+mkdir -p reports/harness
+podman pull "$HARNESS_GO_BASE"
+podman build --pull=never --build-arg GO_IMAGE="$HARNESS_GO_BASE" \
+  --iidfile reports/harness/prepared-image.id "$HARNESS_IMAGE_CONTEXT"
+rm -r -- "$HARNESS_IMAGE_CONTEXT"
+```
+
+The initial image was built locally; its base reference is recorded in
+`reports/harness/base-image-selection.json`. The Containerfile checks the Go version,
+downloads the module cache and verifies it before any candidate is supplied.
+
+After image preparation, these are the live repair checks:
+
+```sh
+HARNESS_IMAGE_ID="$(cat reports/harness/prepared-image.id)"
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/sandbox.py --image "$HARNESS_IMAGE_ID" --demo good
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/sandbox.py --image "$HARNESS_IMAGE_ID" --demo wrong
+python3 tools/harness/report.py
+```
+
+Good should exit 0 with `calibration_passed`; wrong should exit 1 with
+`repair_failed`. Neither result is human approval or proof of full isolation.
+The existing baseline/seed/candidate assertions are reused. Git archive and
+bounded patch operations stay in the trusted host runner; Go version and all
+three test stages execute in separate containers. There is no host Go fallback.
+
+Each container has no network, a read-only root and source copy, a 512 MiB
+temporary filesystem, two CPUs, 1 GiB of memory with no extra swap, and at most
+256 processes. It uses an unmapped normal user, no capabilities, the recorded
+default seccomp profile, no image health checks and an empty OCI hook directory.
+Only a fixed environment is supplied. The real checkout, reports, home directory
+and engine socket aren't mounted. Configuration is inspected before startup.
+
+After the check, the runner inspects the exit state, treats a recorded memory
+exhaustion as a blocker, then force-removes its uniquely named container and
+checks that it is absent. Cleanup gets a separate ten-second budget even after
+the task deadline or cancellation. Unconfirmed removal prevents success. A hard
+process kill can still interrupt cleanup; recovery remains #106.
+
+The receipt includes the image ID, runtime/profile identities and each container's
+removal state. Unit tests use prepared Podman responses; live evidence is retained
+separately. The first live good repair passed, the wrong repair failed as intended,
+and all eight containers were confirmed removed.
+
+### Live boundary and cleanup demonstrations
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/probes.py --image "$HARNESS_IMAGE_ID" --phase boundary
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/probes.py --image "$HARNESS_IMAGE_ID" --phase timeout
+```
+
+Boundary should exit 0 with `boundary_passed`. The runner first proves a dummy
+file and HTTP endpoint are readable on the host. The trusted probe then confirms
+both are unavailable inside the container, root/source writes fail, privileges
+are restricted and kernel cgroup files contain the requested resource limits.
+This reads the applied kernel limits; it doesn't stress-test every limit.
+
+Timeout deliberately starts a sixty-second command with a five-second budget.
+Expect `timeout` and exit 1, with `probe_confirmed: true` only after readiness
+output was observed and container removal was confirmed.
+
+To review cancellation, start this in one terminal:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  --unit=mapbox-harness-cancel-review -p 'Delegate=cpu memory pids' \
+  python3 tools/harness/probes.py --image "$HARNESS_IMAGE_ID" --phase cancel
+```
+
+After the probe's `cancel-probe.stdout` contains `probe-ready`, use another terminal:
+
+```sh
+systemctl --user kill --signal=SIGTERM --kill-whom=main mapbox-harness-cancel-review.service
+```
+
+Expect `cancelled` and exit 1, with readiness and removal confirmed in its receipt.
+The automated walkthrough already exercised this sequence. Killing only the
+`systemd-run` client is not the cancellation demonstration.
+
+Probe receipts live under `reports/harness/sandbox-probes/runs/`. The report
+explains each demonstration and links to its receipt. These probes use dummy
+data and no model. They establish observed behaviour for this image/environment,
+not a general security proof. The next step is discussing this checkpoint.
+
+References: [Podman create](https://docs.podman.io/en/latest/markdown/podman-create.1.html),
+[container inspection](https://docs.podman.io/en/latest/markdown/podman-container-inspect.1.html),
+[container removal](https://docs.podman.io/en/latest/markdown/podman-rm.1.html), and
+the required [npm security guidance](https://github.com/lirantal/npm-security-best-practices).
+No Node dependencies are introduced.
 
 ## What gets saved
 
@@ -246,10 +423,10 @@ loses that local history.
 
 `progress.json` separately records our decisions and review status: planned,
 active, blocked, awaiting-review or reviewed. Tests don't change that status.
-The snapshot records #103 as closed and #104 (Connect) as started, with live
-container execution blocked on Podman being installed. The experiments still
-cover Define; container execution, Pi, later stage history and run timelines
-aren't built yet. Runtime-readiness records are shown separately.
+The snapshot records #103 as closed and the first live #104 container checkpoint
+as awaiting discussion. The repair experiments are still prepared examples. Pi,
+later stage history and run timelines aren't built yet. Runtime-readiness
+records are shown separately.
 
 ## Check the implementation
 

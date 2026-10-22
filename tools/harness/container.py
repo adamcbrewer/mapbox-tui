@@ -1,0 +1,204 @@
+import json
+import math
+from pathlib import Path
+import re
+import time
+import uuid
+
+from run import HERE, ROOT, Run, Stop, digest
+
+PODMAN = ["podman", "--remote=false"]
+MEMORY = 1024 * 1024 * 1024
+ENVIRONMENT = {
+    "PATH": "/usr/local/go/bin:/usr/bin:/bin", "HOME": "/tmp", "GOCACHE": "/tmp/go-build",
+    "GOPATH": "/go", "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOWORK": "off",
+    "GOENV": "off", "GOFLAGS": "-mod=readonly", "CGO_ENABLED": "0",
+}
+
+
+class ContainerRun(Run):
+    def __init__(self, reports, image):
+        super().__init__(reports)
+        self.image = image
+        self.seccomp = None
+        self.prepared = False
+        self.hooks = self.path / "empty-hooks"
+        self.hooks.mkdir()
+        self.task = json.loads((HERE / "task.json").read_text())
+        self.test_command = self.task["command"]
+        self.result.update(execution_mode="rootless-podman", image=image, containers=[],
+                           container_runner_sha256=digest(Path(__file__).read_bytes()))
+
+    def prepare(self):
+        self.prepared = False
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.image):
+            raise Stop("invalid_input", "Use a full immutable local image ID: sha256:<64 hex characters>")
+        self.seccomp = self.result["runtime"].get("seccomp_profile")
+        if not self.seccomp or not Path(self.seccomp).is_file():
+            raise Stop("blocked", "The reported default seccomp profile is unavailable")
+        self.result["seccomp_sha256"] = digest(Path(self.seccomp).read_bytes())
+        check, output = super().command("image-inspect", PODMAN + ["image", "inspect", self.image], ROOT)
+        try:
+            images = json.loads(output)
+            identity = images[0]["Id"].removeprefix("sha256:")
+            if check["exit_code"] or len(images) != 1 or identity != self.image.removeprefix("sha256:"):
+                raise ValueError("Image mismatch")
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+            raise Stop("blocked", "The exact prepared image is unavailable locally") from error
+        self.result["image_repo_digests"] = images[0].get("RepoDigests", [])
+        self.prepared = True
+
+    def validate_container(self, data, checkout):
+        try:
+            item = data[0]
+            config = item["HostConfig"]
+            expected = {"NetworkMode": "none", "ReadonlyRootfs": True, "Privileged": False,
+                        "PidMode": "private", "IpcMode": "private", "UsernsMode": "private", "Memory": MEMORY,
+                        "MemorySwap": MEMORY, "CpuPeriod": 100000, "CpuQuota": 200000,
+                        "PidsLimit": 256}
+            if any(config[key] != value for key, value in expected.items()):
+                raise ValueError("Container restrictions differ from the requested policy")
+            if item["Image"].removeprefix("sha256:") != self.image.removeprefix("sha256:"):
+                raise ValueError("Container image changed")
+            if item["BoundingCaps"] not in ([], None) or item["EffectiveCaps"] not in ([], None):
+                raise ValueError("Container retains capabilities")
+            if config["Annotations"]["io.podman.annotations.userns"] != "nomap":
+                raise ValueError("Container user namespace changed")
+            for mapping in (config["IDMappings"]["UidMap"], config["IDMappings"]["GidMap"]):
+                if not mapping:
+                    raise ValueError("Missing user namespace mapping")
+                for entry in mapping:
+                    inside, outside, count = map(int, entry.split(":"))
+                    if inside < 0 or outside <= 0 or count <= 0:
+                        raise ValueError("The real rootless user must not be mapped into the container")
+            if "no-new-privileges" not in config["SecurityOpt"]:
+                raise ValueError("Privilege escalation is not disabled")
+            if "seccomp=" + self.seccomp not in config["SecurityOpt"]:
+                raise ValueError("Seccomp profile changed")
+            if item["Config"]["User"] != "65534:65534":
+                raise ValueError("Container user changed")
+            if sorted(item["Config"]["Env"]) != sorted(f"{key}={value}" for key, value in ENVIRONMENT.items()):
+                raise ValueError("Unexpected container environment")
+            mounts = item["Mounts"]
+            binds = [mount for mount in mounts if mount["Type"] == "bind"]
+            if checkout is None:
+                if binds:
+                    raise ValueError("Unexpected host mount")
+            elif len(binds) != 1 or binds[0]["Source"] != str(checkout) or \
+                    binds[0]["Destination"] != "/workspace" or binds[0]["RW"] is not False:
+                raise ValueError("Only the read-only disposable source may be mounted")
+            if any(mount["Type"] != "bind" and
+                   (mount["Type"] != "tmpfs" or mount["Destination"] != "/tmp") for mount in mounts):
+                raise ValueError("Unexpected container mount")
+            if config["Devices"] or config["VolumesFrom"] or item.get("Pod"):
+                raise ValueError("Unexpected device, shared volume or pod")
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+            raise Stop("blocked", f"Container policy could not be confirmed ({error}); refusing to start") from error
+
+    def cleanup(self, name, container):
+        previous = self.deadline, self.finalizing, self.cancel_requested
+        self.deadline, self.finalizing, self.cancel_requested = time.monotonic() + 10, True, False
+        try:
+            check, _ = super().command(name + "-remove", PODMAN + ["rm", "--force", "--ignore", "--time=0", container["name"]], ROOT)
+            if check["exit_code"] != 0:
+                raise Stop("blocked", "Could not remove the owned container")
+            check, _ = super().command(name + "-absent", PODMAN + ["container", "exists", container["name"]], ROOT)
+            if check["exit_code"] != 1:
+                raise Stop("blocked", "Container removal could not be confirmed")
+            container["removed"] = True
+            self.event("container_removed", container=container)
+        finally:
+            self.deadline, self.finalizing, self.cancel_requested = previous
+
+    def checkout_path(self, cwd):
+        checkout = Path(cwd).resolve()
+        if checkout == ROOT or checkout.is_relative_to(ROOT) or not checkout.name.startswith("mapbox-calibration-"):
+            raise Stop("invalid_input", "A disposable calibration copy outside the repository is required")
+        return checkout
+
+    def command(self, name, args, cwd, env_overrides=None):
+        if args[0] != "go":
+            allowed = {"podman-info": PODMAN + ["info", "--format=json"],
+                       "snapshot": ["git", "archive", self.task["base_commit"]]}
+            for stage in ("seed", "candidate"):
+                path = str(self.path / f"{stage}.patch")
+                allowed.update({stage + "-scope": ["git", "apply", "--numstat", "-z", path],
+                                stage + "-metadata": ["git", "apply", "--summary", path],
+                                stage + "-apply": ["git", "apply", "--whitespace=error", path]})
+            if args != allowed.get(name) or env_overrides:
+                raise Stop("invalid_input", "Host execution is limited to fixed inspection and patch commands")
+            if name not in ("podman-info", "snapshot"):
+                self.checkout_path(cwd)
+            return super().command(name, args, cwd, env_overrides)
+        if not self.prepared or env_overrides:
+            raise Stop("blocked", "Container execution is not prepared for this check")
+        version = name == "go-version" and args == ["go", "version"]
+        if not version and (name not in ("baseline", "seed", "candidate") or args != self.test_command):
+            raise Stop("invalid_input", "Only the fixed Go version and calibration checks are supported")
+        return self.execute(name, args, cwd)
+
+    def probe(self, name, cwd, arguments=()):
+        if name not in ("boundary-probe", "timeout-probe", "cancel-probe"):
+            raise Stop("invalid_input", "Unknown sandbox probe")
+        return self.execute(name, ["/bin/sh", "/workspace/probe.sh", *arguments], cwd)
+
+    def execute(self, name, args, cwd):
+        if not self.prepared:
+            raise Stop("blocked", "Container execution is not prepared")
+        version = name == "go-version"
+        checkout = None if version else self.checkout_path(cwd)
+        if checkout is not None:
+            checkout.chmod(0o755)
+        container = {"name": "mapbox-harness-" + uuid.uuid4().hex, "check": name, "removed": False}
+        self.result["containers"].append(container)
+        create = PODMAN + ["--hooks-dir=" + str(self.hooks), "create", "--name=" + container["name"],
+                           "--pull=never", "--network=none", "--read-only", "--read-only-tmpfs=false",
+                           "--tmpfs=/tmp:rw,exec,nosuid,nodev,size=512m,mode=1777", "--image-volume=ignore",
+                           "--cap-drop=all", "--security-opt=no-new-privileges", "--security-opt=seccomp=" + self.seccomp,
+                           "--userns=nomap", "--user=65534:65534", "--pid=private", "--ipc=private", "--uts=private",
+                           "--cgroupns=private", "--memory=1g", "--memory-swap=1g", "--cpu-period=100000",
+                           "--cpu-quota=200000", "--pids-limit=256", "--http-proxy=false", "--unsetenv-all",
+                           "--health-cmd=none", "--systemd=false", "--restart=no",
+                           "--timeout=" + str(max(1, math.ceil(self.deadline - time.monotonic()))),
+                           "--workdir=" + ("/workspace" if checkout else "/tmp"),
+                           "--entrypoint=" + ("/usr/local/go/bin/go" if args[0] == "go" else "/bin/sh")]
+        if checkout:
+            create += ["--mount=type=bind,src=" + str(checkout) + ",dst=/workspace,ro"]
+        for key, value in ENVIRONMENT.items():
+            create += ["--env=" + key + "=" + value]
+        try:
+            check, output = super().command(name + "-create", create + [self.image, *args[1:]], ROOT)
+            if check["exit_code"] != 0:
+                raise Stop("blocked", "Could not create the restricted container")
+            container["id"] = output.decode().strip()
+            check, output = super().command(name + "-inspect", PODMAN + ["container", "inspect", container["name"]], ROOT)
+            if check["exit_code"] != 0:
+                raise Stop("blocked", "Could not inspect the created container")
+            try:
+                data = json.loads(output)
+            except (ValueError, UnicodeDecodeError) as error:
+                raise Stop("blocked", "Container inspection returned invalid JSON") from error
+            self.validate_container(data, checkout)
+            self.event("container_policy_checked", container=container)
+            if name == "candidate":
+                self.result["candidate_executed"] = None
+            check, output = super().command(name, PODMAN + ["start", "--attach", container["name"]], ROOT)
+            if version and (check["exit_code"] != 0 or not output.startswith(b"go version go1.27.1 ")):
+                raise Stop("blocked", "The prepared image must provide Go v1.27.1")
+            if check["exit_code"] in (125, 126, 127):
+                raise Stop("blocked", "Container execution failed before the required check could be judged")
+            state_check, state_output = super().command(name + "-status", PODMAN + ["container", "inspect", container["name"]], ROOT)
+            try:
+                state = json.loads(state_output)[0]["State"]
+                if state_check["exit_code"] != 0 or state["Status"] != "exited" or state["ExitCode"] != check["exit_code"]:
+                    raise ValueError("Container did not reach the observed exit state")
+                container["state"] = state
+                if state["OOMKilled"] is True:
+                    raise Stop("blocked", "Container memory budget exhausted; repair quality was not established")
+            except (ValueError, KeyError, IndexError, TypeError) as error:
+                raise Stop("blocked", "Could not confirm the container's final state") from error
+            if name == "candidate":
+                self.result["candidate_executed"] = True
+            return check, output
+        finally:
+            self.cleanup(name, container)
