@@ -196,6 +196,60 @@ class StageReportTests(unittest.TestCase):
         report.save_stage(self.reports, progress, source, source_ref="a" * 40, restored=True)
         self.assertIn("Historical checkpoint", report.render_saved(self.reports, "define").read_text())
 
+    def test_capture_rejects_linked_receipts_and_run_directories_before_opening(self):
+        for linked in ("receipt", "run-directory"):
+            with self.subTest(linked=linked):
+                source = self.source("linked-" + linked)
+                run = source / "runs" / ("linked-" + linked)
+                path = run / "result.json" if linked == "receipt" else run
+                outside = self.root / ("outside-" + linked)
+                path.rename(outside)
+                path.symlink_to(outside, target_is_directory=linked == "run-directory")
+                with patch("report.os.open") as opened, patch("report.shutil.copytree") as copied, \
+                        self.assertRaisesRegex(ValueError, "symlink"):
+                    report.save_stage(self.reports, dict(self.progress, stage="Define"), source,
+                                      source_ref="a" * 40, restored=True)
+                opened.assert_not_called()
+                copied.assert_not_called()
+                self.assertFalse((self.reports / "snapshots/define").exists())
+
+    def test_refresh_rejects_linked_receipt_before_hashing_external_content(self):
+        source, page = self.restore_define()
+        original_page = page.read_bytes()
+        receipt = self.reports / "snapshots/define/runs/define-example/result.json"
+        receipt.unlink()
+        receipt.symlink_to(source / "runs/define-example/result.json")
+        with patch("report.os.open") as opened, self.assertRaisesRegex(ValueError, "symlink"):
+            report.render_saved(self.reports, "define")
+        opened.assert_not_called()
+        self.assertEqual(page.read_bytes(), original_page)
+
+    def test_evidence_changed_during_rendering_does_not_replace_report(self):
+        source = self.source("concurrent-change")
+        (source / "runs/concurrent-change/candidate.patch").write_text("Original patch")
+        report.save_stage(self.reports, dict(self.progress, stage="Define"), source,
+                          source_ref="a" * 40, restored=True)
+        page = report.render_saved(self.reports, "define")
+        original_page = page.read_bytes()
+        render = report.render
+
+        def changed_render(saved, *args, **kwargs):
+            (saved / "runs/concurrent-change/candidate.patch").write_text("Changed during rendering")
+            return render(saved, *args, **kwargs)
+
+        with patch("report.render", side_effect=changed_render), self.assertRaisesRegex(ValueError, "changed during rendering"):
+            report.render_saved(self.reports, "define")
+        self.assertEqual(page.read_bytes(), original_page)
+        self.assertEqual(list(self.reports.glob(".define-render-*")), [])
+
+    def test_failed_html_write_preserves_previous_report(self):
+        _, page = self.restore_define()
+        original_page = page.read_bytes()
+        with patch.object(Path, "write_text", side_effect=OSError("Disk full")), self.assertRaises(OSError):
+            report.render_saved(self.reports, "define")
+        self.assertEqual(page.read_bytes(), original_page)
+        self.assertEqual(list(self.reports.glob(".define-render-*")), [])
+
     def test_saved_hash_and_inventory_mismatches_do_not_overwrite_existing_report(self):
         for changed in ("progress", "receipt", "missing", "extra"):
             with self.subTest(changed=changed):

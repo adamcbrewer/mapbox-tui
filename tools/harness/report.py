@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 
@@ -661,6 +662,25 @@ def evidence_inventory(source):
     return inventory
 
 
+def receipt_hashes(source, receipts):
+    hashes = {}
+    for path in receipts:
+        relative = path.relative_to(source)
+        current = source
+        for part in relative.parts:
+            if current.is_symlink():
+                raise ValueError(f"Receipt path must not contain symlinks: {relative}")
+            current = current / part
+        if path.is_symlink():
+            raise ValueError(f"Receipt must not be a symlink: {relative}")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as content:
+            if not stat.S_ISREG(os.fstat(content.fileno()).st_mode):
+                raise ValueError(f"Receipt must be a regular file: {relative}")
+            hashes[relative.as_posix()] = hashlib.file_digest(content, "sha256").hexdigest()
+    return hashes
+
+
 def capture_stage(destination, progress, source, receipts, source_ref, restored):
     destination.mkdir(parents=True, exist_ok=True)
     for path in receipts:
@@ -673,7 +693,7 @@ def capture_stage(destination, progress, source, receipts, source_ref, restored)
                 "source_ref": source_ref, "restored": restored,
                 "evidence_source": str(source.resolve()),
                 "progress_sha256": digest((destination / "progress.json").read_bytes()),
-                "receipt_sha256": {path.relative_to(destination).as_posix(): digest(path.read_bytes()) for path in saved_receipts},
+                "receipt_sha256": receipt_hashes(destination, saved_receipts),
                 "evidence_inventory": evidence_inventory(destination)}
     write_json(destination / "snapshot.json", snapshot)
 
@@ -689,6 +709,7 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
                 for path in sorted((source / folder).glob("*/result.json"))]
     if restored and not receipts:
         raise ValueError("Restoration needs original evidence; no saved receipts were found")
+    receipt_hashes(source, receipts)
     if restored:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=f".{name}-", dir=destination.parent) as temporary:
@@ -706,12 +727,12 @@ def render_saved(reports, name):
     snapshot = json.loads((source / "snapshot.json").read_text())
     if digest(progress_bytes) != snapshot["progress_sha256"]:
         raise ValueError(f"Saved {name} progress does not match its snapshot hash")
-    receipts = {path.relative_to(source).as_posix(): path for folder in RUN_FOLDERS
-                for path in (source / folder).glob("*/result.json")}
+    receipts = receipt_hashes(source, [path for folder in RUN_FOLDERS
+                                     for path in (source / folder).glob("*/result.json")])
     if receipts.keys() != snapshot["receipt_sha256"].keys():
         raise ValueError(f"Saved {name} receipt inventory does not match its snapshot")
-    for relative, path in receipts.items():
-        if digest(path.read_bytes()) != snapshot["receipt_sha256"][relative]:
+    for relative, hashed in receipts.items():
+        if hashed != snapshot["receipt_sha256"][relative]:
             raise ValueError(f"Saved {name} receipt does not match its snapshot hash: {relative}")
     if not isinstance(snapshot.get("evidence_inventory"), dict):
         raise ValueError(f"Saved {name} snapshot has no complete evidence inventory; verify original evidence before recapturing")
@@ -719,7 +740,12 @@ def render_saved(reports, name):
         raise ValueError(f"Saved {name} evidence does not match its snapshot inventory")
     progress = json.loads(progress_bytes)
     target = reports / f"{name}.html"
-    target.write_text(render(source, progress, link_root=reports, snapshot=snapshot))
+    with tempfile.TemporaryDirectory(prefix=f".{name}-render-", dir=reports) as temporary:
+        staged = Path(temporary) / target.name
+        staged.write_text(render(source, progress, link_root=reports, snapshot=snapshot))
+        if evidence_inventory(source) != snapshot["evidence_inventory"]:
+            raise ValueError(f"Saved {name} evidence changed during rendering")
+        staged.replace(target)
     return target
 
 
