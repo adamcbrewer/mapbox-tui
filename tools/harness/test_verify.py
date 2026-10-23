@@ -20,7 +20,8 @@ class VerificationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.run = verify.VerificationRun(self.root / "verification", "sha256:" + "a" * 64)
 
-    def response(self, name, args, cwd):
+    def response(self, name, args, cwd, build_output=False):
+        self.assertEqual(build_output, name == "candidate-suite")
         if name == "go-version":
             return {"exit_code": 0}, b"go version go1.27.1 linux/amd64\n"
         task = self.run.task
@@ -30,6 +31,10 @@ class VerificationTests(unittest.TestCase):
         if outcome == "fail":
             events.append({"Action": "output", "Output": task["failure_message"]})
         output = b"\n".join(json.dumps(event).encode() for event in events)
+        if name in verify.EXTRA_CHECKS:
+            unformatted = name == "candidate-format" and b"        if n >= 3" in (Path(cwd) / "go/import.go").read_bytes()
+            outcome = "fail" if unformatted or name == getattr(self, "extra_failure", None) else "pass"
+            output = b"Required check failed" if outcome == "fail" else b"Required check completed"
         check = {"id": name, "command": args, "started_at": now(), "ended_at": now(),
                  "duration_seconds": 0.01, "exit_code": 1 if outcome == "fail" else 0,
                  "outcome": "failed" if outcome == "fail" else "passed",
@@ -50,7 +55,7 @@ class VerificationTests(unittest.TestCase):
     def test_frozen_patch_checked_in_fresh_copy_and_bound_to_each_measurement(self):
         self.verify_fixture()
         result = self.run.result
-        self.assertEqual(result["outcome"], "focused_verification_passed")
+        self.assertEqual(result["outcome"], "repository_verification_passed")
         self.assertFalse(result["fully_verified"])
         self.assertIsNone(result["model_claim"])
         self.assertEqual(result["patch_sha256"], digest((HERE / "fixtures/good.patch").read_bytes()))
@@ -69,6 +74,8 @@ class VerificationTests(unittest.TestCase):
         self.assertIn("independent patch checks", page)
         self.assertIn("This frozen patch passed", page)
         self.assertIn(result["patch_sha256"], page)
+        self.assertIn('<strong>Go formatting:</strong> passed', page)
+        self.assertIn('<strong>Repository make test:</strong> passed', page)
 
     def test_wrong_repair_is_a_failed_check_with_its_own_evidence(self):
         with self.assertRaises(Stop) as caught:
@@ -79,6 +86,81 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(check["exit_code"], 1)
         self.assertIn("stdout_sha256", check)
         self.assertFalse(verify.receipt_matches(self.run.result, self.run.path))
+
+    def test_passing_import_test_does_not_override_format_or_suite_failure(self):
+        for demo, failure in (("unformatted", "candidate-format"), ("good", "candidate-suite")):
+            self.run = verify.VerificationRun(self.root / "verification", "sha256:" + "a" * 64)
+            self.extra_failure = failure
+            with self.subTest(failure=failure), self.assertRaises(Stop) as caught:
+                self.verify_fixture(demo)
+            self.assertEqual(caught.exception.outcome, "repair_failed")
+            checks = [check for check in self.run.result["checks"] if check["id"] in verify.STAGES + verify.EXTRA_CHECKS]
+            self.assertEqual(checks[2]["outcome"], "passed")
+            self.assertEqual(checks[-1]["id"], failure)
+            self.assertEqual(checks[-1]["exit_code"], 1)
+            self.assertTrue(verify.receipt_matches(self.run.result, self.run.path, allow_failed=True))
+            self.assertFalse(verify.receipt_matches(self.run.result, self.run.path))
+            self.run.result.update(outcome="repair_failed")
+            page = report.render_run(self.run.path / "result.json", self.root, self.run.result)
+            self.assertIn('<strong>Go formatting:</strong> ' + ('failed' if demo == 'unformatted' else 'passed'), page)
+            if demo == "unformatted":
+                self.assertIn('<strong>Repository make test:</strong> not run', page)
+                self.assertIn('This failure is the expected answer', page)
+
+    def test_missing_broader_check_or_different_candidate_cannot_satisfy_gate(self):
+        self.verify_fixture()
+        for name in verify.EXTRA_CHECKS:
+            result = copy.deepcopy(self.run.result)
+            result["checks"] = [check for check in result["checks"] if check["id"] != name]
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+            result = copy.deepcopy(self.run.result)
+            next(check for check in result["checks"] if check["id"] == name)["tree_sha256"] = "earlier-candidate"
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+
+    def test_earlier_focused_receipts_retain_their_smaller_scope(self):
+        self.verify_fixture()
+        result = copy.deepcopy(self.run.result)
+        result.update(verification_scope="focused-only-v1", suite_version=1,
+                      required_checks=list(verify.STAGES), outcome="focused_verification_passed")
+        result["checks"] = [check for check in result["checks"] if check["id"] not in verify.EXTRA_CHECKS]
+        for check in result["checks"]:
+            check.update(verification_scope="focused-only-v1", suite_version=1)
+        self.assertTrue(verify.receipt_matches(result, self.run.path))
+        page = report.render_run(self.run.path / "result.json", self.root, result)
+        self.assertIn('passed the focused check', page)
+        self.assertNotIn('<strong>Repository make test:</strong> passed', page)
+        result["outcome"] = "repository_verification_passed"
+        page = report.render_run(self.run.path / "result.json", self.root, result)
+        self.assertIn('Evidence needs inspection', page)
+
+    def test_missing_dependency_in_broader_check_stays_an_environment_failure(self):
+        response = self.response
+        self.wrong = False
+
+        def missing_dependency(name, args, cwd, build_output=False):
+            check, output = response(name, args, cwd, build_output)
+            if name == "candidate-suite":
+                output = b"module lookup disabled by GOPROXY=off"
+                check.update(exit_code=2, outcome="failed")
+                (self.run.path / check["stdout"]).write_bytes(output)
+            return check, output
+
+        with patch("verify.preflight"), \
+                patch.object(self.run, "prepare", side_effect=lambda: setattr(self.run, "prepared", True)), \
+                patch.object(self.run, "execute", side_effect=missing_dependency), self.assertRaises(Stop) as caught:
+            verify.verify(self.run, (HERE / "fixtures/good.patch").read_bytes())
+        self.assertEqual(caught.exception.outcome, "blocked")
+        self.assertEqual(self.run.result["checks"][-1]["outcome"], "blocked")
+
+    def test_arbitrary_broader_commands_and_environment_changes_are_rejected(self):
+        with patch.object(self.run, "execute") as execute:
+            for name, args, overrides in (("candidate-suite", ["make", "install"], None),
+                                          ("candidate-format", ["python3", "other.py"], None),
+                                          ("candidate-suite", verify.check_commands(self.run.task)["candidate-suite"], {"PATH": "/host"})):
+                with self.subTest(name=name, args=args), self.assertRaises(Stop) as caught:
+                    self.run.command(name, args, self.root, overrides)
+                self.assertEqual(caught.exception.outcome, "invalid_input")
+            execute.assert_not_called()
 
     def test_empty_and_oversized_repairs_do_not_start_sandbox(self):
         for candidate in (b"", b" \n", b"x" * (256 * 1024 + 1)):
@@ -135,8 +217,8 @@ class VerificationTests(unittest.TestCase):
     def test_source_changes_during_check_invalidate_the_attempt(self):
         self.wrong = False
 
-        def mutate_source(name, args, cwd):
-            response = self.response(name, args, cwd)
+        def mutate_source(name, args, cwd, build_output=False):
+            response = self.response(name, args, cwd, build_output)
             if name == "candidate":
                 (Path(cwd) / "Makefile").write_text("changed while checking")
             return response

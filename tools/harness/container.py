@@ -10,6 +10,7 @@ from run import HERE, ROOT, Run, Stop, digest
 PODMAN = ["podman", "--remote=false"]
 MEMORY = 1024 * 1024 * 1024
 OUTPUT_LIMIT = 2 * 1024 * 1024
+REPOSITORY_GOFLAGS = "GOFLAGS=-mod=readonly -p=1 -trimpath"
 ENVIRONMENT = {
     "PATH": "/usr/local/go/bin:/usr/bin:/bin", "HOME": "/tmp", "GOCACHE": "/tmp/go-build",
     "GOPATH": "/go", "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOWORK": "off",
@@ -49,7 +50,7 @@ class ContainerRun(Run):
         self.result["image_repo_digests"] = images[0].get("RepoDigests", [])
         self.prepared = True
 
-    def validate_container(self, data, checkout):
+    def validate_container(self, data, checkout, build_output=False):
         try:
             item = data[0]
             config = item["HostConfig"]
@@ -90,9 +91,19 @@ class ContainerRun(Run):
             elif len(binds) != 1 or binds[0]["Source"] != str(checkout) or \
                     binds[0]["Destination"] != "/workspace" or binds[0]["RW"] is not False:
                 raise ValueError("Only the read-only disposable source may be mounted")
+            temporary_paths = {"/tmp", "/workspace/bin"} if build_output else {"/tmp"}
             if any(mount["Type"] != "bind" and
-                   (mount["Type"] != "tmpfs" or mount["Destination"] != "/tmp") for mount in mounts):
+                   (mount["Type"] != "tmpfs" or mount["Destination"] not in temporary_paths) for mount in mounts):
                 raise ValueError("Unexpected container mount")
+            if build_output:
+                outputs = [mount for mount in mounts if mount["Destination"] == "/workspace/bin"]
+                temporary = config["Tmpfs"]
+                options = set(temporary["/workspace/bin"].split(","))
+                required = {"rw", "exec", "nosuid", "nodev", "size=128m", "mode=1777"}
+                if (set(temporary) != temporary_paths or not required <= options or
+                        options - required - {"rprivate", "tmpcopyup"} or len(outputs) > 1 or
+                        any(mount["Type"] != "tmpfs" or mount["RW"] is not True for mount in outputs)):
+                    raise ValueError("Build output must use its own writable temporary filesystem")
             if config["Devices"] or config["VolumesFrom"] or item.get("Pod"):
                 raise ValueError("Unexpected device, shared volume or pod")
             if config["LogConfig"]["Type"] != "none":
@@ -147,9 +158,12 @@ class ContainerRun(Run):
             raise Stop("invalid_input", "Unknown sandbox probe")
         return self.execute(name, ["/bin/sh", "/workspace/probe.sh", *arguments], cwd)
 
-    def execute(self, name, args, cwd):
+    def execute(self, name, args, cwd, build_output=False):
         if not self.prepared:
             raise Stop("blocked", "Container execution is not prepared")
+        if build_output and (name != "candidate-suite" or args != [
+                "make", "test", "BUILD_VCS=false", "COMMIT=" + self.task["base_commit"], REPOSITORY_GOFLAGS]):
+            raise Stop("invalid_input", "Temporary build output is only available to the fixed repository check")
         version = name == "go-version"
         checkout = None if version else self.checkout_path(cwd)
         if checkout is not None:
@@ -166,9 +180,12 @@ class ContainerRun(Run):
                            "--health-cmd=none", "--systemd=false", "--restart=no", "--log-driver=none",
                            "--timeout=" + str(max(1, math.ceil(self.deadline - time.monotonic()))),
                            "--workdir=" + ("/workspace" if checkout else "/tmp"),
-                           "--entrypoint=" + ("/usr/local/go/bin/go" if args[0] == "go" else "/bin/sh")]
+                           "--entrypoint=" + {"go": "/usr/local/go/bin/go", "python3": "/usr/bin/python3",
+                                              "make": "/usr/bin/make"}.get(args[0], "/bin/sh")]
         if checkout:
             create += ["--mount=type=bind,src=" + str(checkout) + ",dst=/workspace,ro"]
+        if build_output:
+            create += ["--tmpfs=/workspace/bin:rw,exec,nosuid,nodev,size=128m,mode=1777"]
         for key, value in ENVIRONMENT.items():
             create += ["--env=" + key + "=" + value]
         try:
@@ -183,7 +200,7 @@ class ContainerRun(Run):
                 data = json.loads(output)
             except (ValueError, UnicodeDecodeError) as error:
                 raise Stop("blocked", "Container inspection returned invalid JSON") from error
-            self.validate_container(data, checkout)
+            self.validate_container(data, checkout, build_output=build_output)
             self.event("container_policy_checked", container=container)
             if name == "candidate":
                 self.result["candidate_executed"] = None

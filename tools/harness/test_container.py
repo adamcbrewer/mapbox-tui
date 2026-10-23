@@ -43,7 +43,7 @@ class ContainerTests(unittest.TestCase):
                             if checkout else [])}]
 
     def fake_command(self, run, name, args, cwd, env_overrides=None, output_limit=None):
-        if name in ("baseline", "seed", "candidate", "go-version"):
+        if name in ("baseline", "seed", "candidate", "go-version", "candidate-suite"):
             self.assertEqual(output_limit, OUTPUT_LIMIT)
         else:
             self.assertIsNone(output_limit)
@@ -79,6 +79,42 @@ class ContainerTests(unittest.TestCase):
         with self.patched_command():
             self.run.command("go-version", ["go", "version"], ROOT)
         self.assertFalse(any(arg.startswith("--mount") for arg in self.calls[0][1]))
+
+    def test_repository_check_uses_only_temporary_build_output(self):
+        args = ["make", "test", "BUILD_VCS=false", "COMMIT=" + self.run.task["base_commit"], "GOFLAGS=-mod=readonly -p=1 -trimpath"]
+        description = self.description(self.checkout)
+        description[0]["HostConfig"]["Tmpfs"] = {"/tmp": "rw,size=512m", "/workspace/bin": "rw,exec,nosuid,nodev,size=128m,mode=1777"}
+        with self.patched_command(), patch.object(self, "description", return_value=description):
+            self.run.execute("candidate-suite", args, self.checkout, build_output=True)
+        create = self.calls[0][1]
+        self.assertIn("--entrypoint=/usr/bin/make", create)
+        self.assertIn("--tmpfs=/workspace/bin:rw,exec,nosuid,nodev,size=128m,mode=1777", create)
+        self.assertIn("--mount=type=bind,src=" + str(self.checkout) + ",dst=/workspace,ro", create)
+        self.assertTrue(self.run.result["containers"][0]["removed"])
+        with self.assertRaises(Stop):
+            self.run.execute("candidate-suite", ["make", "install"], self.checkout, build_output=True)
+
+    def test_build_output_policy_requires_one_exact_temporary_mount(self):
+        description = self.description(self.checkout)
+        with self.assertRaises(Stop):
+            self.run.validate_container(description, self.checkout, build_output=True)
+        for mount in ({"Type": "tmpfs", "Destination": "/workspace/bin", "RW": False},
+                      {"Type": "bind", "Source": "/tmp", "Destination": "/workspace/bin", "RW": True},
+                      {"Type": "tmpfs", "Destination": "/workspace/scripts", "RW": True}):
+            data = copy.deepcopy(description)
+            data[0]["Mounts"].append(mount)
+            with self.subTest(mount=mount), self.assertRaises(Stop):
+                self.run.validate_container(data, self.checkout, build_output=True)
+        description[0]["Mounts"].append({"Type": "tmpfs", "Destination": "/workspace/bin", "RW": True})
+        with self.assertRaises(Stop):
+            self.run.validate_container(description, self.checkout)
+        description[0]["HostConfig"]["Tmpfs"] = {"/tmp": "rw,size=512m", "/workspace/bin": "rw,exec,nosuid,nodev,size=128m,mode=1777"}
+        self.run.validate_container(description, self.checkout, build_output=True)
+        for options in ("rw,exec,nosuid,nodev,size=1g,mode=1777", "ro,exec,nosuid,nodev,size=128m,mode=1777",
+                        "rw,exec,suid,nodev,size=128m,mode=1777"):
+            description[0]["HostConfig"]["Tmpfs"]["/workspace/bin"] = options
+            with self.subTest(options=options), self.assertRaises(Stop):
+                self.run.validate_container(description, self.checkout, build_output=True)
 
     def test_changed_container_policy_is_rejected(self):
         data = self.description(self.checkout)

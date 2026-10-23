@@ -34,6 +34,8 @@ EXAMPLES = {
               "The import test should still fail.", "Check that doing nothing cannot count as a repair."),
     "wrong": ("Try a change that does not fix the bug", "Change an unrelated detail in the importer.",
               "The import test should still fail.", "Check that changing code alone cannot count as a repair."),
+    "unformatted": ("Try a working repair with incorrect formatting", "Restore import behaviour but use incorrect indentation.",
+                    "The import test passes, but formatting must fail.", "A focused pass cannot override another required check."),
 }
 FAULT_EXAMPLES = {
     "missing-source": ("Try checking an incomplete source copy", "Remove the importer from the disposable copy before checking it.",
@@ -48,6 +50,7 @@ OUTCOMES = {
     "scripted_loop_passed": "The real Pi tool loop completed using prepared responses. No AI model ran.",
     "live_repair_passed": "The AI-written repair passed the fixed import check. Human review is still pending.",
     "focused_verification_passed": "This frozen patch passed the focused check in a fresh copy. Broader checks and human review remain pending.",
+    "repository_verification_passed": "This frozen patch passed the import, formatting and repository checks. Extra independent cases and human review remain pending.",
     "repair_failed": "The proposed repair did not pass this check.",
     "calibration_failed": "The setup did not produce the expected working and broken examples.",
     "blocked": "We couldn’t complete the checks. This does not tell us whether the repair works.",
@@ -81,8 +84,8 @@ FILE_GUIDE = {
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
     "tools/harness/pi_run.py": "Runs prepared replies or the configured subscription through four controlled tools. Python owns the disposable source, limits and sandboxed checks. A live attempt can stop before inference if its limits cannot be enforced.",
-    "tools/harness/verify.py": "Freezes a supplied patch and checks it in a fresh copy of the pinned source. This first slice runs only the focused import test, with no model calls.",
-    "reports/harness/verification/runs/<run-id>/": "Independent focused-check evidence. Result includes the patch fingerprint, source identities and each check's exit code, timing and log fingerprints.",
+    "tools/harness/verify.py": "Freezes a supplied patch and checks the pinned source in a fresh copy. Current runs require the import test, formatting and repository make test, with no model calls.",
+    "reports/harness/verification/runs/<run-id>/": "Independent check evidence. Result includes the patch fingerprint, source identities, required scope and each check's exit code, timing and log fingerprints. Older focused-only receipts retain their original scope.",
     "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
     "context.json / pi-session.json": "The prompt, tool definitions and Pi conversation. Check the mode: prepared replies test wiring; live runs use the recorded subscription model.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
@@ -156,30 +159,40 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repair_failed"):
+    repository_checks = run.get("verification_scope") == "repository-checks-v1"
+    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repository_verification_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         failed = run["outcome"] == "repair_failed"
         candidate_outcomes = ("assertion_failed", "build_failed") if failed else ("passed",)
+        if failed and repository_checks:
+            candidate_outcomes += ("passed",)
         candidate_exit = stages[-1].get("exit_code") if stages else None
         known = ([check.get("id") for check in stages] == ["baseline", "seed", "candidate"] and
                  [check.get("outcome") for check in stages[:2]] == ["passed", "assertion_failed"] and
                  stages[2].get("outcome") in candidate_outcomes and
                  type(stages[0].get("exit_code")) is int and stages[0]["exit_code"] == 0 and
                  type(stages[1].get("exit_code")) is int and stages[1]["exit_code"] != 0 and
-                 type(candidate_exit) is int and (candidate_exit != 0 if failed else candidate_exit == 0))
+                 type(candidate_exit) is int and (candidate_exit == 0 if stages[2].get("outcome") == "passed" else candidate_exit != 0))
         if run.get("outcome") == "scripted_loop_passed":
             known = known and run.get("startup_verified") is True and run.get("tool_calls") == 6
         if run.get("outcome") == "live_repair_passed":
             known = (known and run.get("startup_verified") is True and run.get("workflow") == "pi-live-tools"
                      and isinstance(run.get("model_requests"), int) and run["model_requests"] > 0
                      and bool(run.get("model")) and bool(run.get("provider")))
-        if run.get("outcome") == "focused_verification_passed":
+        if run.get("outcome") in ("focused_verification_passed", "repository_verification_passed"):
             from verify import receipt_matches
             known = known and receipt_matches(run, path.parent)
+            known = known and repository_checks == (run.get("outcome") == "repository_verification_passed")
+        if run.get("workflow") == "frozen-patch-verification" and failed:
+            from verify import receipt_matches
+            known = known and receipt_matches(run, path.parent, allow_failed=True)
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
     expected_failure = (candidate in ("empty", "wrong") and outcome == "repair_failed" and
                         stages[2]["outcome"] == "assertion_failed")
+    if candidate == "unformatted" and outcome == "repair_failed":
+        expected_failure = any(check.get("id") == "candidate-format" and check.get("outcome") == "failed"
+                               for check in recorded_checks)
     if expected_failure:
         result += " This failure is the expected answer for this example."
     if outcome == "blocked" and run.get("reason") == "Missing executable: go":
@@ -227,16 +240,31 @@ def render_run(path, reports, run, link_root=None, annotation=None):
             expected = "An interrupted check is unfinished. Inspect container cleanup and the separate Pi-process cancellation evidence."
     identity = ""
     tokens = ""
+    broader = ""
     if run.get("workflow") == "frozen-patch-verification":
         title = "Independent check: " + ("known working repair" if candidate == "good" else
+                                         "deliberately unformatted repair" if candidate == "unformatted" else
                                          "deliberately ineffective repair" if candidate == "wrong" else "supplied repair")
         if outcome in ("blocked", "invalid_input"):
             title = "Independent check: empty repair refused" if candidate == "empty" else "Independent check: could not complete"
         tried = "Freeze the supplied patch, reconstruct the pinned source in a fresh copy, reproduce the bug, then check the repair."
         expected = "The original passes, the planted bug fails for the expected reason, and only an effective repair passes."
-        purpose = "Tie the focused result to this exact patch and trusted logs. Full-suite checks, independent extra cases and live Pi retry feedback are still to come."
+        purpose = "Tie the recorded check scope to this exact patch and trusted logs. Independent extra cases and live Pi retry feedback are still to come."
+        if repository_checks:
+            tried += " Require formatting and make test on the same frozen candidate."
+            if candidate == "unformatted":
+                expected = "The import test passes, then formatting fails deliberately. The full repository check should stay unrun."
+            rows = []
+            for name, label in (("candidate-format", "Go formatting"), ("candidate-suite", "Repository make test")):
+                check = next((check for check in recorded_checks if check.get("id") == name), {}) if known else {}
+                status = {"passed": "passed", "failed": "failed", "blocked": "could not run",
+                          "incomplete": "unfinished", "cancelled": "cancelled", "timeout": "time limit reached"}.get(check.get("outcome"), "not run")
+                rows.append(f'<li><strong>{label}:</strong> {status}</li>')
+            broader = '<p><strong>Additional required checks</strong></p><ul>' + ''.join(rows) + '</ul>'
         identity = (f'<p class="meta">No model calls in this verification run. Patch fingerprint: '
                     f'<code>{escape(run.get("patch_sha256", "not recorded"))}</code>.</p>')
+        identity += ('<p class="meta">Required scope: import, formatting and repository checks.</p>' if repository_checks else
+                     '<p class="meta">Earlier scope: focused import check only.</p>')
     if run.get("workflow") == "pi-scripted-tools":
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
     if run.get("workflow") == "pi-live-tools":
@@ -285,14 +313,14 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         else:
             identity += '<p class="model-usage"><output>Token usage: not reported. Missing usage does not mean zero tokens.</output></p>'
         tokens += '<p>Actual subscription charge is not reported.</p>'
-    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed") or expected_failure
+    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repository_verification_passed") or expected_failure
     labels = {"cancelled": "Run cancelled", "timeout": "Time limit reached", "incomplete": "Run unfinished",
               "repair_failed": "Repair check failed", "blocked": "Check could not run", "invalid_input": "Invalid request",
               "budget_exhausted": "Limit reached", "calibration_failed": "Startup checks failed"}
     label = "As expected" if matched else labels.get(outcome, "Unknown result")
-    if run.get("outcome") == "focused_verification_passed" and not known:
+    if run.get("outcome") in ("focused_verification_passed", "repository_verification_passed") and not known:
         label = "Evidence needs inspection"
-        result = "We can't confirm this saved focused pass: the patch or required check evidence is missing or no longer matches. Inspect the receipt."
+        result = "We can't confirm this saved pass: the patch or required check evidence is missing or no longer matches. Inspect the receipt."
     tone = "pass" if matched else "attention"
     note = ""
     if outcome == "cancelled" and annotation:
@@ -317,6 +345,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
 <p>{escape(result)}</p>
 {identity}
 {('<ol class="check-steps">' + ''.join(checks) + '</ol>') if checks else '<p class="meta">No import test results recorded.</p>'}
+{broader}
 <p class="meta">{mode}. {escape(elapsed)}. <a href="{link}" data-evidence="{link}">Receipt</a>
 <code title="Run ID: {run_id}">{escape(path.parent.name[:8])}</code></p>
 <details><summary>Explanation and technical details</summary>
@@ -438,13 +467,16 @@ def render(reports, progress, *, link_root=None, snapshot=None):
     container_mode = any(run.get("execution_mode") == "rootless-podman" for _, run in ordered)
     selected = {}
     for path, run in ordered:
-        if run.get("candidate") in ("good", "wrong") and not run.get("fault") and (
+        if run.get("candidate") in (("good", "wrong", "unformatted") if verification else ("good", "wrong")) and not run.get("fault") and (
                 not container_mode or run.get("execution_mode") == "rootless-podman"):
             selected[run["candidate"]] = path
     for path, run in ordered:
         if path not in selected.values():
             rows.append(render_run(path, reports, run, link_root))
-    current = "".join(render_run(path, reports, run, link_root) for path, run in ordered if path in selected.values())
+    current_records = [(path, run) for path, run in ordered if path in selected.values()]
+    if verification:
+        current_records.sort(key=lambda item: ("good", "unformatted", "wrong").index(item[1]["candidate"]))
+    current = "".join(render_run(path, reports, run, link_root) for path, run in current_records)
     records = current + history(rows, "Other experiments, including failed and blocked runs") if ordered else (
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
     items = lambda values: "".join(f"<li>{escape(value)}</li>" for value in values)
@@ -505,8 +537,8 @@ Passing the fixed test, the model saying “done” and human approval are separ
     if verification:
         intro = ('Verify follows the Pi connection stage. We freeze the proposed patch and check a fresh source copy, '
                  'using tests the agent cannot edit. These first examples use prepared repairs and make no model calls.')
-        takeaway = ('A focused result belongs to one exact patch. It does not establish full-suite success, '
-                    'general repair quality or human approval.')
+        takeaway = ('A result belongs to one exact patch and its recorded set of checks. '
+                    'Even the full suite can miss untested behaviour. Human approval stays separate.')
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(progress['stage'])} / Harness review</title><style>
@@ -604,8 +636,8 @@ Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <ol class="stages">{milestones}</ol>
 <div class="layout"><main>
 <section id="results" aria-labelledby="results-title">
-<div class="section-heading"><div><h2 id="results-title">{'Does this exact patch pass the focused check?' if verification else 'Does the checker spot a real repair?'}</h2>
-<p>Compare the latest good and wrong examples{' requested in containers' if container_mode else ''}. A failure in the middle step is expected.</p></div></div>
+<div class="section-heading"><div><h2 id="results-title">{'Does this exact patch pass its required checks?' if verification else 'Does the checker spot a real repair?'}</h2>
+<p>{'Compare the working, unformatted and ineffective repairs. Every required check must pass.' if verification else 'Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') + '. A failure in the middle step is expected.'}</p></div></div>
 {records}
 <details id="experiment-guide"><summary>How to read the three steps</summary>
 <ol><li><strong>Original code:</strong> the import test should pass.</li>
@@ -634,7 +666,7 @@ Receipt links open the evidence drawer. Select the result, task, events, patches
 Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
-<ol class="review-links"><li><a href="#results">Compare good and wrong</a>Explain why their final steps differ.</li>
+<ol class="review-links"><li><a href="#results">{'Compare the examples' if verification else 'Compare good and wrong'}</a>Explain why their final steps differ.</li>
 {('<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define or verification else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
 <li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
 <section id="takeaway"><h2>What to take away</h2>

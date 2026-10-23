@@ -4,7 +4,7 @@
   "source": "GitHub issues #105 and #111; Adam asked to begin Verify on 23 October 2026",
   "stage": "Verify",
   "status": "awaiting-review",
-  "next": "Review the first frozen-patch slice in reports/harness/verify.html: good passes the focused check in a fresh copy; wrong fails deliberately. Discuss source/patch identity and why a focused pass is not full verification. Broader candidate checks, independent extra cases, permitted new files and bounded Pi repair feedback remain unfinished within #105. Do not advance to Recover (#106).",
+  "next": "Review the second Verify slice: a good frozen repair passes imports, formatting and repository make test. An unformatted repair passes imports but fails formatting, leaving make test unrun. Earlier inspection and temporary-disk blockers remain in history. Independent extra cases, permitted new files and bounded Pi feedback remain within #105; do not advance to Recover (#106).",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -38,7 +38,9 @@
     "Adam narrowed current provider support to OpenAI only and explicitly deferred Claude. Keep model choice configurable within OpenAI; Claude live support is no longer a completion requirement for #104. This does not accept the stage or remove the approved-repository-instructions requirement.",
     "Adam asked what two Needs inspection badges meant. The prepared cancelled run was a deliberate cancellation demonstration with confirmed process/container cleanup. The earlier Sol run was cancelled before inference because of a circular startup import that was subsequently fixed. Added separate report annotations; original receipt outcomes remain cancelled. Generic cancelled, failed, blocked and unfinished runs now receive specific labels.",
     "Adam explicitly asked to proceed with #105 after walking through the shared Pi loop. This selects Verify as the next implementation stage; it does not supply unrecorded answers to the earlier review questions or mark this stage accepted.",
-    "The first Verify slice freezes a supplied patch and checks original, seeded and candidate states in a fresh source copy with the existing focused import check. Prepared examples make no model calls. Passing this focused check does not mark the candidate fully verified or the learning checkpoint reviewed. Broader required checks and live Pi retry feedback remain for later slices of #105."
+    "The first Verify slice freezes a supplied patch and checks original, seeded and candidate states in a fresh source copy with the existing focused import check. Prepared examples make no model calls. Passing this focused check does not mark the candidate fully verified or the learning checkpoint reviewed. Broader required checks and live Pi retry feedback remain for later slices of #105.",
+    "Adam asked to commit the first Verify slice and continue. It was committed as f9a8d78. This authorises broader candidate checks within #105; it does not invent answers to the learning questions or approve later stages.",
+    "The second Verify slice adds fixed candidate formatting and repository make test checks while keeping source/tests read-only. Builds use a temporary bin directory. The first full attempt stopped on a tmpfs inspection mismatch, which was corrected against Podman metadata. The next ran out of temporary disk and stayed blocked. Serial, matching trimpath build settings then passed within the existing 512 MiB scratch and 1 GiB memory limits. A deliberate unformatted repair passes imports but fails formatting. No model calls or new packages were needed; the learning checkpoint still awaits discussion."
   ],
   "blockers": [],
   "questions": [

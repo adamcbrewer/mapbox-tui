@@ -11,16 +11,31 @@ The original repair command still runs trusted code on the host.
 
 ## Verify one frozen patch
 
-This first Verify slice takes the exact bytes of a proposed repair and checks
+Verify takes the exact bytes of a proposed repair and checks
 them in a fresh copy of the pinned source. A fingerprint identifies the patch.
 The result also records the original, broken and repaired source fingerprints,
 check identities, exit codes, timings and log fingerprints. The report refuses
-to show a focused pass if the patch or required evidence no longer matches.
+to show a pass if the patch or required evidence no longer matches.
 
 The verifier makes no model calls. A supplied patch can come from an earlier Pi
 run, but its conversation or earlier receipt doesn't decide the new result.
 Python controls the checks; the agent cannot edit their runners or expectations.
 Execution uses the existing restricted Podman runner, without a host fallback.
+After the focused import test, it requires Go formatting and `make test` from
+the candidate's repository root. The source and trusted check scripts stay
+read-only. Only `/workspace/bin` becomes a temporary writable filesystem for
+the build's output; it disappears with the container. Compiler caches and
+test-created files use the existing temporary filesystem.
+The fixed Make command disables VCS discovery in the archived source and records
+the pinned commit explicitly. It uses `GOFLAGS=-mod=readonly -p=1 -trimpath` to
+keep package compilation serial and reuse matching build-cache entries within
+the existing 512 MiB temporary-disk and 1 GiB memory limits. It still runs every
+check in the pinned `make test` target.
+
+The existing image already provides Make, Python and Go v1.27.1. This step adds
+no packages or install hooks. We consulted the required
+[npm security guidance](https://github.com/lirantal/npm-security-best-practices);
+Pi's pinned package and disabled install scripts remain as documented separately.
 
 Use the already prepared immutable image from the
 [Connect setup](#container-execution-draft), with CPU, memory and pids delegated as
@@ -33,7 +48,7 @@ systemd-run --user --quiet --wait --pipe --collect --same-dir \
   --image "$HARNESS_IMAGE_ID" --demo good
 systemd-run --user --quiet --wait --pipe --collect --same-dir \
   -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
-  --image "$HARNESS_IMAGE_ID" --demo wrong
+  --image "$HARNESS_IMAGE_ID" --demo unformatted
 python3 tools/harness/report.py
 xdg-open reports/harness/verify.html
 ```
@@ -42,10 +57,13 @@ The image-ID path above points at the existing main-checkout evidence on this
 machine. Use your own recorded image-ID path elsewhere. No image is pulled or
 rebuilt by these commands.
 
-Good should return `focused_verification_passed` (exit 0): original passes,
-planted bug fails, repair passes. Wrong should return `repair_failed` (exit 1):
-the repair still fails. That second failure is deliberate. Each case should
-confirm removal of all four containers.
+Good should return `repository_verification_passed` (exit 0): original passes,
+planted bug fails, repair passes, then formatting and repository tests pass.
+Unformatted should return `repair_failed` (exit 1): its repair passes the import
+test but fails formatting. The repository check stays unrun. This failure is
+deliberate. Good should confirm removal of six containers; unformatted, five.
+`--demo wrong` retains the earlier ineffective repair, which fails at the import
+test and uses four containers.
 
 Use `--patch PATH` instead of `--demo` to check a saved candidate patch against
 the task's seeded source. The patch must only modify the existing
@@ -58,11 +76,15 @@ patch. Command output stays beside the receipt in `*.stdout` and `*.stderr`.
 Check records are saved while the run progresses, so an interrupted run retains
 its observed steps. Crash recovery is still #106; this isn't a durable journal.
 
-Only the focused import check runs in this slice. Full-suite and formatting
-checks on the candidate, extra independent cases, permitted new files and a
-bounded Pi repair retry remain for later slices of #105. The harness's own
-tests and repository checks are run separately when developing this tool.
-`fully_verified` stays false. Human review remains pending.
+The current `repository-checks-v1` scope requires all five checks: original,
+planted bug, repaired imports, formatting and repository tests. Older
+`focused-only-v1` receipts retain their three-check scope; they cannot satisfy
+the new gate. Missing checks, mismatched source fingerprints or changed logs
+prevent a pass. Environment failures stay separate from failed repairs.
+
+Extra independent cases, permitted new files and a bounded Pi repair retry
+remain for later slices of #105. The harness's own tests run separately when
+developing this tool. `fully_verified` stays false. Human review remains pending.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
