@@ -260,6 +260,7 @@ check still leaves independent verification and human approval outstanding.
 ```fish
 python3 -m unittest discover -s tools/harness -p 'test_*.py'
 node --test tools/harness/pi/loop.test.mjs
+python3 tools/harness/pi_integration_test.py
 make test
 make format-check
 ```
@@ -269,7 +270,7 @@ Go 1.27.1 is required. In the agent environment, prefix Go/Make commands with
 
 The Python tests check file scope, symlink escapes, protected tests, stale file
 hashes, repeated or conflicting edits, budgets, blocked startup and Pi-process
-cleanup. The SDK tests exercise Pi's real loop with prepared replies, check the
+cleanup. The separate SDK tests exercise Pi's real loop with prepared replies, check the
 runner's result format, and reject unsupported billing or configuration.
 
 The prepared examples let us see the full connection from Pi through to the

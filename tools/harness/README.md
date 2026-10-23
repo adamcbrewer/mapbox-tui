@@ -23,6 +23,9 @@ Provider/SDK automatic retries remain disabled. This one repair retry is an
 explicit response to a failed independent check, not a transport retry.
 Pi cannot change the checks, permissions or budgets. Its final words don't
 decide success; the final patch and both attempt receipts must match.
+The tests, commands, runner source and check environment are fingerprinted before
+the session starts. Both attempts must use those same rules. A rule change stops
+the session as `invalid_input`; start a new session to use the changed rules.
 
 From this worktree's root in Fish, using the existing prepared image and installed
 Pi package described below and in [the Pi guide](pi/README.md):
@@ -161,11 +164,13 @@ independent-case receipts still recognise their unchanged test fingerprints.
 Check records are saved while the run progresses, so an interrupted run retains
 its observed steps. Crash recovery is still #106; this isn't a durable journal.
 
-The current `permitted-files-v1` scope requires eight checks: the three original
+The current `frozen-evaluator-v1` scope requires eight checks: the three original
 import checks, the three extra-case checks, formatting and repository tests.
-Older `focused-only-v1`, `repository-checks-v1` and `independent-cases-v1` receipts
-retain their original three-, five- and eight-check scopes and existing-file policy.
-They cannot satisfy the current new-file gate.
+It also binds each check and both attempts to the rules recorded at startup.
+Older `focused-only-v1`, `repository-checks-v1`, `independent-cases-v1` and
+`permitted-files-v1` receipts retain their original scope. They do not establish
+that verification rules were frozen for the whole session and cannot satisfy
+the current gate.
 Missing checks, mismatched source fingerprints or changed logs
 prevent a pass. Environment failures stay separate from failed repairs.
 
@@ -615,6 +620,8 @@ stages and run timelines aren't built yet. Runtime-readiness records stay separa
 
 ```sh
 python3 -m unittest discover -s tools/harness -p 'test_*.py'
+node --test tools/harness/pi/loop.test.mjs
+python3 tools/harness/pi_integration_test.py
 make test
 ```
 
@@ -623,8 +630,13 @@ tests or tools, attempts to edit the tests, timeouts, incomplete evidence and
 report handling, including escaping text safely. The repository checks cover the
 existing product. Run the repair demos and setup-failure examples above to see
 the actual outcomes, including why an unfinished check is not a failed repair.
-CI runs the Python tests too; it does not run the calibration demos or upload
-their local records.
+The plain Python suite needs no Node packages. CI runs the SDK tests separately,
+using Node v26.12.1 and the locked Pi dependencies with install scripts disabled
+and a seven-day npm release cooldown. This follows the
+[npm security guidance](https://github.com/lirantal/npm-security-best-practices).
+The Python-to-Pi integration test uses prepared replies and mocked check execution;
+it needs no account, model calls or Podman. CI does not run the container demos
+or upload local records.
 
 Before moving on, I want to be able to explain why the deliberately broken code
 failed, why the good repair passed, and what could still be wrong despite that

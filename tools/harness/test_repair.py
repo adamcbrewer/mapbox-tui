@@ -7,14 +7,14 @@ import unittest
 from unittest.mock import patch
 
 from container import ContainerRun
-from pi_run import MAX_CALLS, pi_loop, prepare_checkout
+from pi_run import MAX_CALLS, prepare_checkout
 from repair import RepairRun, RepairTools, repair_receipt_matches
-from run import Stop, now, write_json
+from run import HERE, Stop, digest, now, write_json
 from verify import REGRESSION, REGRESSION_CHECKS
 import report
 
 
-class RepairTests(unittest.TestCase):
+class RepairFixture:
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -55,6 +55,53 @@ class RepairTests(unittest.TestCase):
     def dispatch(self, demo, count=None):
         calls = self.tools.prepared_calls(demo)
         return [self.tools.dispatch(call["name"], call["args"]) for call in calls[:count]]
+
+
+class RepairTests(RepairFixture, unittest.TestCase):
+    def changed_rules(self):
+        read_bytes = Path.read_bytes
+
+        def changed(path):
+            content = read_bytes(path)
+            if path == HERE / "fixtures/import_verifier_test.go.txt":
+                return content + b"\n// Changed verification rules\n"
+            return content
+
+        return patch.object(Path, "read_bytes", changed)
+
+    def assert_changed_rules_stop(self, completed_calls):
+        self.dispatch("retry", completed_calls)
+        with self.changed_rules(), patch.object(ContainerRun, "execute") as execute, self.assertRaises(Stop) as error:
+            self.tools.dispatch("harness_check", {"preset": "xml-leading-bom"})
+        self.assertEqual(error.exception.outcome, "invalid_input")
+        self.assertIn("Verification rules changed", error.exception.reason)
+        execute.assert_not_called()
+        self.assertFalse(self.tools.edit_available())
+        self.assertEqual(self.tools.attempts[-1]["outcome"], "invalid_input")
+
+    def test_rule_change_before_first_check_stops_without_retry(self):
+        self.assert_changed_rules_stop(2)
+
+    def test_rule_change_between_attempts_stops_without_retry(self):
+        self.assert_changed_rules_stop(5)
+
+    def test_rule_change_after_checks_prevents_final_promotion(self):
+        self.dispatch("retry")
+        with self.changed_rules(), self.assertRaises(Stop) as error:
+            self.tools.finish()
+        self.assertEqual(error.exception.outcome, "invalid_input")
+        self.assertNotEqual(self.run.result["outcome"], "verified_repair_passed")
+
+    def test_parent_gate_requires_the_frozen_evaluator_on_every_child(self):
+        self.dispatch("retry")
+        self.tools.finish()
+        item = self.tools.attempts[-1]
+        path = self.root / "verification/runs" / item["verification_run_id"] / "result.json"
+        child = json.loads(path.read_text())
+        child["evaluator_sha256"] = "different-rules"
+        write_json(path, child)
+        item["receipt_sha256"] = digest(path.read_bytes())
+        self.assertFalse(repair_receipt_matches(self.run.result, self.run.path, self.root))
 
     def test_failed_check_returns_real_evidence_and_retry_passes_only_latest_patch(self):
         results = self.dispatch("retry")
@@ -189,16 +236,6 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(self.tools.attempts[0]["outcome"], "cancelled")
         for signum, handler in before.items():
             self.assertEqual(signal.getsignal(signum), handler)
-
-    def test_actual_pi_session_receives_failed_verification_before_second_edit(self):
-        pi_loop(self.run, self.tools, self.root, "retry")
-        self.tools.finish()
-        session = json.loads((self.run.path / "pi-session.json").read_text())
-        feedback = [json.loads(part["text"]) for message in session["messages"] if message["role"] == "toolResult"
-                    for part in message["content"] if part["type"] == "text"]
-        self.assertEqual([r["remaining_attempts"] for r in feedback if "remaining_attempts" in r], [1, 0])
-        self.assertTrue(repair_receipt_matches(self.run.result, self.run.path, self.root))
-
 
 if __name__ == "__main__":
     unittest.main()

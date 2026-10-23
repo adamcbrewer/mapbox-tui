@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
@@ -32,6 +33,29 @@ jobs:
         run: python3 -m unittest discover -s tools/harness -p 'test_*.py'
       - name: Check formatting, build, tests, vet and CLI/MCP parity
         run: make format-check test
+
+  pi:
+    name: Pi harness checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26.12.1'
+          package-manager-cache: false
+      - name: Restore pinned Pi dependencies without install scripts
+        working-directory: tools/harness/pi
+        env:
+          NPM_CONFIG_MIN_RELEASE_AGE: '7'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check Pi SDK tools and request limits
+        run: node --test tools/harness/pi/loop.test.mjs
+      - name: Check Python feedback through the real Pi SDK
+        run: python3 tools/harness/pi_integration_test.py
 
   race:
     name: Race checks

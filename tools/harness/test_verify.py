@@ -131,6 +131,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_new_helper_requires_explicit_permission(self):
         self.run.task["allowed_new_files"] = []
+        verify.freeze_evaluator(self.run)
         with self.assertRaises(Stop) as caught:
             self.verify_fixture("new-file")
         self.assertEqual(caught.exception.outcome, "invalid_input")
@@ -141,6 +142,7 @@ class VerificationTests(unittest.TestCase):
                       ["go/helper_test.go"], ["Makefile"], ["go.mod"], ["go/import.go"],
                       ["go/helper.go", "go/helper.go"], ["go/sub/helper.go"], [{}]):
             self.run.task["allowed_new_files"] = names
+            verify.freeze_evaluator(self.run)
             with self.subTest(names=names), patch("verify.preflight") as preflight, self.assertRaises(Stop) as caught:
                 verify.verify(self.run, (HERE / "fixtures/new-file.patch").read_bytes())
             self.assertEqual(caught.exception.outcome, "invalid_input")
@@ -170,9 +172,9 @@ class VerificationTests(unittest.TestCase):
         evidence.rename(legacy)
         self.assertTrue(verify.receipt_matches(result, self.run.path))
         legacy.rename(evidence)
-        result.update(verification_scope=verify.SCOPE, suite_version=4)
+        result.update(verification_scope=verify.SCOPE, suite_version=verify.SUITE_VERSION)
         for check in result["checks"]:
-            check.update(verification_scope=verify.SCOPE, suite_version=4)
+            check.update(verification_scope=verify.SCOPE, suite_version=verify.SUITE_VERSION)
         self.assertFalse(verify.receipt_matches(result, self.run.path))
 
     def test_independent_cases_must_expose_the_bug_before_judging_the_repair(self):
@@ -354,6 +356,42 @@ class VerificationTests(unittest.TestCase):
         (self.run.path / "candidate.stdout").write_text("done\nPASS\n")
         check["stdout_sha256"] = digest(b"done\nPASS\n")
         self.assertFalse(verify.receipt_matches(original, self.run.path))
+
+    def test_frozen_rules_are_required_in_the_receipt_and_each_check(self):
+        self.verify_fixture()
+        original = copy.deepcopy(self.run.result)
+        for mutate in (
+            lambda result: result.pop("evaluator"),
+            lambda result: result.pop("evaluator_sha256"),
+            lambda result: result["evaluator"].update(regression_sha256="different-tests"),
+            lambda result: result["checks"][-1].update(evaluator_sha256="different-rules"),
+        ):
+            result = copy.deepcopy(original)
+            mutate(result)
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+
+    def test_rules_changing_during_a_check_invalidate_the_attempt(self):
+        response = self.response
+        read_bytes = Path.read_bytes
+        changed = False
+
+        def changed_source(path):
+            content = read_bytes(path)
+            if changed and path == HERE / "container.py":
+                return content + b"\n# Changed runner\n"
+            return content
+
+        def change_during_check(name, args, cwd, build_output=False):
+            nonlocal changed
+            result = response(name, args, cwd, build_output)
+            changed = name == "candidate"
+            return result
+
+        with patch.object(self, "response", side_effect=change_during_check), \
+                patch.object(Path, "read_bytes", changed_source), self.assertRaises(Stop) as caught:
+            self.verify_fixture()
+        self.assertEqual(caught.exception.outcome, "invalid_input")
+        self.assertIn("Verification rules changed", caught.exception.reason)
 
     def test_linked_source_is_rejected(self):
         checkout = self.root / "copy"

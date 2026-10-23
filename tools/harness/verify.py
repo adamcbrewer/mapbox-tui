@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 from pathlib import Path
 import re
@@ -9,19 +10,21 @@ import tarfile
 import tempfile
 import time
 
-from container import ContainerRun, REPOSITORY_GOFLAGS
+from container import ContainerRun, ENVIRONMENT, REPOSITORY_GOFLAGS
 from pi_run import prepare_checkout
 from run import HERE, REPORTS, Stop, apply_patch, classify_test, check_test, digest, now, read_input, write_json
 from sandbox import preflight
 
 WORKFLOW = "frozen-patch-verification"
-SCOPE = "permitted-files-v1"
+SCOPE = "frozen-evaluator-v1"
+SUITE_VERSION = 5
 STAGES = ("baseline", "seed", "candidate")
 REGRESSION_CHECKS = tuple(stage + "-regression" for stage in STAGES)
 EXTRA_CHECKS = ("candidate-format", "candidate-suite")
 REQUIRED_CHECKS = STAGES + REGRESSION_CHECKS + EXTRA_CHECKS
 SCOPES = {"focused-only-v1": (1, STAGES), "repository-checks-v1": (2, STAGES + EXTRA_CHECKS),
-          "independent-cases-v1": (3, REQUIRED_CHECKS), SCOPE: (4, REQUIRED_CHECKS)}
+          "independent-cases-v1": (3, REQUIRED_CHECKS), "permitted-files-v1": (4, REQUIRED_CHECKS),
+          SCOPE: (SUITE_VERSION, REQUIRED_CHECKS)}
 REGRESSION_FILE = "go/import_verifier_test.go"
 REGRESSION = {"test": "TestXMLImportsVerifierCases", "cases": ["gpx", "tcx", "kml"],
               "failure_message": "independent BOM import changed or failed"}
@@ -37,6 +40,36 @@ def check_commands(task):
 
 def fingerprint(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+
+
+def evaluator_definition(task):
+    return {"schema_version": 1, "verification_scope": SCOPE, "suite_version": SUITE_VERSION,
+            "task_sha256": digest((HERE / "task.json").read_bytes()), "task_definition_sha256": fingerprint(task),
+            "regression_sha256": digest((HERE / "fixtures/import_verifier_test.go.txt").read_bytes()),
+            "regression_expectations": copy.deepcopy(REGRESSION), "commands": check_commands(task),
+            "required_checks": list(REQUIRED_CHECKS), "environment": dict(ENVIRONMENT),
+            "source_sha256": {name: digest((HERE / name).read_bytes()) for name in
+                              ("verify.py", "repair.py", "pi_run.py", "container.py", "run.py", "sandbox.py")}}
+
+
+def freeze_evaluator(run, evaluator=None):
+    definition = copy.deepcopy(evaluator if evaluator is not None else evaluator_definition(run.task))
+    run.result.update(evaluator=definition, evaluator_sha256=fingerprint(definition),
+                      regression_sha256=definition["regression_sha256"])
+
+
+def check_evaluator(run):
+    if fingerprint(evaluator_definition(run.task)) != run.result["evaluator_sha256"]:
+        raise Stop("invalid_input", "Verification rules changed after startup; start a new session")
+
+
+def evaluator_receipt_matches(result, task):
+    definition = result["evaluator"]
+    return (fingerprint(definition) == result["evaluator_sha256"] and
+            definition["schema_version"] == 1 and definition["verification_scope"] == result["verification_scope"] and
+            definition["suite_version"] == SUITE_VERSION and definition["required_checks"] == list(REQUIRED_CHECKS) and
+            definition["task_sha256"] == result["task_sha256"] and definition["task_definition_sha256"] == fingerprint(task) and
+            definition["regression_sha256"] == result["regression_sha256"] and definition["commands"] == check_commands(task))
 
 
 def source_tree(checkout):
@@ -68,21 +101,23 @@ def file_changes(before, after):
 
 
 class VerificationRun(ContainerRun):
-    def __init__(self, reports, image, attempt=1, parent_run_id=None):
+    def __init__(self, reports, image, attempt=1, parent_run_id=None, evaluator=None):
         super().__init__(reports, image)
         self.phase = "setup"
         self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
                            attempt=attempt, parent_run_id=parent_run_id,
-                           suite_version=4, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
+                           suite_version=SUITE_VERSION, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
                            verifier_sha256=digest(Path(__file__).read_bytes()),
                            preparation_sha256=digest((HERE / "pi_run.py").read_bytes()))
+        freeze_evaluator(self, evaluator)
 
     def event(self, kind, **fields):
         identity = {key: self.result.get(key) for key in
                     ("patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")}
         identity.update(attempt=self.result["attempt"], parent_run_id=self.result.get("parent_run_id"),
-                        suite_version=4, verification_scope=SCOPE, phase=self.phase,
+                        suite_version=SUITE_VERSION, verification_scope=SCOPE, phase=self.phase,
+                        evaluator_sha256=self.result["evaluator_sha256"],
                         regression_sha256=self.result.get("regression_sha256"))
         if "check" in fields:
             check = fields["check"]
@@ -95,6 +130,7 @@ class VerificationRun(ContainerRun):
 
     def command(self, name, args, cwd, env_overrides=None):
         if name in REQUIRED_CHECKS:
+            check_evaluator(self)
             if args != check_commands(self.task)[name] or env_overrides:
                 raise Stop("invalid_input", "Only the fixed verification commands are permitted")
             checkout = self.checkout_path(cwd)
@@ -115,6 +151,7 @@ class VerificationRun(ContainerRun):
         else:
             check, output = super().command(name, args, cwd, env_overrides)
         if name in REQUIRED_CHECKS:
+            check_evaluator(self)
             if source_tree(Path(cwd)) != self.result["trees"][self.phase]:
                 raise Stop("invalid_input", "Verification source changed while a check was running")
             check.update(stdout_sha256=digest((self.path / check["stdout"]).read_bytes()),
@@ -139,6 +176,8 @@ def receipt_matches(result, directory, allow_failed=False):
                 result["patch_sha256"] != digest((directory / "candidate.patch").read_bytes()) or
                 task["seed_sha256"] != digest((directory / "seed.patch").read_bytes()) or
                 result["required_checks"] != list(required)):
+            return False
+        if version >= 5 and not evaluator_receipt_matches(result, task):
             return False
         trees = result["trees"]
         for stage in STAGES:
@@ -178,6 +217,8 @@ def receipt_matches(result, directory, allow_failed=False):
         for check in checks:
             name = check["id"]
             stage = "candidate" if name in EXTRA_CHECKS else name
+            if version >= 5 and check["evaluator_sha256"] != result["evaluator_sha256"]:
+                return False
             if (any(check[key] != result[key] for key in
                     ("run_id", "attempt", "patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")) or
                     check["phase"] != stage or check["verification_scope"] != result["verification_scope"] or
@@ -216,6 +257,7 @@ def receipt_matches(result, directory, allow_failed=False):
 
 
 def verify(run, patch):
+    check_evaluator(run)
     task_bytes = (HERE / "task.json").read_bytes()
     run.result.update(task=run.task["id"], task_sha256=digest(task_bytes),
                       base_commit=run.task["base_commit"], patch_sha256=digest(patch))

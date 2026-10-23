@@ -9,7 +9,7 @@ import time
 from container import ContainerRun
 from pi_run import Tools, scripted_calls
 from run import REPORTS, Stop, digest, now, write_json
-from verify import REQUIRED_CHECKS, SCOPE, VerificationRun, receipt_matches, verify
+from verify import REQUIRED_CHECKS, SCOPE, VerificationRun, check_evaluator, evaluator_receipt_matches, freeze_evaluator, receipt_matches, verify
 
 MAX_ATTEMPTS = 2
 
@@ -20,10 +20,11 @@ class RepairRun(ContainerRun):
         self.result.update(attempts=[], model_claim=None, fully_verified=False,
                            verification_scope=SCOPE, repair_budget_exhausted=False,
                            repair_runner_sha256=digest(Path(__file__).read_bytes()))
+        freeze_evaluator(self)
 
     def event(self, kind, **fields):
         identity = {key: self.result.get(key) for key in
-                    ("attempt", "patch_sha256", "base_commit", "task_sha256", "image")}
+                    ("attempt", "patch_sha256", "base_commit", "task_sha256", "image", "evaluator_sha256")}
         if "check" in fields:
             fields["check"].update(identity, run_id=self.path.name)
         super().event(kind, **identity, **fields)
@@ -64,11 +65,13 @@ class RepairTools(Tools):
     def check_candidate(self, result):
         number = len(self.attempts) + 1
         patch = (self.run.path / "candidate.patch").read_bytes()
-        child = VerificationRun(REPORTS / "verification", self.run.image, number, self.run.path.name)
+        child = VerificationRun(REPORTS / "verification", self.run.image, number, self.run.path.name,
+                                evaluator=self.run.result["evaluator"])
         child.deadline = self.run.deadline
         child.result["candidate"] = "repair-attempt"
         attempt = {"attempt": number, "verification_run_id": child.path.name,
-                   "patch_sha256": digest(patch), "outcome": "incomplete", "started_at": now()}
+                   "patch_sha256": digest(patch), "evaluator_sha256": child.result["evaluator_sha256"],
+                   "outcome": "incomplete", "started_at": now()}
         self.attempts.append(attempt)
         self.run.event("verification_started", verification=attempt)
         handlers = {s: signal.signal(s, child.cancel) for s in (signal.SIGINT, signal.SIGTERM)}
@@ -101,6 +104,7 @@ class RepairTools(Tools):
             self.terminal = True
             raise Stop(outcome, child.result.get("reason", "Independent verification could not complete"))
         if (child.result["verification_scope"] != SCOPE or
+                child.result["evaluator_sha256"] != self.run.result["evaluator_sha256"] or
                 any(child.result.get(key) != self.run.result.get(key) for key in ("base_commit", "task_sha256", "image")) or
                 not receipt_matches(child.result, child.path, allow_failed=failed)):
             self.terminal = True
@@ -124,6 +128,7 @@ class RepairTools(Tools):
             self.run.result.update(attempt=number + 1, patch_sha256=None)
 
     def finish(self):
+        check_evaluator(self.run)
         if not self.completed() or not self.attempts:
             raise Stop("incomplete", "Pi did not finish an edited candidate and its independent verification")
         final = self.attempts[-1]
@@ -145,13 +150,16 @@ def repair_receipt_matches(result, directory, reports):
     try:
         attempts = result["attempts"]
         task_bytes = (directory / "task.json").read_bytes()
+        task = json.loads(task_bytes)
         if (result["workflow"] != "pi-verified-repair" or result["run_id"] != directory.name or
-                result["verification_scope"] != SCOPE or result["attempt"] != len(attempts) or
+                result["verification_scope"] not in ("permitted-files-v1", SCOPE) or result["attempt"] != len(attempts) or
                 result["budgets"]["repair_attempts"] != MAX_ATTEMPTS or not 1 <= len(attempts) <= MAX_ATTEMPTS or
                 result["task_sha256"] != digest(task_bytes) or
-                result["base_commit"] != json.loads(task_bytes)["base_commit"] or
+                result["base_commit"] != task["base_commit"] or
                 result["patch_sha256"] != digest((directory / "candidate.patch").read_bytes()) or
                 result["patch_sha256"] != attempts[-1]["patch_sha256"]):
+            return False
+        if result["verification_scope"] == SCOPE and not evaluator_receipt_matches(result, task):
             return False
         for number, item in enumerate(attempts, 1):
             identity = item["verification_run_id"]
@@ -163,7 +171,8 @@ def repair_receipt_matches(result, directory, reports):
             failed = child["outcome"] == "repair_failed"
             if (item["attempt"] != number or child["attempt"] != number or
                     child["parent_run_id"] != result["run_id"] or child["outcome"] != item["outcome"] or
-                    child["verification_scope"] != SCOPE or item["receipt_sha256"] != digest(raw) or
+                    child["verification_scope"] != result["verification_scope"] or item["receipt_sha256"] != digest(raw) or
+                    result["verification_scope"] == SCOPE and child["evaluator_sha256"] != result["evaluator_sha256"] or
                     any(child[key] != result[key] for key in ("base_commit", "task_sha256", "image")) or
                     child["patch_sha256"] != item["patch_sha256"] or
                     not receipt_matches(child, path, allow_failed=failed) or

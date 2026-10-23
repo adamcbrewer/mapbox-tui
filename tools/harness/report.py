@@ -173,7 +173,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    independent_cases = run.get("verification_scope") in ("independent-cases-v1", "permitted-files-v1")
+    independent_cases = run.get("verification_scope") in ("independent-cases-v1", "permitted-files-v1", "frozen-evaluator-v1")
     repository_checks = independent_cases or run.get("verification_scope") == "repository-checks-v1"
     if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repository_verification_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
@@ -313,7 +313,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
             files = ''.join(f'<li><code>{escape(name)}</code>: {"added" if change.get("before_sha256") is None else "modified"}</li>'
                             for name, change in run["file_changes"].items())
             identity += '<p><strong>Files in this frozen repair</strong></p><ul>' + files + '</ul>'
-        if run.get("verification_scope") == "permitted-files-v1":
+        if run.get("verification_scope") in ("permitted-files-v1", "frozen-evaluator-v1"):
             identity += '<p class="meta">File policy: edit the importer; optionally add the one helper named in the trusted task. Tests and check scripts stay protected.</p>'
     if run.get("workflow") == "pi-scripted-tools":
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
