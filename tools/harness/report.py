@@ -797,7 +797,10 @@ def main():
         current = REPORTS / (progress["stage"].lower() + ".html")
         if current.is_file():
             target = REPORTS / "index.html"
-            target.write_bytes(current.read_bytes())
+            with tempfile.TemporaryDirectory(prefix=".index-render-", dir=REPORTS) as temporary:
+                staged = Path(temporary) / target.name
+                staged.write_bytes(current.read_bytes())
+                staged.replace(target)
             print(target)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.error(f"Could not save the report: {error}")

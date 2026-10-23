@@ -446,6 +446,39 @@ class StageReportTests(unittest.TestCase):
         for path, content in originals.items():
             self.assertEqual(path.read_bytes(), content)
 
+    def test_failed_index_publication_preserves_previous_index_and_allows_retry(self):
+        source = self.source("index-example")
+        report.save_stage(self.reports, self.progress, source, source_ref="a" * 40)
+        target = self.reports / "index.html"
+        target.write_bytes(b"Previous complete index")
+        write_bytes, replace = Path.write_bytes, Path.replace
+
+        for failure in ("copy", "replace"):
+            def failed_write(path, content):
+                if path.name == "index.html" and failure == "copy":
+                    write_bytes(path, content[:10])
+                    raise OSError("Disk full during index copy")
+                return write_bytes(path, content)
+
+            def failed_replace(path, destination):
+                if path.name == "index.html":
+                    raise OSError("Cannot publish index")
+                return replace(path, destination)
+
+            with self.subTest(failure=failure), patch("report.REPORTS", self.reports), \
+                    patch("sys.argv", ["report.py", "--refresh-saved"]), \
+                    patch.object(Path, "write_bytes", failed_write), \
+                    patch.object(Path, "replace", failed_replace), self.assertRaises(SystemExit) as caught:
+                report.main()
+            self.assertEqual(caught.exception.code, 2)
+            self.assertEqual(target.read_bytes(), b"Previous complete index")
+            self.assertEqual(list(self.reports.glob(".index-render-*")), [])
+
+        with patch("report.REPORTS", self.reports), patch("sys.argv", ["report.py", "--refresh-saved"]):
+            report.main()
+        self.assertEqual(target.read_bytes(), (self.reports / "connect.html").read_bytes())
+        self.assertEqual(list(self.reports.glob(".index-render-*")), [])
+
     def test_embedded_evidence_roundtrips_text_without_executable_html(self):
         source = self.source("unsafe-text")
         directory = source / "runs/unsafe-text"
