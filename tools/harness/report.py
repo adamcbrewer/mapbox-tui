@@ -1,4 +1,5 @@
 import argparse
+import ctypes
 import hashlib
 import html
 import json
@@ -703,6 +704,8 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
         raise ValueError("Unknown progress stage or status")
     name = progress["stage"].lower()
     destination = reports / "snapshots" / name
+    if destination.is_symlink():
+        raise ValueError("Saved evidence directory must not be a symlink")
     if restored and destination.exists():
         raise ValueError(f"The {name} snapshot already exists; use --refresh-saved to render it again")
     receipts = [path for folder in RUN_FOLDERS
@@ -710,15 +713,29 @@ def save_stage(reports, progress, source, *, source_ref, restored=False):
     if restored and not receipts:
         raise ValueError("Restoration needs original evidence; no saved receipts were found")
     receipt_hashes(source, receipts)
-    if restored:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=f".{name}-", dir=destination.parent) as temporary:
-            staging = Path(temporary)
-            capture_stage(staging, progress, source, receipts, source_ref, restored)
-            staging.rename(destination)
-    else:
-        capture_stage(destination, progress, source, receipts, source_ref, restored)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f".{name}-", dir=destination.parent) as temporary:
+        staging = Path(temporary)
+        if destination.exists():
+            shutil.copytree(destination, staging, symlinks=True, dirs_exist_ok=True)
+        capture_stage(staging, progress, source, receipts, source_ref, restored)
+        publish_snapshot(staging, destination)
     return name
+
+
+def publish_snapshot(staging, destination):
+    if not destination.exists():
+        staging.rename(destination)
+        return
+    # Linux exchange replaces populated directories without exposing a missing or partial snapshot.
+    exchange = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    if exchange is None:
+        raise OSError("Atomic snapshot replacement requires Linux renameat2 support")
+    exchange.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    exchange.restype = ctypes.c_int
+    if exchange(-100, os.fsencode(staging), -100, os.fsencode(destination), 2):
+        code = ctypes.get_errno()
+        raise OSError(code, f"Cannot atomically replace saved snapshot: {os.strerror(code)}")
 
 
 def render_saved(reports, name):

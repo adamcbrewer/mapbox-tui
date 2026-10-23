@@ -59,6 +59,31 @@ export function requireSubscription(provider, credential) {
   }
 }
 
+export function resolveLiveModel(runtime, config) {
+  const model = runtime.getModel(config.provider, config.model);
+  if (!model || model.api !== "openai-responses" || config.provider !== "openai") {
+    throw new SetupError("Choose an available openai subscription Responses model from the listed models; the selected model was not substituted");
+  }
+  return model;
+}
+
+export function liveReadiness(runtime, config, signedIn) {
+  try {
+    validateConfig(config);
+    resolveLiveModel(runtime, config);
+    if (!signedIn) {
+      throw new SetupError("Run setup.mjs login to sign Pi in separately. Do not paste credentials into chat.");
+    }
+    if (config.maxOutputTokensPerRequest !== null) {
+      throw new SetupError("ChatGPT subscription requests omit max_output_tokens; the configured hard output cap cannot be enforced");
+    }
+    return { liveExecutionEnabled: true, liveBlocker: null };
+  } catch (error) {
+    if (!(error instanceof SetupError)) throw error;
+    return { liveExecutionEnabled: false, liveBlocker: error.message };
+  }
+}
+
 export async function prepareLoginOptions(agentDir) {
   const settings = SettingsManager.create(agentDir, agentDir, { projectTrusted: false });
   const deviceId = settings.getOrCreateDeviceId();
@@ -181,20 +206,18 @@ async function main() {
     signedIn = true;
   } catch {}
 
+  const readiness = liveReadiness(runtime, config, signedIn);
   console.log(JSON.stringify({
     provider: config.provider,
     model: config.model,
     auth: "subscription",
     signedIn,
     modelCalls: 0,
-    liveExecutionEnabled: signedIn && config.provider === "openai" && Boolean(config.model) &&
-      config.maxOutputTokensPerRequest === null && Number.isInteger(config.maxModelRequests),
-    liveBlocker: config.maxOutputTokensPerRequest === null ? null :
-      "ChatGPT subscription requests omit max_output_tokens; the configured hard output cap cannot be enforced",
+    ...readiness,
     models: runtime.getModels(config.provider).map(model => model.id),
-    next: signedIn
+    next: readiness.liveExecutionEnabled
       ? "Use pi_run.py --image <prepared image ID> --live after reviewing the request/time limits. A null output-token cap uses the provider default."
-      : "Run setup.mjs login to sign Pi in separately. Do not paste credentials into chat.",
+      : readiness.liveBlocker,
   }, null, 2));
 }
 

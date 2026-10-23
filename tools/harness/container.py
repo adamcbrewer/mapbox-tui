@@ -55,6 +55,7 @@ class ContainerRun(Run):
             config = item["HostConfig"]
             expected = {"NetworkMode": "none", "ReadonlyRootfs": True, "Privileged": False,
                         "PidMode": "private", "IpcMode": "private", "UsernsMode": "private", "Memory": MEMORY,
+                        "CgroupMode": "private", "UTSMode": "private",
                         "MemorySwap": MEMORY, "CpuPeriod": 100000, "CpuQuota": 200000,
                         "PidsLimit": 256}
             if any(config[key] != value for key, value in expected.items()):

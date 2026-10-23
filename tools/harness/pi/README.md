@@ -128,6 +128,11 @@ Run login in your own terminal and follow the browser instructions. Pi needs its
 own sign-in; we don't copy Codex's token file. Setup makes no model requests.
 The model list comes from Pi's catalogue, so seeing a model there doesn't tell
 us whether the account can use it.
+Setup only reports live readiness when the exact selected model exists in that
+catalogue and uses the supported OpenAI Responses transport, sign-in is present
+and the request limits are valid. A typo or unsupported model gets a blocker
+instead of instructions to run it. This check makes no model request and doesn't
+prove account access.
 
 OpenAI's [sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
 requires a stable ID for this installation. We reuse Pi's ID from

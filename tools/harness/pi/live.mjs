@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { ModelRuntime, readStoredCredential } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { runToolLoop, schemas } from "./loop.mjs";
-import { requireSubscription, SetupError, validateConfig } from "./setup.mjs";
+import { requireSubscription, resolveLiveModel, SetupError, validateConfig } from "./setup.mjs";
 
 function stopped(outcome, reason) {
   return Object.assign(new SetupError(reason), { outcome });
@@ -135,10 +135,7 @@ export async function runLiveLoop(start, rpc, emit) {
   const checkSubscription = () => requireSubscription(runtime.getProvider(config.provider),
     readStoredCredential(config.provider, authPath));
   checkSubscription();
-  const model = runtime.getModel(config.provider, config.model);
-  if (!model || model.api !== "openai-responses" || config.provider !== "openai") {
-    throw new SetupError("This live pilot supports the openai subscription Responses transport; the selected model was not substituted");
-  }
+  const model = resolveLiveModel(runtime, config);
   const requests = { count: 0 };
   return runToolLoop(start, rpc, emit, { runtime, model, config, requests, thinkingLevel: "low",
     streamFunction: boundedStream(runtime, model, config, requests, emit, checkSubscription) });

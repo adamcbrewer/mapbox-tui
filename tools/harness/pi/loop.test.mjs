@@ -8,7 +8,8 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { runScriptedLoop, runToolLoop, schemas } from "./loop.mjs";
 import { boundedStream } from "./live.mjs";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { prepareLoginOptions, requireSubscription, setupErrorMessage, validateConfig } from "./setup.mjs";
+import { liveReadiness, prepareLoginOptions, requireSubscription, resolveLiveModel,
+  setupErrorMessage, validateConfig } from "./setup.mjs";
 
 test("real SDK uses only the four explicit tools and returns structured refusals", async () => {
   const sent = [], requests = [];
@@ -94,6 +95,35 @@ test("local setup preserves the chosen OpenAI subscription model", async () => {
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
+});
+
+test("live readiness requires the exact catalogue model and supported transport without a model call", () => {
+  const config = { provider: "openai", model: "chosen-locally", auth: "subscription",
+    maxOutputTokensPerRequest: null, maxModelRequests: 4 };
+  const model = { id: config.model, api: "openai-responses", provider: "openai" };
+  let selected = model;
+  const runtime = {
+    getModel(provider, id) {
+      assert.equal(provider, config.provider);
+      assert.equal(id, config.model);
+      return selected;
+    },
+    streamSimple() { assert.fail("Readiness must not call a model"); },
+  };
+  assert.equal(resolveLiveModel(runtime, config), model);
+  assert.deepEqual(liveReadiness(runtime, config, true), { liveExecutionEnabled: true, liveBlocker: null });
+  for (selected of [undefined, { ...model, api: "openai-completions" }]) {
+    assert.throws(() => resolveLiveModel(runtime, config), /selected model was not substituted/);
+    const status = liveReadiness(runtime, config, true);
+    assert.equal(status.liveExecutionEnabled, false);
+    assert.match(status.liveBlocker, /available openai subscription Responses model/);
+  }
+  selected = model;
+  assert.match(liveReadiness(runtime, config, false).liveBlocker, /sign Pi in/);
+  assert.match(liveReadiness(runtime, { ...config, maxOutputTokensPerRequest: 1024 }, true).liveBlocker,
+    /hard output cap cannot be enforced/);
+  assert.equal(liveReadiness(runtime, { ...config, model: null }, true).liveExecutionEnabled, false);
+  assert.equal(liveReadiness(runtime, { ...config, maxModelRequests: null }, true).liveExecutionEnabled, false);
 });
 
 test("sign-in options persist one Pi installation ID and preserve existing settings", async () => {

@@ -1,9 +1,10 @@
 import json
+import errno
 from pathlib import Path
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import report
 from run import HERE
@@ -212,6 +213,62 @@ class StageReportTests(unittest.TestCase):
                 opened.assert_not_called()
                 copied.assert_not_called()
                 self.assertFalse((self.reports / "snapshots/define").exists())
+
+    def test_failed_recapture_preserves_complete_previous_snapshot_and_page(self):
+        source = self.source("recapture")
+        report.save_stage(self.reports, self.progress, source, source_ref="a" * 40)
+        report.render_saved(self.reports, "connect")
+        originals = {path: path.read_bytes() for path in self.reports.rglob("*") if path.is_file()}
+        (source / "runs/recapture/baseline.stdout").write_text("new test output")
+        copytree = shutil.copytree
+        write_json = report.write_json
+
+        def interrupted_copy(*args, **kwargs):
+            copytree(*args, **kwargs)
+            raise OSError("Copy interrupted after writing evidence")
+
+        def interrupted_manifest(path, value):
+            if path.name == "snapshot.json":
+                raise OSError("Cannot write manifest")
+            write_json(path, value)
+
+        failures = (patch("report.shutil.copytree", side_effect=interrupted_copy),
+                    patch("report.write_json", side_effect=interrupted_manifest),
+                    patch("report.publish_snapshot", side_effect=OSError("Exchange unavailable")))
+        for failure in failures:
+            with failure, self.assertRaises(OSError):
+                report.save_stage(self.reports, self.progress, source, source_ref="b" * 40)
+            self.assertEqual({path: path.read_bytes() for path in self.reports.rglob("*") if path.is_file()}, originals)
+            self.assertEqual(list((self.reports / "snapshots").glob(".connect-*")), [])
+        report.render_saved(self.reports, "connect")
+        report.save_stage(self.reports, self.progress, source, source_ref="b" * 40)
+        saved = self.reports / "snapshots/connect"
+        self.assertEqual((saved / "runs/recapture/baseline.stdout").read_text(), "new test output")
+        self.assertEqual(json.loads((saved / "snapshot.json").read_text())["source_ref"], "b" * 40)
+        report.render_saved(self.reports, "connect")
+
+    def test_recapture_keeps_saved_runs_when_original_runs_are_removed(self):
+        source = self.source("retained")
+        report.save_stage(self.reports, self.progress, source, source_ref="a" * 40)
+        shutil.rmtree(source)
+        source = self.source("new-run")
+        report.save_stage(self.reports, self.progress, source, source_ref="b" * 40)
+        saved = self.reports / "snapshots/connect"
+        for name in ("retained", "new-run"):
+            self.assertTrue((saved / "runs" / name / "result.json").is_file())
+        report.render_saved(self.reports, "connect")
+
+    def test_unsupported_atomic_exchange_preserves_both_directories(self):
+        staging, saved = self.root / "staging", self.root / "saved"
+        for path, content in ((staging, "new"), (saved, "old")):
+            path.mkdir()
+            (path / "evidence").write_text(content)
+        for library in (Mock(spec=[]), Mock(renameat2=Mock(return_value=-1))):
+            with patch("report.ctypes.CDLL", return_value=library), \
+                    patch("report.ctypes.get_errno", return_value=errno.EOPNOTSUPP), self.assertRaises(OSError):
+                report.publish_snapshot(staging, saved)
+            self.assertEqual((staging / "evidence").read_text(), "new")
+            self.assertEqual((saved / "evidence").read_text(), "old")
 
     def test_refresh_rejects_linked_receipt_before_hashing_external_content(self):
         source, page = self.restore_define()

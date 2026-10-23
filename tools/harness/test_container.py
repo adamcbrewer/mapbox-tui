@@ -33,6 +33,7 @@ class ContainerTests(unittest.TestCase):
                  "Config": {"User": "65534:65534", "Env": [f"{k}={v}" for k, v in ENVIRONMENT.items()]},
                  "HostConfig": {"NetworkMode": "none", "ReadonlyRootfs": True, "Privileged": False,
                                 "PidMode": "private", "IpcMode": "private", "UsernsMode": "private", "Memory": MEMORY,
+                                "CgroupMode": "private", "UTSMode": "private",
                                 "Annotations": {"io.podman.annotations.userns": "nomap"},
                                 "IDMappings": {"UidMap": ["0:1:65536"], "GidMap": ["0:1:65536"]},
                                 "MemorySwap": MEMORY, "CpuPeriod": 100000, "CpuQuota": 200000,
@@ -124,6 +125,21 @@ class ContainerTests(unittest.TestCase):
         del data[0]["HostConfig"]["LogConfig"]
         with self.assertRaises(Stop):
             self.run.validate_container(data, self.checkout)
+
+    def test_cgroup_and_uts_namespaces_must_be_confirmed_private(self):
+        for field in ("CgroupMode", "UTSMode"):
+            for value in ("host", "", None, [], "missing"):
+                with self.subTest(field=field, value=value):
+                    data = self.description(self.checkout)
+                    if value == "missing":
+                        del data[0]["HostConfig"][field]
+                    else:
+                        data[0]["HostConfig"][field] = value
+                    with self.patched_command(), patch.object(self, "description", return_value=data), \
+                            self.assertRaises(Stop):
+                        self.run.command("baseline", self.run.test_command, self.checkout)
+                    self.assertNotIn("baseline", [call[0] for call in self.calls])
+                    self.assertTrue(self.run.result["containers"][-1]["removed"])
 
     def test_output_budget_exhaustion_still_removes_container(self):
         original = self.fake_command

@@ -95,6 +95,12 @@ Copy both stage pages to keep their navigation links working. Include the
 The source archive (`snapshot.stdout`) and command logs aren't embedded.
 All generated files remain local and Git-ignored.
 
+Captures are built in a temporary sibling directory. Updating an existing stage
+uses Linux [renameat2 exchange](https://man7.org/linux/man-pages/man2/rename.2.html)
+to swap the complete snapshot into place. If copying, manifest writing or the
+exchange fails, the previous snapshot stays intact. The filesystem must support
+this exchange; there's no partial-update fallback.
+
 The Define report was restored from the progress record at commit `6754d3e` and
 the original #103 evidence in the main checkout. It uses the current design and
 is labelled historical. Its recorded review status is retained; #103 is now
