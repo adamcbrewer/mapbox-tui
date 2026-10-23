@@ -24,8 +24,10 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(build_output, name == "candidate-suite")
         if name == "go-version":
             return {"exit_code": 0}, b"go version go1.27.1 linux/amd64\n"
-        task = self.run.task
-        outcome = "fail" if name == "seed" or name == "candidate" and self.wrong else "pass"
+        task = verify.REGRESSION if name in verify.REGRESSION_CHECKS else self.run.task
+        failed = name in ("seed", "seed-regression") or name == "candidate" and self.wrong
+        failed = failed or name == "candidate-regression" and getattr(self, "tailored", False)
+        outcome = "fail" if failed else "pass"
         events = [{"Action": outcome, "Test": test} for test in
                   [task["test"], *(task["test"] + "/" + case for case in task["cases"])]]
         if outcome == "fail":
@@ -47,6 +49,7 @@ class VerificationTests(unittest.TestCase):
 
     def verify_fixture(self, demo="good"):
         self.wrong = demo == "wrong"
+        self.tailored = demo == "tailored"
         self.run.result["candidate"] = demo
         with patch("verify.preflight"), patch.object(self.run, "prepare", side_effect=lambda: setattr(self.run, "prepared", True)), \
                 patch.object(self.run, "execute", side_effect=self.response):
@@ -76,6 +79,77 @@ class VerificationTests(unittest.TestCase):
         self.assertIn(result["patch_sha256"], page)
         self.assertIn('<strong>Go formatting:</strong> passed', page)
         self.assertIn('<strong>Repository make test:</strong> passed', page)
+        self.assertIn('<strong>Extra cases on original code:</strong> passed', page)
+        self.assertIn('<strong>Extra cases on broken code:</strong> failed as expected', page)
+        self.assertIn('<strong>Extra cases on repaired code:</strong> passed', page)
+
+    def test_filename_shortcut_passes_original_test_but_fails_independent_cases(self):
+        with self.assertRaises(Stop) as caught:
+            self.verify_fixture("tailored")
+        self.assertEqual(caught.exception.outcome, "repair_failed")
+        checks = {check["id"]: check for check in self.run.result["checks"]}
+        self.assertEqual(checks["candidate"]["outcome"], "passed")
+        self.assertEqual(checks["baseline-regression"]["outcome"], "passed")
+        self.assertEqual(checks["seed-regression"]["outcome"], "assertion_failed")
+        self.assertEqual(checks["candidate-regression"]["outcome"], "assertion_failed")
+        self.assertNotIn("candidate-format", checks)
+        self.assertTrue(verify.receipt_matches(self.run.result, self.run.path, allow_failed=True))
+        self.assertFalse(verify.receipt_matches(self.run.result, self.run.path))
+        self.run.result.update(outcome="repair_failed")
+        page = report.render_run(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn('This failure is the expected answer', page)
+        self.assertIn('<strong>Extra cases on repaired code:</strong> failed', page)
+        self.assertIn('<strong>Repository make test:</strong> not run', page)
+
+    def test_independent_cases_must_expose_the_bug_before_judging_the_repair(self):
+        response = self.response
+        self.wrong = False
+
+        def insensitive_test(name, args, cwd, build_output=False):
+            check, output = response(name, args, cwd, build_output)
+            if name == "seed-regression":
+                output = output.replace(b'"fail"', b'"pass"')
+                check.update(exit_code=0, outcome="passed")
+                (self.run.path / check["stdout"]).write_bytes(output)
+            return check, output
+
+        with patch("verify.preflight"), \
+                patch.object(self.run, "prepare", side_effect=lambda: setattr(self.run, "prepared", True)), \
+                patch.object(self.run, "execute", side_effect=insensitive_test), self.assertRaises(Stop) as caught:
+            verify.verify(self.run, (HERE / "fixtures/good.patch").read_bytes())
+        self.assertEqual(caught.exception.outcome, "calibration_failed")
+        self.assertFalse(any(check["id"] == "candidate-regression" for check in self.run.result["checks"]))
+
+    def test_missing_cases_changed_trusted_test_or_different_source_cannot_pass(self):
+        self.verify_fixture()
+        original = copy.deepcopy(self.run.result)
+        for name in verify.REGRESSION_CHECKS:
+            result = copy.deepcopy(original)
+            result["checks"] = [check for check in result["checks"] if check["id"] != name]
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+            result = copy.deepcopy(original)
+            tree = result["trees"][name]
+            tree["files"]["go/import.go"] = original["trees"]["seed"]["files"]["go/import.go"] + "different"
+            tree["sha256"] = verify.fingerprint(tree["files"])
+            next(check for check in result["checks"] if check["id"] == name)["tree_sha256"] = tree["sha256"]
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+        (self.run.path / "import_verifier_test.go").write_text("package main\n")
+        self.assertFalse(verify.receipt_matches(original, self.run.path))
+
+    def test_earlier_repository_scope_cannot_claim_extra_case_evidence(self):
+        self.verify_fixture()
+        result = copy.deepcopy(self.run.result)
+        result.update(verification_scope="repository-checks-v1", suite_version=2,
+                      required_checks=list(verify.STAGES + verify.EXTRA_CHECKS))
+        result["checks"] = [check for check in result["checks"] if check["id"] not in verify.REGRESSION_CHECKS]
+        for check in result["checks"]:
+            check.update(verification_scope="repository-checks-v1", suite_version=2)
+        self.assertTrue(verify.receipt_matches(result, self.run.path))
+        page = report.render_run(self.run.path / "result.json", self.root, result)
+        self.assertIn("without extra independent cases", page)
+        self.assertNotIn('<strong>Extra cases on repaired code:</strong> passed', page)
+        result.update(verification_scope=verify.SCOPE, suite_version=3, required_checks=list(verify.REQUIRED_CHECKS))
+        self.assertFalse(verify.receipt_matches(result, self.run.path))
 
     def test_wrong_repair_is_a_failed_check_with_its_own_evidence(self):
         with self.assertRaises(Stop) as caught:
@@ -122,7 +196,7 @@ class VerificationTests(unittest.TestCase):
         result = copy.deepcopy(self.run.result)
         result.update(verification_scope="focused-only-v1", suite_version=1,
                       required_checks=list(verify.STAGES), outcome="focused_verification_passed")
-        result["checks"] = [check for check in result["checks"] if check["id"] not in verify.EXTRA_CHECKS]
+        result["checks"] = [check for check in result["checks"] if check["id"] in verify.STAGES or check["id"] not in verify.REQUIRED_CHECKS]
         for check in result["checks"]:
             check.update(verification_scope="focused-only-v1", suite_version=1)
         self.assertTrue(verify.receipt_matches(result, self.run.path))

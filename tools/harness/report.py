@@ -14,7 +14,7 @@ from run import HERE, REPORTS, ROOT, digest, now, write_json
 
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
-EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json")
+EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go")
 RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs")
 
 
@@ -36,6 +36,8 @@ EXAMPLES = {
               "The import test should still fail.", "Check that changing code alone cannot count as a repair."),
     "unformatted": ("Try a working repair with incorrect formatting", "Restore import behaviour but use incorrect indentation.",
                     "The import test passes, but formatting must fail.", "A focused pass cannot override another required check."),
+    "tailored": ("Try a repair tailored to the original examples", "Handle the marker only for the three original test filenames.",
+                 "The original test passes, but different filenames must expose the shortcut.", "Extra cases can catch a repair that only fits the supplied examples."),
 }
 FAULT_EXAMPLES = {
     "missing-source": ("Try checking an incomplete source copy", "Remove the importer from the disposable copy before checking it.",
@@ -74,6 +76,7 @@ GLOSSARY = {
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
     "Frozen patch": "The exact saved repair bytes, identified by a fingerprint. Changing them invalidates their verification evidence.",
+    "Independent cases": "Extra test inputs supplied by the verifier, outside Pi's editable files. We check that they pass on working code, fail on broken code and pass after the repair.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
     "Podman": "The container tool chosen for a disposable test environment in Connect (#104). Readiness inspects its reported features. Separate live demonstrations check dummy access denials, kernel settings and cleanup.",
     "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
@@ -84,7 +87,8 @@ FILE_GUIDE = {
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
     "tools/harness/pi_run.py": "Runs prepared replies or the configured subscription through four controlled tools. Python owns the disposable source, limits and sandboxed checks. A live attempt can stop before inference if its limits cannot be enforced.",
-    "tools/harness/verify.py": "Freezes a supplied patch and checks the pinned source in a fresh copy. Current runs require the import test, formatting and repository make test, with no model calls.",
+    "tools/harness/verify.py": "Freezes a supplied patch and checks the pinned source in a fresh copy. Current runs require the original and independent import cases, formatting and repository make test, with no model calls.",
+    "tools/harness/fixtures/import_verifier_test.go.txt": "Trusted extra GPX, TCX and KML inputs with different filenames and coordinates. Copied into disposable verification folders, never Pi's editable source.",
     "reports/harness/verification/runs/<run-id>/": "Independent check evidence. Result includes the patch fingerprint, source identities, required scope and each check's exit code, timing and log fingerprints. Older focused-only receipts retain their original scope.",
     "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
     "context.json / pi-session.json": "The prompt, tool definitions and Pi conversation. Check the mode: prepared replies test wiring; live runs use the recorded subscription model.",
@@ -96,7 +100,7 @@ FILE_GUIDE = {
     "tools/harness/README.md": "Commands and instructions for using and reviewing this pilot.",
     "reports/harness/index.html": "The latest stage report, with links to saved stage pages.",
     "reports/harness/define.html / connect.html": "Separate stage reports. Rebuilding Connect leaves the saved Define page unchanged.",
-    "reports/harness/snapshots/<stage>/": "Saved progress, provenance and copied evidence for one stage. Include this folder for original-file links and logs; the viewer's five file types are embedded in the HTML.",
+    "reports/harness/snapshots/<stage>/": "Saved progress, provenance and copied evidence for one stage. Include this folder for original-file links and logs; the evidence drawer's files are embedded in the HTML.",
     "reports/harness/runs/<run-id>/": "Evidence from one experiment. Within it, task.json preserves the instructions, seed.patch preserves the deliberately broken change, and candidate.patch preserves the proposed repair.",
     "reports/harness/sandbox-preflight/runs/<run-id>/": "Separate runtime-readiness receipts and Podman inspection logs. These are not repair attempts or proof of container isolation.",
     "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open the embedded copy in the evidence drawer.",
@@ -159,7 +163,8 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    repository_checks = run.get("verification_scope") == "repository-checks-v1"
+    independent_cases = run.get("verification_scope") == "independent-cases-v1"
+    repository_checks = independent_cases or run.get("verification_scope") == "repository-checks-v1"
     if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repository_verification_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         failed = run["outcome"] == "repair_failed"
@@ -193,8 +198,15 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     if candidate == "unformatted" and outcome == "repair_failed":
         expected_failure = any(check.get("id") == "candidate-format" and check.get("outcome") == "failed"
                                for check in recorded_checks)
+    if candidate == "tailored" and outcome == "repair_failed":
+        expected_failure = any(check.get("id") == "candidate-regression" and check.get("outcome") == "assertion_failed"
+                               for check in recorded_checks)
+    if independent_cases and outcome == "repository_verification_passed":
+        result = "This frozen patch passed the original and independent import cases, formatting and repository checks. Human review remains pending."
     if expected_failure:
         result += " This failure is the expected answer for this example."
+        if candidate == "tailored":
+            result += " It handles only the original filenames; the extra inputs expose that shortcut."
     if outcome == "blocked" and run.get("reason") == "Missing executable: go":
         title = "The check could not start without Go"
         tried = "Start the requested run without access to the Go test tool."
@@ -243,27 +255,38 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     broader = ""
     if run.get("workflow") == "frozen-patch-verification":
         title = "Independent check: " + ("known working repair" if candidate == "good" else
+                                         "repair tailored to the original examples" if candidate == "tailored" else
                                          "deliberately unformatted repair" if candidate == "unformatted" else
                                          "deliberately ineffective repair" if candidate == "wrong" else "supplied repair")
         if outcome in ("blocked", "invalid_input"):
             title = "Independent check: empty repair refused" if candidate == "empty" else "Independent check: could not complete"
         tried = "Freeze the supplied patch, reconstruct the pinned source in a fresh copy, reproduce the bug, then check the repair."
         expected = "The original passes, the planted bug fails for the expected reason, and only an effective repair passes."
-        purpose = "Tie the recorded check scope to this exact patch and trusted logs. Independent extra cases and live Pi retry feedback are still to come."
+        purpose = "Tie the recorded check scope to this exact patch and trusted logs. Live Pi retry feedback is still to come."
+        if not independent_cases:
+            purpose += " This earlier scope did not require extra independent cases."
         if repository_checks:
             tried += " Require formatting and make test on the same frozen candidate."
             if candidate == "unformatted":
                 expected = "The import test passes, then formatting fails deliberately. The full repository check should stay unrun."
+            if independent_cases:
+                tried += " Try different GPX, TCX and KML inputs in separate copies of the original, broken and repaired source."
+                if candidate == "tailored":
+                    expected = "The original import test passes. Extra cases fail on the repaired code, exposing its filename shortcut. Formatting and repository checks stay unrun."
             rows = []
-            for name, label in (("candidate-format", "Go formatting"), ("candidate-suite", "Repository make test")):
+            labels = (("baseline-regression", "Extra cases on original code"),
+                      ("seed-regression", "Extra cases on broken code"),
+                      ("candidate-regression", "Extra cases on repaired code")) if independent_cases else ()
+            for name, label in labels + (("candidate-format", "Go formatting"), ("candidate-suite", "Repository make test")):
                 check = next((check for check in recorded_checks if check.get("id") == name), {}) if known else {}
-                status = {"passed": "passed", "failed": "failed", "blocked": "could not run",
+                status = {"passed": "passed", "failed": "failed", "assertion_failed": "failed as expected" if name == "seed-regression" else "failed", "blocked": "could not run",
                           "incomplete": "unfinished", "cancelled": "cancelled", "timeout": "time limit reached"}.get(check.get("outcome"), "not run")
                 rows.append(f'<li><strong>{label}:</strong> {status}</li>')
             broader = '<p><strong>Additional required checks</strong></p><ul>' + ''.join(rows) + '</ul>'
         identity = (f'<p class="meta">No model calls in this verification run. Patch fingerprint: '
                     f'<code>{escape(run.get("patch_sha256", "not recorded"))}</code>.</p>')
-        identity += ('<p class="meta">Required scope: import, formatting and repository checks.</p>' if repository_checks else
+        identity += ('<p class="meta">Required scope: original and extra import cases, formatting and repository checks.</p>' if independent_cases else
+                     '<p class="meta">Earlier scope: import, formatting and repository checks, without extra independent cases.</p>' if repository_checks else
                      '<p class="meta">Earlier scope: focused import check only.</p>')
     if run.get("workflow") == "pi-scripted-tools":
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
@@ -344,6 +367,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
 <header class="run-heading"><h3>{escape(title)}</h3><span class="badge {tone}">{escape(label)}</span></header>
 <p>{escape(result)}</p>
 {identity}
+{'<p><strong>Original import test</strong></p>' if run.get('workflow') == 'frozen-patch-verification' and checks else ''}
 {('<ol class="check-steps">' + ''.join(checks) + '</ol>') if checks else '<p class="meta">No import test results recorded.</p>'}
 {broader}
 <p class="meta">{mode}. {escape(elapsed)}. <a href="{link}" data-evidence="{link}">Receipt</a>
@@ -467,7 +491,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
     container_mode = any(run.get("execution_mode") == "rootless-podman" for _, run in ordered)
     selected = {}
     for path, run in ordered:
-        if run.get("candidate") in (("good", "wrong", "unformatted") if verification else ("good", "wrong")) and not run.get("fault") and (
+        if run.get("candidate") in (("good", "wrong", "unformatted", "tailored") if verification else ("good", "wrong")) and not run.get("fault") and (
                 not container_mode or run.get("execution_mode") == "rootless-podman"):
             selected[run["candidate"]] = path
     for path, run in ordered:
@@ -475,7 +499,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
             rows.append(render_run(path, reports, run, link_root))
     current_records = [(path, run) for path, run in ordered if path in selected.values()]
     if verification:
-        current_records.sort(key=lambda item: ("good", "unformatted", "wrong").index(item[1]["candidate"]))
+        current_records.sort(key=lambda item: ("good", "tailored", "unformatted", "wrong").index(item[1]["candidate"]))
     current = "".join(render_run(path, reports, run, link_root) for path, run in current_records)
     records = current + history(rows, "Other experiments, including failed and blocked runs") if ordered else (
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
@@ -536,7 +560,8 @@ Passing the fixed test, the model saying “done” and human approval are separ
                 if define else 'A repair passing its test, a sandbox respecting its limits, and your approval are three separate results.')
     if verification:
         intro = ('Verify follows the Pi connection stage. We freeze the proposed patch and check a fresh source copy, '
-                 'using tests the agent cannot edit. These first examples use prepared repairs and make no model calls.')
+                 'using tests the agent cannot edit. Extra cases try different inputs so a repair cannot rely on the original test filenames. '
+                 'These examples use prepared repairs and make no model calls.')
         takeaway = ('A result belongs to one exact patch and its recorded set of checks. '
                     'Even the full suite can miss untested behaviour. Human approval stays separate.')
     return f'''<!doctype html>
@@ -689,7 +714,8 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 <div class="evidence-tools"><label for="evidence-file">File</label><select id="evidence-file">
 <option value="result.json">Result</option><option value="task.json">Task</option><option value="events.jsonl">Events</option>
 <option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option>
-<option value="context.json">Context</option><option value="pi-session.json">Pi conversation</option></select>
+<option value="context.json">Context</option><option value="pi-session.json">Pi conversation</option>
+<option value="import_verifier_test.go">Independent cases</option></select>
 <a id="evidence-original">Open original file</a></div></div>
 <p id="evidence-status" role="status"></p><pre id="evidence-content" role="region" tabindex="0" aria-label="Evidence file contents"></pre>
 </dialog>

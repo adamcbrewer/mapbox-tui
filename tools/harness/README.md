@@ -21,11 +21,18 @@ The verifier makes no model calls. A supplied patch can come from an earlier Pi
 run, but its conversation or earlier receipt doesn't decide the new result.
 Python controls the checks; the agent cannot edit their runners or expectations.
 Execution uses the existing restricted Podman runner, without a host fallback.
-After the focused import test, it requires Go formatting and `make test` from
+After the focused import test, it adds independent GPX, TCX and KML cases, then requires Go formatting and `make test` from
 the candidate's repository root. The source and trusted check scripts stay
 read-only. Only `/workspace/bin` becomes a temporary writable filesystem for
 the build's output; it disappears with the container. Compiler caches and
 test-created files use the existing temporary filesystem.
+The extra cases use different filenames, coordinates and XML contents. Their
+test source stays in the harness, outside Pi's write scope. The verifier copies
+it into separate disposable copies of the original, broken and repaired source.
+Only that trusted test file may differ from each recorded source tree. It must
+pass on the original, fail for the intended reason on the broken seed, then pass
+on the candidate. Otherwise a weak new test could give false confidence.
+The saved receipt binds the extra test's fingerprint and logs to the exact patch.
 The fixed Make command disables VCS discovery in the archived source and records
 the pinned commit explicitly. It uses `GOFLAGS=-mod=readonly -p=1 -trimpath` to
 keep package compilation serial and reuse matching build-cache entries within
@@ -48,7 +55,7 @@ systemd-run --user --quiet --wait --pipe --collect --same-dir \
   --image "$HARNESS_IMAGE_ID" --demo good
 systemd-run --user --quiet --wait --pipe --collect --same-dir \
   -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
-  --image "$HARNESS_IMAGE_ID" --demo unformatted
+  --image "$HARNESS_IMAGE_ID" --demo tailored
 python3 tools/harness/report.py
 xdg-open reports/harness/verify.html
 ```
@@ -58,10 +65,16 @@ machine. Use your own recorded image-ID path elsewhere. No image is pulled or
 rebuilt by these commands.
 
 Good should return `repository_verification_passed` (exit 0): original passes,
-planted bug fails, repair passes, then formatting and repository tests pass.
+planted bug fails, repair passes, then the extra cases confirm those same three
+outcomes before formatting and repository tests pass.
+Tailored should return `repair_failed` (exit 1): the repair recognises the original
+three filenames and passes their test. The extra cases expose that shortcut.
+Formatting and the repository suite stay unrun. This failure is deliberate.
+Good should confirm removal of nine containers; tailored, seven.
+`--demo unformatted` retains the earlier formatting failure:
 Unformatted should return `repair_failed` (exit 1): its repair passes the import
-test but fails formatting. The repository check stays unrun. This failure is
-deliberate. Good should confirm removal of six containers; unformatted, five.
+and extra cases but fails formatting. The repository check stays unrun. This
+failure is deliberate and confirms removal of eight containers.
 `--demo wrong` retains the earlier ineffective repair, which fails at the import
 test and uses four containers.
 
@@ -76,13 +89,14 @@ patch. Command output stays beside the receipt in `*.stdout` and `*.stderr`.
 Check records are saved while the run progresses, so an interrupted run retains
 its observed steps. Crash recovery is still #106; this isn't a durable journal.
 
-The current `repository-checks-v1` scope requires all five checks: original,
-planted bug, repaired imports, formatting and repository tests. Older
-`focused-only-v1` receipts retain their three-check scope; they cannot satisfy
-the new gate. Missing checks, mismatched source fingerprints or changed logs
+The current `independent-cases-v1` scope requires eight checks: the three original
+import checks, the three extra-case checks, formatting and repository tests.
+Older `focused-only-v1` and `repository-checks-v1` receipts retain their original
+three-check and five-check scopes; they cannot satisfy the new gate.
+Missing checks, mismatched source fingerprints or changed logs
 prevent a pass. Environment failures stay separate from failed repairs.
 
-Extra independent cases, permitted new files and a bounded Pi repair retry
+Permitted new files and a bounded Pi repair retry
 remain for later slices of #105. The harness's own tests run separately when
 developing this tool. `fully_verified` stays false. Human review remains pending.
 

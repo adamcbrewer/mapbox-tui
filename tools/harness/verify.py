@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import tarfile
@@ -13,14 +14,22 @@ from run import HERE, REPORTS, Stop, apply_patch, classify_test, check_test, dig
 from sandbox import preflight
 
 WORKFLOW = "frozen-patch-verification"
-SCOPE = "repository-checks-v1"
+SCOPE = "independent-cases-v1"
 STAGES = ("baseline", "seed", "candidate")
+REGRESSION_CHECKS = tuple(stage + "-regression" for stage in STAGES)
 EXTRA_CHECKS = ("candidate-format", "candidate-suite")
-SCOPES = {"focused-only-v1": (1, STAGES), SCOPE: (2, STAGES + EXTRA_CHECKS)}
+REQUIRED_CHECKS = STAGES + REGRESSION_CHECKS + EXTRA_CHECKS
+SCOPES = {"focused-only-v1": (1, STAGES), "repository-checks-v1": (2, STAGES + EXTRA_CHECKS),
+          SCOPE: (3, REQUIRED_CHECKS)}
+REGRESSION_FILE = "go/import_verifier_test.go"
+REGRESSION = {"test": "TestXMLImportsVerifierCases", "cases": ["gpx", "tcx", "kml"],
+              "failure_message": "independent BOM import changed or failed"}
+REGRESSION_COMMAND = ["go", "test", "./go", "-run", "^TestXMLImportsVerifierCases$", "-count=1", "-json"]
 
 
 def check_commands(task):
     return {**{stage: task["command"] for stage in STAGES},
+            **{name: REGRESSION_COMMAND for name in REGRESSION_CHECKS},
             "candidate-format": ["python3", "scripts/check_format.py"],
             "candidate-suite": ["make", "test", "BUILD_VCS=false", "COMMIT=" + task["base_commit"], REPOSITORY_GOFLAGS]}
 
@@ -47,15 +56,17 @@ class VerificationRun(ContainerRun):
     def __init__(self, reports, image):
         super().__init__(reports, image)
         self.phase = "setup"
+        self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
-                           suite_version=2, trees={}, required_checks=list(STAGES + EXTRA_CHECKS), model_claim=None,
+                           suite_version=3, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
                            verifier_sha256=digest(Path(__file__).read_bytes()),
                            preparation_sha256=digest((HERE / "pi_run.py").read_bytes()))
 
     def event(self, kind, **fields):
         identity = {key: self.result.get(key) for key in
                     ("patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")}
-        identity.update(attempt=1, suite_version=2, verification_scope=SCOPE, phase=self.phase)
+        identity.update(attempt=1, suite_version=3, verification_scope=SCOPE, phase=self.phase,
+                        regression_sha256=self.result.get("regression_sha256"))
         if "check" in fields:
             check = fields["check"]
             check.update(identity, run_id=self.path.name,
@@ -66,20 +77,27 @@ class VerificationRun(ContainerRun):
         write_json(self.path / "result.json", self.result)
 
     def command(self, name, args, cwd, env_overrides=None):
-        if name in STAGES + EXTRA_CHECKS:
+        if name in REQUIRED_CHECKS:
             if args != check_commands(self.task)[name] or env_overrides:
                 raise Stop("invalid_input", "Only the fixed verification commands are permitted")
             checkout = self.checkout_path(cwd)
-            self.phase = name if name in STAGES else "candidate"
+            self.phase = "candidate" if name in EXTRA_CHECKS else name
             tree = source_tree(checkout)
             if name in EXTRA_CHECKS and tree != self.result["trees"]["candidate"]:
                 raise Stop("invalid_input", "The candidate changed between required checks")
             self.result["trees"][self.phase] = tree
-        if name in EXTRA_CHECKS:
+            if name in STAGES:
+                self.sources[name] = (checkout / "go/import.go").read_bytes()
+            if name in REGRESSION_CHECKS:
+                expected = {**self.result["trees"][name.removesuffix("-regression")]["files"],
+                            REGRESSION_FILE: self.result["regression_sha256"]}
+                if tree["files"] != expected:
+                    raise Stop("invalid_input", "Independent cases must use the exact recorded source and trusted test")
+        if name in EXTRA_CHECKS + REGRESSION_CHECKS:
             check, output = self.execute(name, args, cwd, build_output=name == "candidate-suite")
         else:
             check, output = super().command(name, args, cwd, env_overrides)
-        if name in STAGES + EXTRA_CHECKS:
+        if name in REQUIRED_CHECKS:
             if source_tree(Path(cwd)) != self.result["trees"][self.phase]:
                 raise Stop("invalid_input", "Verification source changed while a check was running")
             check.update(stdout_sha256=digest((self.path / check["stdout"]).read_bytes()),
@@ -112,6 +130,17 @@ def receipt_matches(result, directory, allow_failed=False):
             changes = changed_files(trees[before]["files"], trees[after]["files"])
             if not changes or changes - set(task["allowed_files"]):
                 return False
+        if result["verification_scope"] == SCOPE:
+            if (REGRESSION_FILE in trees["candidate"]["files"] or
+                    result["regression_sha256"] != digest((directory / "import_verifier_test.go").read_bytes())):
+                return False
+            for name in REGRESSION_CHECKS:
+                if name not in trees:
+                    continue
+                expected = {**trees[name.removesuffix("-regression")]["files"],
+                            REGRESSION_FILE: result["regression_sha256"]}
+                if trees[name]["files"] != expected or trees[name]["sha256"] != fingerprint(expected):
+                    return False
         checks = [check for check in result["checks"] if check["id"] in required]
         if ([check["id"] for check in checks] != list(required[:len(checks)]) or
                 not checks or len(checks) > len(required) or not allow_failed and len(checks) != len(required)):
@@ -119,7 +148,7 @@ def receipt_matches(result, directory, allow_failed=False):
         failed = False
         for check in checks:
             name = check["id"]
-            stage = name if name in STAGES else "candidate"
+            stage = "candidate" if name in EXTRA_CHECKS else name
             if (any(check[key] != result[key] for key in
                     ("run_id", "attempt", "patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")) or
                     check["phase"] != stage or check["verification_scope"] != result["verification_scope"] or
@@ -129,6 +158,8 @@ def receipt_matches(result, directory, allow_failed=False):
                     not check["started_at"] or not check["ended_at"] or check["duration_seconds"] < 0 or
                     type(check["exit_code"]) is not int):
                 return False
+            if result["verification_scope"] == SCOPE and check["regression_sha256"] != result["regression_sha256"]:
+                return False
             logs = {}
             for stream in ("stdout", "stderr"):
                 if check[stream] != f"{name}.{stream}":
@@ -136,17 +167,18 @@ def receipt_matches(result, directory, allow_failed=False):
                 logs[stream] = (directory / check[stream]).read_bytes()
                 if digest(logs[stream]) != check[stream + "_sha256"]:
                     return False
-            actual = (classify_test(logs["stdout"], check["exit_code"], task) if name in STAGES else
+            test = REGRESSION if name in REGRESSION_CHECKS else task
+            actual = (classify_test(logs["stdout"], check["exit_code"], test) if name in STAGES + REGRESSION_CHECKS else
                       "passed" if check["exit_code"] == 0 else "failed")
-            expected = "assertion_failed" if name == "seed" else "passed"
+            expected = "assertion_failed" if name in ("seed", "seed-regression") else "passed"
             if check["outcome"] != actual:
                 return False
             if actual != expected:
-                if (not allow_failed or check is not checks[-1] or name in ("baseline", "seed") or
+                if (not allow_failed or check is not checks[-1] or name not in ("candidate", "candidate-regression", *EXTRA_CHECKS) or
                         actual not in ("assertion_failed", "build_failed", "failed") or check["exit_code"] == 0):
                     return False
                 failed = True
-            if name == "seed" and task["failure_message"].encode() not in logs["stdout"]:
+            if name in ("seed", "seed-regression") and test["failure_message"].encode() not in logs["stdout"]:
                 return False
         return failed if allow_failed else True
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -157,6 +189,9 @@ def verify(run, patch):
     task_bytes = (HERE / "task.json").read_bytes()
     run.result.update(task=run.task["id"], task_sha256=digest(task_bytes),
                       base_commit=run.task["base_commit"], patch_sha256=digest(patch))
+    regression = (HERE / "fixtures/import_verifier_test.go.txt").read_bytes()
+    run.result["regression_sha256"] = digest(regression)
+    (run.path / "import_verifier_test.go").write_bytes(regression)
     (run.path / "candidate.patch").write_bytes(patch)
     (run.path / "task.json").write_bytes(task_bytes)
     run.event("candidate_frozen", patch_bytes=len(patch))
@@ -176,6 +211,17 @@ def verify(run, patch):
             raise Stop("invalid_input", "The candidate must change only the allowed source")
         check, output = run.command("candidate", run.task["command"], checkout)
         check_test(run, "candidate", check, output, run.task)
+        if REGRESSION_FILE in candidate_files:
+            raise Stop("invalid_input", "The trusted regression test path must be absent from candidate source")
+        for name in REGRESSION_CHECKS:
+            stage = name.removesuffix("-regression")
+            with tempfile.TemporaryDirectory(prefix="mapbox-calibration-regression-") as temporary_regression:
+                regression_copy = Path(temporary_regression)
+                shutil.copytree(checkout, regression_copy, dirs_exist_ok=True)
+                (regression_copy / "go/import.go").write_bytes(run.sources[stage])
+                (regression_copy / REGRESSION_FILE).write_bytes(regression)
+                check, output = run.command(name, REGRESSION_COMMAND, regression_copy)
+                check_test(run, stage, check, output, REGRESSION)
         (checkout / "bin").mkdir(exist_ok=True)
         for name in EXTRA_CHECKS:
             check, output = run.command(name, check_commands(run.task)[name], checkout)
@@ -192,7 +238,7 @@ def verify(run, patch):
         if not receipt_matches(run.result, run.path):
             raise Stop("invalid_input", "The patch, source identities or required check evidence changed")
     run.result.update(outcome="repository_verification_passed",
-                      reason="This frozen patch passed the import, formatting and repository checks; extra independent cases and human review remain pending")
+                      reason="This frozen patch passed the original and independent import cases, formatting and repository checks; human review remains pending")
     run.event("repository_verification_completed")
 
 
@@ -200,7 +246,7 @@ def main():
     parser = argparse.ArgumentParser(description="Independently check a frozen repair in a fresh sandboxed source copy.")
     parser.add_argument("--image", required=True, help="Immutable prepared local image ID")
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--demo", choices=("good", "wrong", "unformatted", "empty"))
+    source.add_argument("--demo", choices=("good", "wrong", "unformatted", "tailored", "empty"))
     source.add_argument("--patch", type=Path, help="Candidate patch against the pinned seeded source")
     args = parser.parse_args()
     run = VerificationRun(REPORTS / "verification", args.image)
