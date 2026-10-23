@@ -30,13 +30,16 @@ def runtime_details(info):
                        ". A restricted app session may need the delegated user-unit launch in the README.")
         if security["seccompEnabled"] is not True:
             raise Stop("blocked", "Podman must support seccomp filtering")
+        profile = security["seccompProfilePath"]
+        if not isinstance(profile, str) or not profile.strip():
+            raise ValueError("Invalid seccomp profile path")
         if not isinstance(version, str) or not version:
             raise ValueError("Missing Podman version")
     except (KeyError, TypeError, ValueError) as error:
         raise Stop("blocked", "Podman returned an incomplete or invalid runtime description") from error
     return {"podman_version": version, "rootless": True, "local": True,
             "cgroup_version": "v2", "controllers": controllers, "seccomp": True,
-            "seccomp_profile": security.get("seccompProfilePath")}
+            "seccomp_profile": profile}
 
 
 def preflight(run):

@@ -84,8 +84,11 @@ class Run:
                 ready = selector.select(remaining)
                 if not ready:
                     raise subprocess.TimeoutExpired(process.args, remaining)
+                # Leave room for the other open pipe, even if it isn't ready yet.
+                read_size = min(65536, max(1, (output_limit - captured) // len(selector.get_map())))
+                exhausted = False
                 for key, _ in ready:
-                    chunk = os.read(key.fd, 65536)
+                    chunk = os.read(key.fd, read_size)
                     if not chunk:
                         selector.unregister(key.fileobj)
                         continue
@@ -93,7 +96,9 @@ class Run:
                     key.data.write(chunk[:available])
                     captured += min(len(chunk), available)
                     if len(chunk) > available:
-                        raise Stop("budget_exhausted", f"Command output exceeded {output_limit} bytes across stdout and stderr")
+                        exhausted = True
+                if exhausted:
+                    raise Stop("budget_exhausted", f"Command output exceeded {output_limit} bytes across stdout and stderr")
 
     def command(self, name, args, cwd, env_overrides=None, output_limit=None):
         if sys.platform != "linux":

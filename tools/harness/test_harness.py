@@ -1,4 +1,5 @@
 import json
+import io
 import os
 from pathlib import Path
 import signal
@@ -6,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -217,6 +219,22 @@ class CalibrationTests(unittest.TestCase):
                 self.assertEqual(output, b"output")
                 self.assertEqual((run.path / "small.stderr").read_bytes(), b"errors")
                 self.assertEqual(check["output_limit_bytes"], limit)
+
+    def test_ready_streams_both_retain_diagnostics_before_budget_exhaustion(self):
+        run = Run(self.root)
+        stdout_read, stdout_write = os.pipe()
+        stderr_read, stderr_write = os.pipe()
+        for descriptor, content in ((stdout_write, b"o" * 1024), (stderr_write, b"e" * 1024)):
+            os.write(descriptor, content)
+            os.close(descriptor)
+        with os.fdopen(stdout_read, "rb") as stdout, os.fdopen(stderr_read, "rb") as stderr:
+            process = SimpleNamespace(stdout=stdout, stderr=stderr, args=["prepared-output"])
+            out, err = io.BytesIO(), io.BytesIO()
+            with self.assertRaises(Stop) as caught:
+                run.capture_output(process, out, err, output_limit=64)
+        self.assertEqual(caught.exception.outcome, "budget_exhausted")
+        self.assertEqual(out.getvalue(), b"o" * 32)
+        self.assertEqual(err.getvalue(), b"e" * 32)
 
     def test_bounded_output_keeps_partial_logs_when_the_deadline_expires(self):
         run = Run(self.root)

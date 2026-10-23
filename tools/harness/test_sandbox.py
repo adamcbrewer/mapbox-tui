@@ -18,7 +18,8 @@ class SandboxTests(unittest.TestCase):
         self.info = {
             "host": {"serviceIsRemote": False, "cgroupVersion": "v2",
                      "cgroupControllers": ["cpu", "memory", "pids"],
-                     "security": {"rootless": True, "seccompEnabled": True}},
+                     "security": {"rootless": True, "seccompEnabled": True,
+                                  "seccompProfilePath": "/usr/share/containers/seccomp.json"}},
             "version": {"Version": "test-runtime"},
         }
 
@@ -52,6 +53,41 @@ class SandboxTests(unittest.TestCase):
         self.assertEqual(run.result["runtime"]["podman_version"], "test-runtime")
         self.assertIn("not yet demonstrated", run.result["reason"])
         command.assert_called_once_with("podman-info", ["podman", "--remote=false", "info", "--format=json"], sandbox.ROOT)
+
+    def test_runtime_description_requires_a_nonempty_seccomp_profile_string(self):
+        for profile in (None, False, 0, 1, [], ["/profile"], {}, {"path": "/profile"}, "", " "):
+            with self.subTest(profile=profile):
+                info = copy.deepcopy(self.info)
+                info["host"]["security"]["seccompProfilePath"] = profile
+                with self.assertRaises(Stop) as caught:
+                    sandbox.runtime_details(info)
+                self.assertEqual(caught.exception.outcome, "blocked")
+        del self.info["host"]["security"]["seccompProfilePath"]
+        with self.assertRaises(Stop):
+            sandbox.runtime_details(self.info)
+
+    def test_malformed_seccomp_profile_blocks_both_image_entry_points_and_saves_receipt(self):
+        import pi_run
+        from container import ContainerRun
+
+        self.info["host"]["security"]["seccompProfilePath"] = ["/profile"]
+        for entry in (sandbox, pi_run):
+            reports = self.root / entry.__name__
+            with self.subTest(entry=entry.__name__), patch.object(entry, "REPORTS", reports), \
+                    patch("sys.argv", [entry.__name__ + ".py", "--image", "sha256:" + "a" * 64, "--demo", "good"]), \
+                    patch("sandbox.os.geteuid", return_value=1000), patch("sandbox.sys.platform", "linux"), \
+                    patch.object(Run, "command", return_value=({"exit_code": 0}, json.dumps(self.info).encode())), \
+                    patch.object(ContainerRun, "prepare") as prepare, patch("pi_run.pi_loop") as loop:
+                self.assertEqual(entry.main(), 1)
+            prepare.assert_not_called()
+            loop.assert_not_called()
+            receipt = next(reports.rglob("result.json"))
+            result = json.loads(receipt.read_text())
+            self.assertEqual(result["outcome"], "blocked")
+            self.assertEqual(result["containers"], [])
+            self.assertFalse(result.get("candidate_executed"))
+            events = [json.loads(line) for line in receipt.with_name("events.jsonl").read_text().splitlines()]
+            self.assertEqual(events[-1]["kind"], "run_finished")
 
     def test_failed_or_malformed_runtime_inspection_stops_without_other_commands(self):
         for check, output in (({"exit_code": 125}, b""), ({"exit_code": 0}, b"not JSON"),
