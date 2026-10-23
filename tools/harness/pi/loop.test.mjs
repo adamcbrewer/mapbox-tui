@@ -246,6 +246,36 @@ test("request exhaustion stops before another provider call", async () => {
   assert.equal(execution.options.length, 1);
 });
 
+test("verification feedback stays in the same session with a shared request budget", async () => {
+  for (const limit of [4, 3]) {
+    const execution = await preparedLive([
+      toolReply("harness_check", { preset: "xml-leading-bom" }, "first-check"),
+      toolReply("harness_edit", { file: "go/import.go" }, "retry-edit"),
+      toolReply("harness_check", { preset: "xml-leading-bom" }, "second-check"),
+      { content: [{ type: "text", text: "All checks passed." }], stopReason: "stop" },
+    ], limit);
+    let checks = 0;
+    const work = runToolLoop({ task: { id: "verified-retry" }, maxToolCalls: 12,
+      verification: { maxAttempts: 2, scope: "permitted-files-v1" } }, async request => {
+      const failed = request.name === "harness_check" && ++checks === 1;
+      return { outcome: request.name === "harness_edit" ? "ok" : failed ? "repair_failed" : "passed",
+        explanation: "Independent result", evidence: "result.json", file: null, operation_id: null,
+        remaining_attempts: failed ? 1 : 0 };
+    }, execution.emit, execution);
+    if (limit === 4) await work;
+    else await assert.rejects(work, error => error.outcome === "budget_exhausted");
+    const context = execution.sent.find(event => event.type === "context");
+    assert.match(context.systemPrompt, /at most two attempts total/);
+    assert.match(context.tools.find(tool => tool.name === "harness_check").description, /independently check a fresh source copy/);
+    assert.equal(execution.requests.count, limit);
+    assert.equal(checks, 2);
+    assert.equal(execution.sent.some(event => event.type === "finished"), limit === 4);
+    const session = execution.sent.find(event => event.type === "session");
+    assert.ok(session.messages.some(message => message.role === "toolResult" &&
+      message.content.some(part => part.text?.includes('"remaining_attempts":1'))));
+  }
+});
+
 test("full-response deadline stops an unfinished stream even after it starts", async () => {
   const execution = await preparedLive([]);
   let signal;

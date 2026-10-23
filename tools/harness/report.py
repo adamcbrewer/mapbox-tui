@@ -15,7 +15,7 @@ from run import HERE, REPORTS, ROOT, digest, now, write_json
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
 EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt")
-RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs")
+RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs", "repair/runs")
 
 
 def escape(value):
@@ -82,6 +82,7 @@ GLOSSARY = {
     "Frozen patch": "The exact saved repair bytes, identified by a fingerprint. Changing them invalidates their verification evidence.",
     "Permitted new file": "A source path named in the trusted task before the repair runs. Its complete added contents belong to the saved patch. Tests and check scripts stay protected.",
     "Independent cases": "Extra test inputs supplied by the verifier, outside Pi's editable files. We check that they pass on working code, fail on broken code and pass after the repair.",
+    "Bounded repair retry": "After a real failed check, Pi gets one chance to revise the repair. Both attempts share the time, request and tool budgets. Missing tools or other setup failures stop the run instead.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
     "Podman": "The container tool chosen for a disposable test environment in Connect (#104). Readiness inspects its reported features. Separate live demonstrations check dummy access denials, kernel settings and cleanup.",
     "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
@@ -93,6 +94,8 @@ FILE_GUIDE = {
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
     "tools/harness/pi_run.py": "Runs prepared replies or the configured subscription through four controlled tools. Python owns the disposable source, limits and sandboxed checks. A live attempt can stop before inference if its limits cannot be enforced.",
     "tools/harness/verify.py": "Freezes a supplied patch and checks the pinned source in a fresh copy. Current runs require the original and independent import cases, formatting and repository make test, with no model calls.",
+    "tools/harness/repair.py": "Connects Pi's check tool to independent verification, allows one retry after a real repair failure, and binds the final verdict to the last exact patch and both attempts' receipts.",
+    "reports/harness/repair/runs/<run-id>/": "Pi conversation, shared budgets, tool feedback and links to each attempt's separate verification evidence. Prepared examples use the actual Pi SDK without an AI model.",
     "tools/harness/fixtures/import_verifier_test.go.txt": "Trusted extra GPX, TCX and KML inputs with different filenames and coordinates. Copied into disposable verification folders, never Pi's editable source.",
     "reports/harness/verification/runs/<run-id>/": "Independent check evidence. Result includes the patch fingerprint, source identities, required scope and each check's exit code, timing and log fingerprints. Older focused-only receipts retain their original scope.",
     "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
@@ -411,6 +414,87 @@ Fault introduced: {escape(run.get('fault_injected', 'not recorded'))}.</p>
 </article>'''
 
 
+def render_repair(path, reports, run, link_root=None):
+    from repair import repair_receipt_matches
+    outcome = run.get("outcome")
+    known = repair_receipt_matches(run, path.parent, reports)
+    passed = known and outcome == "verified_repair_passed"
+    exhausted = known and outcome == "budget_exhausted" and run.get("repair_budget_exhausted") is True
+    label = "All required checks passed" if passed else "Expected stop at repair limit" if exhausted else "Run stopped or unfinished"
+    if outcome == "verified_repair_passed" and not known:
+        label = "Evidence needs inspection"
+    title = "Pi: failed repair, then a working retry" if run.get("candidate") == "retry" else (
+        "Pi: two failed repairs, then stop" if run.get("candidate") == "exhausted" else "Pi: independently checked repair")
+    if not passed and not exhausted:
+        title = "Pi: verification session stopped or unfinished"
+    result = ("The final exact patch passed every independent check. Human review remains pending." if passed else
+              "Both repairs failed their checks. The fixed limit stopped the session after two repairs; this is the expected demonstration result." if exhausted else
+              "The session did not establish a verified repair. Inspect the attempt evidence and stopping reason.")
+    attempts = []
+    check_labels = {"candidate": "the original import test", "candidate-regression": "the extra import cases",
+                    "candidate-format": "formatting", "candidate-suite": "the repository tests"}
+    for item in run.get("attempts", []):
+        identity = item.get("verification_run_id", "")
+        if not isinstance(identity, str) or len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+            continue
+        child_path = reports / "verification/runs" / identity / "result.json"
+        try:
+            child = json.loads(child_path.read_text())
+            from verify import receipt_matches
+            child_known = (digest(child_path.read_bytes()) == item.get("receipt_sha256") and
+                           child.get("parent_run_id") == path.parent.name and
+                           child.get("attempt") == item.get("attempt") and
+                           child.get("patch_sha256") == item.get("patch_sha256") and
+                           receipt_matches(child, child_path.parent, allow_failed=child.get("outcome") == "repair_failed"))
+            completed = [check for check in child.get("checks", []) if check.get("id") in check_labels]
+            description = ("passed all eight independent checks" if child_known and item["outcome"] == "repository_verification_passed" else
+                           "repair failed " + check_labels[completed[-1]["id"]] if child_known and item["outcome"] == "repair_failed" and completed else
+                           "could not confirm the required checks")
+        except (ValueError, OSError, KeyError, TypeError):
+            description = "evidence could not be read"
+        link = escape(child_path.relative_to(link_root or reports).as_posix())
+        elapsed = item.get("duration_seconds")
+        timing = f' ({elapsed:.2f} seconds)' if isinstance(elapsed, (int, float)) else ''
+        attempts.append(f'<li>Attempt {escape(item.get("attempt"))}: {escape(description)}{timing}. '
+                        f'<a href="{link}" data-evidence="{link}">Check receipt</a></li>')
+    link = escape(path.relative_to(link_root or reports).as_posix())
+    usage = run.get("token_summary", {})
+    tokens = (f'<p>Recorded tokens: {escape(usage.get("totals", {}).get("totalTokens", "not reported"))}. '
+              f'Usage complete: {escape(usage.get("complete", False))}. Subscription cost is not reported.</p>') if usage else ''
+    model = ("No AI model ran. Prepared replies exercised the actual Pi SDK." if (path.parent / "context.json").is_file() else
+             "No AI model ran. Pi did not record a session context before this run stopped.") if run.get("candidate") in ("retry", "exhausted") else (
+        f'Model configured: {run.get("provider", "not recorded")} / {run.get("model") or "not recorded"}. '
+        f'Recorded requests sent: {run.get("model_requests_dispatched", 0)}.')
+    duration = run.get("duration_seconds")
+    timing = f'{duration:.2f} seconds' if isinstance(duration, (int, float)) else 'Session unfinished'
+    return f'''<article class="run repair-run" data-run-id="{escape(path.parent.name)}">
+<header class="run-heading"><h3>{escape(title)}</h3><span class="badge {'pass' if passed else 'attention'}">{escape(label)}</span></header>
+<p>{escape(result)}</p><p>{escape(model)}</p><ol>{''.join(attempts)}</ol>
+<p>Maximum two repairs total. Tool-call, model-request and time limits are shared. Environment failures stop without another repair.</p>
+{tokens}<p class="meta">Stopping reason: {escape(run.get('reason', 'Run not finished'))}</p>
+<p class="meta">Whole session: {escape(timing)}. Tool calls: {escape(run.get('tool_calls', 'not yet recorded'))}.</p>
+<p class="meta"><a href="{link}" data-evidence="{link}">Session receipt</a> <code>{escape(path.parent.name[:8])}</code>.</p>
+<details><summary>What Pi said, and what decides the result</summary>
+<p>{escape(run.get('model_claim') or 'No final Pi summary recorded.')}</p>
+<p>Pi's words do not decide success. Python checks the exact final patch and each linked verification receipt. Passing tests and human approval remain separate.</p></details></article>'''
+
+
+def render_repairs(reports, link_root=None):
+    latest, earlier = {}, []
+    for path in sorted((reports / "repair/runs").glob("*/result.json"), key=lambda p: p.stat().st_mtime):
+        try:
+            run = json.loads(path.read_text())
+            row = render_repair(path, reports, run, link_root)
+        except (ValueError, OSError, TypeError, AttributeError):
+            row, run = '<p>Could not read the Pi verification session receipt.</p>', {}
+        key = (run.get("candidate", "unknown"), run.get("outcome") if run.get("outcome") in
+               ("blocked", "cancelled", "timeout", "invalid_input") else "attempt")
+        if key in latest:
+            earlier.append(latest[key])
+        latest[key] = row
+    return ''.join(latest.values()) + history(earlier, "Earlier verified Pi sessions")
+
+
 def render_preflights(reports, link_root=None):
     rows = []
     for path in (reports / "sandbox-preflight/runs").glob("*/result.json"):
@@ -501,6 +585,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
         milestones.append(f'<li{marker}><strong>{stage}</strong><span>{escape(label)}</span></li>')
     milestones = "".join(milestones)
     verification = progress["stage"] == "Verify"
+    repairs = render_repairs(reports, link_root) if verification else ''
     rows = []
     records = []
     for path in (reports / ("verification/runs" if verification else "runs")).glob("*/result.json"):
@@ -585,7 +670,7 @@ Passing the fixed test, the model saying “done” and human approval are separ
     if verification:
         intro = ('Verify follows the Pi connection stage. We freeze the proposed patch and check a fresh source copy, '
                  'using tests the agent cannot edit. Extra cases try different inputs so a repair cannot rely on the original test filenames. '
-                 'These examples use prepared repairs and make no model calls.')
+                 'Prepared examples make no AI calls; any live session names its model and records usage.')
         takeaway = ('A result belongs to one exact patch and its recorded set of checks. '
                     'Even the full suite can miss untested behaviour. Human approval stays separate.')
     return f'''<!doctype html>
@@ -685,6 +770,7 @@ Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <ol class="stages">{milestones}</ol>
 <div class="layout"><main>
 <section id="results" aria-labelledby="results-title">
+{('<h2>Can Pi use a failed check to retry within the limit?</h2><p>Compare the prepared retry and stop examples. The verifier checks each patch independently; Pi cannot change its tests.</p>' + repairs) if repairs else ''}
 <div class="section-heading"><div><h2 id="results-title">{'Does this exact patch pass its required checks?' if verification else 'Does the checker spot a real repair?'}</h2>
 <p>{'Compare the working, unformatted and ineffective repairs. Every required check must pass.' if verification else 'Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') + '. A failure in the middle step is expected.'}</p></div></div>
 {records}

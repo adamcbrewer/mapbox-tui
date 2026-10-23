@@ -76,6 +76,31 @@ class Tools:
         self.operations = {}
         self.seeded = (checkout / "go/import.go").read_text()
 
+    def edit_available(self):
+        return self.edits < self.run.task["repair_attempts"] and not self.checked
+
+    def check_available(self):
+        return not self.checked
+
+    def completed(self):
+        return self.checked and self.edits == 1
+
+    def prepared_calls(self, demo):
+        return scripted_calls(self, demo)
+
+    def check_candidate(self, result):
+        check, output = self.run.command("candidate", self.run.task["command"], self.checkout)
+        check["source_sha256"] = digest(self.path("go/import.go").read_bytes())
+        try:
+            check_test(self.run, "candidate", check, output, self.run.task)
+            outcome, explanation = "passed", "The required import cases passed"
+        except Stop as error:
+            if error.outcome != "repair_failed":
+                raise
+            outcome, explanation = error.outcome, error.reason
+        self.run.result.update(outcome=outcome, reason=explanation)
+        result.update(outcome=outcome, explanation=explanation, evidence="candidate.stdout")
+
     def path(self, name, writable=False):
         allowed = self.run.task["allowed_files"] if writable else self.run.task["source_sha256"]
         if not isinstance(name, str) or name not in allowed:
@@ -128,8 +153,8 @@ class Tools:
                         raise ValueError("Operation ID was already used with different arguments")
                     result = {**saved, "replayed": True}
                 else:
-                    if self.edits >= self.run.task["repair_attempts"] or self.checked:
-                        raise ValueError("The single repair attempt has already been used")
+                    if not self.edit_available():
+                        raise ValueError("No edit is available; follow the check and repair budget")
                     before = path.read_bytes()
                     if digest(before) != args["expected_sha256"]:
                         raise ValueError("File changed; read its current hash before editing")
@@ -147,29 +172,20 @@ class Tools:
                     patch = "".join(difflib.unified_diff(self.seeded.splitlines(True), updated.splitlines(True),
                                                        fromfile="a/go/import.go", tofile="b/go/import.go"))
                     (self.run.path / "candidate.patch").write_text(patch)
+                    self.run.result["patch_sha256"] = digest(patch.encode())
                     self.edits += 1
                     result.update(outcome="ok", explanation="Edited the disposable copy", evidence="candidate.patch",
                                   before_sha256=digest(before), sha256=digest(path.read_bytes()))
                     self.operations[operation] = fingerprint, result.copy()
             elif name == "harness_check":
-                if args != {"preset": "xml-leading-bom"} or self.checked:
-                    raise ValueError("Only one xml-leading-bom check is permitted")
+                if args != {"preset": "xml-leading-bom"} or not self.check_available():
+                    raise ValueError("No xml-leading-bom check is available")
                 self.checked = True
                 for file, expected in self.run.task["source_sha256"].items():
                     path = self.path(file)
                     if file not in self.run.task["allowed_files"] and digest(path.read_bytes()) != expected:
                         raise Stop("invalid_input", "A protected test file changed")
-                check, output = self.run.command("candidate", self.run.task["command"], self.checkout)
-                check["source_sha256"] = digest(self.path("go/import.go").read_bytes())
-                try:
-                    check_test(self.run, "candidate", check, output, self.run.task)
-                    outcome, explanation = "passed", "The required import cases passed"
-                except Stop as error:
-                    if error.outcome != "repair_failed":
-                        raise
-                    outcome, explanation = error.outcome, error.reason
-                self.run.result.update(outcome=outcome, reason=explanation)
-                result.update(outcome=outcome, explanation=explanation, evidence="candidate.stdout")
+                self.check_candidate(result)
             else:
                 raise ValueError("Unknown tool; shell and default Pi tools are unavailable")
         except (ValueError, UnicodeError) as error:
@@ -215,6 +231,7 @@ def pi_loop(run, tools, temporary, demo, config=None):
            "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(temporary / "agent")}
     payload = {"type": "start", "task": run.task, "maxToolCalls": MAX_CALLS}
     payload["repoInstructions"] = getattr(run, "repo_instructions", [])
+    payload.update(getattr(tools, "start_context", {}))
     permissions = []
     if config:
         if not payload["repoInstructions"]:
@@ -225,7 +242,7 @@ def pi_loop(run, tools, temporary, demo, config=None):
         permissions = ["--allow-net", "--allow-fs-read=" + str(auth_dir), "--allow-fs-write=" + str(auth_dir)]
         payload.update(mode="live", config=config, authDir=str(auth_dir))
     else:
-        payload["calls"] = scripted_calls(tools, demo)
+        payload["calls"] = tools.prepared_calls(demo)
     with (run.path / "pi.stderr").open("wb") as stderr:
         process = None
         try:
@@ -286,10 +303,14 @@ def pi_loop(run, tools, temporary, demo, config=None):
                             process.stdin.flush()
                         elif message_type == "finished":
                             write_json(run.path / "pi-session.json", message)
+                            if getattr(tools, "start_context", None):
+                                claims = [part.get("text", "") for item in message.get("messages", []) if item.get("role") == "assistant"
+                                          for part in item.get("content", []) if part.get("type") == "text"]
+                                run.result["model_claim"] = "\n".join(claims)[-2000:] or None
                             if process.wait(timeout=max(0.1, run.deadline - time.monotonic())) != 0:
                                 raise Stop("blocked", "Pi reported a failed exit")
                             expected = tools.calls if config else len(payload["calls"])
-                            if not tools.checked or message.get("toolResults") != expected or (config and tools.edits != 1):
+                            if not tools.checked or message.get("toolResults") != expected or (config and not tools.completed()):
                                 raise Stop("incomplete", "Pi did not finish the required tool sequence")
                             return
                         else:
@@ -323,24 +344,31 @@ def main():
     parser = argparse.ArgumentParser(description="Run controlled Pi tools with prepared replies or a subscription model.")
     parser.add_argument("--image", required=True, help="Immutable prepared local image ID")
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--demo", choices=("good", "wrong"))
+    mode.add_argument("--demo", choices=("good", "wrong", "retry", "exhausted"))
     mode.add_argument("--live", action="store_true", help="Use the subscription and limits in pi/config.local.json")
+    parser.add_argument("--verify", action="store_true", help="Independently verify each repair, with at most one retry")
     args = parser.parse_args()
-    run = ContainerRun(REPORTS / "pi", args.image)
-    run.result.update(workflow="pi-live-tools" if args.live else "pi-scripted-tools",
+    from repair import RepairRun, RepairTools
+    run = RepairRun(REPORTS / "repair", args.image) if args.verify else ContainerRun(REPORTS / "pi", args.image)
+    run.result.update(workflow="pi-verified-repair" if args.verify else "pi-live-tools" if args.live else "pi-scripted-tools",
                       candidate="model" if args.live else args.demo, pi_version="1.2.0",
                       model=None if args.live else "scripted (no AI)", startup_verified=False, human_acceptance="pending",
-                      budgets={"tool_calls": MAX_CALLS, "repair_attempts": 1, "deadline_seconds": 600,
+                      budgets={"tool_calls": MAX_CALLS, "repair_attempts": 2 if args.verify else 1, "deadline_seconds": 600,
                                "model_requests": 0},
                       source_sha256={str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in
                                      [Path(__file__), HERE / "pi/loop.mjs", HERE / "pi/live.mjs",
                                       HERE / "pi/setup.mjs", HERE / "pi/cli.mjs", HERE / "pi/package-lock.json"]})
+    if args.verify:
+        run.result["source_sha256"].update({str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in
+                                            (HERE / "repair.py", HERE / "verify.py", HERE / "run.py")})
     if args.live:
         run.result.update(candidate_source="AI", model_cost_usd=None, model_requests=0,
                           model_requests_dispatched=0, model_usage=[])
         run.result["budgets"]["model_requests"] = None
     previous = {signum: signal.signal(signum, run.cancel) for signum in (signal.SIGINT, signal.SIGTERM)}
     try:
+        if args.demo and ((args.demo in ("retry", "exhausted")) != args.verify):
+            raise Stop("invalid_input", "Use --verify with --demo retry or exhausted; omit it for good or wrong")
         config = load_live_config() if args.live else None
         if config:
             run.result.update(provider=config["provider"], model=config["model"], auth=config["auth"], reasoning="low")
@@ -354,10 +382,12 @@ def main():
                 tempfile.TemporaryDirectory(prefix="mapbox-pi-") as agent:
             checkout = Path(source)
             prepare_checkout(run, checkout)
-            tools = Tools(run, checkout)
+            tools = RepairTools(run, checkout) if args.verify else Tools(run, checkout)
             pi_loop(run, tools, Path(agent), args.demo, config)
             run.result["tool_calls"] = tools.calls
-            if run.result["outcome"] == "passed":
+            if args.verify:
+                tools.finish()
+            elif run.result["outcome"] == "passed":
                 run.result.update(outcome="live_repair_passed" if config else "scripted_loop_passed",
                                   reason="The AI-written repair passed the fixed import check; human review remains pending" if config else
                                   "Prepared responses exercised Pi tools and the sandboxed check; no AI ran")
@@ -371,7 +401,7 @@ def main():
         run.finalizing = True
         if "tools" in locals():
             run.result["tool_calls"] = tools.calls
-        if run.result.get("workflow") == "pi-live-tools":
+        if args.live:
             run.result["token_summary"] = token_summary(run.result.get("provider_usage", []),
                                                          run.result["model_requests_dispatched"])
         run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
@@ -381,7 +411,7 @@ def main():
             signal.signal(signum, handler)
     print(f"{run.result['outcome']}: {run.result.get('reason', 'See evidence')}")
     print(run.path / "result.json")
-    return 0 if run.result["outcome"] in ("scripted_loop_passed", "live_repair_passed") else 1
+    return 0 if run.result["outcome"] in ("scripted_loop_passed", "live_repair_passed", "verified_repair_passed") else 1
 
 
 if __name__ == "__main__":

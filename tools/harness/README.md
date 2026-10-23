@@ -9,6 +9,56 @@ Adam asked to begin Verify after the Pi walkthrough. Earlier recorded review
 questions aren't automatically answered by that decision; passing a test isn't approval.
 The original repair command still runs trusted code on the host.
 
+## Let Pi retry a failed repair
+
+`pi_run.py --verify` connects Pi's check tool to independent verification.
+Every proposed patch is frozen and checked in a fresh copy. A genuine failed
+repair permits one revision in the same Pi conversation. Missing tools,
+invalid evidence, cancellation and timeouts stop without another repair.
+
+The whole session permits two repairs total, one replacement and check per
+repair, 12 tool calls and 600 seconds. Live mode retains the configured model
+request limit across both attempts, with the existing two-minute request timeout.
+Provider/SDK automatic retries remain disabled. This one repair retry is an
+explicit response to a failed independent check, not a transport retry.
+Pi cannot change the checks, permissions or budgets. Its final words don't
+decide success; the final patch and both attempt receipts must match.
+
+From this worktree's root in Fish, using the existing prepared image and installed
+Pi package described below and in [the Pi guide](pi/README.md):
+
+```fish
+set -l HARNESS_IMAGE_ID (cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/pi_run.py \
+  --image "$HARNESS_IMAGE_ID" --verify --demo retry
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/pi_run.py \
+  --image "$HARNESS_IMAGE_ID" --verify --demo exhausted
+python3 tools/harness/report.py
+xdg-open reports/harness/verify.html
+```
+
+These use prepared replies through the real Pi SDK, with no AI calls or model
+credentials. Retry should exit 0 as `verified_repair_passed`: the first repair
+fails its import test, then the revised exact patch passes all eight required
+checks. Exhausted should deliberately exit 1 as `budget_exhausted`: both repairs
+fail and no third edit is allowed. Expect 16 and 11 removed containers respectively,
+including the initial startup checks. Each demonstration takes several minutes.
+
+Use `--live` instead of `--demo retry` to use the configured OpenAI subscription.
+The five local preferences and Pi sign-in in the [Pi guide](pi/README.md) are
+required. This new feedback path is tested with prepared replies and the offline
+live adapter; this checkpoint does not establish a new AI repair success rate.
+Pi still edits only `go/import.go`; adding helper files through Pi is not demonstrated.
+
+Open Session receipt for the shared budgets, context and Pi conversation. Each
+Check receipt retains that attempt's exact patch, logs, check identities and
+fingerprints. A second edit doesn't overwrite the first attempt's verification
+evidence. Files stay local under `reports/harness/repair/runs/<session-id>/` and
+`reports/harness/verification/runs/<attempt-id>/`. No model claim can replace a
+matching receipt. Human review and the learning checkpoint remain separate.
+
 ## Verify one frozen patch
 
 Verify takes the exact bytes of a proposed repair and checks
@@ -119,8 +169,7 @@ They cannot satisfy the current new-file gate.
 Missing checks, mismatched source fingerprints or changed logs
 prevent a pass. Environment failures stay separate from failed repairs.
 
-A bounded Pi repair retry remains for a later slice of #105.
-The harness's own tests run separately when
+The bounded Pi repair retry is described above. The harness's own tests run separately when
 developing this tool. `fully_verified` stays false. Human review remains pending.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the

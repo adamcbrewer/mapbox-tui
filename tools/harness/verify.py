@@ -68,11 +68,12 @@ def file_changes(before, after):
 
 
 class VerificationRun(ContainerRun):
-    def __init__(self, reports, image):
+    def __init__(self, reports, image, attempt=1, parent_run_id=None):
         super().__init__(reports, image)
         self.phase = "setup"
         self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
+                           attempt=attempt, parent_run_id=parent_run_id,
                            suite_version=4, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
                            verifier_sha256=digest(Path(__file__).read_bytes()),
                            preparation_sha256=digest((HERE / "pi_run.py").read_bytes()))
@@ -80,7 +81,8 @@ class VerificationRun(ContainerRun):
     def event(self, kind, **fields):
         identity = {key: self.result.get(key) for key in
                     ("patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")}
-        identity.update(attempt=1, suite_version=4, verification_scope=SCOPE, phase=self.phase,
+        identity.update(attempt=self.result["attempt"], parent_run_id=self.result.get("parent_run_id"),
+                        suite_version=4, verification_scope=SCOPE, phase=self.phase,
                         regression_sha256=self.result.get("regression_sha256"))
         if "check" in fields:
             check = fields["check"]
@@ -126,8 +128,12 @@ def receipt_matches(result, directory, allow_failed=False):
         task = json.loads(task_bytes)
         version, required = SCOPES[result["verification_scope"]]
         commands = check_commands(task)
+        parent = result.get("parent_run_id")
+        if parent is not None and (not isinstance(parent, str) or not re.fullmatch(r"[0-9a-f]{32}", parent)):
+            return False
         if (result["workflow"] != WORKFLOW or result["suite_version"] != version or
-                result["run_id"] != directory.name or result["attempt"] != 1 or
+                result["run_id"] != directory.name or type(result["attempt"]) is not int or
+                result["attempt"] not in (1, 2) or result["attempt"] == 2 and not result.get("parent_run_id") or
                 result["base_commit"] != task["base_commit"] or
                 result["task_sha256"] != digest(task_bytes) or
                 result["patch_sha256"] != digest((directory / "candidate.patch").read_bytes()) or
@@ -175,6 +181,7 @@ def receipt_matches(result, directory, allow_failed=False):
             if (any(check[key] != result[key] for key in
                     ("run_id", "attempt", "patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")) or
                     check["phase"] != stage or check["verification_scope"] != result["verification_scope"] or
+                    check.get("parent_run_id") != result.get("parent_run_id") or
                     check["tree_sha256"] != trees[stage]["sha256"] or
                     check["logical_command"] != commands[name] or check["suite_version"] != version or
                     check["definition_sha256"] != fingerprint(check["logical_command"]) or
