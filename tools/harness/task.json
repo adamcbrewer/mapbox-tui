@@ -17,6 +17,9 @@
   "allowed_files": [
     "go/import.go"
   ],
+  "allowed_new_files": [
+    "go/import_bom.go"
+  ],
   "test": "TestXMLImportsAcceptLeadingUTF8BOM",
   "cases": [
     "pin.gpx",

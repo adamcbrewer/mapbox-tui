@@ -52,10 +52,10 @@ described in the [Pi commands](pi/README.md). From this worktree's root, in Fish
 set -l HARNESS_IMAGE_ID (cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)
 systemd-run --user --quiet --wait --pipe --collect --same-dir \
   -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
-  --image "$HARNESS_IMAGE_ID" --demo good
+  --image "$HARNESS_IMAGE_ID" --demo new-file
 systemd-run --user --quiet --wait --pipe --collect --same-dir \
   -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
-  --image "$HARNESS_IMAGE_ID" --demo tailored
+  --image "$HARNESS_IMAGE_ID" --demo forbidden-file
 python3 tools/harness/report.py
 xdg-open reports/harness/verify.html
 ```
@@ -64,10 +64,20 @@ The image-ID path above points at the existing main-checkout evidence on this
 machine. Use your own recorded image-ID path elsewhere. No image is pulled or
 rebuilt by these commands.
 
+New-file should return `repository_verification_passed` (exit 0). It repairs the
+importer using the explicitly permitted new `go/import_bom.go` helper. Both files
+belong to the frozen patch and its source fingerprints. All eight checks must
+pass, with nine containers removed.
+Forbidden-file should return `invalid_input` (exit 1). It deliberately tries to
+add a helper at the protected test path instead. The verifier refuses it after
+the original/seed checks, before executing any candidate code. Three containers
+should be removed. This is a successful refusal, not a failed import test.
+
+`--demo good` retains the earlier existing-file repair:
 Good should return `repository_verification_passed` (exit 0): original passes,
 planted bug fails, repair passes, then the extra cases confirm those same three
 outcomes before formatting and repository tests pass.
-Tailored should return `repair_failed` (exit 1): the repair recognises the original
+`--demo tailored` should return `repair_failed` (exit 1): the repair recognises the original
 three filenames and passes their test. The extra cases expose that shortcut.
 Formatting and the repository suite stay unrun. This failure is deliberate.
 Good should confirm removal of nine containers; tailored, seven.
@@ -79,25 +89,38 @@ failure is deliberate and confirms removal of eight containers.
 test and uses four containers.
 
 Use `--patch PATH` instead of `--demo` to check a saved candidate patch against
-the task's seeded source. The patch must only modify the existing
-`go/import.go`. New files and changes to tests or check scripts are refused.
+the task's seeded source. It may edit `go/import.go` and add only the new
+`go/import_bom.go` named in the trusted task's `allowed_new_files`. No wildcards
+or command-line permission overrides. New-file permissions accept plain,
+non-test Go source paths directly under `go/`. Links, executable files, deletions,
+renames, mode changes, and edits to tests/check scripts remain refused.
+Both Git diffs and plain unified patches can describe a permitted addition.
+`result.json` lists each changed file's before/after fingerprints; a new file has
+no before fingerprint. Its complete contents are also in `candidate.patch`.
+Pi's existing edit tool still edits the importer only. These new-file examples
+use supplied patches; model-created helper files are not demonstrated here.
 `--demo empty` demonstrates refusing an empty repair before starting Podman.
 
 Evidence stays local under `reports/harness/verification/runs/<run-id>/`.
 Open Receipt in the Verify report, then inspect Result, Events and Candidate
 patch. Command output stays beside the receipt in `*.stdout` and `*.stderr`.
+Saved independent-test source uses `.go.txt`, so Go's repository-wide test search
+doesn't treat evidence as application code. Earlier local copies were renamed
+without changing their contents, then the Verify report was recaptured. Historical
+independent-case receipts still recognise their unchanged test fingerprints.
 Check records are saved while the run progresses, so an interrupted run retains
 its observed steps. Crash recovery is still #106; this isn't a durable journal.
 
-The current `independent-cases-v1` scope requires eight checks: the three original
+The current `permitted-files-v1` scope requires eight checks: the three original
 import checks, the three extra-case checks, formatting and repository tests.
-Older `focused-only-v1` and `repository-checks-v1` receipts retain their original
-three-check and five-check scopes; they cannot satisfy the new gate.
+Older `focused-only-v1`, `repository-checks-v1` and `independent-cases-v1` receipts
+retain their original three-, five- and eight-check scopes and existing-file policy.
+They cannot satisfy the current new-file gate.
 Missing checks, mismatched source fingerprints or changed logs
 prevent a pass. Environment failures stay separate from failed repairs.
 
-Permitted new files and a bounded Pi repair retry
-remain for later slices of #105. The harness's own tests run separately when
+A bounded Pi repair retry remains for a later slice of #105.
+The harness's own tests run separately when
 developing this tool. `fully_verified` stays false. Human review remains pending.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the

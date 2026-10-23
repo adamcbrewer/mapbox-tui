@@ -143,6 +143,29 @@ class CalibrationTests(unittest.TestCase):
                 self.assertNotIn("candidate-apply", [check["id"] for check in run.result["checks"]])
                 self.assertEqual(source.read_text(), "package main\n")
 
+    def test_new_file_permission_does_not_allow_links_executables_or_overwrites(self):
+        source = self.root / "go/import_bom.go"
+        source.parent.mkdir()
+        for mode in ("100755", "120000"):
+            change = ("diff --git a/go/import_bom.go b/go/import_bom.go\nnew file mode " + mode +
+                      "\n--- /dev/null\n+++ b/go/import_bom.go\n@@ -0,0 +1 @@\n+package main\n").encode()
+            run = Run(self.root)
+            with self.subTest(mode=mode), self.assertRaises(Stop) as caught:
+                apply_patch(run, self.root, change, "candidate", ["go/import.go"], ["go/import_bom.go"])
+            self.assertEqual(caught.exception.outcome, "invalid_input")
+            self.assertFalse(source.exists())
+        source.write_text("package main\n")
+        change = b"--- a/go/import_bom.go\n+++ b/go/import_bom.go\n@@ -1 +1 @@\n-package main\n+package other\n"
+        with self.assertRaises(Stop):
+            apply_patch(Run(self.root), self.root, change, "candidate", ["go/import.go"], ["go/import_bom.go"])
+        self.assertEqual(source.read_text(), "package main\n")
+
+    def test_explicit_git_new_file_mode_is_supported(self):
+        (self.root / "go").mkdir()
+        change = b"diff --git a/go/helper.go b/go/helper.go\nnew file mode 100644\n--- /dev/null\n+++ b/go/helper.go\n@@ -0,0 +1 @@\n+package main\n"
+        apply_patch(Run(self.root), self.root, change, "candidate", ["go/import.go"], ["go/helper.go"])
+        self.assertEqual((self.root / "go/helper.go").read_text(), "package main\n")
+
     def test_unsupported_platforms_save_blocked_without_launching_commands(self):
         for platform in ("win32", "darwin"):
             with self.subTest(platform=platform):

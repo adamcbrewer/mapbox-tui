@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -14,13 +15,13 @@ from run import HERE, REPORTS, Stop, apply_patch, classify_test, check_test, dig
 from sandbox import preflight
 
 WORKFLOW = "frozen-patch-verification"
-SCOPE = "independent-cases-v1"
+SCOPE = "permitted-files-v1"
 STAGES = ("baseline", "seed", "candidate")
 REGRESSION_CHECKS = tuple(stage + "-regression" for stage in STAGES)
 EXTRA_CHECKS = ("candidate-format", "candidate-suite")
 REQUIRED_CHECKS = STAGES + REGRESSION_CHECKS + EXTRA_CHECKS
 SCOPES = {"focused-only-v1": (1, STAGES), "repository-checks-v1": (2, STAGES + EXTRA_CHECKS),
-          SCOPE: (3, REQUIRED_CHECKS)}
+          "independent-cases-v1": (3, REQUIRED_CHECKS), SCOPE: (4, REQUIRED_CHECKS)}
 REGRESSION_FILE = "go/import_verifier_test.go"
 REGRESSION = {"test": "TestXMLImportsVerifierCases", "cases": ["gpx", "tcx", "kml"],
               "failure_message": "independent BOM import changed or failed"}
@@ -52,20 +53,34 @@ def changed_files(before, after):
     return {name for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
 
 
+def permitted_new_files(task):
+    names = task.get("allowed_new_files", [])
+    if (not isinstance(names, list) or any(not isinstance(name, str) or
+            not re.fullmatch(r"go/[a-z][a-z0-9_]*\.go", name) or name.endswith("_test.go") for name in names) or
+            len(names) != len(set(names)) or set(names) & set(task["allowed_files"])):
+        raise Stop("invalid_input", "New-file permissions must name distinct non-test Go source files")
+    return set(names)
+
+
+def file_changes(before, after):
+    return {name: {"before_sha256": before.get(name), "after_sha256": after.get(name)}
+            for name in sorted(changed_files(before, after))}
+
+
 class VerificationRun(ContainerRun):
     def __init__(self, reports, image):
         super().__init__(reports, image)
         self.phase = "setup"
         self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
-                           suite_version=3, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
+                           suite_version=4, trees={}, required_checks=list(REQUIRED_CHECKS), model_claim=None,
                            verifier_sha256=digest(Path(__file__).read_bytes()),
                            preparation_sha256=digest((HERE / "pi_run.py").read_bytes()))
 
     def event(self, kind, **fields):
         identity = {key: self.result.get(key) for key in
                     ("patch_sha256", "base_commit", "task_sha256", "verifier_sha256", "image")}
-        identity.update(attempt=1, suite_version=3, verification_scope=SCOPE, phase=self.phase,
+        identity.update(attempt=1, suite_version=4, verification_scope=SCOPE, phase=self.phase,
                         regression_sha256=self.result.get("regression_sha256"))
         if "check" in fields:
             check = fields["check"]
@@ -128,11 +143,19 @@ def receipt_matches(result, directory, allow_failed=False):
                 return False
         for before, after in (("baseline", "seed"), ("seed", "candidate")):
             changes = changed_files(trees[before]["files"], trees[after]["files"])
-            if not changes or changes - set(task["allowed_files"]):
+            new_files = permitted_new_files(task) if version >= 4 and after == "candidate" else set()
+            if (not changes or changes - set(task["allowed_files"]) - new_files or
+                    trees[before]["files"].keys() - trees[after]["files"].keys() or
+                    new_files & trees[before]["files"].keys()):
                 return False
-        if result["verification_scope"] == SCOPE:
+        if version >= 4 and result["file_changes"] != file_changes(trees["seed"]["files"], trees["candidate"]["files"]):
+            return False
+        if version >= 3:
+            regression_evidence = directory / "import_verifier_test.go.txt"
+            if version == 3 and not regression_evidence.is_file():
+                regression_evidence = directory / "import_verifier_test.go"
             if (REGRESSION_FILE in trees["candidate"]["files"] or
-                    result["regression_sha256"] != digest((directory / "import_verifier_test.go").read_bytes())):
+                    result["regression_sha256"] != digest(regression_evidence.read_bytes())):
                 return False
             for name in REGRESSION_CHECKS:
                 if name not in trees:
@@ -158,7 +181,7 @@ def receipt_matches(result, directory, allow_failed=False):
                     not check["started_at"] or not check["ended_at"] or check["duration_seconds"] < 0 or
                     type(check["exit_code"]) is not int):
                 return False
-            if result["verification_scope"] == SCOPE and check["regression_sha256"] != result["regression_sha256"]:
+            if version >= 3 and check["regression_sha256"] != result["regression_sha256"]:
                 return False
             logs = {}
             for stream in ("stdout", "stderr"):
@@ -181,7 +204,7 @@ def receipt_matches(result, directory, allow_failed=False):
             if name in ("seed", "seed-regression") and test["failure_message"].encode() not in logs["stdout"]:
                 return False
         return failed if allow_failed else True
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop):
         return False
 
 
@@ -191,24 +214,28 @@ def verify(run, patch):
                       base_commit=run.task["base_commit"], patch_sha256=digest(patch))
     regression = (HERE / "fixtures/import_verifier_test.go.txt").read_bytes()
     run.result["regression_sha256"] = digest(regression)
-    (run.path / "import_verifier_test.go").write_bytes(regression)
+    (run.path / "import_verifier_test.go.txt").write_bytes(regression)
     (run.path / "candidate.patch").write_bytes(patch)
     (run.path / "task.json").write_bytes(task_bytes)
     run.event("candidate_frozen", patch_bytes=len(patch))
     if not patch.strip() or len(patch) > 256 * 1024:
         raise Stop("invalid_input", "Supply a non-empty candidate patch of at most 256 KiB")
+    new_files = permitted_new_files(run.task)
     preflight(run)
     run.result["outcome"] = "incomplete"
     run.prepare()
     with tempfile.TemporaryDirectory(prefix="mapbox-calibration-verify-") as temporary:
         checkout = Path(temporary)
         prepare_checkout(run, checkout)
-        apply_patch(run, checkout, patch, "candidate", run.task["allowed_files"])
+        apply_patch(run, checkout, patch, "candidate", run.task["allowed_files"], new_files)
         seed_files = run.result["trees"]["seed"]["files"]
         candidate_files = source_tree(checkout)["files"]
         changes = changed_files(seed_files, candidate_files)
-        if not changes or changes - set(run.task["allowed_files"]):
+        if (not changes or changes - set(run.task["allowed_files"]) - new_files or
+                seed_files.keys() - candidate_files.keys()):
             raise Stop("invalid_input", "The candidate must change only the allowed source")
+        run.result["file_changes"] = file_changes(seed_files, candidate_files)
+        run.event("candidate_applied", file_changes=run.result["file_changes"])
         check, output = run.command("candidate", run.task["command"], checkout)
         check_test(run, "candidate", check, output, run.task)
         if REGRESSION_FILE in candidate_files:
@@ -218,6 +245,8 @@ def verify(run, patch):
             with tempfile.TemporaryDirectory(prefix="mapbox-calibration-regression-") as temporary_regression:
                 regression_copy = Path(temporary_regression)
                 shutil.copytree(checkout, regression_copy, dirs_exist_ok=True)
+                for file in candidate_files.keys() - run.result["trees"][stage]["files"].keys():
+                    (regression_copy / file).unlink()
                 (regression_copy / "go/import.go").write_bytes(run.sources[stage])
                 (regression_copy / REGRESSION_FILE).write_bytes(regression)
                 check, output = run.command(name, REGRESSION_COMMAND, regression_copy)
@@ -246,7 +275,7 @@ def main():
     parser = argparse.ArgumentParser(description="Independently check a frozen repair in a fresh sandboxed source copy.")
     parser.add_argument("--image", required=True, help="Immutable prepared local image ID")
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--demo", choices=("good", "wrong", "unformatted", "tailored", "empty"))
+    source.add_argument("--demo", choices=("good", "wrong", "unformatted", "tailored", "new-file", "forbidden-file", "empty"))
     source.add_argument("--patch", type=Path, help="Candidate patch against the pinned seeded source")
     args = parser.parse_args()
     run = VerificationRun(REPORTS / "verification", args.image)

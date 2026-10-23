@@ -220,24 +220,39 @@ def read_input(path):
         raise Stop("invalid_input", str(error)) from error
 
 
-def apply_patch(run, checkout, patch, name, allowed):
+def apply_patch(run, checkout, patch, name, allowed, new_files=()):
     if not patch:
         return
     path = run.path / f"{name}.patch"
     path.write_bytes(patch)
     check, output = run.command(name + "-scope", ["git", "apply", "--numstat", "-z", str(path)], checkout)
     try:
-        names = [row.split(b"\t", 2)[2].decode() for row in output.split(b"\0") if row]
+        rows = [row.split(b"\t", 2) for row in output.split(b"\0") if row]
+        names = [row[2].decode() for row in rows if row[0].isdigit() and row[1].isdigit()]
     except (IndexError, UnicodeDecodeError):
         names = []
-    if check["exit_code"] or not names or set(names) - set(allowed):
-        raise Stop("invalid_input", "Patch must only edit the existing allowed source file")
+    rejected = set(names) - set(allowed) - set(new_files)
+    if rejected:
+        run.result["rejected_paths"] = sorted(rejected)
+        run.event("patch_scope_rejected", files=sorted(rejected))
+    if check["exit_code"] or not names or len(names) != len(rows) or rejected:
+        raise Stop("invalid_input", "Patch must only change explicitly permitted source files")
+    if set(allowed) & set(new_files) or any((checkout / file).exists() or (checkout / file).is_symlink() for file in new_files):
+        raise Stop("invalid_input", "Permitted new files must not already exist")
     check, metadata = run.command(name + "-metadata", ["git", "apply", "--summary", str(path)], checkout)
-    if check["exit_code"] or metadata.strip():
-        raise Stop("invalid_input", "Patch must only edit the existing allowed source file")
+    creates = {f"create mode 100644 {file}" for file in set(names) & set(new_files)}
+    operations = {line.strip() for line in metadata.decode().splitlines()}
+    operations = {"create mode 100644 " + line.removeprefix("create ")
+                  if line.startswith("create ") and not line.startswith("create mode ") else line for line in operations}
+    if check["exit_code"] or operations != creates:
+        raise Stop("invalid_input", "Only existing-file edits and permitted plain-file additions are allowed")
     check, _ = run.command(name + "-apply", ["git", "apply", "--whitespace=error", str(path)], checkout)
     if check["exit_code"]:
         raise Stop("invalid_input", "Patch does not apply to the seeded source")
+    for file in set(names) & set(new_files):
+        added = checkout / file
+        if added.is_symlink() or not added.is_file() or added.stat().st_mode & 0o111:
+            raise Stop("invalid_input", "New source must be a regular, non-executable file")
 
 
 def calibrate(run, patch, fault=None):

@@ -101,6 +101,80 @@ class VerificationTests(unittest.TestCase):
         self.assertIn('<strong>Extra cases on repaired code:</strong> failed', page)
         self.assertIn('<strong>Repository make test:</strong> not run', page)
 
+    def test_permitted_helper_is_frozen_checked_and_absent_from_unfixed_copies(self):
+        self.verify_fixture("new-file")
+        result = self.run.result
+        self.assertTrue(verify.receipt_matches(result, self.run.path))
+        self.assertFalse(list(self.run.path.rglob("*.go")))
+        self.assertEqual(set(result["file_changes"]), {"go/import.go", "go/import_bom.go"})
+        added = result["file_changes"]["go/import_bom.go"]
+        self.assertIsNone(added["before_sha256"])
+        self.assertEqual(added["after_sha256"], result["trees"]["candidate"]["files"]["go/import_bom.go"])
+        for stage in ("baseline", "seed", "baseline-regression", "seed-regression"):
+            self.assertNotIn("go/import_bom.go", result["trees"][stage]["files"])
+        self.assertIn("go/import_bom.go", result["trees"]["candidate-regression"]["files"])
+        page = report.render_run(self.run.path / "result.json", self.root, result)
+        self.assertIn("repair with a permitted new file", page)
+        self.assertIn("go/import_bom.go</code>: added", page)
+        self.assertIn('<strong>Repository make test:</strong> passed', page)
+
+    def test_unapproved_new_test_is_rejected_before_candidate_execution(self):
+        with self.assertRaises(Stop) as caught:
+            self.verify_fixture("forbidden-file")
+        self.assertEqual(caught.exception.outcome, "invalid_input")
+        self.assertEqual(self.run.result["rejected_paths"], ["go/import_verifier_test.go"])
+        self.assertFalse(any(check["id"] == "candidate" for check in self.run.result["checks"]))
+        self.run.result.update(outcome="invalid_input")
+        page = report.render_run(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("unapproved test file refused", page)
+        self.assertIn("before any proposed-repair code ran", page)
+
+    def test_new_helper_requires_explicit_permission(self):
+        self.run.task["allowed_new_files"] = []
+        with self.assertRaises(Stop) as caught:
+            self.verify_fixture("new-file")
+        self.assertEqual(caught.exception.outcome, "invalid_input")
+        self.assertEqual(self.run.result["rejected_paths"], ["go/import_bom.go"])
+
+    def test_invalid_new_file_permissions_stop_before_sandbox(self):
+        for names in (None, "go/helper.go", ["../helper.go"], ["go/../helper.go"],
+                      ["go/helper_test.go"], ["Makefile"], ["go.mod"], ["go/import.go"],
+                      ["go/helper.go", "go/helper.go"], ["go/sub/helper.go"], [{}]):
+            self.run.task["allowed_new_files"] = names
+            with self.subTest(names=names), patch("verify.preflight") as preflight, self.assertRaises(Stop) as caught:
+                verify.verify(self.run, (HERE / "fixtures/new-file.patch").read_bytes())
+            self.assertEqual(caught.exception.outcome, "invalid_input")
+            preflight.assert_not_called()
+
+    def test_new_source_manifest_must_match_all_changed_file_fingerprints(self):
+        self.verify_fixture("new-file")
+        for mutation in (
+            lambda result: result["file_changes"].pop("go/import_bom.go"),
+            lambda result: result["file_changes"]["go/import_bom.go"].update(after_sha256="earlier-helper"),
+            lambda result: result["file_changes"]["go/import_bom.go"].update(before_sha256="pretend-existing"),
+        ):
+            result = copy.deepcopy(self.run.result)
+            mutation(result)
+            self.assertFalse(verify.receipt_matches(result, self.run.path))
+
+    def test_earlier_independent_scope_keeps_its_existing_file_policy(self):
+        self.verify_fixture()
+        result = copy.deepcopy(self.run.result)
+        result.update(verification_scope="independent-cases-v1", suite_version=3)
+        result.pop("file_changes")
+        for check in result["checks"]:
+            check.update(verification_scope="independent-cases-v1", suite_version=3)
+        self.assertTrue(verify.receipt_matches(result, self.run.path))
+        evidence = self.run.path / "import_verifier_test.go.txt"
+        legacy = evidence.with_suffix("")
+        evidence.rename(legacy)
+        self.assertTrue(verify.receipt_matches(result, self.run.path))
+        legacy.rename(evidence)
+        result.update(verification_scope=verify.SCOPE, suite_version=4)
+        for check in result["checks"]:
+            check.update(verification_scope=verify.SCOPE, suite_version=4)
+        self.assertFalse(verify.receipt_matches(result, self.run.path))
+
     def test_independent_cases_must_expose_the_bug_before_judging_the_repair(self):
         response = self.response
         self.wrong = False
@@ -133,7 +207,7 @@ class VerificationTests(unittest.TestCase):
             tree["sha256"] = verify.fingerprint(tree["files"])
             next(check for check in result["checks"] if check["id"] == name)["tree_sha256"] = tree["sha256"]
             self.assertFalse(verify.receipt_matches(result, self.run.path))
-        (self.run.path / "import_verifier_test.go").write_text("package main\n")
+        (self.run.path / "import_verifier_test.go.txt").write_text("package main\n")
         self.assertFalse(verify.receipt_matches(original, self.run.path))
 
     def test_earlier_repository_scope_cannot_claim_extra_case_evidence(self):

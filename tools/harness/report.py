@@ -14,7 +14,7 @@ from run import HERE, REPORTS, ROOT, digest, now, write_json
 
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
-EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go")
+EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt")
 RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs")
 
 
@@ -38,6 +38,10 @@ EXAMPLES = {
                     "The import test passes, but formatting must fail.", "A focused pass cannot override another required check."),
     "tailored": ("Try a repair tailored to the original examples", "Handle the marker only for the three original test filenames.",
                  "The original test passes, but different filenames must expose the shortcut.", "Extra cases can catch a repair that only fits the supplied examples."),
+    "new-file": ("Try a repair with a permitted helper file", "Move marker handling into the explicitly permitted new source file.",
+                 "Both source files must be frozen and pass the required checks.", "A repair may need a new file; its contents must be part of the exact checked patch."),
+    "forbidden-file": ("Try adding an unapproved test file", "Put the new helper at the protected independent-test path.",
+                       "Refuse the patch before any proposed-repair code runs.", "Permission to add one source file does not permit adding tests or changing the checks."),
 }
 FAULT_EXAMPLES = {
     "missing-source": ("Try checking an incomplete source copy", "Remove the importer from the disposable copy before checking it.",
@@ -76,6 +80,7 @@ GLOSSARY = {
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
     "Frozen patch": "The exact saved repair bytes, identified by a fingerprint. Changing them invalidates their verification evidence.",
+    "Permitted new file": "A source path named in the trusted task before the repair runs. Its complete added contents belong to the saved patch. Tests and check scripts stay protected.",
     "Independent cases": "Extra test inputs supplied by the verifier, outside Pi's editable files. We check that they pass on working code, fail on broken code and pass after the repair.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
     "Podman": "The container tool chosen for a disposable test environment in Connect (#104). Readiness inspects its reported features. Separate live demonstrations check dummy access denials, kernel settings and cleanup.",
@@ -128,6 +133,8 @@ def embedded_evidence(reports, link_root=None):
             files = {}
             for name in EVIDENCE_FILES:
                 path = receipt.with_name(name)
+                if name == "import_verifier_test.go.txt" and not path.exists():
+                    path = receipt.with_name("import_verifier_test.go")
                 entry = {"href": path.relative_to(link_root or reports).as_posix(), "text": None}
                 try:
                     if path.is_symlink():
@@ -163,7 +170,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    independent_cases = run.get("verification_scope") == "independent-cases-v1"
+    independent_cases = run.get("verification_scope") in ("independent-cases-v1", "permitted-files-v1")
     repository_checks = independent_cases or run.get("verification_scope") == "repository-checks-v1"
     if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repository_verification_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
@@ -201,6 +208,9 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     if candidate == "tailored" and outcome == "repair_failed":
         expected_failure = any(check.get("id") == "candidate-regression" and check.get("outcome") == "assertion_failed"
                                for check in recorded_checks)
+    if candidate == "forbidden-file" and outcome == "invalid_input" and run.get("rejected_paths") == ["go/import_verifier_test.go"]:
+        expected_failure = not any(check.get("id") == "candidate" for check in recorded_checks)
+        result = "The patch tried to add an unapproved test file. It was refused before any proposed-repair code ran."
     if independent_cases and outcome == "repository_verification_passed":
         result = "This frozen patch passed the original and independent import cases, formatting and repository checks. Human review remains pending."
     if expected_failure:
@@ -255,14 +265,22 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     broader = ""
     if run.get("workflow") == "frozen-patch-verification":
         title = "Independent check: " + ("known working repair" if candidate == "good" else
+                                         "repair with a permitted new file" if candidate == "new-file" else
                                          "repair tailored to the original examples" if candidate == "tailored" else
                                          "deliberately unformatted repair" if candidate == "unformatted" else
                                          "deliberately ineffective repair" if candidate == "wrong" else "supplied repair")
         if outcome in ("blocked", "invalid_input"):
             title = "Independent check: empty repair refused" if candidate == "empty" else "Independent check: could not complete"
+            if candidate == "forbidden-file" and expected_failure:
+                title = "Independent check: unapproved test file refused"
         tried = "Freeze the supplied patch, reconstruct the pinned source in a fresh copy, reproduce the bug, then check the repair."
         expected = "The original passes, the planted bug fails for the expected reason, and only an effective repair passes."
         purpose = "Tie the recorded check scope to this exact patch and trusted logs. Live Pi retry feedback is still to come."
+        if candidate == "new-file":
+            tried += " Include go/import_bom.go, the new helper named in the trusted task."
+        if candidate == "forbidden-file":
+            tried = "Try adding the helper at go/import_verifier_test.go, which is outside the permitted source paths."
+            expected = "Refuse this deliberate scope violation after calibrating the original and broken code, before executing the candidate."
         if not independent_cases:
             purpose += " This earlier scope did not require extra independent cases."
         if repository_checks:
@@ -288,6 +306,12 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         identity += ('<p class="meta">Required scope: original and extra import cases, formatting and repository checks.</p>' if independent_cases else
                      '<p class="meta">Earlier scope: import, formatting and repository checks, without extra independent cases.</p>' if repository_checks else
                      '<p class="meta">Earlier scope: focused import check only.</p>')
+        if known and isinstance(run.get("file_changes"), dict):
+            files = ''.join(f'<li><code>{escape(name)}</code>: {"added" if change.get("before_sha256") is None else "modified"}</li>'
+                            for name, change in run["file_changes"].items())
+            identity += '<p><strong>Files in this frozen repair</strong></p><ul>' + files + '</ul>'
+        if run.get("verification_scope") == "permitted-files-v1":
+            identity += '<p class="meta">File policy: edit the importer; optionally add the one helper named in the trusted task. Tests and check scripts stay protected.</p>'
     if run.get("workflow") == "pi-scripted-tools":
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
     if run.get("workflow") == "pi-live-tools":
@@ -491,7 +515,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
     container_mode = any(run.get("execution_mode") == "rootless-podman" for _, run in ordered)
     selected = {}
     for path, run in ordered:
-        if run.get("candidate") in (("good", "wrong", "unformatted", "tailored") if verification else ("good", "wrong")) and not run.get("fault") and (
+        if run.get("candidate") in (("good", "wrong", "unformatted", "tailored", "new-file", "forbidden-file") if verification else ("good", "wrong")) and not run.get("fault") and (
                 not container_mode or run.get("execution_mode") == "rootless-podman"):
             selected[run["candidate"]] = path
     for path, run in ordered:
@@ -499,7 +523,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
             rows.append(render_run(path, reports, run, link_root))
     current_records = [(path, run) for path, run in ordered if path in selected.values()]
     if verification:
-        current_records.sort(key=lambda item: ("good", "tailored", "unformatted", "wrong").index(item[1]["candidate"]))
+        current_records.sort(key=lambda item: ("new-file", "forbidden-file", "good", "tailored", "unformatted", "wrong").index(item[1]["candidate"]))
     current = "".join(render_run(path, reports, run, link_root) for path, run in current_records)
     records = current + history(rows, "Other experiments, including failed and blocked runs") if ordered else (
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
@@ -715,7 +739,7 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 <option value="result.json">Result</option><option value="task.json">Task</option><option value="events.jsonl">Events</option>
 <option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option>
 <option value="context.json">Context</option><option value="pi-session.json">Pi conversation</option>
-<option value="import_verifier_test.go">Independent cases</option></select>
+<option value="import_verifier_test.go.txt">Independent cases</option></select>
 <a id="evidence-original">Open original file</a></div></div>
 <p id="evidence-status" role="status"></p><pre id="evidence-content" role="region" tabindex="0" aria-label="Evidence file contents"></pre>
 </dialog>
