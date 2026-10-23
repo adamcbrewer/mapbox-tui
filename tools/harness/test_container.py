@@ -261,13 +261,13 @@ class ContainerTests(unittest.TestCase):
         self.assertEqual(result["execution_mode"], "rootless-podman")
         self.assertEqual(result["containers"], [])
         self.assertFalse(result["candidate_executed"])
-        page = render(self.root / "cli", json.loads((HERE / "progress.json").read_text()))
+        page = render(self.root / "cli", dict(json.loads((HERE / "progress.json").read_text()), stage="Connect"))
         self.assertIn("requested rootless Podman", page)
         self.assertIn("Removal confirmed: 0", page)
         result["containers"] = None
         path = next((self.root / "cli").glob("runs/*/result.json"))
         path.write_text(json.dumps(result))
-        page = render(self.root / "cli", json.loads((HERE / "progress.json").read_text()))
+        page = render(self.root / "cli", dict(json.loads((HERE / "progress.json").read_text()), stage="Connect"))
         self.assertIn("Container cleanup records are unavailable", page)
         self.assertNotIn("Removal confirmed: 0", page)
 

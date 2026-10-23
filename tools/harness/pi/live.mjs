@@ -8,6 +8,7 @@ function stopped(outcome, reason) {
   return Object.assign(new SetupError(reason), { outcome });
 }
 
+// Turn provider errors into useful reasons without copying their raw text into the report.
 function safeModelFailure(message) {
   const diagnostic = message.errorMessage ?? "";
   if (/subscription_sharing_usage_limit_exceeded|usage.limit|quota|rate.limit|429/i.test(diagnostic)) {
@@ -22,6 +23,7 @@ function safeModelFailure(message) {
   return "The model request failed; no provider response or credentials were copied to diagnostics";
 }
 
+// Wrap each real model request with our limits before passing its replies back to Pi.
 export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000) {
   return (requestedModel, context, options) => {
     const output = createAssistantMessageEventStream();
@@ -30,6 +32,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
       let signal;
       let onAbort;
       try {
+        // Check the chosen model, remaining request budget and subscription before sending anything.
         if (requestedModel.provider !== model.provider || requestedModel.id !== model.id) {
           throw stopped("blocked", "The model identity changed during the run");
         }
@@ -38,6 +41,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
         }
         checkSubscription();
         const controller = new AbortController();
+        // Either cancelling the run or reaching our deadline should stop this request.
         signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
         signal.throwIfAborted();
         const interrupted = new Promise((_, reject) => {
@@ -45,6 +49,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
           if (signal.aborted) onAbort();
           else signal.addEventListener("abort", onAbort, { once: true });
         });
+        // The deadline covers the whole response, including a stream that starts and then stalls.
         timer = setTimeout(() => controller.abort(stopped("timeout", "The model request reached its full-response time limit")),
           requestTimeoutMs);
         const request = ++requests.count;
@@ -53,6 +58,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
           maxOutputTokens: config.maxOutputTokensPerRequest, reasoning: "low", maxRetries: 0 });
         const stream = runtime.streamSimple(model, context, {
           signal,
+          // null explicitly means no output-token cap. The request count and deadline still apply.
           ...(config.maxOutputTokensPerRequest === null ? {} : { maxTokens: config.maxOutputTokensPerRequest }),
           reasoning: "low",
           maxRetries: 0,
@@ -63,6 +69,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
             if (!["response.completed", "response.incomplete", "response.failed"].includes(event.type)) return;
             const usage = event.response?.usage;
             if (usage) {
+              // Keep the provider's usage figures. Cached input and reasoning are parts of the totals.
               providerUsage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
                 cachedInputTokens: usage.input_tokens_details?.cached_tokens ?? 0,
                 reasoningTokens: usage.output_tokens_details?.reasoning_tokens ?? null,
@@ -75,6 +82,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
             return globalThis.fetch(input, init);
           },
           onPayload(payload) {
+            // Check the actual outgoing payload. SDK options alone don't prove a limit was kept.
             const cap = config.maxOutputTokensPerRequest;
             if (cap !== null && payload.max_output_tokens === undefined) {
               requests.failure = stopped("blocked", "The subscription transport omitted the configured output-token cap; no model request was sent");
@@ -95,12 +103,14 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
         });
         const iterator = stream[Symbol.asyncIterator]();
         while (true) {
+          // Waiting for the next event must also stop when the request is cancelled or times out.
           const { value: event, done } = await Promise.race([iterator.next(), interrupted]);
           if (done) break;
           if (event.type === "done" || event.type === "error") {
             const message = event.message ?? event.error;
             emit({ type: "model_response", request, stopReason: message.stopReason, usage: message.usage, providerUsage });
             if (message.stopReason === "length") {
+              // A cut-off reply might contain an incomplete tool call. Stop before Pi can execute it.
               throw stopped("budget_exhausted", "Output-token limit reached; partial output was not executed");
             }
             if (["error", "aborted"].includes(message.stopReason)) {
@@ -111,6 +121,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
         }
         output.end();
       } catch (error) {
+        // Remember the failure so the shared loop can't report a successful finish after an error.
         requests.failure = error instanceof SetupError ? error : stopped("blocked", "Model transport could not complete");
         const message = { role: "assistant", provider: model.provider, model: model.id, api: model.api,
           content: [], stopReason: "error", errorMessage: requests.failure.message, timestamp: Date.now(),
@@ -127,9 +138,11 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
   };
 }
 
+// Use the selected subscription model with the same four tools as the scripted demo.
 export async function runLiveLoop(start, rpc, emit) {
   const config = validateConfig(start.config);
   const authPath = join(start.authDir, "auth.json");
+  // Disable network model discovery. Requests to the selected model still use the network.
   const runtime = await ModelRuntime.create({ authPath, modelsPath: null,
     allowModelNetwork: false, refreshOnCreate: false });
   const checkSubscription = () => requireSubscription(runtime.getProvider(config.provider),

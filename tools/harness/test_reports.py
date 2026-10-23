@@ -16,7 +16,7 @@ class StageReportTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.reports = self.root / "reports"
-        self.progress = json.loads((HERE / "progress.json").read_text())
+        self.progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
 
     def source(self, name):
         source = self.root / name
@@ -448,7 +448,8 @@ class StageReportTests(unittest.TestCase):
 
     def test_failed_index_publication_preserves_previous_index_and_allows_retry(self):
         source = self.source("index-example")
-        report.save_stage(self.reports, self.progress, source, source_ref="a" * 40)
+        progress = json.loads((HERE / "progress.json").read_text())
+        report.save_stage(self.reports, progress, source, source_ref="a" * 40)
         target = self.reports / "index.html"
         target.write_bytes(b"Previous complete index")
         write_bytes, replace = Path.write_bytes, Path.replace
@@ -476,7 +477,7 @@ class StageReportTests(unittest.TestCase):
 
         with patch("report.REPORTS", self.reports), patch("sys.argv", ["report.py", "--refresh-saved"]):
             report.main()
-        self.assertEqual(target.read_bytes(), (self.reports / "connect.html").read_bytes())
+        self.assertEqual(target.read_bytes(), (self.reports / (progress["stage"].lower() + ".html")).read_bytes())
         self.assertEqual(list(self.reports.glob(".index-render-*")), [])
 
     def test_embedded_evidence_roundtrips_text_without_executable_html(self):

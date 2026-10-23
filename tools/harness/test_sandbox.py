@@ -123,7 +123,7 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(result["isolation_demonstrated"])
         events = [json.loads(line) for line in path.with_name("events.jsonl").read_text().splitlines()]
         self.assertEqual(events[-1]["kind"], "run_finished")
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         page = render(self.root, progress)
         self.assertIn("Missing executable: podman", page)
         self.assertIn("No candidate code or container was run", page)
@@ -138,7 +138,7 @@ class SandboxTests(unittest.TestCase):
         self.assertFalse(result["candidate_executed"])
         self.assertFalse(result["isolation_demonstrated"])
         self.assertEqual(result["human_acceptance"], "pending")
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         page = render(self.root, progress)
         self.assertIn("Container isolation still needs to be demonstrated", page)
         self.assertIn("No runs recorded", page)

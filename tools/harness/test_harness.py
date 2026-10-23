@@ -412,7 +412,7 @@ class CalibrationTests(unittest.TestCase):
                     child.wait()
 
     def test_empty_report_and_unreadable_record_are_honest(self):
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         page = render(self.root, progress)
         self.assertIn("No runs recorded", page)
         self.assertIn("No comparisons yet", page)
@@ -421,7 +421,7 @@ class CalibrationTests(unittest.TestCase):
         self.assertIn("Unreadable record", render(self.root, progress))
 
     def test_report_escapes_records_and_does_not_promote_review(self):
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         progress["status"] = "awaiting-review"
         run = Run(self.root)
         run.result.update(candidate="<script>alert(1)</script>", outcome="calibration_passed")
@@ -432,7 +432,7 @@ class CalibrationTests(unittest.TestCase):
         self.assertIn("Time not recorded", page)
 
     def test_report_orders_by_run_start_and_keeps_failed_runs(self):
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         for identifier, date, outcome in [("a", "2026-10-22", "calibration_passed"),
                                           ("z", "2026-10-21", "repair_failed")]:
             path = self.root / "runs" / identifier
@@ -461,7 +461,7 @@ class CalibrationTests(unittest.TestCase):
         self.assertIn("does not tell us whether the repair works", page)
 
     def test_report_keeps_latest_blocked_example_in_front_of_earlier_success(self):
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         for identifier, date, outcome in [("older-success", "2026-10-21", "calibration_passed"),
                                           ("newer-blocked", "2026-10-22", "blocked")]:
             directory = self.root / "runs" / identifier
@@ -487,7 +487,7 @@ class CalibrationTests(unittest.TestCase):
             self.assertNotIn("The proposed repair passed this check.", page)
 
     def test_malformed_check_fields_do_not_hide_other_runs(self):
-        progress = json.loads((HERE / "progress.json").read_text())
+        progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Connect")
         valid = Run(self.root)
         valid.result.update(candidate="wrong", outcome="repair_failed", checks=[
             {"id": "baseline", "outcome": "passed", "exit_code": 0},

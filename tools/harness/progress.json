@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-22",
-  "source": "GitHub issues #102, #103, #104 and #111; Adam selected #104 as next on 22 October 2026",
-  "stage": "Connect",
+  "updated_at": "2026-10-23",
+  "source": "GitHub issues #105 and #111; Adam asked to begin Verify on 23 October 2026",
+  "stage": "Verify",
   "status": "awaiting-review",
-  "next": "Review the second live Luna attempt: its patch passed all three required import cases. Compare its diagnosis and candidate patch with the first failed attempt in Earlier Pi runs. Discuss the evidence before accepting this Connect checkpoint or starting #105.",
+  "next": "Review the first frozen-patch slice in reports/harness/verify.html: good passes the focused check in a fresh copy; wrong fails deliberately. Discuss source/patch identity and why a focused pass is not full verification. Broader candidate checks, independent extra cases, permitted new files and bounded Pi repair feedback remain unfinished within #105. Do not advance to Recover (#106).",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -36,13 +36,16 @@
     "The second live run da117ff76b74443f8928767e8107a585 passed the fixed GPX/TCX/KML import check in 98.7124 seconds, with five model requests and six tool calls. The baseline passed, the seed failed and the candidate passed. All four containers were removed. This is a passing focused test and a completed Connect attempt, not independent verification, human acceptance or issue completion.",
     "Second-run complete provider usage: 51,540 input tokens, including 12,288 cached input; 507 output tokens, zero reasoning reported; 52,047 total. Largest response 255 output tokens. Compared with the first run: 434 more total tokens (0.84%), similar runtime, and a different repair outcome. Across both attempts: 102,824 input + 836 output = 103,660 total tokens. Timing limits do not guarantee negligible token usage. One attempt per prompt is insufficient to establish why the outcome changed.",
     "Adam narrowed current provider support to OpenAI only and explicitly deferred Claude. Keep model choice configurable within OpenAI; Claude live support is no longer a completion requirement for #104. This does not accept the stage or remove the approved-repository-instructions requirement.",
-    "Adam asked what two Needs inspection badges meant. The prepared cancelled run was a deliberate cancellation demonstration with confirmed process/container cleanup. The earlier Sol run was cancelled before inference because of a circular startup import that was subsequently fixed. Added separate report annotations; original receipt outcomes remain cancelled. Generic cancelled, failed, blocked and unfinished runs now receive specific labels."
+    "Adam asked what two Needs inspection badges meant. The prepared cancelled run was a deliberate cancellation demonstration with confirmed process/container cleanup. The earlier Sol run was cancelled before inference because of a circular startup import that was subsequently fixed. Added separate report annotations; original receipt outcomes remain cancelled. Generic cancelled, failed, blocked and unfinished runs now receive specific labels.",
+    "Adam explicitly asked to proceed with #105 after walking through the shared Pi loop. This selects Verify as the next implementation stage; it does not supply unrecorded answers to the earlier review questions or mark this stage accepted.",
+    "The first Verify slice freezes a supplied patch and checks original, seeded and candidate states in a fresh source copy with the existing focused import check. Prepared examples make no model calls. Passing this focused check does not mark the candidate fully verified or the learning checkpoint reviewed. Broader required checks and live Pi retry feedback remain for later slices of #105."
   ],
   "blockers": [],
   "questions": [
-    "How do a deliberate cancellation, a setup bug and a failed repair differ?",
-    "Why is confirming cleanup separate from deciding whether a repair works?",
-    "Why does passing the fixed test still leave broader verification and human approval outstanding?"
+    "How independent is this verifier from the agent?",
+    "How could a patch pass tests and still be wrong?",
+    "How do we distinguish a weak test from an incorrect fix?",
+    "Which decisions still require human review?"
   ],
   "provider_scope": [
     "openai"

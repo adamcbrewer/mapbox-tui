@@ -15,7 +15,7 @@ from run import HERE, REPORTS, ROOT, digest, now, write_json
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
 EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json")
-RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs")
+RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs")
 
 
 def escape(value):
@@ -47,6 +47,7 @@ OUTCOMES = {
     "calibration_passed": "The proposed repair passed this check.",
     "scripted_loop_passed": "The real Pi tool loop completed using prepared responses. No AI model ran.",
     "live_repair_passed": "The AI-written repair passed the fixed import check. Human review is still pending.",
+    "focused_verification_passed": "This frozen patch passed the focused check in a fresh copy. Broader checks and human review remain pending.",
     "repair_failed": "The proposed repair did not pass this check.",
     "calibration_failed": "The setup did not produce the expected working and broken examples.",
     "blocked": "We couldn’t complete the checks. This does not tell us whether the repair works.",
@@ -69,6 +70,7 @@ GLOSSARY = {
     "Run / attempt / check": "A run is one execution of a task. An attempt is one proposed solution within it. A check is an individual test or validation step. This pilot tries one solution per run.",
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
+    "Frozen patch": "The exact saved repair bytes, identified by a fingerprint. Changing them invalidates their verification evidence.",
     "Fault example": "A deliberately introduced setup problem or slow command. It tests how the runner handles trouble, not whether a repair works.",
     "Podman": "The container tool chosen for a disposable test environment in Connect (#104). Readiness inspects its reported features. Separate live demonstrations check dummy access denials, kernel settings and cleanup.",
     "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
@@ -79,6 +81,8 @@ FILE_GUIDE = {
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
     "tools/harness/probes.py": "Runs trusted dummy access checks or deliberately slow commands inside the container. These are separate from repair-quality checks.",
     "tools/harness/pi_run.py": "Runs prepared replies or the configured subscription through four controlled tools. Python owns the disposable source, limits and sandboxed checks. A live attempt can stop before inference if its limits cannot be enforced.",
+    "tools/harness/verify.py": "Freezes a supplied patch and checks it in a fresh copy of the pinned source. This first slice runs only the focused import test, with no model calls.",
+    "reports/harness/verification/runs/<run-id>/": "Independent focused-check evidence. Result includes the patch fingerprint, source identities and each check's exit code, timing and log fingerprints.",
     "tools/harness/pi/config.local.json": "Your ignored local provider, model and subscription settings. Keep model choice and request/output limits explicit. Credentials live separately in Pi's private auth file.",
     "context.json / pi-session.json": "The prompt, tool definitions and Pi conversation. Check the mode: prepared replies test wiring; live runs use the recorded subscription model.",
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
@@ -152,7 +156,7 @@ def render_run(path, reports, run, link_root=None, annotation=None):
     known = (run.get("schema_version") == 1 and isinstance(recorded_checks, list)
              and all(isinstance(check, dict) and isinstance(check.get("id"), str)
                      and isinstance(check.get("outcome"), str) for check in recorded_checks))
-    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "repair_failed"):
+    if known and run.get("outcome") in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed", "repair_failed"):
         stages = [check for check in recorded_checks if check.get("id") in ("baseline", "seed", "candidate")]
         failed = run["outcome"] == "repair_failed"
         candidate_outcomes = ("assertion_failed", "build_failed") if failed else ("passed",)
@@ -169,6 +173,9 @@ def render_run(path, reports, run, link_root=None, annotation=None):
             known = (known and run.get("startup_verified") is True and run.get("workflow") == "pi-live-tools"
                      and isinstance(run.get("model_requests"), int) and run["model_requests"] > 0
                      and bool(run.get("model")) and bool(run.get("provider")))
+        if run.get("outcome") == "focused_verification_passed":
+            from verify import receipt_matches
+            known = known and receipt_matches(run, path.parent)
     outcome = run.get("outcome") if known else None
     result = OUTCOMES.get(str(outcome), "Unreadable record or unknown result. Inspect the receipt before drawing a conclusion.")
     expected_failure = (candidate in ("empty", "wrong") and outcome == "repair_failed" and
@@ -220,6 +227,16 @@ def render_run(path, reports, run, link_root=None, annotation=None):
             expected = "An interrupted check is unfinished. Inspect container cleanup and the separate Pi-process cancellation evidence."
     identity = ""
     tokens = ""
+    if run.get("workflow") == "frozen-patch-verification":
+        title = "Independent check: " + ("known working repair" if candidate == "good" else
+                                         "deliberately ineffective repair" if candidate == "wrong" else "supplied repair")
+        if outcome in ("blocked", "invalid_input"):
+            title = "Independent check: empty repair refused" if candidate == "empty" else "Independent check: could not complete"
+        tried = "Freeze the supplied patch, reconstruct the pinned source in a fresh copy, reproduce the bug, then check the repair."
+        expected = "The original passes, the planted bug fails for the expected reason, and only an effective repair passes."
+        purpose = "Tie the focused result to this exact patch and trusted logs. Full-suite checks, independent extra cases and live Pi retry feedback are still to come."
+        identity = (f'<p class="meta">No model calls in this verification run. Patch fingerprint: '
+                    f'<code>{escape(run.get("patch_sha256", "not recorded"))}</code>.</p>')
     if run.get("workflow") == "pi-scripted-tools":
         identity = '<p class="meta"><output>Model: none (prepared responses). Tokens used: 0.</output></p>'
     if run.get("workflow") == "pi-live-tools":
@@ -268,11 +285,14 @@ def render_run(path, reports, run, link_root=None, annotation=None):
         else:
             identity += '<p class="model-usage"><output>Token usage: not reported. Missing usage does not mean zero tokens.</output></p>'
         tokens += '<p>Actual subscription charge is not reported.</p>'
-    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed") or expected_failure
+    matched = outcome in ("calibration_passed", "scripted_loop_passed", "live_repair_passed", "focused_verification_passed") or expected_failure
     labels = {"cancelled": "Run cancelled", "timeout": "Time limit reached", "incomplete": "Run unfinished",
               "repair_failed": "Repair check failed", "blocked": "Check could not run", "invalid_input": "Invalid request",
               "budget_exhausted": "Limit reached", "calibration_failed": "Startup checks failed"}
     label = "As expected" if matched else labels.get(outcome, "Unknown result")
+    if run.get("outcome") == "focused_verification_passed" and not known:
+        label = "Evidence needs inspection"
+        result = "We can't confirm this saved focused pass: the patch or required check evidence is missing or no longer matches. Inspect the receipt."
     tone = "pass" if matched else "attention"
     note = ""
     if outcome == "cancelled" and annotation:
@@ -403,9 +423,10 @@ def render(reports, progress, *, link_root=None, snapshot=None):
         marker = ' aria-current="step"' if current else ""
         milestones.append(f'<li{marker}><strong>{stage}</strong><span>{escape(label)}</span></li>')
     milestones = "".join(milestones)
+    verification = progress["stage"] == "Verify"
     rows = []
     records = []
-    for path in (reports / "runs").glob("*/result.json"):
+    for path in (reports / ("verification/runs" if verification else "runs")).glob("*/result.json"):
         try:
             run = json.loads(path.read_text())
             if not isinstance(run, dict):
@@ -463,7 +484,7 @@ Passing the fixed test, the model saying “done” and human approval are separ
                        if snapshot.get("restored") else 'Captured from this stage’s local evidence and progress record.')
         provenance = (f'<details><summary>Snapshot source and date</summary><p>{escape(source_note)}</p>'
                       f'<p>Captured {escape(snapshot["captured_at"])}. Presented using the current report design.</p></details>')
-    sandbox = '' if define else f'''<section id="sandbox" aria-labelledby="sandbox-title"><div class="section-heading"><div>
+    sandbox = '' if define or verification else f'''<section id="sandbox" aria-labelledby="sandbox-title"><div class="section-heading"><div>
 <h2 id="sandbox-title">Does execution stay inside its boundary?</h2>
 <p>Access, resource settings and cleanup are checked separately from repair quality.</p></div></div>
 {render_probes(reports, link_root)}
@@ -481,6 +502,11 @@ Passing the fixed test, the model saying “done” and human approval are separ
              'Prepared repairs test our checker and tools. Sandbox probes test the execution boundary. Pi attempts below record model settings and whether inference could start.')
     takeaway = ('Known working and ineffective repairs test the checker. A focused test passing and human approval are separate results.'
                 if define else 'A repair passing its test, a sandbox respecting its limits, and your approval are three separate results.')
+    if verification:
+        intro = ('Verify follows the Pi connection stage. We freeze the proposed patch and check a fresh source copy, '
+                 'using tests the agent cannot edit. These first examples use prepared repairs and make no model calls.')
+        takeaway = ('A focused result belongs to one exact patch. It does not establish full-suite success, '
+                    'general repair quality or human approval.')
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(progress['stage'])} / Harness review</title><style>
@@ -568,17 +594,17 @@ aside {{ position: static; border-left: 0; border-top: 1px solid var(--report-li
 </style></head><body><div class="shell">
 <a class="skip" href="#results">Skip to results</a>
 <header class="masthead"><strong>Mapbox TUI / Developer harness</strong><nav aria-label="Report sections">
-<a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if not define else ''}{'<a href="#pi">Pi tools</a>' if pi_section else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
+<a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if sandbox else ''}{'<a href="#pi">Pi tools</a>' if pi_section else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
 {saved_nav}
 <div class="intro"><span class="badge review-state">{escape(progress["stage"])}: {escape(STATE_LABELS[progress["status"]])}</span>
-<h1>{escape(progress['stage'])}: {'repair calibration' if define else 'controlled test execution'}</h1>
+<h1>{escape(progress['stage'])}: {'independent patch checks' if verification else 'repair calibration' if define else 'controlled test execution'}</h1>
 <p>{escape(intro)}</p>
 <p class="meta">{'Historical checkpoint: the labels below retain the status recorded at the time.' if snapshot and snapshot.get('restored') else 'Saved local stage report.'}
 Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <ol class="stages">{milestones}</ol>
 <div class="layout"><main>
 <section id="results" aria-labelledby="results-title">
-<div class="section-heading"><div><h2 id="results-title">Does the checker spot a real repair?</h2>
+<div class="section-heading"><div><h2 id="results-title">{'Does this exact patch pass the focused check?' if verification else 'Does the checker spot a real repair?'}</h2>
 <p>Compare the latest good and wrong examples{' requested in containers' if container_mode else ''}. A failure in the middle step is expected.</p></div></div>
 {records}
 <details id="experiment-guide"><summary>How to read the three steps</summary>
@@ -609,7 +635,7 @@ Later we'll compare repeated AI attempts on the same tasks and settings. These t
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
 <ol class="review-links"><li><a href="#results">Compare good and wrong</a>Explain why their final steps differ.</li>
-{('<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
+{('<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define or verification else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
 <li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
 <section id="takeaway"><h2>What to take away</h2>
 <div class="lesson"><p>{escape(takeaway)}</p></div>
@@ -621,6 +647,7 @@ Later we'll compare repeated AI attempts on the same tasks and settings. These t
 {'Local receipts contain the original host calibration experiments.' if define else 'Local receipts include repair, runtime-readiness and sandbox-probe records.'}</p>
 <p><a href="https://github.com/adamcbrewer/mapbox-tui/issues/103">Define scope #103</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/104">Connect scope #104</a>
+and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/105">Verify scope #105</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement plan #111</a>.</p>
 </footer></div>
 <dialog id="evidence-viewer" class="evidence-viewer" aria-labelledby="evidence-title" aria-describedby="evidence-description">

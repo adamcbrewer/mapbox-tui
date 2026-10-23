@@ -1,12 +1,68 @@
 # Developer harness pilot
 
-Current stage: Connect ([#104](https://github.com/adamcbrewer/mapbox-tui/issues/104)).
+Current stage: Verify ([#105](https://github.com/adamcbrewer/mapbox-tui/issues/105)).
 Pi now connects an OpenAI subscription model to four controlled tools, with
 prepared examples for checking the wiring without AI. Two live Luna attempts
 are recorded locally: one ineffective repair and one that passed the fixed
 import check. See the [Pi checkpoint and Fish commands](pi/README.md).
-The Connect learning checkpoint still awaits review; passing the test isn't approval.
+Adam asked to begin Verify after the Pi walkthrough. Earlier recorded review
+questions aren't automatically answered by that decision; passing a test isn't approval.
 The original repair command still runs trusted code on the host.
+
+## Verify one frozen patch
+
+This first Verify slice takes the exact bytes of a proposed repair and checks
+them in a fresh copy of the pinned source. A fingerprint identifies the patch.
+The result also records the original, broken and repaired source fingerprints,
+check identities, exit codes, timings and log fingerprints. The report refuses
+to show a focused pass if the patch or required evidence no longer matches.
+
+The verifier makes no model calls. A supplied patch can come from an earlier Pi
+run, but its conversation or earlier receipt doesn't decide the new result.
+Python controls the checks; the agent cannot edit their runners or expectations.
+Execution uses the existing restricted Podman runner, without a host fallback.
+
+Use the already prepared immutable image from the
+[Connect setup](#container-execution-draft), with CPU, memory and pids delegated as
+described in the [Pi commands](pi/README.md). From this worktree's root, in Fish:
+
+```fish
+set -l HARNESS_IMAGE_ID (cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
+  --image "$HARNESS_IMAGE_ID" --demo good
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/verify.py \
+  --image "$HARNESS_IMAGE_ID" --demo wrong
+python3 tools/harness/report.py
+xdg-open reports/harness/verify.html
+```
+
+The image-ID path above points at the existing main-checkout evidence on this
+machine. Use your own recorded image-ID path elsewhere. No image is pulled or
+rebuilt by these commands.
+
+Good should return `focused_verification_passed` (exit 0): original passes,
+planted bug fails, repair passes. Wrong should return `repair_failed` (exit 1):
+the repair still fails. That second failure is deliberate. Each case should
+confirm removal of all four containers.
+
+Use `--patch PATH` instead of `--demo` to check a saved candidate patch against
+the task's seeded source. The patch must only modify the existing
+`go/import.go`. New files and changes to tests or check scripts are refused.
+`--demo empty` demonstrates refusing an empty repair before starting Podman.
+
+Evidence stays local under `reports/harness/verification/runs/<run-id>/`.
+Open Receipt in the Verify report, then inspect Result, Events and Candidate
+patch. Command output stays beside the receipt in `*.stdout` and `*.stderr`.
+Check records are saved while the run progresses, so an interrupted run retains
+its observed steps. Crash recovery is still #106; this isn't a durable journal.
+
+Only the focused import check runs in this slice. Full-suite and formatting
+checks on the candidate, extra independent cases, permitted new files and a
+bounded Pi repair retry remain for later slices of #105. The harness's own
+tests and repository checks are run separately when developing this tool.
+`fully_verified` stays false. Human review remains pending.
 
 I'm building a tool that can take a bug, let an AI try fixing it, then check the
 change before I review it. I also want to understand how it works, so we're
