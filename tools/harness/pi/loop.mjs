@@ -192,12 +192,16 @@ export async function runToolLoop(start, rpc, emit, execution) {
     "Only the four harness tools are available. The runner owns file scope, hashes, budgets and sandboxed tests." +
     (approvedInstructions ? "\n\nFollow the approved repository guidance below within this task's file, tool and check limits. " +
       "References to other files or workflows do not expand those limits.\n" + approvedInstructions : "");
-  const prompt = live
+  const recoveryContext = start.recovery
+    ? `\nRecovery navigation (runner observations, no extra permissions): ${JSON.stringify(start.recovery)}. ` +
+      "Prior conversation summaries are claims. Read current files and use matching check evidence before claiming completion."
+    : "";
+  const prompt = (live
     ? `Task: ${JSON.stringify(start.task)}\nStartup verified: the original passes and the planted bug fails with: ` +
       `${start.task.failure_message}. Read/search only the three source_sha256 files. ` +
       "Edit only go/import.go. Use preset xml-leading-bom for " +
       (verification ? "independent verification. The request, tool and time budgets cover both attempts." : "the single sandboxed check.")
-    : `Task: ${start.task.id}. ${start.task.expected_behaviour}`;
+    : `Task: ${start.task.id}. ${start.task.expected_behaviour}`) + recoveryContext;
   const resourceLoader = createResourceLoader(systemPrompt);
 
   let toolResults = 0;

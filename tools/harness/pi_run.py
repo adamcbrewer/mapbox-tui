@@ -110,6 +110,44 @@ class Tools:
             raise ValueError("File must be a plain file inside the disposable copy")
         return path
 
+    def write_edit(self, args, path, before, after):
+        path.write_bytes(after)
+
+    def edit(self, args, path, result):
+        operation = args["operation_id"]
+        fingerprint = digest(json.dumps(args, sort_keys=True).encode())
+        if operation in self.operations:
+            previous, saved = self.operations[operation]
+            if previous != fingerprint:
+                raise ValueError("Operation ID was already used with different arguments")
+            result = {**saved, "replayed": True}
+        else:
+            if not self.edit_available():
+                raise ValueError("No edit is available; follow the check and repair budget")
+            before = path.read_bytes()
+            if digest(before) != args["expected_sha256"]:
+                raise ValueError("File changed; read its current hash before editing")
+            old, new = args["old"], args["new"]
+            if not isinstance(old, str) or not isinstance(new, str) or not old or \
+                    max(len(old), len(new)) > LIMIT or old == new or "\0" in old + new:
+                raise ValueError("Edit must be a bounded, non-empty change")
+            source = before.decode()
+            if source.count(old) != 1:
+                raise ValueError("Edit must match exactly one location")
+            updated = source.replace(old, new, 1)
+            if len(updated.encode()) > 256 * 1024:
+                raise ValueError("Source size limit reached")
+            self.write_edit(args, path, before, updated.encode())
+            patch = "".join(difflib.unified_diff(self.seeded.splitlines(True), updated.splitlines(True),
+                                               fromfile="a/go/import.go", tofile="b/go/import.go"))
+            (self.run.path / "candidate.patch").write_text(patch)
+            self.run.result["patch_sha256"] = digest(patch.encode())
+            self.edits += 1
+            result.update(outcome="ok", explanation="Edited the disposable copy", evidence="candidate.patch",
+                          before_sha256=digest(before), sha256=digest(path.read_bytes()))
+            self.operations[operation] = fingerprint, result.copy()
+        return result
+
     def dispatch(self, name, args):
         self.calls += 1
         if self.calls > MAX_CALLS:
@@ -146,37 +184,7 @@ class Tools:
                     raise ValueError("Invalid operation ID")
                 result.update(operation_id=operation, file=args["file"])
                 path = self.path(args["file"], writable=True)
-                fingerprint = digest(json.dumps(args, sort_keys=True).encode())
-                if operation in self.operations:
-                    previous, saved = self.operations[operation]
-                    if previous != fingerprint:
-                        raise ValueError("Operation ID was already used with different arguments")
-                    result = {**saved, "replayed": True}
-                else:
-                    if not self.edit_available():
-                        raise ValueError("No edit is available; follow the check and repair budget")
-                    before = path.read_bytes()
-                    if digest(before) != args["expected_sha256"]:
-                        raise ValueError("File changed; read its current hash before editing")
-                    old, new = args["old"], args["new"]
-                    if not isinstance(old, str) or not isinstance(new, str) or not old or \
-                            max(len(old), len(new)) > LIMIT or old == new or "\0" in old + new:
-                        raise ValueError("Edit must be a bounded, non-empty change")
-                    source = before.decode()
-                    if source.count(old) != 1:
-                        raise ValueError("Edit must match exactly one location")
-                    updated = source.replace(old, new, 1)
-                    if len(updated.encode()) > 256 * 1024:
-                        raise ValueError("Source size limit reached")
-                    path.write_text(updated)
-                    patch = "".join(difflib.unified_diff(self.seeded.splitlines(True), updated.splitlines(True),
-                                                       fromfile="a/go/import.go", tofile="b/go/import.go"))
-                    (self.run.path / "candidate.patch").write_text(patch)
-                    self.run.result["patch_sha256"] = digest(patch.encode())
-                    self.edits += 1
-                    result.update(outcome="ok", explanation="Edited the disposable copy", evidence="candidate.patch",
-                                  before_sha256=digest(before), sha256=digest(path.read_bytes()))
-                    self.operations[operation] = fingerprint, result.copy()
+                result = self.edit(args, path, result)
             elif name == "harness_check":
                 if args != {"preset": "xml-leading-bom"} or not self.check_available():
                     raise ValueError("No xml-leading-bom check is available")

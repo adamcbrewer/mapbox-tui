@@ -1,6 +1,7 @@
 # Developer harness pilot
 
-Current stage: Verify ([#105](https://github.com/adamcbrewer/mapbox-tui/issues/105)).
+Current stage: Recover ([#106](https://github.com/adamcbrewer/mapbox-tui/issues/106)), prepared recovery slice.
+Verify (#105) is merged; its learning discussion remains pending.
 Pi now connects an OpenAI subscription model to four controlled tools, with
 prepared examples for checking the wiring without AI. Two live Luna attempts
 are recorded locally: one ineffective repair and one that passed the fixed
@@ -8,6 +9,103 @@ import check. See the [Pi checkpoint and Fish commands](pi/README.md).
 Adam asked to begin Verify after the Pi walkthrough. Earlier recorded review
 questions aren't automatically answered by that decision; passing a test isn't approval.
 The original repair command still runs trusted code on the host.
+
+## Recover a prepared session
+
+Recover follows Verify: first we bind checks to an exact repair, then we handle
+stopped work without assuming that the last edit failed. This slice uses prepared
+replies through the real Pi SDK. No AI model or subscription is used. It supports
+the current one-file import pilot; it does not resume a saved live conversation.
+
+A journal is a saved record of intended edits and observed results. Here it lives
+under `reports/harness/recovery/runs/<run-id>/journal.json`, outside Pi's write
+scope. The working copy stays in a separate `/tmp/mapbox-calibration-recovery-*`
+directory. Both are retained when the process stops. Don't delete either while
+reviewing or recovering a session.
+
+Before writing, Python durably saves the operation ID, exact arguments and before/
+after SHA-256 hashes (fingerprints of the file bytes). After writing, it observes
+the file and saves completion. On resume, an unchanged file permits the pending
+edit; matching after-bytes mean it already happened. Any other content stops as
+`conflict`, preserving the file for human review. Completed edits are checked
+again too. A series of edits can be partly applied; there is no rollback and no
+multi-file transaction. The current tool still exposes only one file per edit.
+
+Python checks the whole saved source copy, task, runner version, frozen checking
+rules and earlier check receipts before creating fresh Pi context. `handoff.json`
+is a navigation aid, regenerated from those observations. Editing its summary
+cannot authorise a replay, expand permissions or make a check pass. Pi's messages
+remain separately in `pi-session.json`. Each fresh entry keeps its context,
+conversation and stderr under `pi-sessions/<entry>/`. `partial.patch` records the
+observed edit even when its reply was lost. If a journal cannot be reconstructed,
+`recovery-stop.json` records that refusal without overwriting earlier evidence.
+Missing or inconsistent state stops for deliberate reconstruction; the runner does not guess how to rebuild it.
+
+Use the existing prepared image and installed Pi dependencies, as described in
+the earlier checkpoint. From this checkout in Bash:
+
+```sh
+HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/recover.py \
+  --image "$HARNESS_IMAGE_ID" --fault after-write
+```
+
+Expect exit 1 and `incomplete`: the edit was written but its reply was deliberately
+lost. The command prints the run ID and retained copy. Copy that ID into:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/recover.py --resume RUN_ID
+```
+
+Expect exit 0 and `verified_repair_passed`. Recovery observes the first edit
+without writing it twice. The first prepared repair fails its import check;
+the second passes all eight independent checks. Even a handoff falsely saying
+"all checks passed" cannot skip these checks. These are prepared replies, so the
+example proves recovery and tool wiring, not an AI's repair ability.
+
+For a deliberate conflict, start another interrupted run, append a harmless line
+to its printed working copy's `go/import.go`, then resume it. Expect exit 1 and
+`conflict`; your line must remain. Inspect `journal.json` for the observed hash
+and recovery decision, and `result.json` for the outcome. `handoff.json` points to
+the next permitted action and any independent verification evidence.
+
+Other `--fault` locations are `before-edit`, `during-verification` and
+`before-receipt`. The first can retry unchanged bytes. The last can revalidate
+finished checks without rerunning them. An interrupted verification stays
+explicitly incomplete and needs human inspection; it is never replayed blindly.
+This includes unconfirmed container cleanup after a hard kill. Existing owned
+containers have the original time limit, but absence is not assumed.
+
+```sh
+python3 tools/harness/recover.py --cancel RUN_ID
+PYTHONPATH=tools/harness python3 -m unittest test_recovery -v
+```
+
+Cancellation persists a stop request, signals only the recorded matching Python
+process, and keeps partial files, patch and logs. Repeating it is safe. A separate
+publication lock orders cancellation against saving success: cancellation wins
+if recorded first; an already published completion returns "Session already
+stopped". The final publisher rechecks source and check evidence under that lock.
+Cancelled sessions cannot be resumed into success. A lock prevents concurrent resumes.
+The original 600-second deadline includes downtime, 12 tool calls and two repair
+attempts survive restarts, and there are at most three recovery entries. There
+are zero model requests or transport retries on this prepared path. The existing
+live runner retains its request timeout and disabled provider/SDK retries; live
+recovery is deferred. Regular `pi_run.py` commands keep their earlier ephemeral
+working-copy behaviour. Use `recover.py` for this slice.
+
+The tests also kill a child process before/after writing, bypassing Python's
+cleanup handlers, and demonstrate stale summaries, conflicting human edits,
+changed evidence, repeated cancellation and interrupted verification. Unit checks
+use prepared test execution; the Podman demonstrations exercise actual checks.
+Passing checks do not imply human approval. The learning checkpoint stays pending.
+
+See the shared [glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111),
+also available under Reference in the existing `verify.html` report. Recovery
+receipts are separate from that report in this slice; use this guide and the
+printed evidence paths.
 
 ## Let Pi retry a failed repair
 

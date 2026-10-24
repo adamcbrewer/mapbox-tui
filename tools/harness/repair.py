@@ -68,6 +68,7 @@ class RepairTools(Tools):
         child = VerificationRun(REPORTS / "verification", self.run.image, number, self.run.path.name,
                                 evaluator=self.run.result["evaluator"])
         child.deadline = self.run.deadline
+        child.recovery_checkpoint = getattr(self.run, "recovery_checkpoint", None)
         child.result["candidate"] = "repair-attempt"
         attempt = {"attempt": number, "verification_run_id": child.path.name,
                    "patch_sha256": digest(patch), "evaluator_sha256": child.result["evaluator_sha256"],

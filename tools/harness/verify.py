@@ -287,6 +287,8 @@ def verify(run, patch):
         run.event("candidate_applied", file_changes=run.result["file_changes"])
         check, output = run.command("candidate", run.task["command"], checkout)
         check_test(run, "candidate", check, output, run.task)
+        if getattr(run, "recovery_checkpoint", None):
+            run.recovery_checkpoint("during-verification")
         if REGRESSION_FILE in candidate_files:
             raise Stop("invalid_input", "The trusted regression test path must be absent from candidate source")
         for name in REGRESSION_CHECKS:
