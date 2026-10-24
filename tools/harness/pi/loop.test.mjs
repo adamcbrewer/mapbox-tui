@@ -385,3 +385,73 @@ test("explicitly uncapped subscription payload keeps model/tool guards and recor
   assert.equal(execution.options[0].timeoutMs, 120000);
   assert.equal(execution.options[0].maxRetries, 0);
 });
+
+
+test("model reservation is acknowledged before provider work and denied reservations send nothing", async () => {
+  for (const approved of [true, false]) {
+    const execution = await preparedLive([{ content: [{ type: "text", text: "Done" }], stopReason: "stop" }]);
+    let reserved = false;
+    const original = execution.runtime.streamSimple.bind(execution.runtime);
+    execution.runtime.streamSimple = (...args) => {
+      assert.equal(reserved, true);
+      return original(...args);
+    };
+    const reserve = async request => {
+      assert.equal(execution.options.length, 0);
+      reserved = approved;
+      return { outcome: approved ? "ok" : "rejected", request };
+    };
+    const stream = boundedStream(execution.runtime, execution.model, execution.config, execution.requests,
+      execution.emit, () => {}, 1000, reserve)(execution.model, { messages: [] }, {});
+    for await (const _event of stream) {}
+    assert.equal(execution.options.length, approved ? 1 : 0);
+    assert.equal(execution.requests.count, approved ? 1 : 0);
+    assert.equal(Boolean(execution.requests.failure), !approved);
+  }
+});
+
+test("fresh model context keeps the spent request budget instead of replaying the last request", async () => {
+  const execution = await preparedLive([{ content: [{ type: "text", text: "Checked" }], stopReason: "stop" }], 3);
+  execution.requests.count = 2;
+  const numbers = [];
+  const request = boundedStream(execution.runtime, execution.model, execution.config, execution.requests,
+    execution.emit, () => {}, 1000, async number => {
+      numbers.push(number);
+      return { outcome: "ok", request: number };
+    });
+  for await (const _event of request(execution.model, { messages: [] }, {})) {}
+  for await (const _event of request(execution.model, { messages: [] }, {})) {}
+  assert.deepEqual(numbers, [3]);
+  assert.equal(execution.options.length, 1);
+  assert.equal(execution.requests.failure.outcome, "budget_exhausted");
+});
+
+test("SDK transport retries cannot dispatch a reserved model request twice", async () => {
+  const execution = await preparedLive([{ content: [{ type: "text", text: "Checked" }], stopReason: "stop" }]);
+  for await (const _event of execution.streamFunction(execution.model, { messages: [] }, {})) {}
+  const fetch = globalThis.fetch;
+  let dispatched = 0;
+  globalThis.fetch = async () => { dispatched++; return new Response("prepared"); };
+  try {
+    await execution.options[0].fetch("https://example.invalid");
+    assert.throws(() => execution.options[0].fetch("https://example.invalid"), /retry refused/);
+    assert.equal(dispatched, 1);
+  } finally {
+    globalThis.fetch = fetch;
+  }
+});
+
+
+test("a reservation reply arriving after timeout cannot start provider work", async () => {
+  const execution = await preparedLive([]);
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const request = boundedStream(execution.runtime, execution.model, execution.config, execution.requests,
+    execution.emit, () => {}, 25, () => pending);
+  for await (const _event of request(execution.model, { messages: [] }, {})) {}
+  release({ outcome: "ok", request: 1 });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  for await (const _event of request(execution.model, { messages: [] }, {})) {}
+  assert.equal(execution.options.length, 0);
+  assert.equal(execution.requests.failure.outcome, "timeout");
+});

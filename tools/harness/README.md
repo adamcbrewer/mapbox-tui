@@ -1,6 +1,6 @@
 # Developer harness pilot
 
-Current stage: Recover ([#106](https://github.com/adamcbrewer/mapbox-tui/issues/106)), prepared recovery slice.
+Current stage: Recover ([#106](https://github.com/adamcbrewer/mapbox-tui/issues/106)).
 Verify (#105) is merged; its learning discussion remains pending.
 Pi now connects an OpenAI subscription model to four controlled tools, with
 prepared examples for checking the wiring without AI. Two live Luna attempts
@@ -15,7 +15,8 @@ The original repair command still runs trusted code on the host.
 Recover follows Verify: first we bind checks to an exact repair, then we handle
 stopped work without assuming that the last edit failed. This slice uses prepared
 replies through the real Pi SDK. No AI model or subscription is used. It supports
-the current one-file import pilot; it does not resume a saved live conversation.
+the current one-file import pilot; it does not resume a saved conversation. The subscription path below constructs
+fresh model context under the same recovery rules.
 
 A journal is a saved record of intended edits and observed results. Here it lives
 under `reports/harness/recovery/runs/<run-id>/journal.json`, outside Pi's write
@@ -92,8 +93,8 @@ Cancelled sessions cannot be resumed into success. A lock prevents concurrent re
 The original 600-second deadline includes downtime, 12 tool calls and two repair
 attempts survive restarts, and there are at most three recovery entries. There
 are zero model requests or transport retries on this prepared path. The existing
-live runner retains its request timeout and disabled provider/SDK retries; live
-recovery is deferred. Regular `pi_run.py` commands keep their earlier ephemeral
+live runner retains its request timeout and disabled provider/SDK retries; the
+live recovery path is described below. Regular `pi_run.py` commands keep their earlier ephemeral
 working-copy behaviour. Use `recover.py` for this slice.
 
 The tests also kill a child process before/after writing, bypassing Python's
@@ -106,6 +107,55 @@ See the shared [glossary and file guide (#111)](https://github.com/adamcbrewer/m
 also available under Reference in the existing `verify.html` report. Recovery
 receipts are separate from that report in this slice; use this guide and the
 printed evidence paths.
+
+## Recover a subscription-model repair
+
+`recover.py --live` uses the existing local Pi subscription preferences. It keeps
+that exact provider, model and limits in the session record; changing local
+preferences later applies to new sessions. Resume uses the saved settings.
+The existing OpenAI-only scope and subscription authentication remain in place.
+
+Before each model call, Node asks Python to reserve a numbered request. Python
+saves that reservation before replying. A lost reply still consumes the slot:
+the next fresh context continues with the remaining budget and does not replay
+the uncertain network request. Each reservation permits one network dispatch;
+provider retries are refused even if an adapter attempts one internally.
+
+Fresh context receives the observed edit count, last completed tool result and
+next required tool. After an already-applied edit, it must request a check before
+another repair. Approved repository guidance is reloaded from the checked source
+copy. The previous conversation isn't resumed or treated as authority.
+
+Using your existing prepared image and local subscription sign-in, from Bash:
+
+```sh
+HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/recover.py \
+  --image "$HARNESS_IMAGE_ID" --live --fault after-write
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/recover.py --resume RUN_ID
+```
+
+The first command deliberately exits 1 after the model's edit is written. Resume
+reconciles it before starting a fresh model conversation. A correct repair must
+still pass the independent checks. A failed repair may use the one remaining
+repair opportunity; a model saying “done” cannot substitute for those checks.
+AI repairs can fail, unlike a prepared demonstration with a known working reply.
+
+Both entries share the original 600-second deadline, twelve tool calls and two
+repair attempts. Model requests share the saved configured limit. Each request
+has the existing two-minute timeout; the selected output-token preference is
+retained. No API-key fallback, automatic transport retry or budget reset is added.
+A new reservation is spent even when dispatch or usage couldn't be observed.
+The final token summary distinguishes reserved requests, observed dispatches and
+missing usage, rather than assuming that an interrupted request was free.
+
+Live and prepared run records share the recovery evidence directory. Look for
+`candidate_source: AI`, the saved model identity, `model_reservations` and the
+per-entry context and logs. The same cancellation, conflict, incomplete-check
+and final-publication rules apply. Learning review remains separate from a
+passing repair.
 
 ## Let Pi retry a failed repair
 

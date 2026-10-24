@@ -24,7 +24,7 @@ function safeModelFailure(message) {
 }
 
 // Wrap each real model request with our limits before passing its replies back to Pi.
-export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000) {
+export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000, reserve = null) {
   return (requestedModel, context, options) => {
     const output = createAssistantMessageEventStream();
     (async () => {
@@ -32,6 +32,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
       let signal;
       let onAbort;
       try {
+        if (requests.failure) throw requests.failure;
         // Check the chosen model, remaining request budget and subscription before sending anything.
         if (requestedModel.provider !== model.provider || requestedModel.id !== model.id) {
           throw stopped("blocked", "The model identity changed during the run");
@@ -52,7 +53,16 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
         // The deadline covers the whole response, including a stream that starts and then stalls.
         timer = setTimeout(() => controller.abort(stopped("timeout", "The model request reached its full-response time limit")),
           requestTimeoutMs);
-        const request = ++requests.count;
+        const request = requests.count + 1;
+        if (reserve) {
+          const approval = await Promise.race([reserve(request), interrupted]);
+          if (approval?.outcome !== "ok" || approval.request !== request) {
+            throw stopped("blocked", "The runner did not durably reserve this model request");
+          }
+          signal.throwIfAborted();
+        }
+        requests.count = request;
+        let dispatched = false;
         let providerUsage = null;
         emit({ type: "model_request", request, provider: model.provider, model: model.id,
           maxOutputTokens: config.maxOutputTokensPerRequest, reasoning: "low", maxRetries: 0 });
@@ -78,6 +88,11 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
             }
           },
           fetch(input, init) {
+            if (dispatched) {
+              requests.failure = stopped("budget_exhausted", "Automatic transport retry refused; this reservation permits one dispatch");
+              throw requests.failure;
+            }
+            dispatched = true;
             emit({ type: "model_dispatch", request });
             return globalThis.fetch(input, init);
           },
@@ -149,7 +164,13 @@ export async function runLiveLoop(start, rpc, emit) {
     readStoredCredential(config.provider, authPath));
   checkSubscription();
   const model = resolveLiveModel(runtime, config);
-  const requests = { count: 0 };
+  const used = start.modelRequestsUsed ?? 0;
+  if (!Number.isInteger(used) || used < 0 || used > config.maxModelRequests) {
+    throw stopped("blocked", "Invalid persisted model-request budget");
+  }
+  const requests = { count: used };
+  const reserve = start.recovery ? request => rpc({ type: "model_reserve", id: `model-${request}`,
+    request, provider: config.provider, model: config.model }) : null;
   return runToolLoop(start, rpc, emit, { runtime, model, config, requests, thinkingLevel: "low",
-    streamFunction: boundedStream(runtime, model, config, requests, emit, checkSubscription) });
+    streamFunction: boundedStream(runtime, model, config, requests, emit, checkSubscription, 120000, reserve) });
 }

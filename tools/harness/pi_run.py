@@ -218,7 +218,10 @@ def scripted_calls(tools, demo):
 
 
 def load_live_config():
-    config = json.loads((HERE / "pi/config.local.json").read_text())
+    return validate_live_config(json.loads((HERE / "pi/config.local.json").read_text()))
+
+
+def validate_live_config(config):
     if not isinstance(config, dict) or set(config) != {
             "provider", "model", "auth", "maxModelRequests", "maxOutputTokensPerRequest"}:
         raise Stop("invalid_input", "Use the five preferences in pi/config.example.json")
@@ -237,7 +240,8 @@ def pi_loop(run, tools, temporary, demo, config=None):
     package = HERE / "pi"
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(temporary),
            "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(temporary / "agent")}
-    payload = {"type": "start", "task": run.task, "maxToolCalls": MAX_CALLS}
+    initial_calls = tools.calls
+    payload = {"type": "start", "task": run.task, "maxToolCalls": MAX_CALLS - initial_calls}
     payload["repoInstructions"] = getattr(run, "repo_instructions", [])
     payload.update(getattr(tools, "start_context", {}))
     permissions = []
@@ -289,6 +293,12 @@ def pi_loop(run, tools, temporary, demo, config=None):
                         message_type = message.get("type")
                         if message_type == "context":
                             write_json(run.path / "context.json", message)
+                        elif message_type == "model_reserve":
+                            if not config or not hasattr(tools, "reserve_model") or not isinstance(message.get("id"), str):
+                                raise Stop("invalid_input", "Unexpected model reservation")
+                            result = tools.reserve_model(message)
+                            process.stdin.write((json.dumps({"id": message["id"], "result": result}) + "\n").encode())
+                            process.stdin.flush()
                         elif message_type in ("model_request", "model_response", "model_payload", "model_payload_rejected", "model_dispatch", "model_usage"):
                             run.event(message_type, **{key: value for key, value in message.items() if key != "type"})
                             if message_type == "model_request":
@@ -299,6 +309,8 @@ def pi_loop(run, tools, temporary, demo, config=None):
                                 run.result["model_requests_dispatched"] += 1
                             elif message_type == "model_usage":
                                 run.result.setdefault("provider_usage", []).append(message)
+                            if getattr(run, "journal", None):
+                                run.journal.save()
                         elif message_type == "session":
                             write_json(run.path / "pi-session.json", message)
                         elif message_type == "failed":
@@ -317,7 +329,7 @@ def pi_loop(run, tools, temporary, demo, config=None):
                                 run.result["model_claim"] = "\n".join(claims)[-2000:] or None
                             if process.wait(timeout=max(0.1, run.deadline - time.monotonic())) != 0:
                                 raise Stop("blocked", "Pi reported a failed exit")
-                            expected = tools.calls if config else len(payload["calls"])
+                            expected = tools.calls - initial_calls if config else len(payload["calls"])
                             if not tools.checked or message.get("toolResults") != expected or (config and not tools.completed()):
                                 raise Stop("incomplete", "Pi did not finish the required tool sequence")
                             return

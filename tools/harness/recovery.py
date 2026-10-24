@@ -9,7 +9,7 @@ import re
 import tempfile
 import time
 
-from pi_run import MAX_CALLS
+from pi_run import MAX_CALLS, validate_live_config
 from repair import RepairTools, repair_receipt_matches
 from run import HERE, REPORTS, Stop, digest, now
 from verify import check_evaluator, receipt_matches, source_tree
@@ -69,6 +69,38 @@ def validate_entries(state, task):
                 request["status"] == "started" and number != len(state["requests"]) - 1 or
                 request["status"] == "completed" and not isinstance(request.get("result"), dict)):
             raise ValueError("Malformed tool request")
+    if (state.get("live_config") != state["result"].get("live_config") or
+            state["result"].get("candidate_source") == "AI" and state.get("live_config") is None):
+        raise ValueError("Saved execution mode changed or is incomplete")
+    if state.get("live_config") is not None:
+        config = validate_live_config(state["live_config"])
+        reservations = state["model_reservations"]
+        if (not isinstance(reservations, list) or len(reservations) > config["maxModelRequests"] or
+                state["result"]["budgets"]["model_requests"] != config["maxModelRequests"] or
+                state["result"]["budgets"]["output_tokens_per_request"] != config["maxOutputTokensPerRequest"] or
+                any(state["result"].get(key) != config[key] for key in ("provider", "model", "auth"))):
+            raise ValueError("Invalid persisted model budget or identity")
+        for number, reservation in enumerate(reservations, 1):
+            if (not isinstance(reservation, dict) or reservation.get("request") != number or
+                    any(reservation.get(key) != config[key] for key in ("provider", "model"))):
+                raise ValueError("Malformed model reservation")
+        if state["result"].get("model_requests") != len(reservations):
+            raise ValueError("Model-request count does not match durable reservations")
+        usage = state["result"].get("provider_usage")
+        dispatched = state["result"].get("model_requests_dispatched")
+        if not isinstance(usage, list) or type(dispatched) is not int or not 0 <= dispatched <= len(reservations):
+            raise ValueError("Malformed model usage or dispatch observations")
+        for record in usage:
+            if (not isinstance(record, dict) or type(record.get("request")) is not int or
+                    not 1 <= record["request"] <= len(reservations) or not isinstance(record.get("usage"), dict)):
+                raise ValueError("Malformed provider usage observation")
+            row = record["usage"]
+            for key in ("inputTokens", "cachedInputTokens", "outputTokens", "totalTokens", "reasoningTokens"):
+                value = row.get(key)
+                if key == "reasoningTokens" and key in row and value is None:
+                    continue
+                if type(value) is not int or value < 0:
+                    raise ValueError("Malformed provider token count")
     attempts = state["result"].get("attempts")
     if not isinstance(attempts, list):
         raise ValueError("Malformed verification attempts")
@@ -90,9 +122,12 @@ class Journal:
                           "expires_at": time.time() + max(0, run.deadline - time.monotonic()),
                           "files": source_tree(checkout)["files"], "seeded": (checkout / "go/import.go").read_text(),
                           "requests": [], "operations": {}, "records": [], "resumes": 0,
+                          "live_config": run.result.get("live_config"), "model_reservations": [],
+                          "demo": run.result.get("recovery_demo", "retry"),
                           "status": "active", "result": copy.deepcopy(run.result),
                           "implementation_sha256": {name: digest((HERE / name).read_bytes()) for name in
-                                                    ("recovery.py", "recover.py", "pi_run.py", "repair.py")}}
+                                                    ("recovery.py", "recover.py", "pi_run.py", "repair.py", "pi/loop.mjs", "pi/live.mjs",
+                                                     "pi/setup.mjs", "pi/cli.mjs", "pi/package-lock.json")}}
             self.record("session_created", base_commit=run.task["base_commit"])
         else:
             try:
@@ -108,7 +143,7 @@ class Journal:
                 for name, expected in self.state["implementation_sha256"].items():
                     if digest((HERE / name).read_bytes()) != expected:
                         raise ValueError("Recovery implementation changed")
-            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop) as error:
                 raise Stop("incomplete", f"Session needs deliberate reconstruction: {error}") from error
         self.checkout = Path(self.state["checkout"])
         run.journal = self
@@ -202,7 +237,32 @@ class RecoveryTools(RepairTools):
         for operation, item in journal.state["operations"].items():
             if item["status"] == "completed":
                 self.operations[operation] = item["fingerprint"], item["result"]
-        self.start_context["recovery"] = journal.handoff()
+        self.refresh_context()
+
+    def refresh_context(self):
+        completed = [request for request in self.journal.state["requests"] if request["status"] == "completed"]
+        self.start_context["recovery"] = {**self.journal.handoff(), "used_tool_calls": self.calls,
+                                         "applied_edits": self.edits,
+                                         "last_tool_result": completed[-1] if completed else None,
+                                         "next_required_tool": "harness_check" if self.check_available() else
+                                         "harness_read" if self.edit_available() else "finish"}
+        if self.journal.state.get("live_config") is not None:
+            self.start_context["modelRequestsUsed"] = len(self.journal.state["model_reservations"])
+
+    def reserve_model(self, message):
+        self.journal.checkpoint("model-request")
+        config = self.journal.state.get("live_config")
+        reservations = self.journal.state.get("model_reservations", [])
+        if (not config or any(message.get(key) != config[key] for key in ("provider", "model")) or
+                type(message.get("request")) is not int or message["request"] != len(reservations) + 1):
+            raise Stop("invalid_input", "Model reservation identity or sequence changed")
+        if len(reservations) >= config["maxModelRequests"]:
+            raise Stop("budget_exhausted", "Persisted model-request budget reached")
+        reservation = {key: message[key] for key in ("request", "provider", "model")}
+        reservations.append({**reservation, "at": now()})
+        self.run.result["model_requests"] = len(reservations)
+        self.journal.record("model_reserved", **reservation)
+        return {"outcome": "ok", "request": message["request"]}
 
     def candidate(self):
         updated = self.path("go/import.go").read_text()

@@ -10,8 +10,8 @@ import tarfile
 import tempfile
 import time
 
-from pi_run import MAX_CALLS, pi_loop, prepare_checkout
-from recovery import FAULTS, Journal, RecoveryTools, durable_json, lock_session, process_identity, publication_lock, request_cancel
+from pi_run import MAX_CALLS, load_live_config, pi_loop, prepare_checkout, repository_instructions, token_summary
+from recovery import FAULTS, Journal, RecoveryTools, durable_json, lock_session, process_identity, publication_lock, request_cancel, validate_entries
 from repair import RepairRun, repair_receipt_matches
 from run import REPORTS, Stop, now
 from sandbox import preflight
@@ -53,6 +53,9 @@ def execute(run, journal, demo, fault=None):
     journal.record("recovery_entered", entry=journal.state["resumes"])
     tools = RecoveryTools(run, journal)
     tools.recover_pending()
+    tools.refresh_context()
+    config = journal.state.get("live_config")
+    run.repo_instructions = repository_instructions(run.task, journal.checkout)
     if tools.completed() and tools.terminal:
         tools.finish()
         return
@@ -63,7 +66,7 @@ def execute(run, journal, demo, fault=None):
     archive_pi(run.path, entry - 1)
     try:
         with tempfile.TemporaryDirectory(prefix="mapbox-pi-") as temporary:
-            pi_loop(run, tools, Path(temporary), demo)
+            pi_loop(run, tools, Path(temporary), demo, config)
     finally:
         archive_pi(run.path, entry)
     tools.finish()
@@ -92,6 +95,16 @@ def finalize(run, journal):
         except (Stop, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             run.result.update(outcome=error.outcome if isinstance(error, Stop) else "incomplete",
                               reason=error.reason if isinstance(error, Stop) else f"Cannot confirm final evidence: {error}")
+        if journal and journal.state.get("live_config"):
+            reserved = len(journal.state["model_reservations"])
+            try:
+                validate_entries({**journal.state, "result": run.result}, run.task)
+                run.result["token_summary"] = token_summary(run.result.get("provider_usage", []), reserved)
+                run.result["token_summary"].update(requests_reserved=reserved,
+                                                  observed_dispatches=run.result.get("model_requests_dispatched", 0))
+            except (Stop, TypeError, ValueError, KeyError):
+                run.result.update(outcome="incomplete", reason="Model usage could not be reconciled; inspect retained evidence",
+                                  token_summary={"complete": False, "requests_reserved": reserved})
         run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
         if journal:
             journal.state["status"] = "complete" if run.result["outcome"] == "verified_repair_passed" else run.result["outcome"]
@@ -101,12 +114,14 @@ def finalize(run, journal):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Recover a bounded prepared Pi repair from trusted local state.")
+    parser = argparse.ArgumentParser(description="Recover a bounded prepared or subscription Pi repair from trusted local state.")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--resume", help="Existing recovery run ID; always constructs fresh Pi context")
     action.add_argument("--cancel", help="Request cancellation of an existing recovery run")
     parser.add_argument("--image", help="Immutable prepared local image ID, for a new run")
-    parser.add_argument("--demo", choices=("retry", "exhausted"), default="retry")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--demo", choices=("retry", "exhausted"))
+    mode.add_argument("--live", action="store_true", help="Use the saved local subscription model and limits")
     parser.add_argument("--fault", choices=FAULTS)
     args = parser.parse_args()
     directory = None
@@ -117,6 +132,8 @@ def main():
     try:
         identity = args.resume or args.cancel
         if identity:
+            if args.live or args.demo or args.image:
+                raise Stop("invalid_input", "Resume/cancel use the original saved mode, model and limits")
             if not re.fullmatch(r"[0-9a-f]{32}", identity):
                 raise Stop("invalid_input", "Use a recovery run ID, not a path")
             directory = REPORTS / "recovery/runs" / identity
@@ -134,13 +151,22 @@ def main():
         else:
             if not args.image:
                 raise Stop("invalid_input", "A new recovery session needs --image")
+            args.demo = args.demo or "retry"
+            config = load_live_config() if args.live else None
             run = RepairRun(REPORTS / "recovery", args.image)
             directory = run.path
             owner = lock_session(directory)
             run.result.update(workflow="pi-verified-repair", recovery=True, candidate=args.demo,
+                              live_config=config, recovery_demo=args.demo,
                               model="scripted (no AI)", pi_version="1.2.0", startup_verified=False,
                               budgets={"tool_calls": MAX_CALLS, "repair_attempts": 2, "deadline_seconds": 600,
                                        "model_requests": 0, "transport_retries": 0, "recovery_entries": 3})
+            if config:
+                run.result.update(candidate="model", candidate_source="AI", provider=config["provider"], model=config["model"],
+                                  auth=config["auth"], reasoning="low", model_cost_usd=None, model_requests=0,
+                                  model_requests_dispatched=0, model_usage=[], provider_usage=[])
+                run.result["budgets"].update(model_requests=config["maxModelRequests"],
+                                           output_tokens_per_request=config["maxOutputTokensPerRequest"])
         previous = {s: signal.signal(s, run.cancel) for s in (signal.SIGINT, signal.SIGTERM)}
         durable_json(directory / "owner.json", {"pid": os.getpid(), "identity": process_identity(os.getpid())})
         if journal is None:
@@ -151,7 +177,7 @@ def main():
             run.result["retained_checkout"] = str(checkout)
             prepare_checkout(run, checkout)
             journal = Journal(run, checkout)
-            journal.state["demo"] = args.demo
+            journal.state.update(demo=args.demo, live_config=config, model_reservations=[])
             journal.save()
         execute(run, journal, args.demo, args.fault)
         journal.state["status"] = "complete"
@@ -193,7 +219,9 @@ def main():
     print(run.path / "result.json")
     if journal:
         print(f"Retained working copy: {journal.checkout}")
-        print("Fresh Pi context; prepared replies only, no AI model. Human review remains pending.")
+        print("Fresh Pi context; subscription model." if journal.state.get("live_config") else
+              "Fresh Pi context; prepared replies only, no AI model.")
+        print("Human review remains pending.")
     return 0 if journal and journal.state["status"] == "complete" else 1
 
 

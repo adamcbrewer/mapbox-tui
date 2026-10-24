@@ -163,6 +163,106 @@ class RecoveryTests(RepairFixture, unittest.TestCase):
             self.assertEqual((self.run.path / "pi-sessions/1" / name).read_text(), "First session")
             self.assertEqual((self.run.path / "pi-sessions/2" / name).read_text(), "Second session")
 
+    def enable_live(self, limit=2):
+        config = {"provider": "openai", "model": "test-model", "auth": "subscription",
+                  "maxModelRequests": limit, "maxOutputTokensPerRequest": None}
+        self.run.result.update(live_config=config, provider="openai", model="test-model", auth="subscription",
+                               model_requests=0, model_requests_dispatched=0, provider_usage=[])
+        self.run.result["budgets"].update(model_requests=limit, output_tokens_per_request=None)
+        self.journal.state.update(live_config=config, model_reservations=[])
+        self.journal.save()
+        self.tools.refresh_context()
+        return config
+
+    def model_message(self, request):
+        return {"type": "model_reserve", "id": f"model-{request}", "request": request,
+                "provider": "openai", "model": "test-model"}
+
+    def test_model_request_is_durable_before_approval_and_survives_a_lost_reply(self):
+        self.enable_live()
+        self.assertEqual(self.tools.reserve_model(self.model_message(1)), {"outcome": "ok", "request": 1})
+        saved = json.loads((self.run.path / "journal.json").read_text())
+        self.assertEqual(saved["result"]["model_requests"], 1)
+        self.resume()
+        self.assertEqual(self.tools.start_context["modelRequestsUsed"], 1)
+        self.tools.reserve_model(self.model_message(2))
+        with self.assertRaises(Stop) as error:
+            self.tools.reserve_model(self.model_message(3))
+        self.assertEqual(error.exception.outcome, "budget_exhausted")
+        self.assertEqual(len(self.journal.state["model_reservations"]), 2)
+
+    def test_model_reservations_cannot_change_identity_or_replay_an_uncertain_request(self):
+        self.enable_live()
+        self.tools.reserve_model(self.model_message(1))
+        for message in (self.model_message(1), {**self.model_message(2), "model": "other-model"},
+                        {**self.model_message(2), "provider": "other-provider"}):
+            with self.assertRaises(Stop) as error:
+                self.tools.reserve_model(message)
+            self.assertEqual(error.exception.outcome, "invalid_input")
+        self.assertEqual(len(self.journal.state["model_reservations"]), 1)
+
+    def test_malformed_model_budget_or_changed_mode_requires_reconstruction(self):
+        self.enable_live()
+        self.tools.reserve_model(self.model_message(1))
+        saved = copy.deepcopy(self.journal.state)
+        mutations = (lambda s: s.update(model_reservations=None),
+                     lambda s: s["result"].update(model_requests=0),
+                     lambda s: s.update(live_config=None),
+                     lambda s: s["model_reservations"].append(None))
+        for mutate in mutations:
+            state = copy.deepcopy(saved)
+            mutate(state)
+            durable_json(self.run.path / "journal.json", state)
+            with self.assertRaises(Stop) as error:
+                Journal(self.run)
+            self.assertEqual(error.exception.outcome, "incomplete")
+
+    def test_uncertain_dispatch_keeps_its_request_spent_and_usage_unknown(self):
+        self.enable_live()
+        self.tools.reserve_model(self.model_message(1))
+        request_cancel(self.run.path)
+        finalize(self.run, self.journal)
+        summary = self.run.result["token_summary"]
+        self.assertEqual(summary["requests_reserved"], 1)
+        self.assertEqual(summary["observed_dispatches"], 0)
+        self.assertEqual(summary["requests_without_usage"], 1)
+        self.assertFalse(summary["complete"])
+
+    def test_live_recovery_context_requires_checking_the_already_applied_edit(self):
+        self.enable_live()
+        self.tools.reserve_model(self.model_message(1))
+        self.interrupt("after-write")
+        self.resume()
+        self.tools.refresh_context()
+        context = self.tools.start_context
+        self.assertEqual(context["modelRequestsUsed"], 1)
+        self.assertEqual(context["recovery"]["applied_edits"], 1)
+        self.assertEqual(context["recovery"]["next_required_tool"], "harness_check")
+        self.assertTrue(context["recovery"]["last_tool_result"]["result"]["replayed"])
+
+    def test_malformed_saved_usage_is_refused_without_overwriting_evidence(self):
+        self.enable_live()
+        self.tools.reserve_model(self.model_message(1))
+        saved = copy.deepcopy(self.journal.state)
+        (self.root / "recovery").symlink_to(self.root / "repair", target_is_directory=True)
+        for malformed in (None, [None], [{"request": 1, "usage": None}], [{"request": 1, "usage": {}}]):
+            state = copy.deepcopy(saved)
+            state["result"]["provider_usage"] = malformed
+            durable_json(self.run.path / "journal.json", state)
+            durable_json(self.run.path / "result.json", state["result"])
+            receipt = (self.run.path / "result.json").read_bytes()
+            with patch.object(sys, "argv", ["recover.py", "--resume", self.run.path.name]):
+                self.assertEqual(main(), 1)
+            self.assertEqual((self.run.path / "result.json").read_bytes(), receipt)
+            self.assertEqual(json.loads((self.run.path / "recovery-stop.json").read_text())["outcome"], "incomplete")
+
+    def test_malformed_new_usage_cannot_crash_finalization_or_publish_success(self):
+        self.enable_live()
+        self.run.result["provider_usage"] = None
+        finalize(self.run, self.journal)
+        self.assertEqual(self.run.result["outcome"], "incomplete")
+        self.assertFalse(self.run.result["token_summary"]["complete"])
+
     def test_intent_before_write_survives_a_fresh_runner(self):
         before = (self.checkout / "go/import.go").read_bytes()
         self.interrupt("before-edit")
