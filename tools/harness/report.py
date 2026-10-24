@@ -587,9 +587,12 @@ def render_recovery(path, reports, run, link_root=None, annotation=None):
             known = (digest(raw) == item.get("receipt_sha256") and child.get("parent_run_id") == path.parent.name and
                      child.get("patch_sha256") == item.get("patch_sha256") and
                      receipt_matches(child, child_path.parent, allow_failed=child.get("outcome") == "repair_failed"))
-            description = ("passed every required check" if known and child["outcome"] == "repository_verification_passed" else
-                           "repair failed its required checks" if known and child["outcome"] == "repair_failed" else
-                           "verification is unfinished or its evidence does not match")
+            if known and child["outcome"] == "repository_verification_passed":
+                description = "passed every required check"
+            elif known and child["outcome"] == "repair_failed":
+                description = "repair failed its required checks"
+            else:
+                description = "verification is unfinished or its evidence does not match"
             link = escape(child_path.relative_to(link_root or reports).as_posix())
             attempts.append(f'<li>Repair {escape(item.get("attempt"))}: {escape(description)}. '
                             f'<a href="{link}" data-evidence="{link}">Check evidence</a></li>')
@@ -612,11 +615,19 @@ def render_recovery(path, reports, run, link_root=None, annotation=None):
     elif outcome == "conflict":
         tried += " Introduce conflicting file content before resuming."
         expected = "Stop without replacing the conflicting file. The earlier intended edit must not be replayed blindly."
-    result = ("The recovered exact patch passed every required check. Human review is still pending." if passed else
-              "Conflicting source was detected; the run stopped instead of guessing which edit to replay." if outcome == "conflict" else
-              "This session did not establish a verified repair. Its partial patch and stopping evidence remain available.")
-    title = (annotation or {}).get("title", "Preserve a conflicting file" if outcome == "conflict" else
-                                  "Recover a repair after a deliberate stop" if passed and faults else "Recover a stopped repair")
+    if passed:
+        result = "The recovered exact patch passed every required check. Human review is still pending."
+    elif outcome == "conflict":
+        result = "Conflicting source was detected; the run stopped instead of guessing which edit to replay."
+    else:
+        result = "This session did not establish a verified repair. Its partial patch and stopping evidence remain available."
+    if outcome == "conflict":
+        title = "Preserve a conflicting file"
+    elif passed and faults:
+        title = "Recover a repair after a deliberate stop"
+    else:
+        title = "Recover a stopped repair"
+    title = (annotation or {}).get("title", title)
     note = (annotation or {}).get("summary")
     notes = f'<p>{escape(note)}</p>' if note else ''
     link = escape(path.relative_to(link_root or reports).as_posix())
@@ -847,6 +858,28 @@ Missing state, unknown human changes or unfinished verification require inspecti
 <p>The test checks that a valid marker leaves imported data unchanged, while misplaced markers remain invalid.
 Setup problems such as missing tools or dependencies mean we couldn't judge the repair.</p></details>
 '''
+    if recovery:
+        stage_title = 'continue safely after interruption'
+        results_title = 'Can stopped work continue without guessing?'
+        results_intro = 'Compare a recovered repair with a conflict or unfinished run. Deliberate stops test the safety rules; model repair failures are separate.'
+        comparison_label = 'Compare recovered and stopped runs'
+    elif verification:
+        stage_title = 'independent patch checks'
+        results_title = 'Does this exact patch pass its required checks?'
+        results_intro = 'Compare the working, unformatted and ineffective repairs. Every required check must pass.'
+        comparison_label = 'Compare the examples'
+    else:
+        stage_title = 'repair calibration' if define else 'controlled test execution'
+        results_title = 'Does the checker spot a real repair?'
+        results_intro = ('Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') +
+                         '. A failure in the middle step is expected.')
+        comparison_label = 'Compare good and wrong'
+    if recovery:
+        review_step = '<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>'
+    elif define or verification:
+        review_step = '<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>'
+    else:
+        review_step = '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>'
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(progress['stage'])} / Harness review</title><style>
@@ -937,7 +970,7 @@ aside {{ position: static; border-left: 0; border-top: 1px solid var(--report-li
 <a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if sandbox else ''}{'<a href="#pi">Pi tools</a>' if pi_section else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
 {saved_nav}
 <div class="intro"><span class="badge review-state">{escape(progress["stage"])}: {escape(STATE_LABELS[progress["status"]])}</span>
-<h1>{escape(progress['stage'])}: {'continue safely after interruption' if recovery else 'independent patch checks' if verification else 'repair calibration' if define else 'controlled test execution'}</h1>
+<h1>{escape(progress['stage'])}: {stage_title}</h1>
 <p>{escape(intro)}</p>
 <p class="meta">{'Historical checkpoint: the labels below retain the status recorded at the time.' if snapshot and snapshot.get('restored') else 'Saved local stage report.'}
 Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
@@ -945,8 +978,8 @@ Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <div class="layout"><main>
 <section id="results" aria-labelledby="results-title">
 {('<h2>Can Pi use a failed check to retry within the limit?</h2><p>Compare the prepared retry and stop examples. The verifier checks each patch independently; Pi cannot change its tests.</p>' + repairs) if repairs else ''}
-<div class="section-heading"><div><h2 id="results-title">{'Can stopped work continue without guessing?' if recovery else 'Does this exact patch pass its required checks?' if verification else 'Does the checker spot a real repair?'}</h2>
-<p>{'Compare a recovered repair with a conflict or unfinished run. Deliberate stops test the safety rules; model repair failures are separate.' if recovery else 'Compare the working, unformatted and ineffective repairs. Every required check must pass.' if verification else 'Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') + '. A failure in the middle step is expected.'}</p></div></div>
+<div class="section-heading"><div><h2 id="results-title">{results_title}</h2>
+<p>{results_intro}</p></div></div>
 {records}
 {experiment_guide}
 </section>
@@ -970,8 +1003,8 @@ Receipt links open the evidence drawer. Select the result, task, events, patches
 Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
-<ol class="review-links"><li><a href="#results">{'Compare recovered and stopped runs' if recovery else 'Compare the examples' if verification else 'Compare good and wrong'}</a>Explain why their final steps differ.</li>
-{('<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>' if recovery else '<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define or verification else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
+<ol class="review-links"><li><a href="#results">{comparison_label}</a>Explain why their final steps differ.</li>
+{review_step}
 <li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
 <section id="takeaway"><h2>What to take away</h2>
 <div class="lesson"><p>{escape(takeaway)}</p></div>
