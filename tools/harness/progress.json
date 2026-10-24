@@ -4,7 +4,7 @@
   "source": "GitHub issue #106; Adam explicitly asked to start Recover in a new worktree on 24 October 2026",
   "stage": "Recover",
   "status": "awaiting-review",
-  "next": "Walk through one recovered repair and one conflict or failed example in recover.html with Adam. Record his answers to the four recovery questions and a reviewed decision. The implementation can be proposed for code review; #106 and the learning checkpoint stay open.",
+  "next": "Record Adam's reviewed decision after the four-question recovery discussion. PR #115 is open; keep #106 open and do not begin Compare automatically.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -66,7 +66,8 @@
     "Automatic final-check demonstration c3ce8647f5394495a7c4a33a4742b1a7 used the exact saved Luna patch with a simulated exhausted model allowance and real independent Podman checks. The runner requested the ordinary third tool itself, passed all eight checks in bf883e034a1e47cb9f466373c4125cb0 and published verified_repair_passed with matching receipts. Duration 279.1509 seconds, all twelve containers removed, zero actual model calls. Original exhausted receipts are unchanged. Separate review found no actionable bugs. Handoff: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385077805. This is prepared boundary evidence; no new live-model run was made. Learning review remains pending.",
     "Adam asked whether recovery was behaving as expected, which budgets applied and how to get a successful repair. The explanation distinguished safe recovery from model repair quality. The saved second Luna patch then passed separate verification; the automatic final-check extension now tests it without spending another model request. Adam asked for simpler explanations twice, so the Recover report must explain outcomes without requiring JSON or a separate chat explanation.",
     "After asking what remained, Adam said \u201ccool, let's go!\u201d to the report, learning walkthrough and publication plan. This authorises the readable Recover report, commit, push and PR. It does not supply answers to the learning questions or authorise issue closure or moving to Compare. The report now includes recovery sessions and their saved journals, labels live versus prepared examples, preserves refused resumes as historical evidence and links the shared glossary.",
-    "Readable Recover report now includes recovery receipts and journals, explains each deliberate stop/reconciliation/check result, distinguishes real model work from prepared limits and retains evidence in a portable sealed snapshot. The report review found malformed top-level state, linked check output and invalid saved model settings could mislead or block reporting. Structure and link guards plus per-session error handling address those findings; the follow-up review found no actionable bugs. All 200 Python tests (34 report tests) and root make test format-check passed. Browser checks at 1280px and 390px confirmed readable results, intact section links, journal selection and explanations for every new evidence file. Findings: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385345752. No new model call or uploaded telemetry. The first learning question is open in chat; no answer or approval has been inferred. The branch is being committed, pushed and proposed for review as authorised."
+    "Readable Recover report now includes recovery receipts and journals, explains each deliberate stop/reconciliation/check result, distinguishes real model work from prepared limits and retains evidence in a portable sealed snapshot. The report review found malformed top-level state, linked check output and invalid saved model settings could mislead or block reporting. Structure and link guards plus per-session error handling address those findings; the follow-up review found no actionable bugs. All 200 Python tests (34 report tests) and root make test format-check passed. Browser checks at 1280px and 390px confirmed readable results, intact section links, journal selection and explanations for every new evidence file. Findings: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385345752. No new model call or uploaded telemetry. The first learning question is open in chat; no answer or approval has been inferred. The branch is being committed, pushed and proposed for review as authorised.",
+    "All four Recover learning questions have been discussed with Adam and his answers retained verbatim with clarifications. The discussion covered duplicate/overwritten edits after lost replies, checking actual file bytes against saved fingerprints, preserving written changes on cancellation, and investigating incomplete evidence before deciding to resume or start fresh. Adam correctly identified changed criteria and exhausted constraints as reasons to reconsider resume. The learning checkpoint is discussed and awaiting his explicit reviewed decision. At code commit 6b6ff8e, all five GitHub checks passed and Codex reported no findings; branch approval remains a separate review requirement."
   ],
   "blockers": [],
   "questions": [
@@ -114,5 +115,37 @@
       "summary": "The exact saved Luna patch passed all eight checks after the runner requested verification at a simulated model-request limit. Zero model calls, three tools and twelve containers removed.",
       "evidence": "reports/harness/automatic-final-check-demonstration.json"
     }
+  },
+  "learning_review": {
+    "stage": "Recover",
+    "status": "discussed-awaiting-decision",
+    "responses": [
+      {
+        "question": "Why isn't replaying the last tool call always safe?",
+        "user_answer": "The ai could find alternative solutions potentially harmful",
+        "clarification": "Starting over with the model can produce a different unwanted change. The immediate replay risk is that the original edit already reached disk: repeating it can duplicate work or overwrite newer content. Compare actual file bytes with the recorded before/after hashes before deciding to replay.",
+        "reviewed_decision": null
+      },
+      {
+        "question": "When do we trust the journal, and when must we inspect disk?",
+        "user_answer": "The events and or result",
+        "clarification": "Events and results provide useful evidence, but may be incomplete after a crash or lost reply. Inspect the actual file bytes and compare their hash with the journalled before/after hashes: after means already applied, before permits retry, neither means conflict. Independent receipts still determine which checks completed.",
+        "reviewed_decision": null
+      },
+      {
+        "question": "What does cancellation promise, and what changes might already exist?",
+        "user_answer": "Verify changes against receipts, without evidence we record the run as failed and clean up",
+        "clarification": "Checking evidence is necessary. Cancellation stops future work and cleans up owned processes and containers while preserving saved edits, partial patches and logs. It does not undo edits already written. Missing or uncertain evidence means cancelled/incomplete, while repair_failed means completed checks showed the candidate did not work. Unconfirmed cleanup remains explicit.",
+        "reviewed_decision": null
+      },
+      {
+        "question": "When is starting a fresh run safer than resuming?",
+        "user_answer": "Criteria changed, risk of budget or constraint overflow. Incomplete is inconclusive and requires investigation rather than assuming resume is possible",
+        "clarification": "Changed requirements need a new task with explicit scope. Exhausted budgets remain exhausted; a new task must be a deliberate decision rather than an automatic reset. Incomplete evidence requires investigation before deciding whether safe resume or a fresh bounded task is appropriate.",
+        "reviewed_decision": null
+      }
+    ],
+    "discussion_complete": true,
+    "discussion_record": "https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385551537"
   }
 }
