@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 import time
 
-from pi_run import MAX_CALLS, load_live_config, pi_loop, prepare_checkout, repository_instructions, token_summary
+from pi_run import MAX_CALLS, ModelRequestLimit, load_live_config, pi_loop, prepare_checkout, repository_instructions, token_summary
 from recovery import FAULTS, Journal, RecoveryTools, durable_json, lock_session, process_identity, publication_lock, request_cancel, validate_entries
 from repair import RepairRun, repair_receipt_matches
 from run import REPORTS, Stop, now
@@ -65,8 +65,19 @@ def execute(run, journal, demo, fault=None):
     entry = journal.state["resumes"]
     archive_pi(run.path, entry - 1)
     try:
+        if config and len(journal.state["model_reservations"]) == config["maxModelRequests"]:
+            raise ModelRequestLimit("Persisted model-request budget reached")
         with tempfile.TemporaryDirectory(prefix="mapbox-pi-") as temporary:
             pi_loop(run, tools, Path(temporary), demo, config)
+    except ModelRequestLimit:
+        if not config or len(journal.state["model_reservations"]) != config["maxModelRequests"]:
+            raise
+        if tools.check_available():
+            journal.record("final_verification_requested", request=tools.calls + 1,
+                           origin="runner", reason="model_requests_exhausted")
+            tools.dispatch("harness_check", {"preset": "xml-leading-bom"})
+        if not tools.completed() or not tools.terminal:
+            raise
     finally:
         archive_pi(run.path, entry)
     tools.finish()

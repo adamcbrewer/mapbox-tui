@@ -9,7 +9,7 @@ import re
 import tempfile
 import time
 
-from pi_run import MAX_CALLS, validate_live_config
+from pi_run import MAX_CALLS, ModelRequestLimit, validate_live_config
 from repair import RepairTools, repair_receipt_matches
 from run import HERE, REPORTS, Stop, digest, now
 from verify import check_evaluator, receipt_matches, source_tree
@@ -278,7 +278,7 @@ class RecoveryTools(RepairTools):
                 type(message.get("request")) is not int or message["request"] != len(reservations) + 1):
             raise Stop("invalid_input", "Model reservation identity or sequence changed")
         if len(reservations) >= config["maxModelRequests"]:
-            raise Stop("budget_exhausted", "Persisted model-request budget reached")
+            raise ModelRequestLimit("Persisted model-request budget reached")
         reservation = {key: message[key] for key in ("request", "provider", "model")}
         reservations.append({**reservation, "at": now()})
         self.run.result["model_requests"] = len(reservations)

@@ -309,6 +309,7 @@ test("truncated tool calls and provider failures cannot execute or expose privat
     assert.equal(tools, 0);
     assert.ok(!JSON.stringify(execution.sent).includes("private-token"));
     assert.ok(!execution.sent.some(event => event.type === "finished"));
+    assert.equal(execution.requests.failure.limit, undefined);
   }
 });
 
@@ -424,6 +425,7 @@ test("fresh model context keeps the spent request budget instead of replaying th
   assert.deepEqual(numbers, [3]);
   assert.equal(execution.options.length, 1);
   assert.equal(execution.requests.failure.outcome, "budget_exhausted");
+  assert.equal(execution.requests.failure.limit, "model_requests");
 });
 
 test("SDK transport retries cannot dispatch a reserved model request twice", async () => {
@@ -436,6 +438,7 @@ test("SDK transport retries cannot dispatch a reserved model request twice", asy
     await execution.options[0].fetch("https://example.invalid");
     assert.throws(() => execution.options[0].fetch("https://example.invalid"), /retry refused/);
     assert.equal(dispatched, 1);
+    assert.equal(execution.requests.failure.limit, undefined);
   } finally {
     globalThis.fetch = fetch;
   }

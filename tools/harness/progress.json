@@ -4,7 +4,7 @@
   "source": "GitHub issue #106; Adam explicitly asked to start Recover in a new worktree on 24 October 2026",
   "stage": "Recover",
   "status": "active",
-  "next": "Review the saved-read recovery evidence and learning questions. A real interrupted edit recovered safely, but the bounded Luna task did not produce a verified repair. Keep #106 open; no further model run or budget reset is scheduled.",
+  "next": "Review the automatic final-verification slice and the pending learning questions. Keep #106 open; historical exhausted sessions retain their receipts. No extra model run or budget increase is scheduled.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -59,7 +59,11 @@
     "Adam asked to commit and continue after the bounded live failure. This authorises the live-budget commit, a saved-read reference that retains Python-owned full-hash checks, and another separately bounded live recovery demonstration with the existing model and limits. The earlier run remains stopped at its original ten-request cap; learning review remains pending.",
     "Committed the live-budget slice as 2621b28 after Adam asked to commit and continue. The next slice returns short saved-read IDs for live recovery edits; Python resolves each to its original full file hash and enforces the existing comparison. Unknown, stale and wrong-file references are refused. Completed read results survive restart; edit intents still retain normalized full-hash arguments. Before the new live demonstration, 182 Python tests (37 recovery), 22 Pi tests, one SDK integration and root make test format-check passed.",
     "Saved-read recovery review found no actionable bugs. Live Luna run 965afc49febf4987958f18bbedeaf039 reached the deliberate after-write stop after two model requests. Fresh context reconciled the applied edit without a second write and rebuilt a planted false success summary. Its first candidate failed the independent import check. A third and final recovery entry retained the six spent requests, refused reuse of an operation ID with changed arguments, then applied a second edit on the tenth request. The task stopped budget_exhausted before checking that edit: nine tool calls, two edit intents, one failed verification, three recovery entries and seven containers removed. Complete usage: 50,203 input tokens (8,064 cached), 714 output, 50,917 total; 187.5736 seconds wall time. No successful receipt is accepted. This demonstrates actual applied-edit recovery and stale-summary resistance, not a correct model repair. Earlier failure evidence remains unchanged; learning review stays pending.",
-    "Saved-read recovery findings and four learning questions are posted at https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6384769033. Adam asked to commit and continue; the tested saved-read slice is being committed locally. Nothing is pushed, #106 stays open and the learning checkpoint remains pending."
+    "Saved-read recovery findings and four learning questions are posted at https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6384769033. Adam asked to commit and continue; the tested saved-read slice is being committed locally. Nothing is pushed, #106 stays open and the learning checkpoint remains pending.",
+    "Separate independent verification of the saved final Luna patch passed all eight required checks in run 785011ceaa084becb5253f3cdcea64de, taking 204.9462 seconds with nine containers removed and zero model calls. The original exhausted recovery receipt is byte-for-byte unchanged. Findings: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6384913408. A passing saved patch and a completed automatic recovery session remain separate claims.",
+    "After the plain-language explanation, Adam asked to commit and continue. The existing code was already committed as e37f630; this authorises automatically checking a final saved edit when model requests run out, within the remaining tool calls and original deadline. It does not reset old sessions, raise budgets or mark the learning checkpoint accepted.",
+    "The runner now distinguishes actual model-request exhaustion from transport, output and tool failures. At the saved model limit, it can request one ordinary journaled harness_check for a pending edit and complete from exact independent receipts without a final model explanation. Cancellation, deadline, tool allowance, file reconciliation and unfinished-check stops retain their existing gates. 192 Python tests (45 recovery), 22 Pi tests, one SDK integration and root make test format-check passed before the real-check demonstration.",
+    "Automatic final-check demonstration c3ce8647f5394495a7c4a33a4742b1a7 used the exact saved Luna patch with a simulated exhausted model allowance and real independent Podman checks. The runner requested the ordinary third tool itself, passed all eight checks in bf883e034a1e47cb9f466373c4125cb0 and published verified_repair_passed with matching receipts. Duration 279.1509 seconds, all twelve containers removed, zero actual model calls. Original exhausted receipts are unchanged. Separate review found no actionable bugs. Handoff: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385077805. This is prepared boundary evidence; no new live-model run was made. Learning review remains pending."
   ],
   "blockers": [],
   "questions": [
@@ -96,9 +100,16 @@
     "965afc49febf4987958f18bbedeaf039": {
       "kind": "live-recovery-budget-stop",
       "title": "Live recovery: interrupted edit recovered",
-      "label": "Final edit unverified",
-      "summary": "A real Luna write survived interruption without duplicate application. A false success summary was rebuilt. The first candidate failed checks; the second edit used the last request and remains unverified. Ten requests across three entries, seven containers removed.",
-      "evidence": "reports/harness/read-reference-live-demonstration.json"
+      "label": "Final patch passed separate verification",
+      "summary": "The recovery task exhausted its ten requests with an unchecked second edit. Separate verification 785011ceaa084becb5253f3cdcea64de later passed all eight required checks for that exact patch, with zero new model calls and nine containers removed. The original budget_exhausted receipt is unchanged.",
+      "evidence": "reports/harness/read-reference-live-demonstration.json; reports/harness/luna-final-patch-verification.json"
+    },
+    "c3ce8647f5394495a7c4a33a4742b1a7": {
+      "kind": "prepared-final-verification",
+      "title": "Recovery: runner verifies the last edit",
+      "label": "Prepared limit; real checks passed",
+      "summary": "The exact saved Luna patch passed all eight checks after the runner requested verification at a simulated model-request limit. Zero model calls, three tools and twelve containers removed.",
+      "evidence": "reports/harness/automatic-final-check-demonstration.json"
     }
   }
 }

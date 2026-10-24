@@ -163,6 +163,14 @@ A new reservation is spent even when dispatch or usage couldn't be observed.
 The final token summary distinguishes reserved requests, observed dispatches and
 missing usage, rather than assuming that an interrupted request was free.
 
+When the model-request limit is reached with a saved edit awaiting verification,
+the runner requests the fixed independent check itself. This uses one remaining
+tool call and the original deadline; it makes no further model request. A passing
+receipt can complete the task without a final model explanation. A failed check
+still stops, and cancellation, expired time, exhausted tools, conflicting files
+or interrupted verification cannot be bypassed. Other model/transport errors do
+not trigger this path. The journal records the runner's check request separately.
+
 Live and prepared run records share the recovery evidence directory. Look for
 `candidate_source: AI`, the saved model identity, `model_reservations` and the
 per-entry context and logs. The same cancellation, conflict, incomplete-check

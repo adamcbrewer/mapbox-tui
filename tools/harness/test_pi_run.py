@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import pi_run
-from pi_run import MAX_CALLS, Tools, pi_loop
+from pi_run import MAX_CALLS, ModelRequestLimit, Tools, pi_loop
 from report import render_run
 from run import HERE, Run, Stop, digest
 
@@ -118,6 +118,32 @@ class PiToolTests(unittest.TestCase):
         pid = int((self.root / "pid").read_text())
         with self.assertRaises(ProcessLookupError):
             os.kill(pid, 0)
+
+    def test_protocol_distinguishes_model_request_limit_from_other_failures(self):
+        for limit in (None, "model_requests"):
+            message = {"type": "failed", "outcome": "budget_exhausted", "reason": "Expected stop", "limit": limit}
+            with self.fake_node():
+                (self.root / "node").write_text(f"#!{sys.executable}\nimport json,sys\n"
+                                               f"sys.stdin.readline()\nprint({json.dumps(message)!r}, flush=True)\n")
+                with self.assertRaises(Stop) as error:
+                    pi_loop(self.run, self.tools, self.root, "good")
+            self.assertEqual(isinstance(error.exception, ModelRequestLimit), limit == "model_requests")
+
+    def test_completed_protocol_cannot_hide_pending_verification_or_mismatched_tool_counts(self):
+        self.tools.dispatch("harness_edit", self.edit)
+        self.run.repo_instructions = [{"file": "AGENTS.md", "text": "Approved guidance"}]
+        self.run.result["model_requests"] = 1
+        auth = self.root / ".pi/agent"
+        auth.mkdir(parents=True)
+        (auth / "auth.json").write_text("{}")
+        for count in (0, 1):
+            message = {"type": "finished", "toolResults": count, "messages": []}
+            with self.fake_node(), patch("pi_run.Path.home", return_value=self.root):
+                (self.root / "node").write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.readline()\n"
+                                               f"print({json.dumps(message)!r}, flush=True)\n")
+                with self.assertRaises(Stop) as error:
+                    pi_loop(self.run, self.tools, self.root, None, {"maxModelRequests": 1})
+            self.assertEqual(isinstance(error.exception, ModelRequestLimit), count == 0)
 
     def test_timeout_removes_waiting_pi_process(self):
         self.run.deadline = time.monotonic() + 0.3

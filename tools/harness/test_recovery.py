@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from recover import archive_pi, execute, finalize, main, restore_run
 from recovery import Journal, RecoveryTools, durable_json, lock_session, request_cancel
+from pi_run import MAX_CALLS, ModelRequestLimit
 from repair import repair_receipt_matches
 from run import Stop
 from test_repair import RepairFixture
@@ -177,6 +178,118 @@ class RecoveryTests(RepairFixture, unittest.TestCase):
     def model_message(self, request):
         return {"type": "model_reserve", "id": f"model-{request}", "request": request,
                 "provider": "openai", "model": "test-model"}
+
+    def exhaust_model(self, count=2):
+        self.enable_live(limit=1)
+        for call in self.tools.prepared_calls("retry")[:count]:
+            self.tools.dispatch(call["name"], call["args"])
+        self.tools.reserve_model(self.model_message(1))
+
+    def test_final_edit_is_verified_at_the_model_limit_without_another_pi_entry(self):
+        self.exhaust_model(count=5)
+        with patch("recover.preflight"), patch("recover.pi_loop") as loop:
+            execute(self.run, self.journal, "retry")
+        loop.assert_not_called()
+        self.assertEqual(self.run.result["outcome"], "verified_repair_passed")
+        self.assertEqual(len(self.journal.state["requests"]), 6)
+        self.assertEqual(len(self.journal.state["model_reservations"]), 1)
+        self.assertTrue(repair_receipt_matches(self.run.result, self.run.path, self.root))
+        finalize(self.run, self.journal)
+        self.resume()
+        with patch("recover.pi_loop") as loop:
+            execute(self.run, self.journal, "retry")
+        loop.assert_not_called()
+        self.assertEqual(len(self.journal.state["requests"]), 6)
+
+    def test_final_verification_after_a_live_limit_uses_the_normal_journaled_tool(self):
+        self.enable_live(limit=1)
+
+        def stop_at_limit(run, tools, *args):
+            for call in tools.prepared_calls("retry")[:5]:
+                tools.dispatch(call["name"], call["args"])
+            tools.reserve_model(self.model_message(1))
+            raise ModelRequestLimit("Expected model-request limit")
+
+        with patch("recover.preflight"), patch("recover.pi_loop", side_effect=stop_at_limit):
+            execute(self.run, self.journal, "retry")
+        self.assertEqual(self.run.result["outcome"], "verified_repair_passed")
+        record = next(r for r in self.journal.state["records"] if r["kind"] == "final_verification_requested")
+        self.assertEqual(record["origin"], "runner")
+        self.assertEqual(record["request"], 6)
+        self.assertEqual(self.journal.state["requests"][-1]["name"], "harness_check")
+
+    def test_failed_final_verification_keeps_the_model_limit_and_no_success(self):
+        self.exhaust_model()
+        with patch("recover.preflight"), self.assertRaises(ModelRequestLimit):
+            execute(self.run, self.journal, "retry")
+        self.assertEqual(self.run.result["attempts"][0]["outcome"], "repair_failed")
+        self.assertFalse(repair_receipt_matches(self.run.result, self.run.path, self.root))
+        self.assertEqual(len(self.journal.state["requests"]), 3)
+
+    def test_final_verification_cannot_exceed_the_tool_limit(self):
+        self.exhaust_model()
+        while self.tools.calls < MAX_CALLS:
+            self.tools.dispatch("harness_read", {"file": "go/import.go"})
+        with patch("recover.preflight"), self.assertRaises(Stop) as error:
+            execute(self.run, self.journal, "retry")
+        self.assertEqual(error.exception.outcome, "budget_exhausted")
+        self.assertEqual(len(self.journal.state["requests"]), MAX_CALLS)
+        self.assertEqual(self.run.result["attempts"], [])
+
+    def test_model_limit_without_an_edit_does_not_start_verification(self):
+        self.exhaust_model(count=0)
+        with patch("recover.preflight"), self.assertRaises(ModelRequestLimit):
+            execute(self.run, self.journal, "retry")
+        self.assertEqual(self.journal.state["requests"], [])
+        self.assertEqual(self.run.result["attempts"], [])
+
+    def test_unrelated_model_failure_at_the_limit_cannot_start_verification(self):
+        self.enable_live(limit=1)
+
+        def fail(run, tools, *args):
+            for call in tools.prepared_calls("retry")[:2]:
+                tools.dispatch(call["name"], call["args"])
+            tools.reserve_model(self.model_message(1))
+            raise Stop("budget_exhausted", "Transport retry refused")
+
+        with patch("recover.preflight"), patch("recover.pi_loop", side_effect=fail), self.assertRaises(Stop):
+            execute(self.run, self.journal, "retry")
+        self.assertEqual(self.run.result["attempts"], [])
+
+    def test_final_verification_honours_cancellation_deadline_and_conflicts(self):
+        self.enable_live(limit=1)
+        for call in self.tools.prepared_calls("retry")[:2]:
+            self.tools.dispatch(call["name"], call["args"])
+        for outcome in ("cancelled", "timeout", "conflict"):
+            with self.subTest(outcome=outcome):
+                def stop(run, tools, *args):
+                    tools.reserve_model(self.model_message(1))
+                    if outcome == "cancelled":
+                        request_cancel(run.path)
+                    elif outcome == "timeout":
+                        run.deadline = time.monotonic() - 1
+                    else:
+                        (self.checkout / "go/import.go").write_text("Human change\n")
+                    raise ModelRequestLimit("Expected model-request limit")
+
+                with patch("recover.preflight"), patch("recover.pi_loop", side_effect=stop), self.assertRaises(Stop) as error:
+                    execute(self.run, self.journal, "retry")
+                self.assertEqual(error.exception.outcome, outcome)
+                self.assertEqual(self.run.result["attempts"], [])
+                (self.run.path / "cancel.json").unlink(missing_ok=True)
+                self.run.deadline = time.monotonic() + 600
+                self.journal.state["model_reservations"] = []
+                self.run.result["model_requests"] = 0
+
+    def test_interrupted_final_verification_cannot_be_replayed_on_resume(self):
+        self.exhaust_model(count=5)
+        with patch("recover.preflight"), self.assertRaises(Stop) as error:
+            execute(self.run, self.journal, "retry", fault="during-verification")
+        self.assertEqual(error.exception.outcome, "incomplete")
+        self.journal.fault = None
+        with self.assertRaises(Stop) as error:
+            self.resume()
+        self.assertEqual(error.exception.outcome, "incomplete")
 
     def test_model_request_is_durable_before_approval_and_survives_a_lost_reply(self):
         self.enable_live()

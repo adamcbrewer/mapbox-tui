@@ -35,7 +35,7 @@ try {
 } catch (error) {
   const { SetupError, setupErrorMessage } = await import("./setup.mjs");
   emit({ type: "failed", outcome: error instanceof SetupError && error.outcome ? error.outcome : "blocked",
-    reason: setupErrorMessage(error) });
+    reason: setupErrorMessage(error), ...(error.limit === "model_requests" ? { limit: error.limit } : {}) });
   process.stderr.write("Pi stopped. See the safe failure outcome in events.jsonl.\n");
   process.exitCode = 1;
 } finally {

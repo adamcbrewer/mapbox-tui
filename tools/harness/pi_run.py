@@ -20,6 +20,11 @@ LIMIT = 16384
 MAX_CALLS = 12
 
 
+class ModelRequestLimit(Stop):
+    def __init__(self, reason):
+        super().__init__("budget_exhausted", reason)
+
+
 def repository_instructions(task, checkout):
     expected = task.get("instructions_sha256", {})
     path = checkout / "AGENTS.md"
@@ -318,6 +323,8 @@ def pi_loop(run, tools, temporary, demo, config=None):
                         elif message_type == "session":
                             write_json(run.path / "pi-session.json", message)
                         elif message_type == "failed":
+                            if message.get("outcome") == "budget_exhausted" and message.get("limit") == "model_requests":
+                                raise ModelRequestLimit(message.get("reason", "Model-request budget reached"))
                             raise Stop(message.get("outcome", "blocked"), message.get("reason", "Pi stopped"))
                         elif message_type == "tool":
                             if not isinstance(message.get("id"), str):
@@ -334,6 +341,9 @@ def pi_loop(run, tools, temporary, demo, config=None):
                             if process.wait(timeout=max(0.1, run.deadline - time.monotonic())) != 0:
                                 raise Stop("blocked", "Pi reported a failed exit")
                             expected = tools.calls - initial_calls if config else len(payload["calls"])
+                            if (message.get("toolResults") == expected and config and
+                                    run.result["model_requests"] == config["maxModelRequests"] and tools.check_available()):
+                                raise ModelRequestLimit("Model-request budget reached with a saved edit awaiting verification")
                             if not tools.checked or message.get("toolResults") != expected or (config and not tools.completed()):
                                 raise Stop("incomplete", "Pi did not finish the required tool sequence")
                             return

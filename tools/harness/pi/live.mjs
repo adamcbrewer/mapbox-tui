@@ -38,7 +38,8 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
           throw stopped("blocked", "The model identity changed during the run");
         }
         if (requests.count >= config.maxModelRequests) {
-          throw stopped("budget_exhausted", "Model-request budget reached; no further request was sent");
+          throw Object.assign(stopped("budget_exhausted", "Model-request budget reached; no further request was sent"),
+            { limit: "model_requests" });
         }
         checkSubscription();
         const controller = new AbortController();
