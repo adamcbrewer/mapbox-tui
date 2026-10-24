@@ -3,8 +3,8 @@
   "updated_at": "2026-10-24",
   "source": "GitHub issue #106; Adam explicitly asked to start Recover in a new worktree on 24 October 2026",
   "stage": "Recover",
-  "status": "awaiting-review",
-  "next": "Review the bounded live result: the resumed session preserved seven spent requests and stopped at ten total. Luna mistyped file fingerprints twice, so no edit or check ran and the planned after-write interruption was not reached. Next proposed slice: let the model reference a short saved read ID while Python retains and checks the full file hash, then run a separately bounded live recovery example. Learning questions and stage acceptance remain open.",
+  "status": "active",
+  "next": "Review the saved-read recovery evidence and learning questions. A real interrupted edit recovered safely, but the bounded Luna task did not produce a verified repair. Keep #106 open; no further model run or budget reset is scheduled.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -56,11 +56,12 @@
     "Live recovery now reserves each numbered model request durably before Node can dispatch it. An uncertain request stays spent across fresh contexts. Saved model identity, twelve tools, two repairs and the original deadline are retained. The review found malformed provider-usage records could break finalization; restoration now refuses them and finalization records incomplete evidence instead of crashing. Before the bounded live demonstration, 176 Python tests (31 recovery), 21 Pi tests, one SDK integration and root make test format-check passed.",
     "Bounded Luna subscription run 250b7c99934f407fa025ca9d485b6c9f used seven requests in its first context and the remaining three after fresh-context resume, then stopped as budget_exhausted. Both proposed edits supplied mistyped SHA-256 values and were refused. Disk had not changed; the initial description of an out-of-date hash was corrected after inspecting the receipts. Eight tool calls, zero edit intents, zero verification attempts and all three containers removed. Complete usage: 68,105 input tokens (8,064 cached), 907 output, 69,012 total, zero reported reasoning tokens. Wall time across both entries was 234.5568 seconds including the pause. The planned after-write fault was never reached. This demonstrates durable live budgets and fail-safe edit refusal, not successful live repair or applied-edit recovery. Another live run was not started after the configured limit.",
     "Live recovery implementation and its deliberately bounded failure are documented at https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6384588837. The recommended next change is a saved-read reference while retaining Python-owned full-hash checks. New implementation remains uncommitted; no extra live run or budget increase was made.",
-    "Adam asked to commit and continue after the bounded live failure. This authorises the live-budget commit, a saved-read reference that retains Python-owned full-hash checks, and another separately bounded live recovery demonstration with the existing model and limits. The earlier run remains stopped at its original ten-request cap; learning review remains pending."
+    "Adam asked to commit and continue after the bounded live failure. This authorises the live-budget commit, a saved-read reference that retains Python-owned full-hash checks, and another separately bounded live recovery demonstration with the existing model and limits. The earlier run remains stopped at its original ten-request cap; learning review remains pending.",
+    "Committed the live-budget slice as 2621b28 after Adam asked to commit and continue. The next slice returns short saved-read IDs for live recovery edits; Python resolves each to its original full file hash and enforces the existing comparison. Unknown, stale and wrong-file references are refused. Completed read results survive restart; edit intents still retain normalized full-hash arguments. Before the new live demonstration, 182 Python tests (37 recovery), 22 Pi tests, one SDK integration and root make test format-check passed.",
+    "Saved-read recovery review found no actionable bugs. Live Luna run 965afc49febf4987958f18bbedeaf039 reached the deliberate after-write stop after two model requests. Fresh context reconciled the applied edit without a second write and rebuilt a planted false success summary. Its first candidate failed the independent import check. A third and final recovery entry retained the six spent requests, refused reuse of an operation ID with changed arguments, then applied a second edit on the tenth request. The task stopped budget_exhausted before checking that edit: nine tool calls, two edit intents, one failed verification, three recovery entries and seven containers removed. Complete usage: 50,203 input tokens (8,064 cached), 714 output, 50,917 total; 187.5736 seconds wall time. No successful receipt is accepted. This demonstrates actual applied-edit recovery and stale-summary resistance, not a correct model repair. Earlier failure evidence remains unchanged; learning review stays pending.",
+    "Saved-read recovery findings and four learning questions are posted at https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6384769033. Adam asked to commit and continue; the tested saved-read slice is being committed locally. Nothing is pushed, #106 stays open and the learning checkpoint remains pending."
   ],
-  "blockers": [
-    "The real model did not produce a valid edit request before the shared ten-request limit. Recovery after an applied live edit remains unproven; no additional live run was launched."
-  ],
+  "blockers": [],
   "questions": [
     "Why isn't replaying the last tool call always safe?",
     "When do we trust the journal, and when must we inspect disk?",
@@ -91,6 +92,13 @@
       "label": "No repair applied",
       "summary": "Luna mistyped two file fingerprints. Both edits were refused. Fresh context kept the seven requests already spent and stopped after three more. No candidate check ran; all three containers were removed. Recovery after a real applied edit remains unproven.",
       "evidence": "reports/harness/live-recovery-demonstration.json"
+    },
+    "965afc49febf4987958f18bbedeaf039": {
+      "kind": "live-recovery-budget-stop",
+      "title": "Live recovery: interrupted edit recovered",
+      "label": "Final edit unverified",
+      "summary": "A real Luna write survived interruption without duplicate application. A false success summary was rebuilt. The first candidate failed checks; the second edit used the last request and remains unverified. Ten requests across three entries, seven containers removed.",
+      "evidence": "reports/harness/read-reference-live-demonstration.json"
     }
   }
 }

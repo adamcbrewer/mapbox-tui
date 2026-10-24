@@ -69,6 +69,13 @@ def validate_entries(state, task):
                 request["status"] == "started" and number != len(state["requests"]) - 1 or
                 request["status"] == "completed" and not isinstance(request.get("result"), dict)):
             raise ValueError("Malformed tool request")
+        result = request.get("result", {})
+        if "read_id" in result:
+            expected_id = f"r{state['run_id'][:8]}-{number + 1}"
+            if (request["name"] not in ("harness_read", "harness_search") or result.get("outcome") != "ok" or
+                    result["read_id"] != expected_id or result.get("file") != request["args"].get("file") or
+                    not fingerprint(result.get("sha256"))):
+                raise ValueError("Malformed saved read reference")
     if (state.get("live_config") != state["result"].get("live_config") or
             state["result"].get("candidate_source") == "AI" and state.get("live_config") is None):
         raise ValueError("Saved execution mode changed or is incomplete")
@@ -231,6 +238,9 @@ class RecoveryTools(RepairTools):
         self.journal = journal
         self.seeded = journal.state["seeded"]
         self.calls = len(journal.state["requests"])
+        self.reads = {request["result"]["read_id"]: request["result"] for request in journal.state["requests"]
+                      if request.get("status") == "completed" and request.get("name") in ("harness_read", "harness_search")
+                      and "read_id" in request.get("result", {})}
         self.edits = sum(item["status"] == "completed" for item in journal.state["operations"].values())
         self.checked = bool(self.attempts) and self.edits == len(self.attempts)
         self.terminal = bool(self.attempts) and (self.attempts[-1]["outcome"] != "repair_failed" or len(self.attempts) == 2)
@@ -242,12 +252,23 @@ class RecoveryTools(RepairTools):
     def refresh_context(self):
         completed = [request for request in self.journal.state["requests"] if request["status"] == "completed"]
         self.start_context["recovery"] = {**self.journal.handoff(), "used_tool_calls": self.calls,
-                                         "applied_edits": self.edits,
+                                         "applied_edits": self.edits, "read_references": True,
                                          "last_tool_result": completed[-1] if completed else None,
                                          "next_required_tool": "harness_check" if self.check_available() else
                                          "harness_read" if self.edit_available() else "finish"}
         if self.journal.state.get("live_config") is not None:
             self.start_context["modelRequestsUsed"] = len(self.journal.state["model_reservations"])
+
+    def edit_arguments(self, args):
+        if set(args) != {"file", "operation_id", "read_id", "old", "new"}:
+            return args
+        identity = args["read_id"]
+        if not isinstance(identity, str) or identity not in self.reads:
+            raise ValueError("Unknown read_id; read the file before editing")
+        saved = self.reads[identity]
+        if saved["file"] != args["file"]:
+            raise ValueError("read_id belongs to a different file")
+        return {key: value for key, value in args.items() if key != "read_id"} | {"expected_sha256": saved["sha256"]}
 
     def reserve_model(self, message):
         self.journal.checkpoint("model-request")
@@ -330,7 +351,13 @@ class RecoveryTools(RepairTools):
         self.journal.record("tool_started", tool=name, request=self.calls + 1)
         try:
             result = super().dispatch(name, args)
+            if name in ("harness_read", "harness_search") and result["outcome"] == "ok":
+                identity = f"r{self.run.path.name[:8]}-{self.calls}"
+                result["read_id"] = identity
+                self.reads[identity] = result.copy()
             request.update(status="completed", result=result)
+            if "read_id" in result:
+                self.journal.record("read_observed", read_id=result["read_id"], file=result["file"], sha256=result["sha256"])
             return result
         finally:
             self.journal.save()
@@ -344,11 +371,12 @@ class RecoveryTools(RepairTools):
             raise Stop("incomplete", "Interrupted check/read requires deliberate reconstruction; no blind replay")
         result = {"operation_id": request["args"]["operation_id"], "file": request["args"]["file"],
                   "outcome": "rejected", "explanation": "Pending edit", "evidence": "journal.json"}
-        path = self.path(request["args"]["file"], writable=True)
-        item = self.journal.state["operations"].get(request["args"]["operation_id"])
+        args = self.edit_arguments(request["args"])
+        path = self.path(args["file"], writable=True)
+        item = self.journal.state["operations"].get(args["operation_id"])
         if item is None:
             raise Stop("incomplete", "No durable intent exists for the pending call; inspect before reconstruction")
-        result = self.edit(request["args"], path, result)
+        result = self.edit(args, path, result)
         request.update(status="completed", result=result)
         self.journal.record("pending_call_recovered", result=result)
 

@@ -110,6 +110,9 @@ class Tools:
             raise ValueError("File must be a plain file inside the disposable copy")
         return path
 
+    def edit_arguments(self, args):
+        return args
+
     def write_edit(self, args, path, before, after):
         path.write_bytes(after)
 
@@ -177,6 +180,7 @@ class Tools:
                     result.update(matches=matches[:20], truncated=len(matches) > 20)
                 result.update(outcome="ok", explanation="Read from the disposable copy")
             elif name == "harness_edit":
+                args = self.edit_arguments(args)
                 if set(args) != {"file", "operation_id", "expected_sha256", "old", "new"}:
                     raise ValueError("Unexpected or missing edit arguments")
                 operation = args["operation_id"]

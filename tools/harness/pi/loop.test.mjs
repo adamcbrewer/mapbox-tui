@@ -455,3 +455,29 @@ test("a reservation reply arriving after timeout cannot start provider work", as
   assert.equal(execution.options.length, 0);
   assert.equal(execution.requests.failure.outcome, "timeout");
 });
+
+
+test("live recovery exposes saved read IDs instead of requiring copied hashes", async () => {
+  const readId = "r12345678-1";
+  const execution = await preparedLive([
+    toolReply("harness_read", { file: "go/import.go" }),
+    toolReply("harness_edit", { file: "go/import.go", operation_id: "repair-1", read_id: readId, old: "one", new: "two" }),
+    toolReply("harness_check", { preset: "xml-leading-bom" }),
+    { content: [{ type: "text", text: "The recorded check passed." }], stopReason: "stop" },
+  ]);
+  const calls = [];
+  await runToolLoop({ task: { id: "saved-read" }, maxToolCalls: 12,
+    verification: { maxAttempts: 2, scope: "frozen-evaluator-v1" }, recovery: { read_references: true } },
+  async request => {
+    calls.push(request);
+    return { outcome: request.name === "harness_check" ? "passed" : "ok", explanation: "Observed result",
+      evidence: "journal.json", file: "go/import.go", operation_id: null, read_id: readId };
+  }, execution.emit, execution);
+  const context = execution.sent.find(event => event.type === "context");
+  const edit = context.tools.find(tool => tool.name === "harness_edit");
+  assert.ok(edit.parameters.required.includes("read_id"));
+  assert.equal(edit.parameters.properties.expected_sha256, undefined);
+  assert.match(context.systemPrompt, /Do not copy or compute SHA-256/);
+  assert.equal(calls[1].args.read_id, readId);
+  assert.equal(calls.length, 3);
+});

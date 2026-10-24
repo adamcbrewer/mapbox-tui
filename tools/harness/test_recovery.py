@@ -263,6 +263,76 @@ class RecoveryTests(RepairFixture, unittest.TestCase):
         self.assertEqual(self.run.result["outcome"], "incomplete")
         self.assertFalse(self.run.result["token_summary"]["complete"])
 
+    def read_edit(self, file="go/import.go"):
+        args = self.tools.prepared_calls("retry")[1]["args"]
+        observed = self.tools.dispatch("harness_read", {"file": file})
+        return observed, {key: value for key, value in args.items() if key != "expected_sha256"} | {"read_id": observed["read_id"]}
+
+    def test_read_reference_keeps_the_full_hash_and_replays_without_duplicate_edit(self):
+        observed, args = self.read_edit()
+        result = self.tools.dispatch("harness_edit", args)
+        self.assertEqual(result["outcome"], "ok")
+        intent = self.journal.state["operations"][args["operation_id"]]
+        self.assertEqual(intent["args"]["expected_sha256"], observed["sha256"])
+        self.assertEqual(self.journal.state["requests"][-1]["args"]["read_id"], observed["read_id"])
+        self.assertTrue(self.tools.dispatch("harness_edit", args)["replayed"])
+        self.assertEqual(self.tools.edits, 1)
+
+    def test_unknown_wrong_file_and_ambiguous_read_references_cannot_write(self):
+        observed, args = self.read_edit("go/import_test.go")
+        before = (self.checkout / "go/import.go").read_bytes()
+        invalid = (args, {**args, "read_id": "unknown"}, {**args, "read_id": []},
+                   {**args, "expected_sha256": observed["sha256"]})
+        for value in invalid:
+            self.assertEqual(self.tools.dispatch("harness_edit", value)["outcome"], "rejected")
+        self.assertEqual((self.checkout / "go/import.go").read_bytes(), before)
+        self.assertFalse(self.journal.state["operations"])
+
+    def test_old_read_reference_does_not_upgrade_to_the_current_file_hash(self):
+        _observed, args = self.read_edit()
+        self.tools.dispatch("harness_edit", args)
+        failed = self.tools.dispatch("harness_check", {"preset": "xml-leading-bom"})
+        self.assertEqual(failed["outcome"], "repair_failed")
+        before = (self.checkout / "go/import.go").read_bytes()
+        result = self.tools.dispatch("harness_edit", {**args, "operation_id": "second", "old": '"fit"', "new": '"FIT"'})
+        self.assertEqual(result["outcome"], "rejected")
+        self.assertIn("File changed", result["explanation"])
+        self.assertEqual((self.checkout / "go/import.go").read_bytes(), before)
+
+    def test_pending_read_reference_survives_lost_reply_and_fresh_context(self):
+        observed, args = self.read_edit()
+        self.journal.fault = "after-write"
+        with self.assertRaises(Stop) as error:
+            self.tools.dispatch("harness_edit", args)
+        self.assertEqual(error.exception.outcome, "incomplete")
+        self.journal.fault = None
+        with patch.object(RecoveryTools, "write_edit", side_effect=AssertionError("duplicate write")):
+            self.resume()
+        self.assertIn(observed["read_id"], self.tools.reads)
+        self.assertTrue(self.journal.state["requests"][-1]["result"]["replayed"])
+        self.finish_calls()
+        self.assertEqual(self.run.result["outcome"], "verified_repair_passed")
+
+    def test_human_change_after_saved_read_is_preserved(self):
+        _observed, args = self.read_edit()
+        path = self.checkout / "go/import.go"
+        path.write_text("Human change\n")
+        with self.assertRaises(Stop) as error:
+            self.tools.dispatch("harness_edit", args)
+        self.assertEqual(error.exception.outcome, "conflict")
+        self.assertEqual(path.read_text(), "Human change\n")
+
+    def test_malformed_saved_read_id_or_hash_requires_reconstruction(self):
+        self.read_edit()
+        saved = copy.deepcopy(self.journal.state)
+        for field, value in (("read_id", "other-session"), ("sha256", "bad-hash"), ("file", "go/other.go")):
+            state = copy.deepcopy(saved)
+            state["requests"][0]["result"][field] = value
+            durable_json(self.run.path / "journal.json", state)
+            with self.assertRaises(Stop) as error:
+                Journal(self.run)
+            self.assertEqual(error.exception.outcome, "incomplete")
+
     def test_intent_before_write_survives_a_fresh_runner(self):
         before = (self.checkout / "go/import.go").read_bytes()
         self.interrupt("before-edit")

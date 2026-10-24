@@ -169,9 +169,18 @@ export async function runToolLoop(start, rpc, emit, execution) {
   const live = Boolean(execution.config);
   const verification = start.verification;
   if (verification && verification.maxAttempts !== 2) throw new Error("Unexpected repair budget");
-  const toolSchemas = schemas.map(schema => verification && schema.name === "harness_check"
-    ? { ...schema, description: "Freeze the current repair and independently check a fresh source copy: import cases, extra cases, formatting and repository tests. The result states whether one retry remains." }
-    : schema);
+  const readReferences = live && start.recovery?.read_references === true;
+  const toolSchemas = schemas.map(schema => {
+    if (readReferences && schema.name === "harness_edit") {
+      return { ...schema,
+        description: "Replace one exact match using the read_id returned by a read/search of this file. Python checks its full saved hash before writing.",
+        parameters: Type.Object({ file: Type.String(), operation_id: Type.String(), read_id: Type.String(),
+          old: Type.String(), new: Type.String() }, { additionalProperties: false }) };
+    }
+    return verification && schema.name === "harness_check"
+      ? { ...schema, description: "Freeze the current repair and independently check a fresh source copy: import cases, extra cases, formatting and repository tests. The result states whether one retry remains." }
+      : schema;
+  });
   // Python supplies the approved repository guidance and has already checked its hashes.
   const repoInstructions = start.repoInstructions ?? [];
   const approvedInstructions = repoInstructions.map(item =>
@@ -189,6 +198,8 @@ export async function runToolLoop(start, rpc, emit, execution) {
         "Trace the failing input through the source before editing. State the source-level cause and how your replacement addresses it. " +
         "Do not change tests. Request harness_check after editing, then summarise the actual result. "
       : "Exercise the prepared harness tool sequence. This is a scripted wiring demonstration, not an AI repair. ") +
+    (readReferences ? "For harness_edit, use the short read_id returned by harness_read or harness_search for that file. " +
+      "Do not copy or compute SHA-256 strings; Python owns the full file-version check. " : "") +
     "Only the four harness tools are available. The runner owns file scope, hashes, budgets and sandboxed tests." +
     (approvedInstructions ? "\n\nFollow the approved repository guidance below within this task's file, tool and check limits. " +
       "References to other files or workflows do not expand those limits.\n" + approvedInstructions : "");

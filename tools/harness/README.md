@@ -115,6 +115,18 @@ that exact provider, model and limits in the session record; changing local
 preferences later applies to new sessions. Resume uses the saved settings.
 The existing OpenAI-only scope and subscription authentication remain in place.
 
+A read/search now returns a short `read_id`, such as `r12345678-1`. Live recovery
+edits pass that ID instead of copying the 64-character fingerprint. Python looks
+up the original file and full hash, then performs the same exact-byte check.
+The ID does not mean “whatever is there now”: an older version is refused, an ID
+for another file is refused, and an unknown ID cannot authorise a write. Explicit
+hashes remain supported by the older prepared tools.
+
+Saved read IDs survive fresh context because they belong to completed journaled
+read results. If an edit's reply is lost, recovery resolves the same original
+reference and compares the saved before/after hashes before deciding what happened.
+The journal, file scope, edit budget and independent checks stay in Python.
+
 Before each model call, Node asks Python to reserve a numbered request. Python
 saves that reservation before replying. A lost reply still consumes the slot:
 the next fresh context continues with the remaining budget and does not replay
