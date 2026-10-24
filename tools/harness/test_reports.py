@@ -8,6 +8,150 @@ from unittest.mock import Mock, patch
 
 import report
 from run import HERE
+from recover import finalize
+from recovery import Journal, RecoveryTools
+from test_repair import RepairFixture
+
+
+class RecoveryReportTests(RepairFixture, unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(patch("recovery.REPORTS", self.root))
+        self.enterContext(patch("recover.REPORTS", self.root))
+        destination = self.root / "recovery/runs" / self.run.path.name
+        destination.parent.mkdir(parents=True)
+        self.run.path.rename(destination)
+        self.run.path = destination
+        self.journal = Journal(self.run, self.checkout)
+        self.tools = RecoveryTools(self.run, self.journal)
+        self.progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Recover")
+
+    def complete(self):
+        for call in self.tools.prepared_calls("retry"):
+            self.tools.dispatch(call["name"], call["args"])
+        self.tools.finish()
+        finalize(self.run, self.journal)
+
+    def test_recovery_report_explains_pass_failed_attempt_and_model_scope(self):
+        self.complete()
+        page = report.render(self.root, self.progress)
+        self.assertIn("continue safely after interruption", page)
+        self.assertIn("Recovered repair passed all required checks", page)
+        self.assertIn("Repair 1: repair failed its required checks", page)
+        self.assertIn("Repair 2: passed every required check", page)
+        self.assertIn("No AI model ran", page)
+        self.assertIn("no multi-file rollback", page)
+        self.assertNotIn('href="#sandbox"', page)
+        self.assertIn("shared glossary and file guide #111", page)
+
+    def test_saved_recovery_journal_and_receipts_survive_moving_the_report(self):
+        self.complete()
+        reports = self.root / "saved"
+        report.save_stage(reports, self.progress, self.root, source_ref="a" * 40)
+        snapshot = reports / "snapshots/recover"
+        directory = snapshot / "recovery/runs" / self.run.path.name
+        self.assertEqual((directory / "journal.json").read_bytes(), (self.run.path / "journal.json").read_bytes())
+        shutil.rmtree(self.root / "recovery")
+        shutil.rmtree(self.root / "verification")
+        moved = self.root / "moved"
+        reports.rename(moved)
+        page = report.render_saved(moved, "recover").read_text()
+        self.assertIn("Recovered repair passed all required checks", page)
+        embedded = json.loads(report.embedded_evidence(moved / "snapshots/recover", moved))
+        entry = embedded[f"snapshots/recover/recovery/runs/{self.run.path.name}/result.json"]
+        self.assertIn('"operations"', entry["files"]["journal.json"]["text"])
+        self.assertIn('<option value="partial.patch">Observed partial patch</option>', page)
+
+    def test_misleading_handoff_and_changed_child_evidence_cannot_show_a_pass(self):
+        self.complete()
+        (self.run.path / "handoff.json").write_text('{"last_observed_check":"All checks passed"}')
+        item = self.run.result["attempts"][-1]
+        child = self.root / "verification/runs" / item["verification_run_id"]
+        (child / "candidate.stdout").write_text("Changed evidence")
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("Evidence needs inspection", row)
+        self.assertNotIn("Recovered repair passed", row)
+        self.assertNotIn("All checks passed", row)
+
+    def test_later_reconstruction_stop_and_malformed_journal_preserve_historical_context(self):
+        self.complete()
+        (self.run.path / "recovery-stop.json").write_text('{"outcome":"incomplete"}')
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("A later resume was refused", row)
+        self.assertNotIn("Recovered repair passed", row)
+        (self.run.path / "recovery-stop.json").unlink()
+        (self.run.path / "journal.json").write_text('{"operations":null}')
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("could not be reconciled", row)
+        self.assertNotIn("Recovered repair passed", row)
+        (self.run.path / "journal.json").unlink()
+        external = self.root / "external-journal.json"
+        external.write_text(json.dumps(self.journal.state))
+        (self.run.path / "journal.json").symlink_to(external)
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("could not be reconciled", row)
+        self.assertNotIn("Recovered repair passed", row)
+
+    def test_live_and_simulated_limits_have_different_explanations_and_escape_observations(self):
+        self.run.result.update(candidate_source="AI", provider="openai", model="test-model", model_requests_dispatched=2)
+        self.journal.record("interruption_injected", location="</script><img src=x>")
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("Live model: openai / test-model", row)
+        self.assertNotIn("<img src=x>", row)
+        self.run.result["demonstration"] = "simulated-model-limit-real-checks"
+        row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+        self.assertIn("model-request limit was simulated", row)
+        self.assertIn("No new AI model ran", row)
+
+    def test_malformed_top_level_journal_fields_cannot_receive_a_green_label(self):
+        self.complete()
+        saved = (self.run.path / "journal.json").read_text()
+        for field in ("requests", "records", "resumes", "implementation_sha256"):
+            with self.subTest(field=field):
+                state = json.loads(saved)
+                state[field] = [] if field == "implementation_sha256" else {}
+                (self.run.path / "journal.json").write_text(json.dumps(state))
+                row = report.render_recovery(self.run.path / "result.json", self.root, self.run.result)
+                self.assertIn("Evidence needs inspection", row)
+                self.assertNotIn("Recovered repair passed", row)
+
+    def test_linked_check_output_is_not_trusted_or_read_by_saved_reports(self):
+        self.complete()
+        child = self.root / "verification/runs" / self.run.result["attempts"][-1]["verification_run_id"]
+        output = child / "candidate.stdout"
+        external = self.root / "external.stdout"
+        external.write_bytes(output.read_bytes())
+        output.unlink()
+        output.symlink_to(external)
+        reports = self.root / "saved"
+        report.save_stage(reports, self.progress, self.root, source_ref="a" * 40)
+        read_bytes = Path.read_bytes
+
+        def guarded(path):
+            if path.name == "candidate.stdout" and path.is_symlink():
+                self.fail("Report followed linked check output")
+            return read_bytes(path)
+
+        with patch.object(Path, "read_bytes", guarded):
+            for remove in (False, True):
+                if remove:
+                    external.unlink()
+                page = report.render_saved(reports, "recover").read_text()
+                self.assertIn("Evidence needs inspection", page)
+                self.assertNotIn("Recovered repair passed all required checks", page)
+
+    def test_invalid_saved_model_settings_do_not_abort_report_publication(self):
+        self.complete()
+        config = {"provider": "openai", "model": "test-model", "auth": "subscription",
+                  "maxModelRequests": 0, "maxOutputTokensPerRequest": None}
+        self.run.result["live_config"] = config
+        self.journal.state["live_config"] = config
+        self.journal.save()
+        reports = self.root / "saved"
+        report.save_stage(reports, self.progress, self.root, source_ref="a" * 40)
+        page = report.render_saved(reports, "recover").read_text()
+        self.assertIn("Evidence needs inspection", page)
+        self.assertNotIn("Recovered repair passed all required checks", page)
 
 
 class StageReportTests(unittest.TestCase):

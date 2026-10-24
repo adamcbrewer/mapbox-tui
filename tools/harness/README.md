@@ -103,10 +103,16 @@ changed evidence, repeated cancellation and interrupted verification. Unit check
 use prepared test execution; the Podman demonstrations exercise actual checks.
 Passing checks do not imply human approval. The learning checkpoint stays pending.
 
-See the shared [glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111),
-also available under Reference in the existing `verify.html` report. Recovery
-receipts are separate from that report in this slice; use this guide and the
-printed evidence paths.
+Build the readable recovery report with `python3 tools/harness/report.py`, then
+open `reports/harness/recover.html`. It explains each stop, the observed recovery
+decision, the required checks and whether a model ran. Compare the recovered
+repair with the conflict example; deliberate stops are labelled separately from
+model repair failures. Session evidence opens a drawer with the journal, handoff,
+partial patch and per-session results. Saved report evidence survives moving the
+report folder; source working copies remain separate.
+
+Reference includes the shared [glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111).
+Passing checks and readable reports do not mark the learning checkpoint reviewed.
 
 ## Recover a subscription-model repair
 

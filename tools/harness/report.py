@@ -10,12 +10,13 @@ import stat
 import subprocess
 import tempfile
 
-from run import HERE, REPORTS, ROOT, digest, now, write_json
+from run import HERE, REPORTS, ROOT, Stop, digest, now, write_json
 
 STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
-EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt")
-RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs", "repair/runs")
+EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt",
+                  "journal.json", "handoff.json", "partial.patch", "recovery-stop.json", "first-entry-result.json", "second-entry-result.json")
+RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs", "repair/runs", "recovery/runs")
 
 
 def escape(value):
@@ -67,6 +68,10 @@ OUTCOMES = {
     "budget_exhausted": "A tool or model limit was reached. This does not count as a completed repair.",
 }
 GLOSSARY = {
+    "Journal": "A durable record of intended edits and observed results. Resume compares it with the actual files and check receipts before deciding what happened.",
+    "File hash": "A fingerprint of the file bytes. Matching before/after fingerprints help distinguish an unchanged file from an edit that already happened.",
+    "Operation ID": "A name for one intended edit. Repeating that ID with the same arguments can recover a lost reply; changing its arguments is refused.",
+    "Recovery handoff": "A short navigation summary rebuilt from trusted observations. It cannot grant permissions or prove that tests passed.",
     "Harness": "The software around the AI that controls the task, tools, checks and saved evidence.",
     "Model / agent / Pi": "The model is the AI. An agent uses a model and tools to attempt a task. Pi supplies that loop. Prepared responses can test its wiring without calling a model.",
     "Checker / verifier": "Code that runs required checks and records their results. It does not understand or approve the code like a person.",
@@ -88,6 +93,10 @@ GLOSSARY = {
     "Sandbox readiness": "Checking whether the container runtime reports the prerequisites we need. This does not prove that a container blocks access or enforces limits.",
 }
 FILE_GUIDE = {
+    "tools/harness/recover.py / recovery.py": "Retains a working copy and durable journal, reconciles interrupted edits, restores shared limits and creates fresh Pi context.",
+    "reports/harness/recovery/runs/<run-id>/": "Recovery receipts, partial patch, journal and handoff. Per-entry prompts and conversations are retained under pi-sessions/. These are local evidence, outside Pi's edit scope.",
+    "journal.json / handoff.json / partial.patch": "The recorded intents and observations, the navigation summary and the observed partial change. A summary saying success cannot override files or independent check receipts.",
+    "recovery-stop.json": "A refused resume when saved state cannot be reconstructed safely. Earlier receipts remain historical evidence rather than being overwritten.",
     "tools/harness/run.py": "Conducts the experiment and saves its evidence.",
     "tools/harness/sandbox.py": "Checks local rootless Podman prerequisites. With an immutable prepared image ID, it can check a trusted repair in containers. No host execution fallback.",
     "tools/harness/container.py": "Creates and inspects restricted containers, runs fixed checks, then removes each container and confirms it is absent.",
@@ -495,6 +504,150 @@ def render_repairs(reports, link_root=None):
     return ''.join(latest.values()) + history(earlier, "Earlier verified Pi sessions")
 
 
+def local_recovery_evidence(directory, reports):
+    current = reports
+    for part in directory.relative_to(reports).parts:
+        current = current / part
+        if current.is_symlink():
+            return False
+    return directory.is_dir() and all(not entry.is_symlink() and (entry.is_file() or entry.is_dir())
+                                      for entry in directory.rglob("*"))
+
+
+def render_recovery(path, reports, run, link_root=None, annotation=None):
+    from recovery import validate_entries
+    from repair import repair_receipt_matches
+    from verify import receipt_matches
+    journal, problem = {}, None
+    try:
+        if not local_recovery_evidence(path.parent, reports):
+            raise ValueError("Linked recovery state cannot establish a result")
+        journal = json.loads((path.parent / "journal.json").read_text())
+        task = json.loads((path.parent / "task.json").read_text())
+        for name, kind in (("checkout", str), ("files", dict), ("seeded", str), ("requests", list),
+                           ("operations", dict), ("records", list), ("resumes", int), ("status", str),
+                           ("result", dict), ("implementation_sha256", dict)):
+            if not isinstance(journal[name], kind):
+                raise ValueError("Malformed journal structure")
+        validate_entries(journal, task)
+        if journal["schema_version"] != 1 or journal["run_id"] != path.parent.name or journal["result"] != run:
+            raise ValueError("Journal and receipt disagree")
+        for item in run["attempts"]:
+            identity = item["verification_run_id"]
+            if (not isinstance(identity, str) or len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity) or
+                    not local_recovery_evidence(reports / "verification/runs" / identity, reports)):
+                raise ValueError("Check evidence is missing or linked")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop):
+        journal, problem = {}, "The saved journal and receipt could not be reconciled for this report. Inspect the retained evidence."
+    stop_path = path.parent / "recovery-stop.json"
+    if stop_path.exists():
+        problem = "A later resume was refused. The earlier receipt is historical evidence; this report does not establish a successful resumed session."
+    outcome = run.get("outcome")
+    passed = bool(journal) and not problem and journal.get("status") == "complete" and (
+        outcome == "verified_repair_passed" and repair_receipt_matches(run, path.parent, reports))
+    labels = {"conflict": "Stopped to preserve conflicting files", "cancelled": "Cancellation recorded",
+              "timeout": "Original time limit reached", "budget_exhausted": "Stopped at the shared limit",
+              "incomplete": "Recovery needs inspection", "blocked": "Could not finish the checks"}
+    label = "Recovered repair passed all required checks" if passed else labels.get(outcome, "Evidence needs inspection")
+    if problem or outcome == "verified_repair_passed" and not passed:
+        label = "Evidence needs inspection"
+    records = journal.get("records", [])
+    timeline = []
+    faults = []
+    locations = {"before-edit": "before writing", "after-write": "after writing, before returning the reply",
+                 "during-verification": "during independent verification", "before-receipt": "before publishing the final receipt"}
+    decisions = {"already_applied": "The file matched the completed write; no second write was needed.",
+                 "unchanged": "The file still matched its original bytes; the intended edit could be retried.",
+                 "conflict": "The file matched neither version; recovery stopped instead of overwriting it."}
+    for record in records:
+        kind = record.get("kind")
+        if kind == "interruption_injected":
+            location = str(record.get("location"))
+            faults.append(locations.get(location, location))
+            timeline.append("Deliberately stopped " + faults[-1] + ".")
+        elif kind == "edit_reconciled":
+            timeline.append(decisions.get(str(record.get("decision")), "The recorded file observation needs inspection."))
+        elif kind == "pending_call_recovered":
+            timeline.append("The interrupted edit call was reconciled and its result recorded.")
+        elif kind == "tree_conflict":
+            timeline.append("The saved source copy differed from the journal; no further edit or check was replayed.")
+        elif kind == "final_verification_requested":
+            timeline.append("The runner requested the fixed check after model requests ran out, using the remaining tool and time allowance.")
+    attempts = []
+    for item in run.get("attempts", []):
+        try:
+            identity = item["verification_run_id"]
+            if not isinstance(identity, str) or len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
+                raise ValueError("Invalid check identity")
+            child_path = reports / "verification/runs" / identity / "result.json"
+            if not local_recovery_evidence(child_path.parent, reports):
+                raise ValueError("Check evidence is missing or linked")
+            raw = child_path.read_bytes()
+            child = json.loads(raw)
+            known = (digest(raw) == item.get("receipt_sha256") and child.get("parent_run_id") == path.parent.name and
+                     child.get("patch_sha256") == item.get("patch_sha256") and
+                     receipt_matches(child, child_path.parent, allow_failed=child.get("outcome") == "repair_failed"))
+            description = ("passed every required check" if known and child["outcome"] == "repository_verification_passed" else
+                           "repair failed its required checks" if known and child["outcome"] == "repair_failed" else
+                           "verification is unfinished or its evidence does not match")
+            link = escape(child_path.relative_to(link_root or reports).as_posix())
+            attempts.append(f'<li>Repair {escape(item.get("attempt"))}: {escape(description)}. '
+                            f'<a href="{link}" data-evidence="{link}">Check evidence</a></li>')
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop):
+            attempts.append('<li>Verification evidence could not be confirmed.</li>')
+    simulated = run.get("demonstration") == "simulated-model-limit-real-checks"
+    if simulated:
+        mode = "Prepared boundary demonstration: the model-request limit was simulated. No new AI model ran; the saved model patch and sandboxed checks were real."
+    elif run.get("candidate_source") == "AI":
+        mode = (f'Live model: {run.get("provider", "not recorded")} / {run.get("model", "not recorded")}. '
+                f'Requests recorded as sent: {run.get("model_requests_dispatched", "not recorded")}.')
+    else:
+        mode = "Prepared replies test recovery and tool wiring. No AI model ran."
+    tried = ("Deliberately interrupt the task " + ", ".join(faults) + ", then inspect saved state before continuing." if faults else
+             "Continue a bounded task from its recorded edits, file observations and check receipts.")
+    expected = ("Recognise an applied write, retry unchanged bytes, or stop on conflict. A misleading summary must not skip independent checks.")
+    if simulated:
+        tried = "Use the saved Luna patch with a simulated exhausted model allowance; let the runner request verification."
+        expected = "Check the exact patch within the remaining tool and time limits, without another model request."
+    elif outcome == "conflict":
+        tried += " Introduce conflicting file content before resuming."
+        expected = "Stop without replacing the conflicting file. The earlier intended edit must not be replayed blindly."
+    result = ("The recovered exact patch passed every required check. Human review is still pending." if passed else
+              "Conflicting source was detected; the run stopped instead of guessing which edit to replay." if outcome == "conflict" else
+              "This session did not establish a verified repair. Its partial patch and stopping evidence remain available.")
+    title = (annotation or {}).get("title", "Preserve a conflicting file" if outcome == "conflict" else
+                                  "Recover a repair after a deliberate stop" if passed and faults else "Recover a stopped repair")
+    note = (annotation or {}).get("summary")
+    notes = f'<p>{escape(note)}</p>' if note else ''
+    link = escape(path.relative_to(link_root or reports).as_posix())
+    observations = ''.join(f'<li>{escape(line)}</li>' for line in timeline)
+    observations = f'<ol>{observations}</ol>' if observations else '<p>No interrupted-edit observations could be confirmed.</p>'
+    return f'''<article class="run recovery-run" data-run-id="{escape(path.parent.name)}">
+<header class="run-heading"><h3>{escape(title)}</h3><span class="badge {'pass' if passed else 'attention'}">{escape(label)}</span></header>
+<p>{escape(mode)}</p><p><strong>What we tried:</strong> {escape(tried)}</p>
+<p><strong>Expected:</strong> {escape(expected)}</p>{observations}
+<p><strong>What happened:</strong> {escape(problem or result)}</p>{notes}<ol>{''.join(attempts)}</ol>
+<p><strong>What to learn:</strong> saved observations and matching checks determine completion. A model saying “done” or a handoff claiming success cannot replace them.</p>
+<p class="meta">Recovery entries recorded: {escape(journal.get('resumes', 'not confirmed'))}. Tool calls recorded: {len(journal.get('requests', []))}.
+<a href="{link}" data-evidence="{link}">Session evidence</a> <code>{escape(path.parent.name[:8])}</code>.</p>
+<details><summary>Saved status, stopping reason and model explanation</summary>
+<p>Recorded status: <code>{escape(outcome)}</code>. {escape(run.get('reason', 'No final stopping reason recorded.'))}</p>
+<p>{escape(run.get('model_claim') or 'No final model explanation recorded.')}</p>
+<p>These are saved observations, not a new inspection of the retained working copy. A successful test receipt and your approval are separate.</p></details></article>'''
+
+
+def render_recoveries(reports, progress, link_root=None):
+    rows = []
+    for path in sorted((reports / "recovery/runs").glob("*/result.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            run = json.loads(path.read_text())
+            rows.append(render_recovery(path, reports, run, link_root,
+                                        progress.get("run_annotations", {}).get(path.parent.name)))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop):
+            rows.append('<p class="empty">A recovery receipt could not be read. Its saved evidence needs inspection.</p>')
+    return ''.join(rows) or '<p class="empty">No recovery examples recorded. Run the prepared interruption and conflict examples in the README, then rebuild this report.</p>'
+
+
 def render_preflights(reports, link_root=None):
     rows = []
     for path in (reports / "sandbox-preflight/runs").glob("*/result.json"):
@@ -585,6 +738,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
         milestones.append(f'<li{marker}><strong>{stage}</strong><span>{escape(label)}</span></li>')
     milestones = "".join(milestones)
     verification = progress["stage"] == "Verify"
+    recovery = progress["stage"] == "Recover"
     repairs = render_repairs(reports, link_root) if verification else ''
     rows = []
     records = []
@@ -612,6 +766,8 @@ def render(reports, progress, *, link_root=None, snapshot=None):
     current = "".join(render_run(path, reports, run, link_root) for path, run in current_records)
     records = current + history(rows, "Other experiments, including failed and blocked runs") if ordered else (
         '<p class="empty">No runs recorded. Try the prepared working repair, then rebuild this page.</p>')
+    if recovery:
+        records = render_recoveries(reports, progress, link_root)
     items = lambda values: "".join(f"<li>{escape(value)}</li>" for value in values)
     define = progress["stage"] == "Define"
     pi_history = []
@@ -637,7 +793,7 @@ def render(reports, progress, *, link_root=None, snapshot=None):
 Context preserves the prompt and four tool schemas; Pi conversation preserves their requests and replies.</p>
 <p>In a live attempt, compare the model's investigation, proposed edit and final test result. Our runner enforces which actions are allowed.
 Passing the fixed test, the model saying “done” and human approval are separate.</p>
-</details></section>''' if pi_rows and not define else ''
+</details></section>''' if pi_rows and not define and not recovery else ''
     saved_links = '<a href="index.html">Latest report</a>' + ''.join(
         f'<a href="{stage.lower()}.html">{stage}</a>' for stage in STAGES
         if link_root and (link_root / "snapshots" / stage.lower() / "snapshot.json").is_file())
@@ -649,7 +805,7 @@ Passing the fixed test, the model saying “done” and human approval are separ
                        if snapshot.get("restored") else 'Captured from this stage’s local evidence and progress record.')
         provenance = (f'<details><summary>Snapshot source and date</summary><p>{escape(source_note)}</p>'
                       f'<p>Captured {escape(snapshot["captured_at"])}. Presented using the current report design.</p></details>')
-    sandbox = '' if define or verification else f'''<section id="sandbox" aria-labelledby="sandbox-title"><div class="section-heading"><div>
+    sandbox = '' if define or verification or recovery else f'''<section id="sandbox" aria-labelledby="sandbox-title"><div class="section-heading"><div>
 <h2 id="sandbox-title">Does execution stay inside its boundary?</h2>
 <p>Access, resource settings and cleanup are checked separately from repair quality.</p></div></div>
 {render_probes(reports, link_root)}
@@ -673,6 +829,24 @@ Passing the fixed test, the model saying “done” and human approval are separ
                  'Prepared examples make no AI calls; any live session names its model and records usage.')
         takeaway = ('A result belongs to one exact patch and its recorded set of checks. '
                     'Even the full suite can miss untested behaviour. Human approval stays separate.')
+    if recovery:
+        intro = ('Recover follows Verify. A process can stop after writing a file but before returning its reply. '
+                 'The runner saves intent before writing, then compares files, the journal and check receipts before a fresh Pi session. '
+                 'The examples below distinguish prepared demonstrations from real model attempts.')
+        takeaway = ('An interruption does not tell us whether an edit happened. Inspect the saved observations and actual files before retrying. '
+                    'A summary helps navigation; only matching independent check evidence establishes a tested repair.')
+    experiment_guide = '''<details id="experiment-guide"><summary>How to review recovery</summary>
+<ol><li>Find the deliberate stop and the last observed file state.</li>
+<li>Check whether resume recognised an existing write, retried unchanged bytes or stopped on conflict.</li>
+<li>Look for independent checks of the final exact patch. An unfinished check cannot count as success.</li></ol>
+<p>Cancellation stops future work; edits already written remain. The current Pi pilot edits one file per call and provides no multi-file rollback.
+Missing state, unknown human changes or unfinished verification require inspection rather than blind replay.</p></details>''' if recovery else '''<details id="experiment-guide"><summary>How to read the three steps</summary>
+<ol><li><strong>Original code:</strong> the import test should pass.</li>
+<li><strong>Deliberately broken code:</strong> remove handling for a UTF-8 marker at the start of a file. The same test should fail.</li>
+<li><strong>After the repair:</strong> a working repair should pass; an ineffective one should still fail.</li></ol>
+<p>The test checks that a valid marker leaves imported data unchanged, while misplaced markers remain invalid.
+Setup problems such as missing tools or dependencies mean we couldn't judge the repair.</p></details>
+'''
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(progress['stage'])} / Harness review</title><style>
@@ -763,7 +937,7 @@ aside {{ position: static; border-left: 0; border-top: 1px solid var(--report-li
 <a href="#results">Results</a>{'<a href="#sandbox">Sandbox</a>' if sandbox else ''}{'<a href="#pi">Pi tools</a>' if pi_section else ''}<a href="#review">Review guide</a><a href="#reference">Reference</a></nav></header>
 {saved_nav}
 <div class="intro"><span class="badge review-state">{escape(progress["stage"])}: {escape(STATE_LABELS[progress["status"]])}</span>
-<h1>{escape(progress['stage'])}: {'independent patch checks' if verification else 'repair calibration' if define else 'controlled test execution'}</h1>
+<h1>{escape(progress['stage'])}: {'continue safely after interruption' if recovery else 'independent patch checks' if verification else 'repair calibration' if define else 'controlled test execution'}</h1>
 <p>{escape(intro)}</p>
 <p class="meta">{'Historical checkpoint: the labels below retain the status recorded at the time.' if snapshot and snapshot.get('restored') else 'Saved local stage report.'}
 Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
@@ -771,15 +945,10 @@ Decisions recorded {escape(progress["updated_at"])}.</p>{provenance}</div>
 <div class="layout"><main>
 <section id="results" aria-labelledby="results-title">
 {('<h2>Can Pi use a failed check to retry within the limit?</h2><p>Compare the prepared retry and stop examples. The verifier checks each patch independently; Pi cannot change its tests.</p>' + repairs) if repairs else ''}
-<div class="section-heading"><div><h2 id="results-title">{'Does this exact patch pass its required checks?' if verification else 'Does the checker spot a real repair?'}</h2>
-<p>{'Compare the working, unformatted and ineffective repairs. Every required check must pass.' if verification else 'Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') + '. A failure in the middle step is expected.'}</p></div></div>
+<div class="section-heading"><div><h2 id="results-title">{'Can stopped work continue without guessing?' if recovery else 'Does this exact patch pass its required checks?' if verification else 'Does the checker spot a real repair?'}</h2>
+<p>{'Compare a recovered repair with a conflict or unfinished run. Deliberate stops test the safety rules; model repair failures are separate.' if recovery else 'Compare the working, unformatted and ineffective repairs. Every required check must pass.' if verification else 'Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') + '. A failure in the middle step is expected.'}</p></div></div>
 {records}
-<details id="experiment-guide"><summary>How to read the three steps</summary>
-<ol><li><strong>Original code:</strong> the import test should pass.</li>
-<li><strong>Deliberately broken code:</strong> remove handling for a UTF-8 marker at the start of a file. The same test should fail.</li>
-<li><strong>After the repair:</strong> a working repair should pass; an ineffective one should still fail.</li></ol>
-<p>The test checks that a valid marker leaves imported data unchanged, while misplaced markers remain invalid.
-Setup problems such as missing tools or dependencies mean we couldn't judge the repair.</p></details>
+{experiment_guide}
 </section>
 {sandbox}
 {pi_section}
@@ -801,8 +970,8 @@ Receipt links open the evidence drawer. Select the result, task, events, patches
 Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
-<ol class="review-links"><li><a href="#results">{'Compare the examples' if verification else 'Compare good and wrong'}</a>Explain why their final steps differ.</li>
-{('<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define or verification else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
+<ol class="review-links"><li><a href="#results">{'Compare recovered and stopped runs' if recovery else 'Compare the examples' if verification else 'Compare good and wrong'}</a>Explain why their final steps differ.</li>
+{('<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>' if recovery else '<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>' if define or verification else '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>')}
 <li><a href="#takeaway">Discuss the takeaway</a>Then decide whether to move on.</li></ol></section>
 <section id="takeaway"><h2>What to take away</h2>
 <div class="lesson"><p>{escape(takeaway)}</p></div>
@@ -815,7 +984,8 @@ Later we'll compare repeated AI attempts on the same tasks and settings. These t
 <p><a href="https://github.com/adamcbrewer/mapbox-tui/issues/103">Define scope #103</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/104">Connect scope #104</a>
 and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/105">Verify scope #105</a>
-and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement plan #111</a>.</p>
+and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/106">Recover scope #106</a>
+and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">shared glossary and file guide #111</a>.</p>
 </footer></div>
 <dialog id="evidence-viewer" class="evidence-viewer" aria-labelledby="evidence-title" aria-describedby="evidence-description">
 <div class="evidence-header"><div class="run-heading"><h2 id="evidence-title">Run evidence</h2>
@@ -825,7 +995,10 @@ and <a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">measurement p
 <option value="result.json">Result</option><option value="task.json">Task</option><option value="events.jsonl">Events</option>
 <option value="candidate.patch">Candidate patch</option><option value="seed.patch">Seed patch</option>
 <option value="context.json">Context</option><option value="pi-session.json">Pi conversation</option>
-<option value="import_verifier_test.go.txt">Independent cases</option></select>
+<option value="import_verifier_test.go.txt">Independent cases</option>
+<option value="journal.json">Recovery journal</option><option value="handoff.json">Recovery handoff</option>
+<option value="partial.patch">Observed partial patch</option><option value="recovery-stop.json">Resume refusal</option>
+<option value="first-entry-result.json">First session result</option><option value="second-entry-result.json">Second session result</option></select>
 <a id="evidence-original">Open original file</a></div></div>
 <p id="evidence-status" role="status"></p><pre id="evidence-content" role="region" tabindex="0" aria-label="Evidence file contents"></pre>
 </dialog>

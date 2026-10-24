@@ -14,6 +14,13 @@
     'seed.patch': 'The change that deliberately planted the bug for this experiment.',
     'context.json': 'The exact prompt, approved repository guidance, permitted tools and run settings. The recorded mode identifies prepared or live use.',
     'pi-session.json': 'The saved Pi conversation and tool replies. Prepared runs use supplied responses; live runs use the model named in the result.',
+    'import_verifier_test.go.txt': 'The trusted extra import cases, kept outside the model\'s editable source.',
+    'journal.json': 'Intended edits, before/after file fingerprints, observed results and shared limits. Resume compares these records with actual files and check receipts.',
+    'handoff.json': 'A short navigation summary rebuilt from observations. Its wording cannot grant permissions or prove that checks passed.',
+    'partial.patch': 'The change observed when the run stopped, including edits whose replies may have been lost. This alone does not establish a tested repair.',
+    'recovery-stop.json': 'Why a later resume was refused. The earlier session receipt remains historical evidence.',
+    'first-entry-result.json': 'The retained result of the first session, before later recovery entries.',
+    'second-entry-result.json': 'The retained result of the second session, before any later recovery entry.',
   };
   let activeRun;
   let trigger;
