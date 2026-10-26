@@ -46,7 +46,7 @@ def preview(task, prompt):
         return {key: contexts[0][key] for key in CONTEXT}
 
 
-def prepare(suite, image, config_path):
+def prepare(suite, image, config_path, output_root=None):
     manifest = load_suite(suite)
     case = next(case for case in manifest["cases"] if case["partition"] == "development")
     directory = suite / "cases" / case["id"]
@@ -82,7 +82,7 @@ def prepare(suite, image, config_path):
                 "budgets": {"tool_calls": 12, "model_requests": config["maxModelRequests"], "deadline_seconds": 600,
                             "output_tokens_per_request": config["maxOutputTokensPerRequest"], "request_seconds": 120,
                             "transport_retries": 0, "verification_attempts": 1}}
-        path = REPORTS / "native-baseline/plans" / uuid.uuid4().hex
+        path = (output_root or REPORTS / "native-baseline/plans") / uuid.uuid4().hex
         path.mkdir(parents=True)
         durable_json(path / "plan.json", {"definition": plan, "sha256": fingerprint(plan)})
         (path / "plan.md").write_text("# The first plain-Pi baseline\n\n" + plan["purpose"] + "\n\n" +
@@ -167,9 +167,11 @@ class LiveTools(NativeTools):
 
 def render(result):
     passed = result.get("independent_checks_passed") is True
+    comparison = result.get("comparison")
     lines = ["# " + ("The AI's saved fix passed the checks" if passed else "The baseline didn't deliver a checked fix"), "",
              ("A real AI ran through Pi's normal tools." if result.get("dispatches") else "No model dispatch was observed.") +
-             " This is a plain-Pi baseline pilot for #107. It isn't a paired comparison or proof that the harness helps.", "",
+             (f" This is run {comparison['position']} of a saved paired comparison, using {comparison['arm']}."
+              if comparison else " This is a plain-Pi baseline pilot for #107. It isn't a paired comparison or proof that the harness helps."), "",
              f"Selected model: {result.get('model')}. Model requests reserved: {result.get('model_requests', 0)}. "
              f"Dispatches observed: {len(result.get('dispatches', []))}. Pi tool calls: {result.get('tool_calls', 0)}.", "",
              "The repair conversation ended as: " + result.get("agent_outcome", "not started") + ". " + result.get("agent_reason", ""), "",
@@ -193,7 +195,8 @@ def render(result):
         lines += ["No independent check completed. " + result.get("reason", "Inspect the saved outcome.") + ".", ""]
     usage = result.get("usage_summary", {})
     totals = usage.get("totals", {})
-    lines += ["Main measure met: " + ("yes" if passed else "no") + ". My review is still pending.", "",
+    lines += [("Repair passed every required check: " if comparison else "Main measure met: ") +
+              ("yes" if passed else "no") + ". My review is still pending.", "",
               f"Elapsed time: {result.get('duration_seconds', 'unknown')} seconds. "
               f"Reported tokens: {totals.get('inputTokens', 'unknown')} input, {totals.get('outputTokens', 'unknown')} output, "
               f"{totals.get('totalTokens', 'unknown')} total. " +
@@ -212,6 +215,8 @@ def execute(path):
                       model=plan["config"]["model"], provider=plan["config"]["provider"], auth="subscription", pi_version="1.2.0",
                       model_requests=0, dispatches=[], provider_usage=[], primary_metric=plan["primary_metric"],
                       plan=str(path), plan_sha256=fingerprint(plan), budgets=plan["budgets"], independent_checks_passed=False)
+    if plan.get("comparison"):
+        run.result["comparison"] = plan["comparison"]
     handlers = {number: signal.signal(number, run.cancel) for number in (signal.SIGINT, signal.SIGTERM)}
     sandbox = None
     try:

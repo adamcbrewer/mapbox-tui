@@ -6,7 +6,8 @@ current stage. Recover (#106) is merged and closed.
 
 So far I've collected run records, checked one prepared comparison, built two
 bug tasks, connected Pi's normal tools to the sandbox and run one live baseline.
-The matched comparison is still pending. Earlier Pi setup and
+The first paired comparison is complete; the added container guidance didn't
+meet its chosen measure or guardrail. The original prompt stays in place. Earlier Pi setup and
 live Luna examples are in the [Pi guide](pi/README.md).
 
 ## How I want these updates written
@@ -362,6 +363,71 @@ node --test tools/harness/pi/loop.test.mjs tools/harness/pi/native.test.mjs
 These tests use supplied replies. They exercise plan reuse, changed context,
 request reservations, limits, normal-tool payloads and failed-session reporting
 without a repair-model call.
+
+## Compare the container-tooling guidance
+
+The live pilot wasted calls looking for host tools inside the container. I want
+to test one added paragraph that explains which tools are available and that the
+host `mise` prefix doesn't apply there. It gives no fix or hidden-test hints.
+The original task and approved repository instructions stay intact.
+
+`paired.py` saves four fresh runs: baseline, guidance, guidance, baseline. They
+form two pairs in reversed order. The pilot isn't included. Both versions keep
+the same standard Pi system prompt, normal tools, task, model, reasoning, image,
+request limits and independent checker. The only input change is the saved
+guidance paragraph. Preparation checks its tool-availability claims against the
+actual container before any model request.
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/paired.py --prepare \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" \
+  --config /home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json
+```
+
+Copy the printed experiment folder into:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/paired.py --run EXPERIMENT_DIR
+```
+
+This can make four real model attempts. Each keeps the existing ten-request,
+twelve-tool and ten-minute limits, including its common checker. The whole
+experiment allows at most forty model requests with the current preferences.
+It runs in the saved order without replacement attempts. Cancellation, a blocked
+environment or invalid evidence stops the remaining runs. A spent experiment
+can't start again.
+
+I chose failed Pi tool calls as the main measure before running the comparison.
+A useful result needs fewer failures in both pairs, with all four conversations
+finishing and all four exact repairs passing every required check. I also keep
+requests, total tools, reported tokens and elapsed time. Fewer errors alone can't
+make an unchecked repair count as an improvement.
+
+Read `comparison.md` and `plan.md` in the printed folder. The numbered `cells`
+folders keep each one-use plan and run identity. Saved receipt fingerprints,
+actual contexts, model reservations and independent logs must match before a
+passing result counts. Missing runs or usage stay missing; failed attempts aren't
+replaced or dropped from the report.
+
+After the experiment has stopped, rebuild the report without inference:
+
+```sh
+python3 tools/harness/paired.py --report EXPERIMENT_DIR
+PYTHONPATH=tools/harness python3 -m unittest test_paired -v
+```
+
+Reading a historical report validates its saved plans and receipts. It doesn't
+require today's reporting code to match the old execution code. Starting model
+runs still requires the exact saved implementation. The executed source copies
+stay with this experiment, and changing the reporter doesn't rewrite receipts.
+
+Exit 0 from reporting means all four runs finished; it doesn't approve the
+guidance change. I still need to inspect the model's testing claims and record
+my decision. Two pairs on one synthetic task don't establish general repair
+skill or time saved. Billing and my review time stay unknown. The held-out task
+and human baseline remain pending.
 
 ## Recover a prepared session
 
