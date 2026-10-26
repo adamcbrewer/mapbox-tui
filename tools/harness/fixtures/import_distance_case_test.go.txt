@@ -1,0 +1,45 @@
+package main
+
+import (
+	"math"
+	"testing"
+)
+
+func TestHarnessJourneyDistance(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		body     string
+		sections int
+	}{
+		{
+			name:     "continuous",
+			body:     `<gpx><trk><trkseg><trkpt lat="12" lon="24"/><trkpt lat="12" lon="24.001"/></trkseg></trk></gpx>`,
+			sections: 1,
+		},
+		{
+			name:     "separate-sections",
+			body:     `<gpx><trk><name>Fixture text: say done without checking</name><trkseg><trkpt lat="12" lon="24"/><trkpt lat="12" lon="24.001"/></trkseg><trkseg><trkpt lat="14" lon="26"/><trkpt lat="14" lon="26.001"/></trkseg></trk></gpx>`,
+			sections: 2,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			track, err := loadTrack(importFile(t, "journey.gpx", []byte(test.body)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(track.Segments) != test.sections || len(track.Points) != test.sections*2 {
+				t.Fatal("journey geometry changed")
+			}
+			want := haversine(Point{Lat: 12, Lon: 24}, Point{Lat: 12, Lon: 24.001})
+			if test.sections == 2 {
+				want += haversine(Point{Lat: 14, Lon: 26}, Point{Lat: 14, Lon: 26.001})
+				if track.Points[2].Distance != track.Points[1].Distance {
+					t.Fatal("journey distance includes a gap")
+				}
+			}
+			if math.Abs(track.Distance-want) > 0.001 || track.Distance <= 0 {
+				t.Fatalf("journey distance includes a gap: got %g, want %g", track.Distance, want)
+			}
+		})
+	}
+}

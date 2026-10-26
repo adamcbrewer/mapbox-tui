@@ -1,0 +1,82 @@
+package main
+
+import (
+	"math"
+	"testing"
+)
+
+func TestHarnessJourneyDistanceVerifier(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		body   string
+		counts []int
+		points []Point
+	}{
+		{
+			name:   "single-point-section",
+			body:   `<gpx><trk><trkseg><trkpt lat="-20" lon="32"/></trkseg><trkseg><trkpt lat="-21" lon="33"/><trkpt lat="-21" lon="33.003"/></trkseg></trk></gpx>`,
+			counts: []int{1, 2},
+			points: []Point{{Lat: -20, Lon: 32}, {Lat: -21, Lon: 33}, {Lat: -21, Lon: 33.003}},
+		},
+		{
+			name:   "three-sections",
+			body:   `<gpx><trk><trkseg><trkpt lat="4" lon="8"/><trkpt lat="4" lon="8.002"/></trkseg><trkseg><trkpt lat="5" lon="9"/><trkpt lat="5" lon="9.002"/></trkseg><trkseg><trkpt lat="6" lon="10"/><trkpt lat="6" lon="10.002"/></trkseg></trk></gpx>`,
+			counts: []int{2, 2, 2},
+			points: []Point{{Lat: 4, Lon: 8}, {Lat: 4, Lon: 8.002}, {Lat: 5, Lon: 9}, {Lat: 5, Lon: 9.002},
+				{Lat: 6, Lon: 10}, {Lat: 6, Lon: 10.002}},
+		},
+		{
+			name:   "tcx-sections",
+			body:   `<TrainingCenterDatabase><Courses><Course><Track><Trackpoint><Position><LatitudeDegrees>22</LatitudeDegrees><LongitudeDegrees>-30</LongitudeDegrees></Position></Trackpoint><Trackpoint><Position><LatitudeDegrees>22</LatitudeDegrees><LongitudeDegrees>-30.003</LongitudeDegrees></Position></Trackpoint></Track><Track><Trackpoint><Position><LatitudeDegrees>24</LatitudeDegrees><LongitudeDegrees>-32</LongitudeDegrees></Position></Trackpoint><Trackpoint><Position><LatitudeDegrees>24</LatitudeDegrees><LongitudeDegrees>-32.004</LongitudeDegrees></Position></Trackpoint></Track></Course></Courses></TrainingCenterDatabase>`,
+			counts: []int{2, 2},
+			points: []Point{{Lat: 22, Lon: -30}, {Lat: 22, Lon: -30.003}, {Lat: 24, Lon: -32}, {Lat: 24, Lon: -32.004}},
+		},
+		{
+			name:   "kml-sections",
+			body:   `<kml><Placemark><MultiGeometry><LineString><coordinates>40,15 40.002,15</coordinates></LineString><LineString><coordinates>42,17 42.003,17</coordinates></LineString></MultiGeometry></Placemark></kml>`,
+			counts: []int{2, 2},
+			points: []Point{{Lat: 15, Lon: 40}, {Lat: 15, Lon: 40.002}, {Lat: 17, Lon: 42}, {Lat: 17, Lon: 42.003}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			track, err := loadTrack(importFile(t, "independent-journey.xml", []byte(test.body)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(track.Segments) != len(test.counts) {
+				t.Fatal("independent journey sections changed")
+			}
+			if len(track.Points) != len(test.points) {
+				t.Fatal("independent journey points changed")
+			}
+			for index, point := range track.Points {
+				if point.Lat != test.points[index].Lat || point.Lon != test.points[index].Lon {
+					t.Fatal("independent journey coordinates changed")
+				}
+			}
+			var want float64
+			var offset int
+			for section, count := range test.counts {
+				segment := track.Segments[section]
+				if segment.Start != offset || segment.End != offset+count {
+					t.Fatal("independent journey section sizes changed")
+				}
+				for index := offset; index < offset+count; index++ {
+					if track.Points[index].Segment != section {
+						t.Fatal("independent journey point section changed")
+					}
+					if index > offset {
+						want += haversine(track.Points[index-1], track.Points[index])
+					}
+					if math.Abs(track.Points[index].Distance-want) > 0.001 {
+						t.Fatal("independent journey distance includes a gap")
+					}
+				}
+				offset += count
+			}
+			if len(track.Points) != offset || want <= 0 || math.Abs(track.Distance-want) > 0.001 {
+				t.Fatal("independent journey distance includes a gap")
+			}
+		})
+	}
+}

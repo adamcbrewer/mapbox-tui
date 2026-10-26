@@ -27,14 +27,17 @@ class CaseSuiteTests(unittest.TestCase):
         case = next(case for case in self.manifest["cases"] if case["id"] == run.result["case"])
         visibility = name.rsplit("-", 1)[1]
         source = (Path(cwd) / case_suite.SOURCE).read_text()
-        broken = ('if n >= 3 && string(header[:3])' not in source if case["partition"] == "development" else
-                  'math.Abs(p.Lat) > 900' in source)
+        if case["id"] == "segment-distance-v1":
+            broken = 'if j > 0 {' in source
+        else:
+            broken = ('if n >= 3 && string(header[:3])' not in source if case["partition"] == "development" else
+                      'math.Abs(p.Lat) > 900' in source)
         action = "fail" if broken else "pass"
         test = case[visibility + "_test"]
         output = b"\n".join(json.dumps({"Action": action, "Test": identity}).encode() for identity in
                             [test, *(test + "/" + subtest for subtest in case[visibility + "_cases"])])
         if broken:
-            message = case_suite.FAILURE_MESSAGES[case["partition"]][visibility]
+            message = case.get("failure_messages", case_suite.FAILURE_MESSAGES[case["partition"]])[visibility]
             output += b"\n" + json.dumps({"Action": "output", "Output": message}).encode()
         check = {"id": name, "command": args, "exit_code": int(broken), "outcome": action,
                  "started_at": now(), "stdout": name + ".stdout", "stderr": name + ".stderr"}
@@ -137,6 +140,43 @@ class CaseSuiteTests(unittest.TestCase):
         output = b'\n'.join(json.dumps({"Action": "fail", "Test": identity}).encode() for identity in
                             [case["public_test"], *(case["public_test"] + "/" + name for name in case["public_cases"])])
         self.assertEqual(case_suite.classify_calibration(output, 1, case, "public"), "unexpected_failure")
+
+    def test_fresh_distance_catalogue_is_separate_and_preserves_legacy_suites(self):
+        run = Run(self.root / "fresh")
+        manifest = case_suite.build(run, "segment-distance-v1")
+        self.assertEqual(len(manifest["cases"]), 1)
+        case = manifest["cases"][0]
+        self.assertEqual(case["partition"], "development")
+        self.assertNotIn(case["family"], [c["family"] for c in self.manifest["cases"]])
+        self.assertEqual(case_suite.load_suite(run.path), manifest)
+        case_suite.validate_case(run.path / "cases" / case["id"], case)
+        agent = run.path / "cases" / case["id"] / "agent"
+        self.assertFalse((agent / case_suite.PRIVATE_FILE).exists())
+        self.assertFalse(list(agent.rglob("*.patch")))
+        self.assertTrue((agent / case_suite.PUBLIC_FILE).exists())
+        self.assertEqual(case_suite.load_suite(self.run.path), self.manifest)
+        legacy = dict(self.manifest)
+        legacy.pop("catalogue")
+        raw = json.dumps(legacy).encode()
+        (self.run.path / "suite.json").write_bytes(raw)
+        (self.run.path / "suite.sha256").write_text(case_suite.digest(raw))
+        self.assertEqual(case_suite.load_suite(self.run.path), legacy)
+
+    def test_fresh_distance_calibration_requires_all_eight_expected_results(self):
+        run = Run(self.root / "fresh")
+        self.manifest = case_suite.build(run, "segment-distance-v1")
+        _, result = case_suite.calibrate(run.path, self.manifest["cases"][0], "sha256:" + "a" * 64)
+        self.assertEqual(result["outcome"], "case_calibration_passed", result.get("reason"))
+        self.assertEqual(len(result["observations"]), 8)
+        for observation in result["observations"]:
+            self.assertEqual(observation["expected"], observation["actual"])
+
+    def test_known_case_from_a_different_catalogue_cannot_produce_an_empty_pass(self):
+        with patch("sys.argv", ["case_suite.py", "--calibrate", str(self.run.path), "--case", "segment-distance-v1",
+                                "--image", "sha256:" + "a" * 64]), self.assertRaises(SystemExit) as caught:
+            case_suite.main()
+        self.assertEqual(caught.exception.code, 2)
+        self.execute_mock.assert_not_called()
 
 
 if __name__ == "__main__":

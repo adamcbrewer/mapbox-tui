@@ -10,6 +10,43 @@ The first paired comparison is complete; the added container guidance didn't
 meet its chosen measure or guardrail. The original prompt stays in place. Earlier Pi setup and
 live Luna examples are in the [Pi guide](pi/README.md).
 
+## What I want the next bug comparison to measure
+
+My normal workflow is to ask an AI to solve the bug and monitor its responses.
+I don't need a baseline where I write the repair myself. The human baseline
+means me supervising an AI, using scripts and asking for corrections as needed.
+Plain Pi still means its normal coding tools inside the same sandbox.
+
+The main measure is how often the exact saved fix passes the independent checks
+within the agreed limits without me steering the repair after launch. My final
+review still matters and its time counts separately. I also want to record:
+
+- Every check-in and how long I spent monitoring, even if I didn't intervene.
+- Corrections, prompts to continue, restarts and requests to run missing checks.
+- Active review/correction time, elapsed time, model requests, tokens and known costs.
+- Failed repairs, interrupted or unfinished runs, and claims that disagree with the checks.
+- Whether I actually left the run unattended, or monitored it without intervening.
+- My judgement after review: would I trust this workflow enough to step away again?
+
+A longer run can still be useful if it needs less attention and returns a checked
+candidate. Context management, recovery and automatic verification are part of
+the workflow being tested. I'll keep task copies, model/settings, environment,
+overall limits and final checking rules fixed, and save each workflow's exact
+configuration before launch. A whole-workflow comparison measures the combined
+effect; it doesn't tell me which individual part caused it.
+
+Stepping away should leave either a candidate with completed check evidence or
+a clear stopping report. It doesn't promise every bug will be solved. A clean
+stop is useful behaviour, but isn't a successful repair. The current ten-minute
+limit also means I haven't demonstrated unattended work lasting hours.
+
+My judgement helps decide whether this is useful. Repeated runs and recorded
+interventions show what that judgement is based on. Old runs didn't measure my
+attention, so I won't reconstruct it from elapsed time or call it zero. No human
+timer has started. The next exercise needs a fresh bug; the familiar XML example
+can't establish a fresh human baseline. The held-out task stays reserved until
+the development choices and evaluation protocol are fixed.
+
 ## How I want these updates written
 
 Use my voice and the `wat` skill's plain-language approach for #107 docs, reports,
@@ -171,6 +208,39 @@ reacts to the misleading text. My review is still pending.
 
 The [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111)
 explains the evidence files.
+
+## Prepare a fresh bug for the supervision comparison
+
+I don't need to wait for a real bug. The `segment-distance-v1` task deliberately
+breaks journey distance in a disposable copy. Separate recording sections should
+keep their own points and distances; the travel across a gap must not be counted.
+The visible example covers a continuous journey and two separate sections.
+Private checks cover other section shapes and GPX, TCX and KML examples.
+All coordinates are invented.
+
+```sh
+python3 tools/harness/case_suite.py --prepare --catalogue segment-distance-v1
+```
+
+Copy the printed suite folder into `SUITE_DIR`. Using the existing prepared image:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/case_suite.py \
+  --calibrate SUITE_DIR --case segment-distance-v1 --image "$HARNESS_IMAGE_ID"
+```
+
+This supplies a known fix; it doesn't ask an AI to solve the bug. The original
+and known fix must pass both check sets. The planted bug and an edit that doesn't
+fix it must fail on the intended assertion. `calibration.md` explains all eight
+results. The original catalogue remains the default, and saved older suites
+still load. This new development task doesn't consume the held-out task.
+
+Task preparation and a live comparison are separate. The current full repair
+checker is pinned to the earlier XML task. It must be bound to this task before
+launching either live workflow. Both versions must receive identical broken
+copies, with private answers kept outside their sandbox. The protocol must also
+save the supervision measures above. No human timer starts during preparation.
 
 ## Check normal Pi tools inside the sandbox
 
