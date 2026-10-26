@@ -11,6 +11,8 @@ import time
 
 ROOT = Path("/workspace")
 LIMIT = 1024 * 1024
+TIMEOUT_ERROR = ("timeout is in seconds and must be a number greater than 0 and at most 600. "
+                 "For two minutes, use 120. Omit timeout to use 120 seconds. The run's remaining time still applies.")
 
 
 def project_path(value):
@@ -26,7 +28,7 @@ def bash(command, timeout):
     if not isinstance(command, str) or len(command.encode()) > 65536:
         raise ValueError("The command is missing or too large")
     if type(timeout) not in (int, float) or not 0 < timeout <= 600:
-        raise ValueError("The command needs a timeout within the run limit")
+        raise ValueError(TIMEOUT_ERROR)
     process = subprocess.Popen(["/bin/bash", "-c", command], cwd=ROOT, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
     output = bytearray()

@@ -429,6 +429,38 @@ my decision. Two pairs on one synthetic task don't establish general repair
 skill or time saved. Billing and my review time stay unknown. The held-out task
 and human baseline remain pending.
 
+## Explain an invalid timeout clearly
+
+The guidance experiment repeatedly stalled on timeout values that looked like
+milliseconds. Pi's Bash tool expects seconds. The old refusal only said the
+timeout was invalid, so it gave the model little help correcting the request.
+
+The refusal now states the units, the permitted range (greater than zero and at
+most 600 seconds), the default of 120 seconds and an example: two minutes is
+120. The original run deadline can still shorten an accepted timeout. The
+runner rejects an oversized request; it doesn't guess a conversion or execute
+the command with a larger limit.
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo timeout
+python3 tools/harness/pi_integration_test.py
+```
+
+The prepared example sends `timeout: 120000`, expects a refusal, then supplies
+`timeout: 120`. The second command checks that the rejected command never wrote
+its marker file. Expect exit 0 because that failure and correction matched the
+expected results. Read the printed `normal-tools.md` and neighbouring session.
+Both calls count against the existing tool limit; no extra model request or
+automatic retry is granted.
+
+The integration tests use the actual Pi SDK and Python connection with supplied
+check replies. The prepared example uses a real sandbox. Neither asks a repair
+AI to choose the correction. These checks establish that the error reaches Pi
+and a corrected call works. They don't establish that the clearer message saves
+model requests, improves repairs or saves my time. That needs a new comparison.
+
 ## Recover a prepared session
 
 Recover follows Verify: first we bind checks to an exact repair, then we handle

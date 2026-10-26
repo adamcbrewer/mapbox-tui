@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from case_suite import load_suite, validate_case
 from native_check import check_candidate, prepare_verification
 from native_sandbox import NativeRun, NativeSandbox
+from native_worker import TIMEOUT_ERROR
 from pi_run import MAX_CALLS, scripted_calls
 from run import HERE, REPORTS, Stop, digest, now, write_json
 from sandbox import preflight
@@ -57,12 +58,15 @@ class NativeTools:
         if operation["op"] == "bash":
             requested = operation.get("timeout", 120)
             if type(requested) not in (int, float) or not 0 < requested <= 600:
-                return {"ok": False, "error": "The command needs a valid timeout"}
+                return {"ok": False, "error": TIMEOUT_ERROR}
             operation["timeout"] = min(requested, max(0.01, self.run.deadline - time.monotonic() - 1))
         return self.sandbox.request(operation)
 
 
 def prepared_calls(run, sandbox, demo, host_file, private_file):
+    if demo == "timeout":
+        return [{"name": "bash", "args": {"command": "printf rejected > timeout-rejected.txt", "timeout": 120000}},
+                {"name": "bash", "args": {"command": "test ! -e timeout-rejected.txt && printf 'Corrected timeout accepted\\n'", "timeout": 120}}]
     if demo == "probe":
         probe = ('import os,socket; from pathlib import Path; '
                  f'assert not Path({str(host_file)!r}).exists(); assert not Path({str(private_file)!r}).exists(); '
@@ -103,7 +107,8 @@ def shell_quote(value):
 def render(result):
     ready = result["outcome"] in ("native_tools_ready", "native_verification_passed", "repair_failed")
     titles = {"good": "The known fix passed its import test", "wrong": "The bad fix failed its import test, as expected",
-              "probe": "The normal tools passed the boundary checks", "tailored": "The filename shortcut passed the visible test"}
+              "probe": "The normal tools passed the boundary checks", "tailored": "The filename shortcut passed the visible test",
+              "timeout": "The invalid timeout was refused and the corrected request ran"}
     title = titles[result["candidate"]] if ready else "I couldn't finish the normal-tool check"
     if result["outcome"] == "native_verification_passed":
         title = "The saved fix passed the separate checker"
@@ -113,7 +118,14 @@ def render(result):
                     "I set out to check Pi's actual read, edit, write and bash tools with supplied steps.")
     lines = ["# " + title, "", introduction + " No repair AI ran.", "",
              "This checks the connection needed for the plain-Pi baseline in #107. It doesn't complete the AI comparison.", ""]
-    if result["candidate"] == "probe":
+    if result["candidate"] == "timeout":
+        lines += ["I supplied a command with timeout 120000. The runner refused it before execution and explained that "
+                  "the value is in seconds, must be greater than zero and at most 600, and can be 120 for two minutes.", "",
+                  "The script then supplied timeout 120. That command checked that the rejected command hadn't created its marker file, "
+                  "then printed a confirmation. The first failure is expected; the corrected command should pass.", "",
+                  "The script chose the correction. This doesn't establish that an AI understood the feedback or would need fewer attempts. "
+                  "No Go repair or independent repair check ran in this example.", ""]
+    elif result["candidate"] == "probe":
         lines += ["The supplied sequence expects host/private-file reads to be refused. Inside the container it checks that those files are absent, "
                   "the source mount is read-only, the network is unavailable and no model or Mapbox key is in the environment. "
                   "It also plants a Python module that would crash if our worker accidentally loaded code from the project.", ""]
@@ -254,11 +266,11 @@ def main():
     parser = argparse.ArgumentParser(description="Check Pi's real read/edit/write/bash tools inside the sandbox. The script supplies the calls; no repair AI runs.")
     parser.add_argument("--suite", type=Path, required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("--demo", choices=("good", "wrong", "tailored", "probe"), required=True)
+    parser.add_argument("--demo", choices=("good", "wrong", "tailored", "probe", "timeout"), required=True)
     parser.add_argument("--verify", action="store_true", help="Check the exact saved fix independently after Pi's tools stop")
     args = parser.parse_args()
-    if args.verify and args.demo == "probe":
-        parser.error("--verify needs a supplied repair, not the boundary probe")
+    if args.verify and args.demo in ("probe", "timeout"):
+        parser.error("--verify needs a supplied repair, not a boundary or timeout probe")
     manifest = load_suite(args.suite)
     case = next(case for case in manifest["cases"] if case["partition"] == "development")
     directory = args.suite / "cases" / case["id"]
@@ -294,7 +306,8 @@ def main():
                 saved = (run.path / "pi-session.json").read_text()
                 if "HOST_NATIVE_PROBE" in saved:
                     raise Stop("blocked", "The dummy host-file boundary check failed")
-                expected_errors = ([True, True, False, False, False, False, False, False] if args.demo == "probe" else
+                expected_errors = ([True, False] if args.demo == "timeout" else
+                                   [True, True, False, False, False, False, False, False] if args.demo == "probe" else
                                    [False, False, False, args.demo == "wrong"])
                 if [bool(result["error"]) for result in tools.results] != expected_errors:
                     raise Stop("blocked", "The prepared normal-tool results didn't match the expected checks")
