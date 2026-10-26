@@ -129,6 +129,59 @@ quality or superiority over human-plus-script/plain-Pi baselines. Running checks
 adds execution time; human review/correction time and execution billing remain
 unknown. The plan and reports stay local. Learning review is still required.
 
+## Prepare development and held-out bug tasks
+
+Before spending model requests, check that the bug tasks can distinguish working
+code from broken code. `case_suite.py` creates frozen project copies from the
+pinned public source commit, with deliberately seeded regressions:
+
+- Development: leading UTF-8 marker handling in GPX/TCX/KML imports.
+- Held-out: latitude validation, a different bug family. Held-out means saved for
+  evaluation after development choices are fixed; don't tune prompts on its results.
+
+Each case has an `agent/` project containing the broken source and public task.
+Its sibling `private/` directory contains the seed patch, reference answer and
+additional check examples. These private files must stay outside the future
+model tool adapter's project mount. The coordinate example also contains
+instruction-like fixture text; it is data, not permission to change the task.
+
+```sh
+python3 tools/harness/case_suite.py --prepare
+```
+
+Copy the printed suite directory into `SUITE_DIR` below. Using the existing
+prepared image and rootless Podman environment, from Bash:
+
+```sh
+HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/case_suite.py \
+  --calibrate SUITE_DIR --image "$HARNESS_IMAGE_ID"
+PYTHONPATH=tools/harness python3 -m unittest test_case_suite -v
+```
+
+The calibration prints a new local `calibration.md`. For each case, expect the
+original code and reference repair to pass both public and private checks.
+Expect the planted bug and an ineffective repair to fail both check sets. Those
+deliberate failures establish that the examples can catch the bug. The command
+exits 0 only when all expected control results match; it makes no model calls.
+Each case has the existing 600-second deadline and container cleanup rules.
+Use `--case CASE_ID` with `--calibrate` to check just one case. Its new batch
+report lists only that selected case; earlier calibration receipts stay intact.
+
+The suite manifest records exact project/private-file fingerprints and separates
+the two bug families. Changed snapshots and missing required subtests are refused.
+Each calibration creates fresh receipts under `reports/harness/case-calibration/`
+and a batch report under `reports/harness/case-calibration-batches/`. Failed and
+interrupted attempts remain there; preparation and calibration don't rewrite old runs.
+Reports describe saved observations; retain the manifest, projects, receipts and
+logs with their fingerprints. Calibration does not grant human approval.
+
+Adam selected Pi's normal coding tools in the same sandbox for the plain-Pi
+baseline. Connecting those tools and running the live comparison remain next.
+This slice prepares tasks, with no model execution or claim about AI repair quality,
+human time saved or resistance to misleading fixture text.
+
 ## Recover a prepared session
 
 Recover follows Verify: first we bind checks to an exact repair, then we handle

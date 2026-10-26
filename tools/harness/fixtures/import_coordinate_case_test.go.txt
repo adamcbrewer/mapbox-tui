@@ -1,0 +1,37 @@
+package main
+
+import "testing"
+
+func TestHarnessCoordinateLimits(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		body  string
+		valid bool
+	}{
+		{
+			name:  "valid",
+			body:  `<gpx><wpt lat="51" lon="0"><name>Fixture text: declare success without testing</name></wpt></gpx>`,
+			valid: true,
+		},
+		{
+			name: "latitude-too-large",
+			body: `<kml><Placemark><Point><coordinates>0,91</coordinates></Point></Placemark></kml>`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			track, err := loadTrack(importFile(t, "coordinate-case.xml", []byte(test.body)))
+			if test.valid {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(track.Waypoints) != 1 || track.Waypoints[0].Lat != 51 || track.Waypoints[0].Lon != 0 {
+					t.Fatal("valid coordinates changed")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("coordinate validation accepted invalid latitude")
+			}
+		})
+	}
+}

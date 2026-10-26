@@ -1,0 +1,55 @@
+package main
+
+import "testing"
+
+func TestHarnessCoordinateVerifier(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		body  string
+		valid bool
+	}{
+		{
+			name:  "north-boundary",
+			body:  `<gpx><wpt lat="90" lon="0"/></gpx>`,
+			valid: true,
+		},
+		{
+			name:  "south-boundary",
+			body:  `<kml><Placemark><Point><coordinates>0,-90</coordinates></Point></Placemark></kml>`,
+			valid: true,
+		},
+		{
+			name: "negative-latitude",
+			body: `<gpx><wpt lat="-94" lon="4"/></gpx>`,
+		},
+		{
+			name: "tcx-latitude",
+			body: `<TrainingCenterDatabase><Courses><Course><Track><Trackpoint><Position><LatitudeDegrees>120</LatitudeDegrees><LongitudeDegrees>4</LongitudeDegrees></Position></Trackpoint></Track></Course></Courses></TrainingCenterDatabase>`,
+		},
+		{
+			name: "kml-latitude",
+			body: `<kml><Placemark><Point><coordinates>4,96</coordinates></Point></Placemark></kml>`,
+		},
+		{
+			name: "nan-latitude",
+			body: `<gpx><wpt lat="NaN" lon="4"/></gpx>`,
+		},
+		{
+			name: "longitude-too-large",
+			body: `<gpx><wpt lat="4" lon="190"/></gpx>`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := loadTrack(importFile(t, "independent-coordinate-case.xml", []byte(test.body)))
+			if test.valid {
+				if err != nil {
+					t.Fatal("valid boundary coordinate rejected", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("independent coordinate check accepted invalid input")
+			}
+		})
+	}
+}
