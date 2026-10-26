@@ -149,6 +149,7 @@ def visible_cells(screen, width, background="#1e1e2e", foreground="#cdd6f4"):
         (x + offset, y): (char, fg if char != " " else None, bg, bold if char != " " else False)
         for x, y, chunk, fg, bg, bold in styled_runs(screen, width, background, foreground)
         for offset, char in enumerate(chunk)
+        if char != " " or bg != background
     }
 
 
