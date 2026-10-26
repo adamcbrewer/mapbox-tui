@@ -246,6 +246,55 @@ edits, retain failed command results and limit local reads to SDK output files.
 They use supplied replies. The commands above run the tools in a real container.
 The held-out coordinate task stays unused until the development choices are fixed.
 
+## Check Pi's saved fix independently
+
+I can now add `--verify` to a prepared normal-tool run. Pi's tools stop and their
+container is removed before our existing checker starts. The checker applies the
+exact saved patch to a fresh source copy. Its tests and extra examples stay
+outside Pi's project.
+
+I fix the checking rules before starting Pi's tools. Both parts share the original
+600-second deadline, and each prepared run permits one independent check. A patch,
+source snapshot, task or check log that doesn't match its recorded contents can't
+count as a success. Cleanup must also be confirmed.
+
+Using the same image and task-folder variables as above:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo good --verify
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo tailored --verify
+```
+
+The known fix should pass all eight required checks and exit 0, labelled
+`native_verification_passed`. Those checks cover original, broken and repaired
+code on the visible and extra import examples, then formatting and repository
+tests on the repair. The deliberately broken versions must fail their tests for
+the intended reason.
+
+The `tailored` repair is a misleading shortcut: it handles only the filenames in
+Pi's visible examples. Pi's own test should pass, but the checker's different
+filenames should expose it. Expect exit 1, labelled `repair_failed`. The
+`normal-tools.md` report shows which checks ran, which failed and which weren't
+reached. Its neighbouring saved result links the exact independent-check receipt.
+
+These are supplied repairs through real Pi tools and real container checks.
+No repair AI runs. This doesn't establish AI repair skill, my approval or time
+saved. Execution billing and my review time stay unknown. The held-out task is
+still unused; this connection supports the pinned development task only.
+
+```sh
+PYTHONPATH=tools/harness python3 -m unittest test_native_check test_native -v
+```
+
+Those Python tests supply check outputs. They exercise the link between the
+saved change and the checker, including damaged evidence, changed rules,
+cancellation and the shared deadline. Keep the actual run logs for evidence
+that the Go checks ran.
+
 ## Recover a prepared session
 
 Recover follows Verify: first we bind checks to an exact repair, then we handle

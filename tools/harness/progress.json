@@ -4,7 +4,7 @@
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "awaiting-review",
-  "next": "Connect the saved normal-Pi patch to the separate checker, then freeze the settings for the first AI comparison. I still need the human-plus-script baseline and my learning review.",
+  "next": "Freeze the model, prompts, task copies, limits, run order and main measure for the first actual plain-Pi comparison. I still need the human-plus-script baseline and my learning review.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -75,7 +75,8 @@
     "I asked to commit and continue, then chose normal Pi tools inside the sandbox for the baseline. I don't want the existing four restricted tools relabelled as plain Pi. Before connecting the tools, I prepared a development task about XML prefixes and a held-out task about coordinate validation. The known fixes and extra checking examples sit outside each agent project. No model call was made in this task-preparation step.",
     "Both tasks now pass their readiness checks: the original code and known fix pass; the planted bug and ineffective edit fail on the intended assertions. The first coordinate draft didn't reproduce the bug because GPX rejected the input earlier. I kept that failure and used KML in revision 2 to reach the shared check. I reused the unchanged development result after comparing its exact inputs, then reran the revised coordinate task. All 16 accepted saved check outputs and file fingerprints were rechecked. The final Python suite passed 238 tests, repository tests/formatting passed, and all 22 containers were removed. No repair AI or Pi session ran. I still need the normal-Pi sandbox connection before live use.",
     "I asked for all #107 documentation, notes and summaries to use my voice and the wat skill's plain-language approach, including issue107-task-readiness.md. Future reports should explain what ran, whether an AI was involved, what worked or failed and what I can actually take from it. This is a wording request, not approval of the results or permission to close the issue.",
-    "I committed the plain-English #107 docs as f31c302, then connected Pi's actual read, edit, write and bash tools to the sandbox. The supplied good fix passed the public import test; the bad fix failed on the intended bug. Host/private-file reads were refused, the container network and source writes were blocked, and a project Python module couldn't replace our worker's imports. An unavailable image stopped before any Pi tools ran. I kept all 15 attempts, including four earlier connection failures and the deliberate missing-image stop. All 14 containers were removed. The final checks passed 252 Python tests, 26 Pi SDK tests, one Python-to-Pi integration test and repository tests/formatting. No repair AI ran. This proves the connection, not AI repair ability or time saved for me. The separate checker, live comparison, human baseline and learning review remain pending."
+    "I committed the plain-English #107 docs as f31c302, then connected Pi's actual read, edit, write and bash tools to the sandbox. The supplied good fix passed the public import test; the bad fix failed on the intended bug. Host/private-file reads were refused, the container network and source writes were blocked, and a project Python module couldn't replace our worker's imports. An unavailable image stopped before any Pi tools ran. I kept all 15 attempts, including four earlier connection failures and the deliberate missing-image stop. All 14 containers were removed. The final checks passed 252 Python tests, 26 Pi SDK tests, one Python-to-Pi integration test and repository tests/formatting. No repair AI ran. This proves the connection, not AI repair ability or time saved for me. The separate checker, live comparison, human baseline and learning review remain pending.",
+    "I asked for the separate-checker question to be explained, then said 'Okay, great. Commits and continue.' The worktree was already clean at f32e1b8. I then connected the exact saved normal-Pi patch to the existing frozen checker, after Pi tools stopped and their container was removed. Both parts share the original 600-second deadline. The supplied working fix passed all eight independent checks in 244.226 seconds overall. The filename shortcut passed the visible test, then failed the extra examples in 180.68 seconds overall. I kept both attempts and removed all 18 containers. The checks passed 261 Python tests, 26 Pi SDK tests and repository tests/formatting; 22 focused tests also passed after a report-only change made unrun checks explicit. No repair AI ran, and the held-out task stayed unused. This proves the checker connection, not AI repair skill, my approval or time saved. The actual comparison and human baseline remain pending."
   ],
   "blockers": [],
   "questions": [
@@ -166,13 +167,20 @@
     "handoff": "https://github.com/adamcbrewer/mapbox-tui/issues/107#issuecomment-6411974251",
     "plain_pi_baseline": {
       "user_choice": "Normal Pi tools in the sandbox",
-      "status": "prepared-native-tools-connected-awaiting-review",
+      "status": "prepared-native-tools-and-independent-checker-connected-awaiting-review",
       "evidence": "reports/harness/issue107-task-readiness.md",
-      "verification": "reports/harness/issue107-native-tools-verification.json"
+      "verification": "reports/harness/issue107-native-independent-verification.json"
     },
     "task_suite": "reports/harness/case-suites/runs/f13f59cdb94441189474216479b9141e/",
     "task_readiness": "reports/harness/issue107-task-readiness.md",
     "task_preparation_status": "calibrated-awaiting-review",
-    "writing_preference": "My voice, plain English, wat. Explain unfamiliar terms where they first appear."
+    "writing_preference": "My voice, plain English, wat. Explain unfamiliar terms where they first appear.",
+    "checker_discussion": {
+      "question": "Why does Pi's own passing test still need a separate check?",
+      "user_response": "Not sure about the question. Can you explain it to me?",
+      "explanation": "A fix can pass one visible example and still break others. Our checker applies the saved fix to a fresh copy and runs protected tests and extra examples.",
+      "continuation": "Okay, great. Commits and continue.",
+      "status": "I asked to continue after the explanation. I haven't recorded an independent answer or a reviewed stage decision."
+    }
   }
 }

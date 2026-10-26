@@ -11,6 +11,7 @@ import shutil
 from types import SimpleNamespace
 
 from case_suite import load_suite, validate_case
+from native_check import check_candidate, prepare_verification
 from native_sandbox import NativeRun, NativeSandbox
 from pi_run import MAX_CALLS, scripted_calls
 from run import HERE, REPORTS, Stop, digest, now, write_json
@@ -82,6 +83,11 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
                 {"name": "read", "args": {"path": "native-note.txt"}},
                 {"name": "bash", "args": {"command": "rm native-note.txt json.py"}}]
     edit = scripted_calls(SimpleNamespace(seeded=sandbox.seeded, run=run), demo)[3]["args"]
+    if demo == "tailored":
+        marker = "\t\td := xml.NewDecoder(reader)"
+        insert = "\n".join(line[1:] for line in (HERE / "fixtures/tailored.patch").read_text().splitlines()
+                           if line.startswith("+") and not line.startswith("+++")) + "\n"
+        edit = {"old": marker, "new": insert + marker}
     command = "cat native-note.txt && rm native-note.txt && " + " ".join(shell_quote(arg) for arg in run.task["command"][:-1])
     return [{"name": "write", "args": {"path": "native-note.txt", "content": "Prepared normal-tool check\n"}},
             {"name": "read", "args": {"path": "go/import.go"}},
@@ -95,10 +101,14 @@ def shell_quote(value):
 
 
 def render(result):
-    ready = result["outcome"] == "native_tools_ready"
+    ready = result["outcome"] in ("native_tools_ready", "native_verification_passed", "repair_failed")
     titles = {"good": "The known fix passed its import test", "wrong": "The bad fix failed its import test, as expected",
-              "probe": "The normal tools passed the boundary checks"}
+              "probe": "The normal tools passed the boundary checks", "tailored": "The filename shortcut passed the visible test"}
     title = titles[result["candidate"]] if ready else "I couldn't finish the normal-tool check"
+    if result["outcome"] == "native_verification_passed":
+        title = "The saved fix passed the separate checker"
+    elif result["outcome"] == "repair_failed":
+        title = "The separate checker caught the bad fix"
     introduction = ("I used Pi's actual read, edit, write and bash tools with supplied steps." if ready else
                     "I set out to check Pi's actual read, edit, write and bash tools with supplied steps.")
     lines = ["# " + title, "", introduction + " No repair AI ran.", "",
@@ -109,13 +119,41 @@ def render(result):
                   "It also plants a Python module that would crash if our worker accidentally loaded code from the project.", ""]
     else:
         lines += ["The supplied sequence writes a temporary note, reads the source, applies a supplied edit and runs "
-                  "`TestXMLImportsAcceptLeadingUTF8BOM`. The good edit should pass; the bad edit should fail with the planted XML-prefix bug.", "",
-                  "This is one public test. I haven't independently checked this candidate, run the private examples or asked an AI to find a fix.", ""]
+                  "`TestXMLImportsAcceptLeadingUTF8BOM`. The known fix and filename shortcut should pass this test. "
+                  "The wrong edit should fail with the planted XML-prefix bug.", "",
+                  "This is the public test Pi can run. The filename shortcut only handles the names in those visible examples. "
+                  "It should pass there and fail on the extra examples with different names." if result["candidate"] == "tailored" else
+                  "This is the public test Pi can run. A separate checker is needed before the repair counts.", ""]
     if not ready:
         lines += ["The attempt stopped: " + result.get("reason", "The evidence is incomplete") + ".", ""]
     lines += ["| Step | Pi tool | Result |", "| --- | --- | --- |"]
     for index, tool in enumerate(result.get("tool_results", []), 1):
         lines.append(f"| {index} | {tool['name']} | {'Reported an error or refusal' if tool['error'] else 'Completed'} |")
+    if result.get("verification_requested"):
+        record = result.get("verification")
+        lines += ["", "## What did the separate checker find?", "",
+                  "This path fixes the checking rules before starting Pi's tools. After the tools stop and their container is removed, "
+                  "our existing checker can apply the exact saved patch to a fresh source copy. It shares the original ten-minute limit.", ""]
+        if record:
+            lines += ["| Check | Result |", "| --- | --- |"]
+            labels = {"baseline": "Original code, visible examples", "seed": "Planted bug, visible examples",
+                      "candidate": "Saved fix, visible examples", "baseline-regression": "Original code, extra examples",
+                      "seed-regression": "Planted bug, extra examples", "candidate-regression": "Saved fix, extra examples",
+                      "candidate-format": "Formatting", "candidate-suite": "Repository checks"}
+            observed = {check["id"]: check for check in record["checks"]}
+            for name, label in labels.items():
+                check = observed.get(name)
+                outcome = ("Not run" if check is None else
+                           "Failed as expected" if name in ("seed", "seed-regression") and check["outcome"] == "assertion_failed" else
+                           {"passed": "Passed", "assertion_failed": "Failed", "failed": "Failed",
+                            "build_failed": "Couldn't build", "blocked": "Couldn't run"}.get(check["outcome"], "Not finished"))
+                lines.append(f"| {label} | {outcome} |")
+            lines += ["", "Read [the separate checker's saved result](../../../verification/runs/" + record["run_id"] + "/result.json). "
+                      f"Its containers removed: {record['containers_removed']}/{record['containers_created']}.", ""]
+        else:
+            lines += ["The separate checker didn't run.", ""]
+        lines += ["The repair counts as independently checked only when the patch, task, rules and all required results match. "
+                  "My approval and the actual AI comparison remain separate steps.", ""]
     removed = sum(container["removed"] for container in result["containers"])
     lines += ["", f"Container removal confirmed: {removed}/{len(result['containers'])}. "
               f"Final project changes within the allowed scope: {'yes' if result.get('snapshot_scope_valid') else 'not confirmed'}.", "",
@@ -204,8 +242,11 @@ def main():
     parser = argparse.ArgumentParser(description="Check Pi's real read/edit/write/bash tools inside the sandbox. The script supplies the calls; no repair AI runs.")
     parser.add_argument("--suite", type=Path, required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("--demo", choices=("good", "wrong", "probe"), required=True)
+    parser.add_argument("--demo", choices=("good", "wrong", "tailored", "probe"), required=True)
+    parser.add_argument("--verify", action="store_true", help="Check the exact saved fix independently after Pi's tools stop")
     args = parser.parse_args()
+    if args.verify and args.demo == "probe":
+        parser.error("--verify needs a supplied repair, not the boundary probe")
     manifest = load_suite(args.suite)
     case = next(case for case in manifest["cases"] if case["partition"] == "development")
     directory = args.suite / "cases" / case["id"]
@@ -213,13 +254,16 @@ def main():
     run = NativeRun(REPORTS / "native-tools", args.image)
     run.result.update(workflow="pi-native-tools", candidate=args.demo, task=case["id"], actual_model_calls=0,
                       model="scripted (no AI)", pi_version="1.2.0", candidate_source="prepared", tool_results=[],
+                      verification_requested=args.verify,
                       budgets={"tool_calls": MAX_CALLS, "model_requests": 0, "deadline_seconds": 600},
                       suite_sha256=digest((args.suite / "suite.json").read_bytes()),
                       source_sha256={name: digest((HERE / name).read_bytes()) for name in
-                                     ("native_run.py", "native_sandbox.py", "native_worker.py", "container.py", "pi/native.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/package-lock.json")})
+                                     ("native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "container.py", "pi/native.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/package-lock.json")})
     handlers = {s: signal.signal(s, run.cancel) for s in (signal.SIGINT, signal.SIGTERM)}
     sandbox = None
     try:
+        if args.verify:
+            prepare_verification(run, case)
         preflight(run)
         run.prepare()
         with tempfile.TemporaryDirectory(prefix="mapbox-calibration-native-") as temporary, tempfile.TemporaryDirectory(prefix="mapbox-native-session-") as node:
@@ -250,6 +294,8 @@ def main():
                 sandbox.close()
                 if run.result.get("snapshot_problem") or not run.result.get("snapshot_scope_valid"):
                     run.result.update(outcome="incomplete", reason="The final project snapshot needs inspection")
+        if args.verify and run.result["outcome"] == "native_tools_ready":
+            check_candidate(run)
     except Stop as error:
         run.result.update(outcome=error.outcome, reason=error.reason)
     except KeyboardInterrupt:
@@ -264,7 +310,7 @@ def main():
             signal.signal(signum, handler)
     print(run.result["outcome"] + ": " + run.result.get("reason", "Prepared normal tools checked; no repair AI ran"))
     print(run.path / "normal-tools.md")
-    return 0 if run.result["outcome"] == "native_tools_ready" else 1
+    return 0 if run.result["outcome"] in ("native_tools_ready", "native_verification_passed") else 1
 
 
 if __name__ == "__main__":
