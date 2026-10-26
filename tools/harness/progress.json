@@ -309,7 +309,15 @@
         "No human approval or discussion answers are inferred.",
         "No hours-long unattended run or native process-crash resumption was demonstrated.",
         "Synthetic tasks do not establish real-world repair ability."
-      ]
+      ],
+      "confidence": "I said a checked fix gives me confidence. This records that reflection, not approval of the whole stage or measured time savings."
+    },
+    "confidence_reflection": {
+      "user_statement": "A checked fix gives me confidence",
+      "context": "After I asked what a checked fix meant, it was explained as the exact saved change passing the required independent tests in a fresh project copy, including examples the AI could not see.",
+      "takeaway": "I get confidence from a fix passing the separate checks. This is useful in either plain or managed Pi.",
+      "stage_approval": null,
+      "time_saved": "unmeasured"
     }
   }
 }
