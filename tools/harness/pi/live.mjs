@@ -24,7 +24,8 @@ function safeModelFailure(message) {
 }
 
 // Wrap each real model request with our limits before passing its replies back to Pi.
-export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000, reserve = null) {
+export function boundedStream(runtime, model, config, requests, emit, checkSubscription, requestTimeoutMs = 120000, reserve = null,
+  toolNames = schemas.map(tool => tool.name)) {
   return (requestedModel, context, options) => {
     const output = createAssistantMessageEventStream();
     (async () => {
@@ -109,7 +110,7 @@ export function boundedStream(runtime, model, config, requests, emit, checkSubsc
               !Number.isInteger(payload.max_output_tokens) || payload.max_output_tokens < 1 || payload.max_output_tokens > cap;
             if (payload.model !== config.model || invalidCap ||
                 JSON.stringify(payload.tools?.map(tool => tool.name).sort()) !==
-                  JSON.stringify(schemas.map(tool => tool.name).sort())) {
+                  JSON.stringify([...toolNames].sort())) {
               requests.failure = stopped("blocked", "The provider payload exceeded the approved model, token or tool scope");
               throw requests.failure;
             }

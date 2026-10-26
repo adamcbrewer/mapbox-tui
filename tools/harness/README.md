@@ -5,8 +5,8 @@ time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is 
 current stage. Recover (#106) is merged and closed.
 
 So far I've collected run records, checked one prepared comparison, built two
-bug tasks and connected Pi's normal tools to the sandbox. I haven't run the
-real plain-Pi comparison yet. Earlier Pi setup and
+bug tasks, connected Pi's normal tools to the sandbox and run one live baseline.
+The matched comparison is still pending. Earlier Pi setup and
 live Luna examples are in the [Pi guide](pi/README.md).
 
 ## How I want these updates written
@@ -294,6 +294,74 @@ Those Python tests supply check outputs. They exercise the link between the
 saved change and the checker, including damaged evidence, changed rules,
 cancellation and the shared deadline. Keep the actual run logs for evidence
 that the Go checks ran.
+
+## Save and run one real plain-Pi baseline
+
+I can now ask a real subscription model to repair the development task using Pi's
+standard coding prompt and normal tools. This is one baseline pilot. I haven't
+run a matched harness version or established that the harness helps.
+
+`baseline.py --prepare` saves the task, actual standard prompt, normal tool
+definitions, exact model settings, image, checking rules and limits. It previews
+Pi offline and checks the prepared Go image. It makes no repair-model call.
+
+Using the existing task folder, image and locally selected model preferences:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/baseline.py --prepare \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" \
+  --config /home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json
+```
+
+Copy the printed plan folder into:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/baseline.py --run PLAN_DIR
+```
+
+The second command can make real model requests. A plan starts one attempt.
+Reusing it is refused, even if the first attempt stopped. Changing the saved
+plan, task, implementation, actual prompt or tools also stops the run. A new
+attempt needs a deliberate new plan; this command doesn't create one for me.
+
+The existing preferences are Luna with subscription access, low reasoning, ten
+requests, twelve tool calls, two minutes per request and ten minutes overall.
+The saved output-token preference is preserved. No automatic transport retry or
+model substitution is allowed. Each request is saved against its limit before
+it can be sent. API-key billing isn't a fallback.
+
+Pi's model process can contact the provider and use the existing Pi sign-in file.
+It can't launch host commands. All coding-tool operations still go through the
+sandbox connection; the project container has no network or credentials. Known
+fixes and extra checker examples stay outside it. The read tool can only read
+host output files the SDK itself created for this run. The
+[npm security guide](https://github.com/lirantal/npm-security-best-practices)
+informs these boundaries; locked dependencies, disabled install scripts and the
+existing release cooldown stay in place.
+
+The chosen measure is whether the saved patch passes every independent check
+inside the original ten-minute deadline. The common checker runs after Pi stops,
+gets no extra time and sends no repair feedback to Pi. The conversation's stop
+reason and the patch's check result stay separate. A retained patch can still be
+graded after a model-request stop if time remains. A claim of success doesn't
+count without the matching check evidence.
+
+Read the printed `baseline.md` first. Its folder keeps the exact plan reference,
+actual context, conversation, request reservations, patch, project snapshots and
+check logs. Tokens come from reported provider usage; missing usage and billing
+stay unknown. Model billing, execution billing and my review time are separate.
+The held-out task stays unused, and my learning review remains pending.
+
+```sh
+PYTHONPATH=tools/harness python3 -m unittest test_baseline -v
+node --test tools/harness/pi/loop.test.mjs tools/harness/pi/native.test.mjs
+```
+
+These tests use supplied replies. They exercise plan reuse, changed context,
+request reservations, limits, normal-tool payloads and failed-session reporting
+without a repair-model call.
 
 ## Recover a prepared session
 

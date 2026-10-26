@@ -174,6 +174,9 @@ def session(run, tools, start, temporary):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(temporary), "TMPDIR": str(temporary),
            "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(temporary / "agent")}
     process = None
+    live = start.get("mode") == "live"
+    permissions = (["--allow-net", "--allow-fs-read=" + start["authDir"], "--allow-fs-write=" + start["authDir"]]
+                   if live else [])
     with (run.path / "pi.stderr").open("wb") as stderr:
         try:
             run.launching = True
@@ -181,6 +184,7 @@ def session(run, tools, start, temporary):
                 process = subprocess.Popen(["node", "--permission", "--allow-fs-read=" + str(package),
                                         "--allow-fs-read=/workspace/*",
                                         "--allow-fs-read=" + str(temporary), "--allow-fs-write=" + str(temporary),
+                                        *permissions,
                                         str(package / "native-cli.mjs")], cwd=temporary, env=env, stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, stderr=stderr, start_new_session=True)
             finally:
@@ -213,18 +217,26 @@ def session(run, tools, start, temporary):
                             result = tools.dispatch(message)
                             process.stdin.write((json.dumps({"id": message["id"], "result": result}) + "\n").encode())
                             process.stdin.flush()
+                        elif kind == "model_reserve" and live:
+                            result = tools.reserve_model(message)
+                            process.stdin.write((json.dumps({"id": message["id"], "result": result}) + "\n").encode())
+                            process.stdin.flush()
+                        elif kind in ("model_request", "model_response", "model_dispatch", "model_payload", "model_payload_rejected", "model_usage") and live:
+                            tools.model_event(message)
                         elif kind in ("context", "session", "finished"):
+                            if kind == "context" and live:
+                                tools.check_context(message)
                             write_json(run.path / ("context.json" if kind == "context" else "pi-session.json"), message)
                             finished = finished or kind == "finished"
                         elif kind == "failed":
-                            raise Stop("blocked", message.get("reason", "The normal-tool session failed"))
+                            raise Stop(message.get("outcome", "blocked"), message.get("reason", "The normal-tool session failed"))
                         else:
                             raise Stop("invalid_input", "Unknown normal-tool protocol message")
             try:
                 code = process.wait(timeout=max(0.01, run.deadline - time.monotonic()))
             except subprocess.TimeoutExpired as error:
                 raise Stop("timeout", "The normal-tool session didn't stop before its deadline") from error
-            if code or not finished or tools.active or tools.calls != len(start["calls"]):
+            if code or not finished or tools.active or not live and tools.calls != len(start["calls"]):
                 raise Stop("incomplete", "The prepared normal-tool sequence didn't finish")
         finally:
             if process:

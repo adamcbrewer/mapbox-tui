@@ -3,6 +3,10 @@ import { test } from "node:test";
 import { createReadToolDefinition, createEditToolDefinition, createWriteToolDefinition,
   createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createNativeTools, nativeNames, runNativeScriptedLoop } from "./native.mjs";
+import { runNativeLoop } from "./native.mjs";
+import { createScriptedRuntime } from "./loop.mjs";
+import { boundedStream } from "./live.mjs";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
 function sandbox() {
   const files = new Map([["/workspace/source.txt", "before\n"]]);
@@ -82,4 +86,58 @@ test("the real SDK session selects normal tools and retains intentional errors",
   assert.equal(results[0].content[0].text, "before\n");
   assert.equal(results[1].isError, true);
   assert.equal(emitted.at(-1).modelCalls, 0);
+});
+
+test("bounded live requests use normal tools through the real SDK without network", async () => {
+  const start = { task: { id: "live-native" }, prompt: "Repair the supplied task.", calls: [
+    { name: "read", args: { path: "source.txt" } }, { name: "bash", args: { command: "fail" } },
+  ] };
+  const runtime = await createScriptedRuntime(start);
+  const model = runtime.getModel("harness-scripted", "prepared");
+  const remote = sandbox(), emitted = [], reservations = [];
+  const requests = { count: 0 };
+  const config = { provider: model.provider, model: model.id, auth: "subscription", maxModelRequests: 3, maxOutputTokensPerRequest: null };
+  await runNativeLoop(start, remote.rpc, value => emitted.push(value), { runtime, model, requests,
+    streamFunction: boundedStream(runtime, model, config, requests, value => emitted.push(value), () => {}, 1000,
+      async request => { reservations.push(request); return { outcome: "ok", request }; }, nativeNames) });
+  assert.deepEqual(reservations, [1, 2, 3]);
+  const context = emitted.find(value => value.type === "context");
+  assert.match(context.systemPrompt, /expert coding assistant operating inside pi/);
+  assert.deepEqual(context.activeTools.sort(), [...nativeNames].sort());
+  assert.equal(emitted.find(value => value.type === "finished").modelCalls, 3);
+  assert.equal(emitted.at(-1).messages.filter(message => message.role === "toolResult")[1].isError, true);
+});
+
+test("native live request exhaustion cannot emit a successful finish", async () => {
+  const start = { task: { id: "limited" }, prompt: "Repair.", calls: [{ name: "read", args: { path: "source.txt" } }] };
+  const runtime = await createScriptedRuntime(start);
+  const model = runtime.getModel("harness-scripted", "prepared");
+  const requests = { count: 0 }, emitted = [], remote = sandbox();
+  const config = { provider: model.provider, model: model.id, maxModelRequests: 1, maxOutputTokensPerRequest: null };
+  await assert.rejects(runNativeLoop(start, remote.rpc, value => emitted.push(value), { runtime, model, requests,
+    streamFunction: boundedStream(runtime, model, config, requests, value => emitted.push(value), () => {}, 1000,
+      async request => ({ outcome: "ok", request }), nativeNames) }), /budget reached/);
+  assert.equal(requests.count, 1);
+  assert.equal(emitted.some(value => value.type === "finished"), false);
+  assert.equal(emitted.at(-1).type, "session");
+});
+
+test("native payload scope accepts normal tools and refuses an extra tool before transport", async () => {
+  const model = { provider: "test", id: "chosen", api: "test" };
+  const config = { model: "chosen", maxModelRequests: 1, maxOutputTokensPerRequest: null };
+  for (const extra of [false, true]) {
+    const requests = { count: 0 }, emitted = [];
+    const runtime = { streamSimple(_model, _context, options) {
+      options.onPayload({ model: "chosen", tools: [...nativeNames, ...(extra ? ["harness_edit"] : [])].map(name => ({ name })) });
+      const stream = createAssistantMessageEventStream();
+      stream.push({ type: "done", reason: "stop", message: { role: "assistant", content: [], stopReason: "stop" } });
+      return stream;
+    } };
+    const stream = boundedStream(runtime, model, config, requests, value => emitted.push(value), () => {}, 1000, null, nativeNames);
+    const events = [];
+    for await (const event of stream(model, {}, {})) events.push(event);
+    assert.equal(events.at(-1).type, extra ? "error" : "done");
+    assert.equal(emitted.some(value => value.type === "model_payload_rejected"), false);
+    assert.equal(Boolean(requests.failure), extra);
+  }
 });
