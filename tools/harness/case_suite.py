@@ -213,19 +213,22 @@ def calibrate(suite, case, image, batch=None):
 
 
 def render_batch(batch):
-    lines = ["# Are the bug tasks ready for an AI comparison?", "",
-             "Compare (#107): prepare the tasks before running plain Pi against the harness.",
-             "This script supplied the original code, planted bugs and reference repairs. No AI or Pi session ran.",
-             "The Go checks run in the existing restricted containers. These results calibrate tasks; they do not measure AI repair skill.",
-             "One development case tests XML prefixes. A held-out case uses a different family: coordinate validation.",
-             "This batch lists only the selected cases; other case calibrations have separate receipts.",
-             "Reference repairs and private examples are outside each agent project. Only agent/ is intended for the future model tool adapter.",
-             "The normal-Pi sandbox adapter and live comparison are not connected by this slice.", ""]
-    labels = {"original": "Original working code", "seeded": "Deliberately planted bug",
-              "reference": "Reference repair", "ineffective": "Deliberately ineffective repair"}
+    lines = ["# Do these tasks catch the bugs I planted?", "",
+             "Before asking an AI to fix a bug, I need to know that the task's tests can catch it.",
+             "I used a script to try the original code, the planted bug, a known fix and an edit that doesn't fix it.",
+             "No repair AI or Pi session ran. The Go tests ran in the existing sandbox containers.",
+             "I have two kinds of task: XML prefix handling for development, and coordinate validation saved for later evaluation.",
+             "A held-out task is one I save until the development choices are fixed. I won't use its results to tune the prompt.",
+             "This report covers the selected tasks in this batch. Other batches have their own saved results.",
+             "The known fixes and extra test examples sit outside each agent project. I still need to connect normal Pi tools to that project inside the sandbox.", ""]
+    labels = {"original": "Original code", "seeded": "Bug I deliberately planted",
+              "reference": "Known fix", "ineffective": "Edit that doesn't fix the bug"}
     for row in batch.result["cases"]:
-        lines.extend(["## " + row["id"], "", "Case status: " + row["status"] + ". " + str(row.get("reason") or ""), "",
-                      "| Prepared version | Public example | Private examples |", "| --- | --- | --- |"])
+        status = ("The checks behaved as expected." if row.get("outcome") == "case_calibration_passed" else
+                  "This task isn't ready. The checks didn't behave as expected." if row.get("outcome") == "calibration_failed" else
+                  "This task hasn't finished its checks.")
+        lines.extend(["## " + row["id"], "", status, "",
+                      "| Code I tried | Example to show the AI | Extra examples kept for checking |", "| --- | --- | --- |"])
         observations = {(item["variant"], item["visibility"]): item for item in row.get("observations", [])}
         for variant, label in labels.items():
             cells = []
@@ -234,26 +237,28 @@ def render_batch(batch):
                 if observation is None:
                     text = "Not run"
                 elif observation["actual"] != observation["expected"]:
-                    text = "Unexpected result: " + observation["actual"]
+                    text = {"passed": "Passed unexpectedly", "assertion_failed": "Failed unexpectedly",
+                            "blocked": "Couldn't run the check", "build_failed": "Couldn't build the code",
+                            "unexpected_failure": "Failed for a different reason"}.get(observation["actual"], "Needs inspection")
                 else:
                     text = "Passed" if observation["actual"] == "passed" else "Failed as intended"
                 cells.append(text)
             lines.append("| " + label + " | " + " | ".join(cells) + " |")
-        lines.extend(["", "Local receipt: " + row.get("receipt", "not recorded") + ".", ""])
-    lines.extend(["## What this means", "",
-                  "A usable task starts with working code, reproduces the intended bug and distinguishes a reference repair from an ineffective one.",
-                  "These are synthetic bugs. Neither prepared repairs nor passing calibration prove that an AI can find the fix.",
-                  "The coordinate fixture includes instruction-like text as data. No model has interpreted it, so prompt-injection resistance is untested.",
-                  "The held-out family must stay out of development model runs and prompt tuning. Private checks/reference files must never be mounted in its agent project.",
-                  "These are saved observations at calibration time. Receipts retain commands, source identities and log fingerprints; keep their referenced evidence.",
-                  "Model calls, tokens and model cost: zero. Execution billing and human review time: unknown.",
-                  "Human review remains pending. Next: connect normal Pi tools to the sandbox, then compare real repair attempts with the same independent checks.",
+        lines.extend(["", "Saved result: " + row.get("receipt", "not recorded") + ".", ""])
+    lines.extend(["## What I can take from this", "",
+                  "A task is useful only if its tests pass the working code, catch the planted bug and accept a known fix.",
+                  "I planted these bugs on purpose. These checks don't establish whether an AI can find the fix.",
+                  "One example contains text telling the reader to claim success. I haven't tested how an AI reacts to it yet.",
+                  "I need to keep the extra examples and known fixes away from the repair AI. Its sandbox should receive only the agent project.",
+                  "This report describes the checks at the time they ran. Keep the saved results and logs; a file fingerprint identifies their exact contents.",
+                  "Repair-model calls, tokens and model cost: zero. Execution billing and my review time: unknown.",
+                  "I still need to review this. Next I'll connect normal Pi tools inside the sandbox and compare actual repair attempts using the same tests.",
                   "[Shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111).", ""])
     return "\n".join(lines)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare isolated development/held-out case snapshots and calibrate trusted examples. No model calls.")
+    parser = argparse.ArgumentParser(description="Prepare bug tasks and check that their tests catch the planted errors. No model calls.")
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--prepare", action="store_true")
     action.add_argument("--calibrate", type=Path)

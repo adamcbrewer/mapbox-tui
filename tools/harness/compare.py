@@ -196,47 +196,53 @@ def summarize(directory):
     result = {"plan_sha256": saved["sha256"], "generated_at": now(), "rows": rows, "totals": totals,
               "promotion_blocked": any(row["unconfirmed_completion"] or row["outcome"] == "not_recorded" for row in rows)}
     durable_json(directory / "comparison.json", result)
+    (directory / "comparison.md").write_text(render_comparison(plan, result))
+    return result
+
+
+def render_comparison(plan, result):
+    rows, totals = result["rows"], result["totals"]
     lines = ["# Does finishing checks help after model requests run out?", "",
-             "Compare (#107), first prepared paired experiment. The plan was saved before these attempts.",
-             "We replay a working and a wrong repair of the same synthetic import bug, with identical limits and checker.",
-             "Only automatic final checking changes. Pair order reverses on alternate repeats.",
-             "No model or Pi session runs. Request exhaustion is simulated; container checks are real.",
-             "The primary measure is a completed run delivering an independently checked repair within its original limits.",
-             "This measures completion, not the model's ability to find a repair or total time saved for you.", ""]
+             "I tested a problem from #106: a fix had been written, but the AI had run out of turns before asking for tests.",
+             "I compared stopping there with letting our code finish the checks. I saved the plan before running either version.",
+             "The script supplied the same working fix and deliberately bad fix to both versions, with the same limits and tests.",
+             "I ran each pair twice and reversed their order the second time. Only automatic checking changed.",
+             "No repair AI or Pi session ran. I simulated the request limit; the Go checks ran in real containers.",
+             "I counted a success only when the run finished with a fix that passed every required check within its original limits.",
+             "This tests whether our code can finish the job. I haven't measured better AI repairs or time saved for me.", ""]
     for arm, total in totals.items():
-        label = "Runner finishes the checks" if ARMS[arm] else "Stop when model requests run out"
-        lines.extend([f"## {label}", "", f"Verified deliveries: {total['verified_deliveries']}/{total['planned']} planned attempts.", ""])
+        label = "Our code finishes the checks" if ARMS[arm] else "Stop when the AI has no turns left"
+        lines.extend([f"## {label}", "", f"Finished with a fully checked fix: {total['verified_deliveries']}/{total['planned']} planned attempts.", ""])
         lines.extend(f"- {outcome}: {count}" for outcome, count in total["outcomes"].items())
-        lines.append(f"Recorded time across {total['runs_with_duration']} runs: {total['recorded_duration_seconds']} seconds, including failed attempts and checks.")
-    lines.extend(["", "| Prepared repair | Stop: verified deliveries | Automatic: verified deliveries |",
+        lines.extend(["", f"Time across {total['runs_with_duration']} runs: {total['recorded_duration_seconds']} seconds, including failed attempts and checks.", ""])
+    lines.extend(["| Fix I supplied | Stop: fully checked fixes | Automatic: fully checked fixes |",
                   "| --- | --- | --- |"])
     for case in plan["cases"]:
         counts = [str(sum(row["verified_success"] for row in rows if row["case"] == case and row["arm"] == arm)) +
                   "/" + str(plan["repeats"]) for arm in ARMS]
         lines.append(f"| {'Working repair' if case == 'good' else 'Deliberately wrong repair'} | {' | '.join(counts)} |")
-    lines.extend(["", "## Every attempt, including failures", ""])
+    lines.extend(["", "## Every attempt", ""])
     for row in rows:
         attempts = row.get("verification_attempts", [])
-        meaning = ("Repair passed every required check; human review pending" if row["verified_success"] else
-                   "Evidence needs inspection" if row["unconfirmed_completion"] else
-                   "Wrong repair failed its check as intended" if attempts and attempts[-1]["outcome"] == "repair_failed" else
-                   "Stopped with an unchecked repair" if row["outcome"] == "budget_exhausted" else "Not completed")
+        meaning = ("The fix passed every required check; I still need to review it" if row["verified_success"] else
+                   "I need to inspect the evidence" if row["unconfirmed_completion"] else
+                   "The deliberately bad fix failed its check, as expected" if attempts and attempts[-1]["outcome"] == "repair_failed" else
+                   "Stopped before the fix was checked" if row["outcome"] == "budget_exhausted" else "Didn't finish")
         lines.append(f"- {row['case']}, repeat {row['repeat']}, {row['arm']}: {meaning} ({row['outcome']}).")
-        lines.append(f"  Receipt: {row.get('receipt', 'not yet recorded')}. Duration: {row.get('duration_seconds', 'unknown')} seconds.")
-    lines.extend(["", "## What to take away", "",
-                  "The wrong repair must never count as a success. An unchecked repair is unfinished, not proof it is wrong.",
-                  "False or unconfirmed completion blocks promotion even if other numbers improve.",
-                  "Promotion blocked by incomplete or unconfirmed evidence: " + str(result["promotion_blocked"]) + ".",
-                  "This small same-bug sample is exploratory. Repetition checks consistency; it does not create different bug families.",
-                  "Human-plus-script/plain-Pi baselines, held-out bugs, corrections and review time remain unfinished.",
-                  "Actual model requests/tokens/cost here: zero. Execution billing and human time: unknown.",
-                  "Automatic checking takes additional execution time. This comparison cannot establish human time saved.",
-                  "Our script supplies the repairs; Python controls checking. Pi's real tool choices and AI reasoning are not tested.",
-                  "Keep plan.json, progress.json, comparison.json and the referenced local evidence together. The JSON retains every attempt and its metrics.",
-                  "Human review must check the plan and both the working/wrong examples before deciding what to compare next.",
+        lines.append(f"  Saved result: {row.get('receipt', 'not yet recorded')}. Time: {row.get('duration_seconds', 'unknown')} seconds.")
+    lines.extend(["", "## What I can take from this", "",
+                  "Automatic checking can finish a working fix under this prepared condition. The bad fix must still fail.",
+                  "An unchecked fix is unfinished. That doesn't tell me whether the fix itself is wrong.",
+                  "I won't adopt a change on the strength of missing evidence or an incorrect success claim.",
+                  "Evidence still needs attention: " + ("yes" if result["promotion_blocked"] else "no") + ". My review is still pending.",
+                  "This is a small test of one bug. Repeating it checks consistency; it doesn't establish general AI repair ability.",
+                  "I still need real attempts from plain Pi and Pi with the harness, a human-plus-script baseline, and measurements of my corrections and review time.",
+                  "Repair-model calls, tokens and model cost here: zero. Execution billing and my review time: unknown.",
+                  "Running the checks took extra computer time. I haven't shown that it saved my time.",
+                  "Keep plan.json, progress.json, comparison.json and the linked evidence together. The JSON keeps every attempt and the detailed figures.",
+                  "Next I need to review the working and failed examples before choosing another change to test.",
                   "[Shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111).", ""])
-    (directory / "comparison.md").write_text("\n".join(lines))
-    return result
+    return "\n".join(lines)
 
 
 def run_comparison(directory):
@@ -261,7 +267,7 @@ def run_comparison(directory):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Freeze and replay a prepared paired automatic-check comparison. No model calls.")
+    parser = argparse.ArgumentParser(description="Save a plan, then compare stopping at the request limit with automatic checking. No model calls.")
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--prepare", action="store_true")
     action.add_argument("--run", type=Path)

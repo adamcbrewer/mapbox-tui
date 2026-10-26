@@ -136,52 +136,49 @@ def inventory(reports):
 
 def render(value):
     summary = value["summary"]
-    lines = ["# Compare: historical run inventory", "",
-             "Stage 5 of the harness roadmap collects comparable evidence before testing one change.",
-             "This script reads saved receipts and rechecks their evidence. It makes no model calls.",
-             "These are historical records, not a controlled comparison or proof that the harness improved.",
-             "No model/settings were selected in advance and no baseline comparison has been run here.", "",
-             f"Sample: {summary['runs']} root runs; {summary['child_receipts']} linked check receipts kept separately.",
-             f"First repair passed every required check: {summary['first_attempt_successes']}/{summary['runs']}.",
-             f"Final repair passed every required check: {summary['eventual_successes']}/{summary['runs']}.",
-             "These mixed historical counts are an inventory, not a model success-rate estimate.",
-             f"Saved completion claims needing inspection: {summary['unconfirmed_completions']}.",
-             f"Unreadable or missing receipts needing inspection: {summary['unreadable_receipts']}.",
-             "An unconfirmed completion blocks promotion; it can mean missing evidence, not necessarily a bad repair.",
-             "False completion based on task outcomes, corrections and human review time remain unmeasured.", "",
-             "## All root outcomes", ""]
+    lines = ["# What happened in the saved runs?", "",
+             "I want to count the failed attempts too, so a good result doesn't hide the work it took to get there.",
+             "This script reads saved results and checks their supporting files. It makes no model calls.",
+             "These runs happened at different times. This is not a controlled comparison: I haven't held the tasks and settings fixed to test one change.", "",
+             f"I've found {summary['runs']} task runs and {summary['child_receipts']} separate check results within those runs.",
+             f"Passed every required check on the first repair: {summary['first_attempt_successes']}/{summary['runs']}.",
+             f"Passed every required check by the end of the run: {summary['eventual_successes']}/{summary['runs']}.",
+             "The runs include different kinds of examples, so these totals don't tell me how reliable the AI is.",
+             f"Saved passes I need to inspect: {summary['unconfirmed_completions']}.",
+             f"Missing or unreadable result files: {summary['unreadable_receipts']}.",
+             "I won't use an unconfirmed pass to justify a change. Missing evidence doesn't tell me whether the repair was wrong.",
+             "I still need to measure incorrect success claims, my corrections and my review time.", "",
+             "## Every task outcome", ""]
     lines.extend(f"- {name}: {count}" for name, count in summary["outcomes"].items())
     if not summary["runs"]:
-        lines.append("No local runs found. Generate run evidence first; missing data is not a success.")
-    lines.extend(["", "## Every saved run", ""])
+        lines.append("No local runs found. I need to run the examples before there's anything to compare.")
+    lines.extend(["", "## Each saved run", ""])
     for row in value["records"]:
         if row["verified_success"]:
-            label = "Proposed repair passed every required check"
+            label = "The repair passed every required check; my review is still pending"
         elif row["unconfirmed_completion"]:
-            label = "Saved pass could not be confirmed"
+            label = "I couldn't confirm this saved pass"
         else:
-            label = "No independently verified success"
+            label = "This run hasn't established a checked repair"
         lines.extend([f"- {row['receipt']}: {label}. Saved outcome: {row['outcome']}.",
-                      f"  Case: {'synthetic' if row.get('synthetic') is True else 'provenance unknown'}. Mode: {row.get('mode', 'unknown')}.",
-                      f"  Evidence: {row.get('problem', 'Receipt fingerprint and original evidence path retained in inventory.json.')}"])
+                      f"  Task: {'a deliberately planted bug' if row.get('synthetic') is True else 'origin not recorded'}. Run type: {row.get('mode', 'unknown')}.",
+                      f"  Details: {row.get('problem', 'inventory.json keeps the saved result, its file fingerprint and the path to the original evidence.')}"])
         if row.get("simulated_checks"):
-            lines.append("  Prepared demonstration with simulated check output. No model or Go checks ran for this example.")
-    lines.extend(["", "## What this proves and what is next", "",
-                  "Failures, cancellations, unfinished runs and unreadable evidence stay visible. Linked checks are not extra tasks.",
-                  "First-attempt success requires a successful root run with one checked repair; eventual success allows repairs within that run.",
-                  "Every recorded verification attempt remains in the JSON, including failed attempts before a successful repair.",
-                  "Receipt settings and fingerprints identify historical inputs; matching fingerprints alone do not establish a controlled experiment.",
-                  "Missing settings, billing, tokens, corrections or review time stay unknown. Root duration/cost already includes child work; do not add it twice.",
-                  "Prepared and synthetic examples test harness behaviour, not real-world AI repair ability. Human acceptance remains separate.",
-                  "Next: predeclare paired cases, one harness change and a primary metric, then establish human-plus-script and plain-Pi baselines.",
-                  "Human review must still confirm the evidence and experiment design before drawing conclusions.",
-                  "A receipt is the saved run result. A fingerprint identifies its exact bytes; it is not a correctness proof.",
+            lines.append("  I supplied this example's test replies. No model or Go checks ran for this example.")
+    lines.extend(["", "## What I can take from this", "",
+                  "A passing retry doesn't erase its earlier failed repair. The JSON keeps every recorded check attempt.",
+                  "One task can contain several checks. I count the task once, and its total time and cost once.",
+                  "If settings, billing, tokens, corrections or review time weren't recorded, they're unknown.",
+                  "Prepared examples check our code's behaviour. They don't establish how well an AI repairs real bugs.",
+                  "Next I need to give the same tasks to plain Pi, Pi with the harness and a human using scripts, then use the same tests to check their fixes.",
+                  "I still need to review the results. Passing tests and my approval are separate.",
+                  "A receipt is a saved result file. A fingerprint identifies its exact contents; it doesn't prove the code is correct.",
                   "See the [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111).", ""])
     return "\n".join(lines)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Inventory all local harness attempts without claiming a controlled comparison.")
+    parser = argparse.ArgumentParser(description="Read every saved harness attempt, including failures. This doesn't run an AI comparison.")
     parser.add_argument("--reports", type=Path, default=REPORTS)
     parser.add_argument("--output", type=Path, help="New output directory; existing inventories are never overwritten")
     args = parser.parse_args()

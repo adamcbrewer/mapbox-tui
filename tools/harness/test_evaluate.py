@@ -56,7 +56,7 @@ class InventoryTests(unittest.TestCase):
         value = evaluate.inventory(self.root)
         self.assertEqual(value["summary"]["eventual_successes"], 0)
         self.assertEqual(value["summary"]["unconfirmed_completions"], 1)
-        self.assertIn("Saved pass could not be confirmed", evaluate.render(value))
+        self.assertIn("I couldn't confirm this saved pass", evaluate.render(value))
 
     def test_cli_keeps_previous_inventory_and_flags_unconfirmed_completion(self):
         self.receipt("claim", {"outcome": "verified_repair_passed"})

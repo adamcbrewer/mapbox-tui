@@ -1,50 +1,50 @@
 # Developer harness pilot
 
-Current stage: Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)),
-starting with a local historical inventory. Recover (#106) is merged and closed.
-Adam explicitly selected Compare; older saved review answers remain unchanged.
-Pi now connects an OpenAI subscription model to four controlled tools, with
-prepared examples for checking the wiring without AI. Two live Luna attempts
-are recorded locally: one ineffective repair and one that passed the fixed
-import check. See the [Pi checkpoint and Fish commands](pi/README.md).
-Adam asked to begin Verify after the Pi walkthrough. Earlier recorded review
-questions aren't automatically answered by that decision; passing a test isn't approval.
-The original repair command still runs trusted code on the host.
+I want to know whether the extra code around Pi helps it fix bugs and saves me
+time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is the
+current stage. Recover (#106) is merged and closed.
 
-## Inventory runs before comparing changes
+So far I've collected run records, checked one prepared comparison and built two
+bug tasks. I haven't run the real plain-Pi comparison yet. Earlier Pi setup and
+live Luna examples are in the [Pi guide](pi/README.md).
 
-Compare asks whether one harness change helps on the same tasks. This first slice
-collects existing evidence; it does not run an experiment or call a model.
+## How I want these updates written
+
+Use my voice and the `wat` skill's plain-language approach for #107 docs, reports,
+notes and summaries. Lead with what happened and why I should care. Say whether an
+AI ran, what our code did, what passed or failed, and what's still unfinished.
+Explain unfamiliar terms when they first appear. Keep commands and detailed
+status codes available, without making me read raw JSON to understand the result.
+Don't turn passing tests into a claim that I've approved the work.
+
+## Keep every attempt in the results
+
+I don't want a passing retry to hide the failed repair that came before it.
+`evaluate.py` reads saved run results and checks their supporting files. It makes
+no model calls.
 
 ```sh
 python3 tools/harness/evaluate.py
 PYTHONPATH=tools/harness python3 -m unittest test_evaluate -v
 ```
 
-The command prints a new local `reports/harness/compare/inventories/<id>/inventory.md`.
-Read that plain-language inventory first. Its adjacent `inventory.json` retains
-each parsed receipt, its original-byte fingerprint, source path, observed settings,
-all verification attempts and available measurements. Runs without a receipt,
-unreadable receipts, failures and interruptions stay visible. An empty checkout
-shows an honest empty state. Existing inventories are never overwritten.
+The command prints a new `reports/harness/compare/inventories/<id>/inventory.md`.
+Read that first. The neighbouring `inventory.json` keeps the saved results,
+settings, file fingerprints and all recorded check attempts. A fingerprint
+identifies a file's exact contents. Keep the original patches and logs too;
+the inventory doesn't copy every supporting file.
 
-Root runs are tasks; their linked verification receipts are checks within those
-tasks, not extra successes or costs. First-attempt success means the root run
-finished with one independently checked repair. Eventual success allows a repair
-retry within the same run. Separate later manual verification stays a separate
-run; it does not rewrite an earlier failure. These mixed historical counts are
-not a model success rate. Prepared examples and live attempts remain labelled in
-the JSON, and deliberately seeded cases remain labelled synthetic.
+One task can contain several checks. I count the task once, including the time
+and cost of failed attempts. First-attempt success means one repair passed every
+required check. Success by the end of the run can include a retry. A later manual
+check stays separate and doesn't rewrite an earlier failure.
 
-A successful label requires the current full independent checking scope and
-matching patch/log receipts. Focused test passes and model claims do not count.
-Missing or changed evidence leaves an unconfirmed completion and exit 1, blocking
-promotion until inspected. This does not by itself prove false completion: the
-evidence could be missing. Unreadable/missing receipts also return exit 1.
-Exit 0 means inventory collection found no such evidence problem,
-not that all repairs worked. Ordinary failed/cancelled/blocked runs are retained.
+These old runs used different settings and tasks. Their totals don't tell me that
+the harness improved. Missing billing, token usage, corrections or review time
+stay unknown. A focused test passing or the model saying "done" doesn't establish
+that all required checks passed.
 
-For a successful prepared case and deliberate evidence failure, run:
+To try a successful prepared example and a deliberately changed log:
 
 ```sh
 PYTHONPATH=tools/harness python3 -m unittest -v \
@@ -52,42 +52,32 @@ PYTHONPATH=tools/harness python3 -m unittest -v \
   test_evaluate.VerifiedInventoryTests.test_changed_check_log_prevents_success_without_rewriting_receipt
 ```
 
-Both tests should pass. They use simulated check output, no container or model:
-the first retains a failed repair and successful retry as one task; the second
-changes a saved check log and confirms the pass stops counting. These demonstrate
-inventory decisions, not real Go checks or model repair ability.
+Both tests should pass. The first keeps a failed repair and a passing retry as one
+task. The second changes a saved check log and confirms that the old pass stops
+counting. These tests supply fake check replies; no model or Go check runs inside
+them.
 
-Use `--reports PATH` to inspect another local evidence tree and `--output NEW_DIR`
-for a specific new destination. Keep the original evidence directories: the JSON
-copies result receipts, not every patch, log or source archive. This command
-observes saved evidence; it does not lock a currently running session. Collect
-after runs stop; concurrent writes may leave an unconfirmed or unreadable result.
-Billing, partial token usage, corrections and review time remain unknown where
-unrecorded. Model and execution costs are separate. No cost totals are inferred.
+Use `--reports PATH` for another local evidence folder and `--output NEW_DIR` for
+a new destination. Existing inventories aren't overwritten. Run this after the
+tasks stop, because it doesn't lock active sessions. Exit 1 means evidence needs
+attention, including missing/unreadable result files or an unconfirmed pass.
+Exit 0 means the inventory found no such problem; failed repairs still stay in it.
 
-Observed settings are retained, not retroactively pinned for a controlled test.
-Predeclared paired cases, development/held-out suites, human-plus-script/plain-Pi
-baselines, one chosen change/metric and controlled comparisons remain unfinished.
-The [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111)
-explains receipt and evidence files. The Compare learning review stays pending.
+## Try automatic checking after the AI runs out of turns
 
-## Compare automatic checking with stopping at the request limit
+In #106 a fix had been written, but the model had no requests left to ask for
+tests. I compared stopping there with letting our code finish the checks.
 
-The first paired experiment follows a real failure observed in Recover: a final
-edit existed when the model-request allowance ran out, before tests were requested.
-We compare stopping there with letting the runner request the fixed checks.
-The primary measure, chosen before execution, is a completed run delivering an
-independently checked repair within the original limits, without another model request.
+The script supplied a working fix and a deliberately bad fix to both versions.
+The tasks, repairs, test rules, container image and limits were the same. Each
+pair ran twice, in reverse order the second time. I saved the plan before running
+it and chose one measure: did the run finish with a fix that passed every required
+check, within its original limits and without another model request?
 
-The script supplies a working and a deliberately wrong repair of the same
-synthetic import bug. Both versions get identical repairs, task snapshots,
-budgets, prepared image and independent checker. Only automatic final checking
-changes. Two repetitions produce eight attempts; the second reverses pair order.
-This replays a known condition without Pi or model inference. Ten request slots
-are marked spent to reproduce the limit, but zero actual model requests are made.
-Real checks still execute in the existing restricted containers.
+No repair AI or Pi session ran. Ten request slots were marked spent to reproduce
+the limit. The Go checks ran in real containers.
 
-Using the existing prepared image and rootless Podman environment, from Bash:
+Using the existing prepared image and rootless Podman setup, from Bash:
 
 ```sh
 HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
@@ -96,9 +86,8 @@ systemd-run --user --quiet --wait --pipe --collect --same-dir \
   --prepare --image "$HARNESS_IMAGE_ID"
 ```
 
-This performs readiness/image/Go-version checks and prints a new experiment
-directory under `reports/harness/compare/experiments/`. Its `plan.json` freezes
-the cases, settings, checker, source fingerprints, order and primary measure.
+This checks the runtime, image and Go version, then prints a new experiment
+folder. Its `plan.json` saves the inputs, settings, run order and chosen measure.
 Copy the printed path into:
 
 ```sh
@@ -108,49 +97,42 @@ python3 tools/harness/compare.py --report EXPERIMENT_DIR
 PYTHONPATH=tools/harness python3 -m unittest test_compare -v
 ```
 
-Read `EXPERIMENT_DIR/comparison.md`; its JSON retains all receipts and metrics.
-Expected working case: automatic checking delivers two verified repairs, while
-stopping leaves two unfinished. Expected deliberate failure: the wrong repair
-never counts as success; automatic checking records its failed independent test.
-The stopped version has no check result, so it cannot establish repair quality.
-The wrong automatic run can still end `budget_exhausted`: its first check failed
-and the exhausted model allowance prevents another repair. The failed check is
-retained separately from that overall stopping reason.
+Read `EXPERIMENT_DIR/comparison.md`. I expect automatic checking to finish the
+working fix twice, while stopping leaves it unchecked twice. The bad fix must
+never count as successful. Its automatic runs can still end `budget_exhausted`:
+the check failed, and there are no model requests left for another repair.
+"Unchecked" and "checked and failed" are different results.
 
-Execution refuses changed harness inputs or an already-started experiment.
-An interrupted experiment retains its scheduled/pending attempts; use `--report`
-to inspect it rather than blindly repeating runs. Start a newly prepared experiment
-for a deliberate rerun and retain the old one. Unconfirmed evidence or a known
-wrong repair presented as successful blocks promotion. Report generation rechecks
-receipt identities, pair settings, actual patch fingerprints and independent evidence.
+Changed inputs or an already-started experiment stop execution. If a run is
+interrupted, use `--report` to inspect what happened. A deliberate rerun needs a
+new plan; keep the earlier attempt. The report checks saved results, file
+fingerprints, paired settings and the independent test evidence, including failures.
 
-These repetitions test completion of one prepared condition, not general AI repair
-quality or superiority over human-plus-script/plain-Pi baselines. Running checks
-adds execution time; human review/correction time and execution billing remain
-unknown. The plan and reports stay local. Learning review is still required.
+This prepared example shows that our code can finish checking a working fix.
+I haven't shown better AI repairs or time saved for me. Checking takes extra
+computer time, and my review/correction time and execution billing are unknown.
 
-## Prepare development and held-out bug tasks
+## Check the bug tasks before asking the AI to fix them
 
-Before spending model requests, check that the bug tasks can distinguish working
-code from broken code. `case_suite.py` creates frozen project copies from the
-pinned public source commit, with deliberately seeded regressions:
+A bad task could make a good repair look wrong, or let a bad repair pass.
+`case_suite.py` makes project copies from one fixed public source commit and
+plants two different kinds of bug:
 
-- Development: leading UTF-8 marker handling in GPX/TCX/KML imports.
-- Held-out: latitude validation, a different bug family. Held-out means saved for
-  evaluation after development choices are fixed; don't tune prompts on its results.
+- **Development:** XML prefix handling in GPX/TCX/KML imports.
+- **Held-out:** latitude validation. This task is saved for evaluation after the
+  development choices are fixed. I won't use its results to tune the prompt.
 
-Each case has an `agent/` project containing the broken source and public task.
-Its sibling `private/` directory contains the seed patch, reference answer and
-additional check examples. These private files must stay outside the future
-model tool adapter's project mount. The coordinate example also contains
-instruction-like fixture text; it is data, not permission to change the task.
+Each `agent/` project has the broken source and public task. Its sibling
+`private/` folder has the planted-change patch, known answer and extra examples.
+The future Pi connection must give the model only the agent project. One example
+also contains text telling the reader to claim success; it is task data.
 
 ```sh
 python3 tools/harness/case_suite.py --prepare
 ```
 
-Copy the printed suite directory into `SUITE_DIR` below. Using the existing
-prepared image and rootless Podman environment, from Bash:
+Copy the printed suite folder into `SUITE_DIR` below. Using the existing image
+and rootless Podman setup, from Bash:
 
 ```sh
 HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
@@ -160,27 +142,33 @@ systemd-run --user --quiet --wait --pipe --collect --same-dir \
 PYTHONPATH=tools/harness python3 -m unittest test_case_suite -v
 ```
 
-The calibration prints a new local `calibration.md`. For each case, expect the
-original code and reference repair to pass both public and private checks.
-Expect the planted bug and an ineffective repair to fail both check sets. Those
-deliberate failures establish that the examples can catch the bug. The command
-exits 0 only when all expected control results match; it makes no model calls.
+The command checks the tasks, a step called calibration, then prints a new
+`calibration.md`. The original code and known fix should pass both the public
+example and the extra private examples. The planted bug and ineffective edit
+should fail both. Each failure must match the intended assertion, so an unrelated
+error can't make a task look ready. No model calls are made.
+
 Each case has the existing 600-second deadline and container cleanup rules.
-Use `--case CASE_ID` with `--calibrate` to check just one case. Its new batch
-report lists only that selected case; earlier calibration receipts stay intact.
+Use `--case CASE_ID` with `--calibrate` to check one task. That new batch report
+covers only the selected task; earlier attempts stay saved.
 
-The suite manifest records exact project/private-file fingerprints and separates
-the two bug families. Changed snapshots and missing required subtests are refused.
-Each calibration creates fresh receipts under `reports/harness/case-calibration/`
-and a batch report under `reports/harness/case-calibration-batches/`. Failed and
-interrupted attempts remain there; preparation and calibration don't rewrite old runs.
-Reports describe saved observations; retain the manifest, projects, receipts and
-logs with their fingerprints. Calibration does not grant human approval.
+The first coordinate draft didn't reproduce its bug: GPX rejected the input
+before it reached the check I'd changed. That failed draft is retained. Revision
+2 uses KML to reach the intended check. The development task was unchanged, so
+I reused its passing result after comparing its exact files and definition.
 
-Adam selected Pi's normal coding tools in the same sandbox for the plain-Pi
-baseline. Connecting those tools and running the live comparison remain next.
-This slice prepares tasks, with no model execution or claim about AI repair quality,
-human time saved or resistance to misleading fixture text.
+The suite file records fingerprints for the project and private files. Changed
+files and missing required subtests are refused. Results live under
+`reports/harness/case-calibration/`; batch reports live under
+`reports/harness/case-calibration-batches/`. Keep the projects, results and logs.
+
+I've chosen normal Pi coding tools inside the same sandbox for the plain-Pi
+baseline. Connecting those tools and running actual repair attempts are next.
+These prepared tasks don't establish AI repair skill, time saved or how a model
+reacts to the misleading text. My review is still pending.
+
+The [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111)
+explains the evidence files.
 
 ## Recover a prepared session
 
