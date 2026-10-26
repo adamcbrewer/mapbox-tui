@@ -46,10 +46,12 @@ def verification_matches(run, child):
         return False
 
 
-def check_candidate(run):
+def check_candidate(run, attempt=1):
     run.result["independent_checks_passed"] = False
     if run.result.get("verification"):
         raise Stop("budget_exhausted", "This prepared run permits one independent check")
+    if type(attempt) is not int or attempt not in (1, 2):
+        raise Stop("invalid_input", "Only two saved repair attempts are permitted")
     if run.cancel_requested:
         raise KeyboardInterrupt
     if run.deadline <= time.monotonic():
@@ -65,7 +67,7 @@ def check_candidate(run):
             not isinstance(snapshot, dict) or not isinstance(snapshot.get("files"), dict) or
             snapshot["files"].get("go/import.go") != digest(source)):
         raise Stop("invalid_input", "The saved change or sandbox cleanup doesn't match its evidence")
-    child = VerificationRun(REPORTS / "verification", run.image, parent_run_id=run.path.name,
+    child = VerificationRun(REPORTS / "verification", run.image, attempt=attempt, parent_run_id=run.path.name,
                             evaluator=run.result["evaluator"], task=run.task)
     child.deadline = run.deadline
     child.result["candidate"] = "normal-pi-saved-patch"
@@ -87,6 +89,10 @@ def check_candidate(run):
     finally:
         child.finalizing = True
         try:
+            for check in child.result["checks"]:
+                for stream in ("stdout", "stderr"):
+                    if check.get(stream) and (child.path / check[stream]).is_file():
+                        check.setdefault(stream + "_sha256", digest((child.path / check[stream]).read_bytes()))
             child.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - child.started, 4))
             child.event("run_finished", outcome=child.result["outcome"])
             record.update(outcome=child.result["outcome"], reason=child.result.get("reason"),

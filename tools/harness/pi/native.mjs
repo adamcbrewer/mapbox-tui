@@ -112,10 +112,38 @@ export async function runNativeLoop(start, rpc, emit, execution) {
     permissions: { network: process.permission?.has("net") ?? null, childProcess: process.permission?.has("child") ?? null } });
   try {
     if (execution.preview) return;
-    await session.prompt(prompt);
-    if (execution.requests?.failure) throw execution.requests.failure;
-    if (session.agent.state.messages.some(message => message.role === "assistant" && ["error", "aborted"].includes(message.stopReason))) {
-      throw new Error("The model session didn't finish");
+    if (start.workflowController) {
+      session.subscribe(event => {
+        if (event.type === "message_end" && event.message.role === "assistant") {
+          const message = event.message.errorMessage ? { ...event.message, errorMessage: "Model request failed; see its recorded outcome" } : event.message;
+          emit({ type: "native_message", message });
+        }
+      });
+    }
+    let next = prompt;
+    let checkpoint = 0;
+    while (true) {
+      let failure;
+      try {
+        await session.prompt(next);
+        if (execution.requests?.failure) throw execution.requests.failure;
+        if (session.agent.state.messages.some(message => message.role === "assistant" && ["error", "aborted"].includes(message.stopReason))) {
+          throw new Error("The model session didn't finish");
+        }
+      } catch (error) {
+        if (!start.workflowController) throw error;
+        failure = error;
+      }
+      if (!start.workflowController) break;
+      const decision = await rpc({ type: "workflow_checkpoint", id: `checkpoint-${++checkpoint}`,
+        agentOutcome: failure ? failure.outcome ?? "blocked" : "finished",
+        messages: session.agent.state.messages.map(message => message.errorMessage
+          ? { ...message, errorMessage: "Model request failed; see its recorded outcome" } : message) });
+      if (decision?.action === "stop") break;
+      if (failure || decision?.action !== "continue" || typeof decision.prompt !== "string" || !decision.prompt.trim()) {
+        throw new Error("The workflow returned an invalid continuation");
+      }
+      next = decision.prompt;
     }
     emit({ type: "finished", messages: session.agent.state.messages, modelCalls: execution.requests?.count ?? 0 });
   } finally {

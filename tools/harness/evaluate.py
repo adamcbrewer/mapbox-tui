@@ -5,15 +5,17 @@ import math
 from pathlib import Path
 import re
 import uuid
+from types import SimpleNamespace
 
 from repair import repair_receipt_matches
 from run import REPORTS, Stop, digest, now, write_json
 from verify import SCOPE, fingerprint, receipt_matches
 
-FOLDERS = ("runs", "pi/runs", "verification/runs", "repair/runs", "recovery/runs")
+FOLDERS = ("runs", "pi/runs", "verification/runs", "repair/runs", "recovery/runs",
+           "native-baseline/runs", "native-tools/runs", "workflows/runs")
 PINS = ("task_sha256", "base_commit", "evaluator_sha256", "verification_scope", "image",
         "provider", "model", "auth", "reasoning", "pi_version", "budgets", "environment",
-        "runtime", "source_sha256", "runner_sha256", "container_runner_sha256", "seccomp_sha256")
+        "runtime", "source_sha256", "runner_sha256", "container_runner_sha256", "seccomp_sha256", "mode", "config")
 
 
 def number(value):
@@ -30,6 +32,24 @@ def local_evidence(directory, reports):
 
 
 def verified(result, directory, reports):
+    if result.get("workflow") == "native-repair-workflow":
+        from workflow import validated_result
+        checked = validated_result(directory, reports)
+        return checked.get("independent_checks_passed") is True and checked["outcome"] == "native_verification_passed"
+    if result.get("workflow") in ("plain-pi-live-baseline", "pi-native-tools"):
+        from native_check import verification_matches
+        record = result.get("verification", {})
+        identity = record.get("run_id")
+        if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
+            return False
+        child = reports / "verification/runs" / identity
+        if not local_evidence(child, reports):
+            return False
+        raw = (child / "result.json").read_bytes()
+        return (result.get("outcome") == "native_verification_passed" and result.get("independent_checks_passed") is True and
+                digest(raw) == record["receipt_sha256"] and digest((directory / "candidate.patch").read_bytes()) == result["patch_sha256"] and
+                digest((directory / "candidate-source.bin").read_bytes()) == result["snapshot_source_sha256"] and
+                verification_matches(SimpleNamespace(path=directory, result=result), SimpleNamespace(path=child, result=json.loads(raw))))
     if result.get("verification_scope") != SCOPE:
         return False
     for attempt in result.get("attempts", []):
@@ -69,31 +89,44 @@ def record(path, reports):
         passed = verified(result, path.parent, reports)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, Stop):
         passed = False
-    claims_success = result.get("outcome") in ("verified_repair_passed", "repository_verification_passed")
-    attempts = result.get("attempts", [])
+    claims_success = result.get("outcome") in ("verified_repair_passed", "repository_verification_passed", "native_verification_passed")
+    attempts = result.get("attempts", result.get("verification_attempts", []))
+    if not attempts and result.get("verification"):
+        attempts = [result["verification"]]
     if not isinstance(attempts, list):
         attempts = []
     pins = {key: result.get(key) for key in PINS}
+    context = path.parent / "context.json"
+    try:
+        pins["context_sha256"] = fingerprint(json.loads(context.read_text())) if context.exists() else None
+    except (OSError, ValueError, TypeError):
+        pins["context_sha256"] = None
     mode = "live" if result.get("candidate_source") == "AI" else "prepared" if (
-        result.get("candidate_source") == "prepared" or
+        result.get("candidate_source") in ("prepared", "supplied") or
         result.get("model") == "scripted (no AI)" or result.get("model") is None) else "unknown"
+    operator = result.get("operator") or {}
+    intervals = operator.get("recorded_intervals_seconds") or {}
     return {
         "receipt": path.relative_to(reports).as_posix(), "receipt_sha256": digest(raw),
         "receipt_snapshot": result,
         "run_id": result.get("run_id", path.parent.name), "workflow": result.get("workflow", "host-calibration"),
         "parent_run_id": result.get("parent_run_id"), "started_at": result.get("started_at"),
         "outcome": result.get("outcome", "incomplete"), "synthetic": result.get("synthetic"), "mode": mode,
+        "workflow_mode": result.get("mode"),
         "simulated_checks": result.get("evidence_origin") == "simulated-check-output",
         "pins": pins, "settings_sha256": fingerprint(pins),
         "missing_pins": [key for key, value in pins.items() if value is None],
         "verified_success": passed, "unconfirmed_completion": claims_success and not passed,
-        "first_attempt_success": passed and (not attempts or len(attempts) == 1),
+        "first_attempt_success": passed and (result.get("first_repair_passed") is True if result.get("workflow") == "native-repair-workflow"
+                                             else not attempts or len(attempts) == 1),
         "verification_attempts": attempts,
         "duration_seconds": number(result.get("duration_seconds")),
-        "token_summary": result.get("token_summary"),
+        "token_summary": result.get("token_summary", result.get("usage_summary")),
         "model_cost_usd": number(result.get("model_cost_usd")),
         "execution_cost_usd": number(result.get("execution_cost_usd")),
-        "user_corrections": None, "review_seconds": None,
+        "user_corrections": sum(c.get("origin") == "operator" for c in result.get("continuations", [])) if operator.get("participation") == "recorded" else None,
+        "review_seconds": number(intervals.get("reviewing")) if operator.get("timing_complete") and intervals.get("reviewing", 0) > 0 else None,
+        "attention_seconds": number(operator.get("attention_seconds")),
         "human_acceptance": result.get("human_acceptance", "pending"),
     }
 
@@ -115,7 +148,7 @@ def inventory(reports):
                        "verified_success": False, "first_attempt_success": False,
                        "unconfirmed_completion": False, "parent_run_id": None}
             records.append(row)
-    child_paths = {f"verification/runs/{item.get('verification_run_id')}/result.json"
+    child_paths = {f"verification/runs/{item.get('verification_run_id', item.get('run_id'))}/result.json"
                    for row in records for item in row.get("verification_attempts", []) if isinstance(item, dict)}
     for row in records:
         row["is_child"] = row.get("parent_run_id") is not None or row["receipt"] in child_paths
@@ -170,7 +203,7 @@ def render(value):
                   "One task can contain several checks. I count the task once, and its total time and cost once.",
                   "If settings, billing, tokens, corrections or review time weren't recorded, they're unknown.",
                   "Prepared examples check our code's behaviour. They don't establish how well an AI repairs real bugs.",
-                  "Next I need to give the same tasks to plain Pi, Pi with the harness and a human using scripts, then use the same tests to check their fixes.",
+                  "My baseline is me supervising an AI. Controlled workflow comparisons and explicitly recorded human attention stay separate from these historical totals.",
                   "I still need to review the results. Passing tests and my approval are separate.",
                   "A receipt is a saved result file. A fingerprint identifies its exact contents; it doesn't prove the code is correct.",
                   "See the [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111).", ""])

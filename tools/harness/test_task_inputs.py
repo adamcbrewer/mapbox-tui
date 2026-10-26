@@ -40,6 +40,19 @@ class TaskInputTests(unittest.TestCase):
         with self.assertRaises(Stop):
             definition("unknown")
 
+    def test_held_out_task_requires_explicit_selection_and_keeps_its_own_inputs(self):
+        suite = Run(self.root / "original-suite")
+        manifest = build(suite)
+        self.assertEqual(selected_task(suite.path)["id"], "xml-leading-bom-v1")
+        task = selected_task(suite.path, "coordinate-latitude-limits-v2")
+        case = next(c for c in manifest["cases"] if c["partition"] == "held-out")
+        inputs = materials(task)
+        self.assertEqual(task["id"], case["id"])
+        self.assertEqual(digest(inputs["seed"]), case["seed_sha256"])
+        self.assertEqual(digest(inputs["regression"]), case["private_files_sha256"]["verifier.go.txt"])
+        self.assertEqual(task["regression"]["test"], case["private_test"])
+        self.assertNotEqual(inputs["seed"], materials(definition())["seed"])
+
     def test_distance_commands_and_permitted_files_cannot_be_relaxed(self):
         task = definition("segment-distance-v1")
         for field, value in (("command", ["true"]), ("allowed_new_files", ["go/shortcut.go"]),

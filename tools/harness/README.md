@@ -4,13 +4,20 @@ I want to know whether the extra code around Pi helps it fix bugs and saves me
 time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is the
 current stage. Recover (#106) is merged and closed.
 
-So far I've collected run records, checked one prepared comparison, built two
-bug tasks, connected Pi's normal tools to the sandbox and run one live baseline.
-The first paired comparison is complete; the added container guidance didn't
-meet its chosen measure or guardrail. The original prompt stays in place. Earlier Pi setup and
-live Luna examples are in the [Pi guide](pi/README.md).
+I've finished the automated comparisons. Plain Pi delivered four checked fixes
+out of four; managed Pi delivered three out of four. Both passed the two
+development runs. On the reserved evaluation task, one managed run spent its
+tool allowance before checking. That stays a failure. The automatic retry wasn't
+used in these AI runs, so I can't attribute the difference to retry feedback.
+I recommend keeping plain Pi. My review and decision remain pending.
 
-## What I want the next bug comparison to measure
+The earlier extra-guidance comparison also didn't justify adopting its change.
+Clearer timeout feedback helped a small recovery exercise, but that doesn't
+establish better bug repairs. The full local handoff is
+`reports/harness/issue107-final-review.md`. Raw results stay outside Git.
+Earlier Pi setup and live Luna examples are in the [Pi guide](pi/README.md).
+
+## What I measure and what still needs my participation
 
 My normal workflow is to ask an AI to solve the bug and monitor its responses.
 I don't need a baseline where I write the repair myself. The human baseline
@@ -43,9 +50,10 @@ limit also means I haven't demonstrated unattended work lasting hours.
 My judgement helps decide whether this is useful. Repeated runs and recorded
 interventions show what that judgement is based on. Old runs didn't measure my
 attention, so I won't reconstruct it from elapsed time or call it zero. No human
-timer has started. The next exercise needs a fresh bug; the familiar XML example
-can't establish a fresh human baseline. The held-out task stays reserved until
-the development choices and evaluation protocol are fixed.
+timer has started. The new distance task and reserved coordinate task now have
+completed fixed comparisons. These automated runs don't establish my supervised
+baseline or time saved. The next timed human session needs another fresh task;
+reusing these familiar examples wouldn't establish the same thing.
 
 ## How I want these updates written
 
@@ -55,6 +63,115 @@ AI ran, what our code did, what passed or failed, and what's still unfinished.
 Explain unfamiliar terms when they first appear. Keep commands and detailed
 status codes available, without making me read raw JSON to understand the result.
 Don't turn passing tests into a claim that I've approved the work.
+
+## Run plain Pi or the managed repair loop
+
+`workflow.py` keeps Pi's normal tools in the sandbox. Both modes use the same
+independent checker. Plain Pi gets no automatic repair feedback. Managed Pi can
+receive one retry prompt after a failed candidate check. It keeps the conversation
+and the remaining budget, then checks the next saved candidate. It never gets the
+private test inputs or known fix.
+
+Using the existing prepared image, saved task suite and subscription settings:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/workflow.py --prepare \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" \
+  --config /home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json --mode managed
+```
+
+Read the printed `PLAN_DIR/plan.md`. Use `--mode plain` for the comparison version.
+The plan fixes model/settings, task, tools, image, checking rules and limits before
+inference. It allows one run: ten model requests with the current preferences,
+twelve Pi tools, two candidate checks and ten minutes overall. Checks share that
+time allowance. Provider requests keep their two-minute limit and no transport
+retries. A stopped or failed attempt stays spent.
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/workflow.py --run PLAN_DIR
+```
+
+The launch prints the run folder. Use it for these controls, which make no model
+calls themselves:
+
+```sh
+python3 tools/harness/operator_log.py RUN_DIR status
+python3 tools/harness/operator_log.py RUN_DIR check-in
+python3 tools/harness/operator_log.py RUN_DIR monitoring
+python3 tools/harness/operator_log.py RUN_DIR away
+python3 tools/harness/operator_log.py RUN_DIR paused
+python3 tools/harness/operator_log.py RUN_DIR reviewing
+python3 tools/harness/operator_log.py RUN_DIR finished
+python3 tools/harness/operator_log.py RUN_DIR feedback --message "Please check the expected behaviour again."
+python3 tools/harness/operator_log.py RUN_DIR stop
+```
+
+`status` reads progress and recent assistant responses. A `check-in` explicitly
+records that I looked. State changes record my own account of monitoring, waiting,
+breaks and review; they don't detect attention automatically. `finished` ends my
+timing session. `stop` cancels the running work and preserves its evidence.
+Corrections are taken once, after the current conversation stops, while the
+original request/tool/time allowance remains. A correction after the run ends is
+refused. A completed run's stop control can't signal a later run in the same process.
+
+Attention figures cover only explicitly recorded intervals. Unrecorded time stays
+unknown. Watching without intervening and actually stepping away are different
+observations. The unattended reference runs don't replace a measured session of
+me supervising the AI. Final review and my confidence remain human decisions.
+
+This native-tool workflow keeps context within one process. It doesn't automatically
+resume after a process crash. Its saved patches, attempts and logs remain available
+for inspection, and the one-use plan stays spent. The journalled recovery examples
+below have their own evidence; they don't prove crash recovery for this new path.
+
+To read and validate a completed run without inference:
+
+```sh
+python3 tools/harness/workflow.py --report RUN_DIR
+```
+
+The report keeps failed candidate attempts, their exact patches and independent
+receipts. Model-request exhaustion can still leave a patch that passes checking;
+the stopped conversation and the checked patch are recorded separately. A timeout,
+cancellation, invalid input or missing evidence mustn't become a success claim.
+
+## Compare fixed workflow versions
+
+`workflow_compare.py` saves plain/managed/managed/plain order as two reversed
+pairs. Both use identical broken starting copies and the same prompt, model,
+normal tools, image, limits and final checker. The managed retry feedback is the
+single difference. Its chosen measure is final checked repairs without delivered
+operator corrections; first-repair success is kept separately. Incorrect success
+claims block adoption. A tie favours plain Pi.
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/workflow_compare.py --prepare \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" \
+  --config /home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/workflow_compare.py --run EXPERIMENT_DIR
+python3 tools/harness/workflow_compare.py --report EXPERIMENT_DIR
+```
+
+With the current settings, the plan caps the four runs at forty model requests.
+Each cell starts once; there are no replacement attempts. A blocked, cancelled or
+invalid run stops the remaining experiment. Read reports after the experiment
+stops; use `operator_log.py ... status` for a running cell. Reporting makes no
+model calls. Exit 0 means the four attempts finished, not that managed Pi won.
+
+After development choices are fixed, `--case coordinate-latitude-limits-v2` with
+the original saved suite selects the reserved task explicitly. It uses a different
+bug family and checking examples. Keep both workflow versions unchanged for that
+evaluation. Don't use its result to tune the prompt and call that held-out evidence.
+
+The comparison's `claim-review.json` separately records the assistant's inspection
+of model statements against actual tool output and checker results. That isn't my
+approval. Missing billing and human attention remain unknown. Saved results feed
+`evaluate.py` and the later #111 report work without treating a chronological trend
+as a controlled experiment.
 
 ## Keep every attempt in the results
 
@@ -1397,7 +1514,7 @@ stages and run timelines aren't built yet. Runtime-readiness records stay separa
 
 ```sh
 python3 -m unittest discover -s tools/harness -p 'test_*.py'
-node --test tools/harness/pi/loop.test.mjs
+node --test tools/harness/pi/loop.test.mjs tools/harness/pi/native.test.mjs
 python3 tools/harness/pi_integration_test.py
 make test
 ```

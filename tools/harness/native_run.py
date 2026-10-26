@@ -242,6 +242,13 @@ def session(run, tools, start, temporary):
                             process.stdin.flush()
                         elif kind in ("model_request", "model_response", "model_dispatch", "model_payload", "model_payload_rejected", "model_usage") and live:
                             tools.model_event(message)
+                        elif kind == "native_message" and start.get("workflowController"):
+                            with (run.path / "live-messages.jsonl").open("a") as output:
+                                output.write(json.dumps(message) + "\n")
+                        elif kind == "workflow_checkpoint" and start.get("workflowController"):
+                            result = tools.checkpoint(message)
+                            process.stdin.write((json.dumps({"id": message["id"], "result": result}) + "\n").encode())
+                            process.stdin.flush()
                         elif kind in ("context", "session", "finished"):
                             if kind == "context" and live:
                                 tools.check_context(message)
@@ -255,7 +262,7 @@ def session(run, tools, start, temporary):
                 code = process.wait(timeout=max(0.01, run.deadline - time.monotonic()))
             except subprocess.TimeoutExpired as error:
                 raise Stop("timeout", "The normal-tool session didn't stop before its deadline") from error
-            if code or not finished or tools.active or not live and tools.calls != len(start["calls"]):
+            if code or not finished or tools.active or not live and not start.get("workflowController") and tools.calls != len(start["calls"]):
                 raise Stop("incomplete", "The prepared normal-tool sequence didn't finish")
         finally:
             if process:

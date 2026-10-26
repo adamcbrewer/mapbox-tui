@@ -47,14 +47,17 @@ def preview(task, prompt):
         return {key: contexts[0][key] for key in CONTEXT}
 
 
-def prepare(suite, image, config_path, output_root=None):
+def prepare(suite, image, config_path, output_root=None, case_id=None):
     manifest = load_suite(suite)
-    case = next(case for case in manifest["cases"] if case["partition"] == "development")
+    case = next((case for case in manifest["cases"] if case["id"] == case_id), None) if case_id else next(
+        case for case in manifest["cases"] if case["partition"] == "development")
+    if case is None:
+        raise Stop("invalid_input", "The selected case isn't in this suite")
     directory = suite / "cases" / case["id"]
     validate_case(directory, case)
     config = validate_live_config(json.loads(config_path.read_text()))
     task = json.loads((directory / "agent/task.json").read_text())
-    pinned = selected_task(suite)
+    pinned = selected_task(suite, case_id)
     instructions = repository_instructions(pinned, directory / "agent")
     prompt = ("Repair this Mapbox TUI import bug in /workspace.\n" + task["expected_behaviour"] +
               "\nChange only go/import.go. Keep tests and other project files unchanged. "

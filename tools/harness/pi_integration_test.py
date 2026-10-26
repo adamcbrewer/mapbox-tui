@@ -25,6 +25,24 @@ class PiIntegrationTests(RepairFixture, unittest.TestCase):
 
 
 class NativeTimeoutIntegrationTests(unittest.TestCase):
+    def test_controller_feedback_crosses_python_and_actual_pi_without_resetting_tools(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run = NativeRun(root / "reports", "sha256:" + "a" * 64)
+            sandbox = Mock()
+            sandbox.request.return_value = {"ok": True, "value": {"exitCode": 0, "output": base64.b64encode(b"/workspace\n").decode()}}
+            tools = NativeTools(run, sandbox)
+            tools.checkpoint = Mock(side_effect=[{"action": "continue", "prompt": "A supplied check failed; try the next step."}, {"action": "stop"}])
+            session(run, tools, {"workflowController": True, "task": {"id": "controller"}, "calls": [
+                {"name": "bash", "args": {"command": "pwd"}}, None,
+                {"name": "bash", "args": {"command": "pwd"}}, None]}, root)
+            self.assertEqual(tools.calls, 2)
+            self.assertEqual(tools.checkpoint.call_count, 2)
+            messages = json.loads((run.path / "pi-session.json").read_text())["messages"]
+            self.assertEqual(sum(m["role"] == "toolResult" for m in messages), 2)
+            self.assertIn("supplied check failed", json.dumps(messages))
+            self.assertTrue((run.path / "live-messages.jsonl").is_file())
+
     def test_both_comparison_fixtures_use_actual_pi_without_executing_invalid_call(self):
         for version, message in MESSAGES.items():
             with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:

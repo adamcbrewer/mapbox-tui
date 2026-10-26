@@ -96,6 +96,41 @@ class InventoryTests(unittest.TestCase):
         path.symlink_to(saved)
         self.assertEqual(evaluate.inventory(self.root)["summary"]["outcomes"], {"evidence_unreadable": 1})
 
+    def test_native_workflow_attempts_count_one_task_and_unknown_attention_stays_unknown(self):
+        root = self.root / "workflows/runs" / ("a" * 32)
+        root.mkdir(parents=True)
+        attempts = []
+        for index, outcome in enumerate(("repair_failed", "repository_verification_passed"), 1):
+            identity = str(index) * 32
+            child = self.root / "verification/runs" / identity
+            child.mkdir(parents=True)
+            write_json(child / "result.json", {"parent_run_id": root.name, "outcome": outcome})
+            attempts.append({"run_id": identity, "outcome": outcome})
+        write_json(root / "result.json", {"workflow": "native-repair-workflow", "outcome": "native_verification_passed",
+                                          "candidate_source": "supplied", "verification_attempts": attempts,
+                                          "first_repair_passed": False, "operator": None})
+        with patch("evaluate.verified", side_effect=lambda result, *_: result.get("workflow") == "native-repair-workflow"):
+            value = evaluate.inventory(self.root)
+        self.assertEqual(value["summary"]["runs"], 1)
+        self.assertEqual(value["summary"]["child_receipts"], 2)
+        self.assertEqual(value["summary"]["first_attempt_successes"], 0)
+        self.assertEqual(value["summary"]["eventual_successes"], 1)
+        row = next(row for row in value["records"] if not row["is_child"])
+        self.assertEqual(row["mode"], "prepared")
+        self.assertEqual(row["verification_attempts"], attempts)
+        self.assertIsNone(row["review_seconds"])
+        self.assertIsNone(row["attention_seconds"])
+        self.assertIsNone(row["user_corrections"])
+
+    def test_native_workflow_claim_without_plan_or_receipts_is_not_a_verified_repair(self):
+        root = self.root / "workflows/runs" / ("a" * 32)
+        root.mkdir(parents=True)
+        write_json(root / "result.json", {"workflow": "native-repair-workflow", "outcome": "native_verification_passed",
+                                          "independent_checks_passed": True})
+        value = evaluate.inventory(self.root)
+        self.assertEqual(value["summary"]["eventual_successes"], 0)
+        self.assertEqual(value["summary"]["unconfirmed_completions"], 1)
+
 
 class VerifiedInventoryTests(RepairFixture, unittest.TestCase):
     def finish(self, demo):

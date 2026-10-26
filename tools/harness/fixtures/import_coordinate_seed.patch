@@ -1,0 +1,11 @@
+--- a/go/import.go
++++ b/go/import.go
+@@ -165,7 +165,7 @@
+ 	for _, points := range [][]Point{t.Points, t.Waypoints} {
+ 		for i := range points {
+ 			p := &points[i]
+-			if math.IsNaN(p.Lat) || math.IsNaN(p.Lon) || math.Abs(p.Lat) > 90 || math.Abs(p.Lon) > 180 {
++			if math.IsNaN(p.Lat) || math.IsNaN(p.Lon) || math.Abs(p.Lat) > 900 || math.Abs(p.Lon) > 180 {
+ 				return fmt.Errorf("invalid coordinates")
+ 			}
+ 			if p.Elevation != nil && (math.IsNaN(*p.Elevation) || math.IsInf(*p.Elevation, 0)) {

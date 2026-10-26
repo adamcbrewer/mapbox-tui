@@ -32,6 +32,44 @@ function sandbox() {
   } };
 }
 
+test("controller feedback continues the actual SDK session without replacing its tools or context", async () => {
+  const remote = sandbox(), emitted = [], checkpoints = [];
+  const rpc = async request => {
+    if (request.type !== "workflow_checkpoint") return remote.rpc(request);
+    checkpoints.push(request);
+    return checkpoints.length === 1 ? { action: "continue", prompt: "A supplied check failed. Try the next prepared step." }
+      : { action: "stop" };
+  };
+  await runNativeScriptedLoop({ workflowController: true, task: { id: "continuation" }, calls: [
+    { name: "read", args: { path: "source.txt" } }, null,
+    { name: "bash", args: { command: "pwd" } }, null,
+  ] }, rpc, value => emitted.push(value));
+  assert.equal(checkpoints.length, 2);
+  assert.equal(checkpoints[0].agentOutcome, "finished");
+  assert.equal(checkpoints[1].messages.filter(m => m.role === "toolResult").length, 2);
+  assert.ok(checkpoints[1].messages.some(m => m.role === "user" && JSON.stringify(m).includes("supplied check failed")));
+  assert.ok(emitted.some(value => value.type === "native_message"));
+  assert.equal(emitted.find(value => value.type === "finished").modelCalls, 0);
+});
+
+test("a controlled request-budget stop can be checked but cannot continue inference", async () => {
+  const start = { workflowController: true, task: { id: "budget" }, prompt: "Read.",
+    calls: [{ name: "read", args: { path: "source.txt" } }] };
+  const runtime = await createScriptedRuntime(start), model = runtime.getModel("harness-scripted", "prepared");
+  const remote = sandbox(), emitted = [], checkpoints = [], requests = { count: 0 };
+  const config = { model: model.id, provider: model.provider, maxModelRequests: 1, maxOutputTokensPerRequest: null };
+  await runNativeLoop(start, async request => {
+    if (request.type !== "workflow_checkpoint") return remote.rpc(request);
+    checkpoints.push(request);
+    return { action: "stop" };
+  }, value => emitted.push(value), { runtime, model, requests,
+    streamFunction: boundedStream(runtime, model, config, requests, value => emitted.push(value), () => {}, 1000,
+      async request => ({ outcome: "ok", request }), nativeNames) });
+  assert.equal(requests.count, 1);
+  assert.equal(checkpoints.length, 1);
+  assert.equal(checkpoints[0].agentOutcome, "budget_exhausted");
+});
+
 test("normal Pi schemas stay intact and file operations go through the sandbox", async () => {
   const remote = sandbox();
   const definitions = createNativeTools(remote.rpc);
