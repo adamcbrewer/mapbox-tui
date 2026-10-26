@@ -10,6 +10,7 @@ from native_sandbox import NativeRun
 from pi_run import pi_loop
 from repair import repair_receipt_matches
 from test_repair import RepairFixture
+from timeout_recovery import MESSAGES, RecoveryTools, supply_failure
 
 
 class PiIntegrationTests(RepairFixture, unittest.TestCase):
@@ -24,6 +25,25 @@ class PiIntegrationTests(RepairFixture, unittest.TestCase):
 
 
 class NativeTimeoutIntegrationTests(unittest.TestCase):
+    def test_both_comparison_fixtures_use_actual_pi_without_executing_invalid_call(self):
+        for version, message in MESSAGES.items():
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                run = NativeRun(root / "reports", "sha256:" + "a" * 64)
+                run.result.update(model_requests=0, dispatches=[])
+                sandbox = Mock()
+                tools = RecoveryTools(run, sandbox, {"feedback": version})
+                supply_failure(run, tools, root, version)
+                sandbox.request.assert_not_called()
+                self.assertEqual(tools.calls, 1)
+                self.assertEqual(run.result["model_requests"], 0)
+                self.assertEqual(tools.results, [{"name": "bash", "error": message}])
+                saved = json.loads((run.path / "supplied-pi-session.json").read_text())
+                errors = [m for m in saved["messages"] if m["role"] == "toolResult"]
+                self.assertEqual(len(errors), 1)
+                self.assertTrue(errors[0]["isError"])
+                self.assertIn(message, errors[0]["content"][0]["text"])
+
     def test_refused_command_does_not_execute_and_corrected_call_uses_same_budget(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

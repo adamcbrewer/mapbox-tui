@@ -459,7 +459,66 @@ The integration tests use the actual Pi SDK and Python connection with supplied
 check replies. The prepared example uses a real sandbox. Neither asks a repair
 AI to choose the correction. These checks establish that the error reaches Pi
 and a corrected call works. They don't establish that the clearer message saves
-model requests, improves repairs or saves my time. That needs a new comparison.
+model requests, improves repairs or saves my time.
+
+## Compare recovery from the same supplied timeout mistake
+
+`timeout_recovery.py` saves four fresh live runs: generic error, clear error,
+clear error, generic error. Each starts with the same supplied invalid `pwd`
+request (`timeout: 120000`). Actual Pi tools refuse it before execution. The
+live AI gets that request and its error quoted in the prompt, then chooses its
+own correction. The supplied failure isn't an earlier AI action and doesn't
+count as an AI mistake. It uses one of the existing twelve tool calls.
+
+Only the quoted feedback and the refusal text differ. The model, standard Pi
+tools, task, sandbox image, settings and limits stay fixed. The main measure is
+repeated invalid timeouts after the supplied failure. A useful result needs fewer
+repeats in both pairs, with every conversation finishing inside ten minutes and
+actually executing `pwd` without changing project files. If both versions recover
+immediately, I haven't measured an advantage.
+
+Using the existing image, suite and subscription configuration:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/timeout_recovery.py \
+  --prepare --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" \
+  --config /home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json
+```
+
+Read the printed folder's `plan.md` before starting it:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/timeout_recovery.py --run EXPERIMENT_DIR
+python3 tools/harness/timeout_recovery.py --report EXPERIMENT_DIR
+PYTHONPATH=tools/harness python3 -m unittest test_timeout_recovery -v
+```
+
+The saved plan allows one attempt, with no replacement runs. Ten requests per
+run means at most forty across the comparison. A blocked, cancelled or invalid
+run stops the remaining work. Every run retains the two-minute request limit,
+ten-minute overall limit and original output-token setting. No automatic retries.
+
+`comparison.md` checks the actual sandbox command and output, unchanged project
+snapshot, model reservations, frozen prompt and container cleanup. Supplied and
+live Pi sessions are saved separately. Changed receipts can't keep an earlier
+pass; a spent plan can't start more model calls. Reporting sends no requests.
+Exit 0 means all four attempts finished, not that clear feedback won.
+
+This is a small request-recovery test. It doesn't measure bug repair, everyday
+work or my time saved. The held-out bug task and human baseline stay unused.
+Billing and my review time remain unknown unless measured.
+
+The first saved comparison met that narrow measure. The generic error led Luna
+to repeat `120000` once in each run. With clear feedback, it chose `120` straight
+away in both runs. All four eventually executed `pwd`, reported `/workspace`
+correctly, left the project unchanged and removed their containers. Generic
+feedback used six model requests and 7,881 reported tokens; clear feedback used
+four requests and 5,298 tokens. This supports keeping the clearer error for this
+recovery example. It doesn't establish better bug repairs or my time saved.
+My review remains pending. The local comparison is under
+`reports/harness/timeout-recovery/experiments/b17e131160584b558dfc7f7429ec15e9/`.
 
 ## Recover a prepared session
 

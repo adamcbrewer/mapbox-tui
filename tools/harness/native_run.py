@@ -29,6 +29,7 @@ class NativeTools:
         self.calls = 0
         self.ids = set()
         self.results = []
+        self.timeout_error = TIMEOUT_ERROR
         self.run.result["tool_results"] = self.results
 
     def dispatch(self, request):
@@ -58,7 +59,7 @@ class NativeTools:
         if operation["op"] == "bash":
             requested = operation.get("timeout", 120)
             if type(requested) not in (int, float) or not 0 < requested <= 600:
-                return {"ok": False, "error": TIMEOUT_ERROR}
+                return {"ok": False, "error": self.timeout_error}
             operation["timeout"] = min(requested, max(0.01, self.run.deadline - time.monotonic() - 1))
         return self.sandbox.request(operation)
 
