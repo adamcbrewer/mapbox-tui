@@ -72,6 +72,8 @@ def execute(run, journal, demo, fault=None):
     except ModelRequestLimit:
         if not config or len(journal.state["model_reservations"]) != config["maxModelRequests"]:
             raise
+        if run.result.get("automatic_final_check", True) is False:
+            raise
         if tools.check_available():
             journal.record("final_verification_requested", request=tools.calls + 1,
                            origin="runner", reason="model_requests_exhausted")

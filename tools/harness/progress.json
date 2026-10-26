@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-24",
-  "source": "GitHub issue #106; Adam explicitly asked to start Recover in a new worktree on 24 October 2026",
-  "stage": "Recover",
+  "updated_at": "2026-10-26",
+  "source": "GitHub issue #107; Adam explicitly requested Compare in a new feature branch/worktree on 26 October 2026",
+  "stage": "Compare",
   "status": "awaiting-review",
-  "next": "Record Adam's reviewed decision after the four-question recovery discussion. PR #115 is open; keep #106 open and do not begin Compare automatically.",
+  "next": "Review the first paired automatic-check comparison: same prepared working/wrong repairs and limits, repeated in both orders. Plain-Pi/human baselines and held-out bugs remain unfinished. Do not advance to Use.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -68,14 +68,17 @@
     "After asking what remained, Adam said \u201ccool, let's go!\u201d to the report, learning walkthrough and publication plan. This authorises the readable Recover report, commit, push and PR. It does not supply answers to the learning questions or authorise issue closure or moving to Compare. The report now includes recovery sessions and their saved journals, labels live versus prepared examples, preserves refused resumes as historical evidence and links the shared glossary.",
     "Readable Recover report now includes recovery receipts and journals, explains each deliberate stop/reconciliation/check result, distinguishes real model work from prepared limits and retains evidence in a portable sealed snapshot. The report review found malformed top-level state, linked check output and invalid saved model settings could mislead or block reporting. Structure and link guards plus per-session error handling address those findings; the follow-up review found no actionable bugs. All 200 Python tests (34 report tests) and root make test format-check passed. Browser checks at 1280px and 390px confirmed readable results, intact section links, journal selection and explanations for every new evidence file. Findings: https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385345752. No new model call or uploaded telemetry. The first learning question is open in chat; no answer or approval has been inferred. The branch is being committed, pushed and proposed for review as authorised.",
     "All four Recover learning questions have been discussed with Adam and his answers retained verbatim with clarifications. The discussion covered duplicate/overwritten edits after lost replies, checking actual file bytes against saved fingerprints, preserving written changes on cancellation, and investigating incomplete evidence before deciding to resume or start fresh. Adam correctly identified changed criteria and exhausted constraints as reasons to reconsider resume. The learning checkpoint is discussed and awaiting his explicit reviewed decision. At code commit 6b6ff8e, all five GitHub checks passed and Codex reported no findings; branch approval remains a separate review requirement.",
-    "Adam requested commit/push/PR updates, issue checklist updates, simplify and review-stack subagents, and monitoring for feedback. Simplify changed only report.py: explicit branches replace nested recovery/stage selections, preserving wording and branch priority. All six stage HTML outputs are byte-for-byte identical under a fixed timestamp. The review-stack subagent reviewed all sixteen feature files with core, completeness, failure-path, security-history, security and test-analysis passes; no actionable findings or unresolved code defects. It ran 95 focused Python and 22 Node tests. Parent verification passed 200 Python tests,22 Pi tests,1 SDK integration and root make test format-check. An additional end-to-end offline reservation/exhaustion integration test is optional, not a completion gate. The issue checklist now records twenty completed tasks; reviewed decision and report-alone walkthrough remain unchecked. Monitoring is for PR #115; no issue closure or next stage is inferred."
+    "Adam requested commit/push/PR updates, issue checklist updates, simplify and review-stack subagents, and monitoring for feedback. Simplify changed only report.py: explicit branches replace nested recovery/stage selections, preserving wording and branch priority. All six stage HTML outputs are byte-for-byte identical under a fixed timestamp. The review-stack subagent reviewed all sixteen feature files with core, completeness, failure-path, security-history, security and test-analysis passes; no actionable findings or unresolved code defects. It ran 95 focused Python and 22 Node tests. Parent verification passed 200 Python tests,22 Pi tests,1 SDK integration and root make test format-check. An additional end-to-end offline reservation/exhaustion integration test is optional, not a completion gate. The issue checklist now records twenty completed tasks; reviewed decision and report-alone walkthrough remain unchecked. Monitoring is for PR #115; no issue closure or next stage is inferred.",
+    "On 26 October 2026 Adam explicitly requested starting #107 in a new feature branch/worktree. #106 is closed and merged via #115. This selects Compare without inventing earlier review answers or a historical approval. The first slice inventories local run evidence, retaining failures/settings and rechecking saved success claims. It makes no model calls and establishes no controlled comparison or model-quality claim. Compare learning review remains pending.",
+    "After the inventory slice Adam asked for the main purpose in plain English. We clarified that #107 measures whether the harness improves reliable bug fixing and saves his time. Adam then said \"Okay, let's go.\" This selects the next bounded Compare slice, not issue closure: predeclare and replay automatic final checking versus stopping at exhausted model requests, using prepared working/wrong repairs, the same independent checker and limits, and repeated pairs. No model inference is needed for this experiment; the broader live/manual baselines remain unfinished.",
+    "The first paired Compare experiment is retained locally at reports/harness/compare/experiments/edc858322ce04d729a6fa0467fb8bf1b/. Its plan was frozen before eight real-container attempts, with two repeats and reversed order. Working repair: automatic checking delivered 2/2 independently verified results; stopping at request exhaustion delivered 0/2 and left repairs unchecked. Wrong repair: 0/2 successes in either arm; automatic checks failed as intended. The overall wrong automatic runs remained budget_exhausted because no model allowance remained for a repair. Total experiment time 958.8594 seconds; all 51 containers, including preflight, were removed. No model/Pi session ran: request exhaustion was simulated. This establishes prepared workflow completion only, not live-model repair quality or human time saved. Failed-check evidence validation was strengthened after execution and rechecked the same untouched receipts; final Python suite passed 228 tests. Human/manual and plain-Pi baselines, held-out bug families and the learning review remain outstanding."
   ],
   "blockers": [],
   "questions": [
-    "Why isn't replaying the last tool call always safe?",
-    "When do we trust the journal, and when must we inspect disk?",
-    "What does cancellation promise, and what changes might already exist?",
-    "When is starting a fresh run safer than resuming?"
+    "Why does a failed repair followed by a passing retry count as one task?",
+    "Why do these historical records not prove that a harness change helped?",
+    "Why does this prepared comparison not prove the AI became better at fixing bugs?",
+    "What must we measure to know whether automatic checking saves Adam time?"
   ],
   "provider_scope": [
     "openai"
@@ -148,5 +151,14 @@
     ],
     "discussion_complete": true,
     "discussion_record": "https://github.com/adamcbrewer/mapbox-tui/issues/106#issuecomment-6385551537"
+  },
+  "compare_learning_review": {
+    "status": "awaiting-discussion",
+    "purpose_question": "What are we actually doing to resolve #107? What is the main purpose?",
+    "explanation": "Measure whether the harness helps the AI fix bugs reliably and saves Adam time. Count failures and compare the same tasks fairly.",
+    "next_slice_authorization": "Okay, let's go.",
+    "decision": null,
+    "evidence": "reports/harness/compare/experiments/edc858322ce04d729a6fa0467fb8bf1b/comparison.md",
+    "handoff": "https://github.com/adamcbrewer/mapbox-tui/issues/107#issuecomment-6411974251"
   }
 }

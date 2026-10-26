@@ -1,7 +1,8 @@
 # Developer harness pilot
 
-Current stage: Recover ([#106](https://github.com/adamcbrewer/mapbox-tui/issues/106)).
-Verify (#105) is merged; its learning discussion remains pending.
+Current stage: Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)),
+starting with a local historical inventory. Recover (#106) is merged and closed.
+Adam explicitly selected Compare; older saved review answers remain unchanged.
 Pi now connects an OpenAI subscription model to four controlled tools, with
 prepared examples for checking the wiring without AI. Two live Luna attempts
 are recorded locally: one ineffective repair and one that passed the fixed
@@ -9,6 +10,124 @@ import check. See the [Pi checkpoint and Fish commands](pi/README.md).
 Adam asked to begin Verify after the Pi walkthrough. Earlier recorded review
 questions aren't automatically answered by that decision; passing a test isn't approval.
 The original repair command still runs trusted code on the host.
+
+## Inventory runs before comparing changes
+
+Compare asks whether one harness change helps on the same tasks. This first slice
+collects existing evidence; it does not run an experiment or call a model.
+
+```sh
+python3 tools/harness/evaluate.py
+PYTHONPATH=tools/harness python3 -m unittest test_evaluate -v
+```
+
+The command prints a new local `reports/harness/compare/inventories/<id>/inventory.md`.
+Read that plain-language inventory first. Its adjacent `inventory.json` retains
+each parsed receipt, its original-byte fingerprint, source path, observed settings,
+all verification attempts and available measurements. Runs without a receipt,
+unreadable receipts, failures and interruptions stay visible. An empty checkout
+shows an honest empty state. Existing inventories are never overwritten.
+
+Root runs are tasks; their linked verification receipts are checks within those
+tasks, not extra successes or costs. First-attempt success means the root run
+finished with one independently checked repair. Eventual success allows a repair
+retry within the same run. Separate later manual verification stays a separate
+run; it does not rewrite an earlier failure. These mixed historical counts are
+not a model success rate. Prepared examples and live attempts remain labelled in
+the JSON, and deliberately seeded cases remain labelled synthetic.
+
+A successful label requires the current full independent checking scope and
+matching patch/log receipts. Focused test passes and model claims do not count.
+Missing or changed evidence leaves an unconfirmed completion and exit 1, blocking
+promotion until inspected. This does not by itself prove false completion: the
+evidence could be missing. Unreadable/missing receipts also return exit 1.
+Exit 0 means inventory collection found no such evidence problem,
+not that all repairs worked. Ordinary failed/cancelled/blocked runs are retained.
+
+For a successful prepared case and deliberate evidence failure, run:
+
+```sh
+PYTHONPATH=tools/harness python3 -m unittest -v \
+  test_evaluate.VerifiedInventoryTests.test_failed_first_repair_and_successful_retry_count_one_task \
+  test_evaluate.VerifiedInventoryTests.test_changed_check_log_prevents_success_without_rewriting_receipt
+```
+
+Both tests should pass. They use simulated check output, no container or model:
+the first retains a failed repair and successful retry as one task; the second
+changes a saved check log and confirms the pass stops counting. These demonstrate
+inventory decisions, not real Go checks or model repair ability.
+
+Use `--reports PATH` to inspect another local evidence tree and `--output NEW_DIR`
+for a specific new destination. Keep the original evidence directories: the JSON
+copies result receipts, not every patch, log or source archive. This command
+observes saved evidence; it does not lock a currently running session. Collect
+after runs stop; concurrent writes may leave an unconfirmed or unreadable result.
+Billing, partial token usage, corrections and review time remain unknown where
+unrecorded. Model and execution costs are separate. No cost totals are inferred.
+
+Observed settings are retained, not retroactively pinned for a controlled test.
+Predeclared paired cases, development/held-out suites, human-plus-script/plain-Pi
+baselines, one chosen change/metric and controlled comparisons remain unfinished.
+The [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111)
+explains receipt and evidence files. The Compare learning review stays pending.
+
+## Compare automatic checking with stopping at the request limit
+
+The first paired experiment follows a real failure observed in Recover: a final
+edit existed when the model-request allowance ran out, before tests were requested.
+We compare stopping there with letting the runner request the fixed checks.
+The primary measure, chosen before execution, is a completed run delivering an
+independently checked repair within the original limits, without another model request.
+
+The script supplies a working and a deliberately wrong repair of the same
+synthetic import bug. Both versions get identical repairs, task snapshots,
+budgets, prepared image and independent checker. Only automatic final checking
+changes. Two repetitions produce eight attempts; the second reverses pair order.
+This replays a known condition without Pi or model inference. Ten request slots
+are marked spent to reproduce the limit, but zero actual model requests are made.
+Real checks still execute in the existing restricted containers.
+
+Using the existing prepared image and rootless Podman environment, from Bash:
+
+```sh
+HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/compare.py \
+  --prepare --image "$HARNESS_IMAGE_ID"
+```
+
+This performs readiness/image/Go-version checks and prints a new experiment
+directory under `reports/harness/compare/experiments/`. Its `plan.json` freezes
+the cases, settings, checker, source fingerprints, order and primary measure.
+Copy the printed path into:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/compare.py --run EXPERIMENT_DIR
+python3 tools/harness/compare.py --report EXPERIMENT_DIR
+PYTHONPATH=tools/harness python3 -m unittest test_compare -v
+```
+
+Read `EXPERIMENT_DIR/comparison.md`; its JSON retains all receipts and metrics.
+Expected working case: automatic checking delivers two verified repairs, while
+stopping leaves two unfinished. Expected deliberate failure: the wrong repair
+never counts as success; automatic checking records its failed independent test.
+The stopped version has no check result, so it cannot establish repair quality.
+The wrong automatic run can still end `budget_exhausted`: its first check failed
+and the exhausted model allowance prevents another repair. The failed check is
+retained separately from that overall stopping reason.
+
+Execution refuses changed harness inputs or an already-started experiment.
+An interrupted experiment retains its scheduled/pending attempts; use `--report`
+to inspect it rather than blindly repeating runs. Start a newly prepared experiment
+for a deliberate rerun and retain the old one. Unconfirmed evidence or a known
+wrong repair presented as successful blocks promotion. Report generation rechecks
+receipt identities, pair settings, actual patch fingerprints and independent evidence.
+
+These repetitions test completion of one prepared condition, not general AI repair
+quality or superiority over human-plus-script/plain-Pi baselines. Running checks
+adds execution time; human review/correction time and execution billing remain
+unknown. The plan and reports stay local. Learning review is still required.
 
 ## Recover a prepared session
 

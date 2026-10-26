@@ -201,6 +201,18 @@ class RecoveryTests(RepairFixture, unittest.TestCase):
         loop.assert_not_called()
         self.assertEqual(len(self.journal.state["requests"]), 6)
 
+    def test_comparison_control_stops_at_model_limit_without_automatic_checks(self):
+        self.exhaust_model(count=5)
+        self.run.result["automatic_final_check"] = False
+        self.journal.save()
+        before = len(self.run.result["attempts"])
+        with patch("recover.preflight"), patch("recover.pi_loop") as loop, self.assertRaises(ModelRequestLimit):
+            execute(self.run, self.journal, "retry")
+        loop.assert_not_called()
+        self.assertEqual(len(self.run.result["attempts"]), before)
+        self.assertEqual(len(self.journal.state["requests"]), 5)
+        self.assertNotEqual(self.run.result["outcome"], "verified_repair_passed")
+
     def test_final_verification_after_a_live_limit_uses_the_normal_journaled_tool(self):
         self.enable_live(limit=1)
 
