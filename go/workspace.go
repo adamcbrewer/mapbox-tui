@@ -46,6 +46,7 @@ type Workspace struct {
 	nextColor         int
 	elevation         *elevationProfile
 	unresolved        []savedImport
+	unresolvedOrder   []string
 	deferredSelection *savedSelection
 	checkpoint        *workspaceCheckpoint
 	detachedManifest  *savedWorkspace
@@ -258,6 +259,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	if len(entry.document.Items) == 1 {
 		return w.removeDocument(entry.id)
 	}
+	w.rememberUnresolvedOrder()
 	if j := entry.document.Items[i].Journey; j != nil {
 		j.cancelRoute()
 	}
@@ -279,6 +281,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 func (w *Workspace) removeDocument(id int) error {
 	for i, entry := range w.documents {
 		if entry.id == id {
+			w.rememberUnresolvedOrder()
 			for _, item := range entry.document.Items {
 				if item.Journey != nil {
 					item.Journey.cancelRoute()
@@ -304,6 +307,7 @@ func (w *Workspace) clear() {
 	w.documents = nil
 	w.order = nil
 	w.unresolved = nil
+	w.unresolvedOrder = nil
 	w.deferredSelection = nil
 	w.elevation = nil
 	w.checkpoint = nil

@@ -118,6 +118,9 @@ func (w *Workspace) savedItemOrder() []string {
 		loaded = append(loaded, id)
 		present[id] = true
 	}
+	if len(w.unresolved) == 0 {
+		return loaded
+	}
 	missing := make(map[string]bool)
 	for _, imported := range w.unresolved {
 		for _, item := range imported.Items {
@@ -125,18 +128,28 @@ func (w *Workspace) savedItemOrder() []string {
 		}
 	}
 	var order []string
-	if manifest := w.savedManifest(); manifest != nil {
-		// Missing imports retain their slots while loaded activities fill the other slots in their current order.
-		for _, id := range manifest.itemOrder() {
-			if missing[id] {
-				order = append(order, id)
-			} else if present[id] {
-				order = append(order, loaded[0])
-				loaded = loaded[1:]
-			}
+	baseline := w.unresolvedOrder
+	if baseline == nil {
+		if manifest := w.savedManifest(); manifest != nil {
+			baseline = manifest.itemOrder()
+		}
+	}
+	// Missing imports retain their slots while loaded activities fill the other slots in their current order.
+	for _, id := range baseline {
+		if missing[id] {
+			order = append(order, id)
+		} else if present[id] {
+			order = append(order, loaded[0])
+			loaded = loaded[1:]
 		}
 	}
 	return append(order, loaded...)
+}
+
+func (w *Workspace) rememberUnresolvedOrder() {
+	if len(w.unresolved) > 0 {
+		w.unresolvedOrder = w.savedItemOrder()
+	}
 }
 
 func (w *Workspace) restoreItemOrder(ids []string) {

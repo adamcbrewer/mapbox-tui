@@ -502,6 +502,95 @@ func TestSavedWorkspaceActivityOrderSurvivesPartialEditsAndRepair(t *testing.T) 
 	}
 }
 
+func TestSavedWorkspaceMissingSlotsSurviveReorderAndLoadedRemoval(t *testing.T) {
+	for _, wholeFile := range []bool{false, true} {
+		for _, intermediateSave := range []bool{false, true} {
+			for _, reopenBeforeRepair := range []bool{false, true} {
+				name := "item"
+				if wholeFile {
+					name = "file"
+				}
+				if intermediateSave {
+					name += "/save after reorder"
+				} else {
+					name += "/no save after reorder"
+				}
+				if reopenBeforeRepair {
+					name += "/reopen before repair"
+				} else {
+					name += "/direct repair"
+				}
+				t.Run(name, func(t *testing.T) {
+					var w Workspace
+					openWorkspaceFile(t, &w, importFile(t, "first.tcx", []byte(coursesWithGapTCX)))
+					sibling := w.items()[1].Ref
+					body := `<gpx><trk><name>Missing</name><trkseg><trkpt lat="51" lon="0"/><trkpt lat="51" lon="0.01"/></trkseg></trk></gpx>`
+					source := importFile(t, "missing.gpx", []byte(body))
+					missing := openWorkspaceFile(t, &w, source)
+					last := openWorkspaceFile(t, &w, importFile(t, "last.gpx", []byte(strings.ReplaceAll(body, "Missing", "B"))))
+					if err := w.moveItem(missing, sibling); err != nil {
+						t.Fatal(err)
+					}
+					if err := w.moveItem(last, sibling); err != nil {
+						t.Fatal(err)
+					}
+					store := workspaceStore{directory: t.TempDir()}
+					cp := saveTestWorkspace(t, &w, store, false)
+					moved := source + ".moved"
+					if err := os.Rename(source, moved); err != nil {
+						t.Fatal(err)
+					}
+					partial, _, err := prepareWorkspace(cp.path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := partial.moveItem(partial.items()[1].Ref, partial.items()[0].Ref); err != nil {
+						t.Fatal(err)
+					}
+					if intermediateSave {
+						cp = saveTestWorkspace(t, partial, store, false)
+						partial, _, err = prepareWorkspace(cp.path)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					ref := partial.items()[1].Ref
+					if wholeFile {
+						err = partial.removeDocument(ref.DocumentID)
+					} else {
+						err = partial.removeItem(ref)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if reopenBeforeRepair {
+						cp = saveTestWorkspace(t, partial, store, false)
+						partial, _, err = prepareWorkspace(cp.path)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := partial.locateUnresolved(partial.unresolved[0].ID, moved); err != nil {
+						t.Fatal(err)
+					}
+					want := []string{"B", "Missing"}
+					if !wholeFile {
+						want = append(want, "Return")
+					}
+					if got := workspaceActivityNames(partial); !slices.Equal(got, want) {
+						t.Fatal("deletion changed a missing import's position", got, want)
+					}
+					cp = saveTestWorkspace(t, partial, store, false)
+					again, _, err := prepareWorkspace(cp.path)
+					if err != nil || !slices.Equal(workspaceActivityNames(again), want) {
+						t.Fatal("repaired order did not survive save/open", err)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestSavedWorkspaceRejectsInvalidActivityOrder(t *testing.T) {
 	var w Workspace
 	openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
