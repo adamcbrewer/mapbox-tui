@@ -15,6 +15,7 @@ import time
 from container import ContainerRun
 from run import HERE, REPORTS, ROOT, Stop, apply_patch, check_test, digest, now, write_json
 from sandbox import preflight
+from task_inputs import materials
 
 LIMIT = 16384
 MAX_CALLS = 12
@@ -38,8 +39,8 @@ def repository_instructions(task, checkout):
 
 def prepare_checkout(run, checkout):
     task = run.task
-    task_bytes = (HERE / "task.json").read_bytes()
-    seed = (HERE / "fixtures/seed.patch").read_bytes()
+    inputs = materials(task)
+    task_bytes, seed = inputs["task"], inputs["seed"]
     if digest(seed) != task["seed_sha256"]:
         raise Stop("invalid_input", "Seed identity does not match the task")
     run.result.update(task=task["id"], base_commit=task["base_commit"], task_sha256=digest(task_bytes))
@@ -58,6 +59,8 @@ def prepare_checkout(run, checkout):
             if member.isfile():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(source.extractfile(member).read())
+    for name, content in inputs["public_files"].items():
+        (checkout / name).write_bytes(content)
     for name, expected in task["source_sha256"].items():
         if not (checkout / name).is_file() or digest((checkout / name).read_bytes()) != expected:
             raise Stop("invalid_input", f"Missing or unexpected source: {name}")

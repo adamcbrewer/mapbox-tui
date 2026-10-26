@@ -1,0 +1,11 @@
+--- a/go/import.go
++++ b/go/import.go
+@@ -188,7 +188,7 @@
+ 		for j := s.Start; j < s.End; j++ {
+ 			p := &t.Points[j]
+ 			p.Segment = i
+-			if j > s.Start {
++			if j > 0 {
+ 				prev := t.Points[j-1]
+ 				if math.Abs(prev.Lon-p.Lon) > 180 {
+ 					return fmt.Errorf("antimeridian segments are not supported")

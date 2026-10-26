@@ -17,10 +17,11 @@ from pi_run import repository_instructions, token_summary, validate_live_config
 from recovery import durable_json
 from run import HERE, REPORTS, ROOT, Stop, digest, now
 from sandbox import preflight
+from task_inputs import selected_task
 from verify import evaluator_definition, fingerprint
 
 CONTEXT = ("systemPrompt", "prompt", "tools", "activeTools", "task", "nodeVersion")
-SOURCES = ("baseline.py", "native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "case_suite.py",
+SOURCES = ("baseline.py", "native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "case_suite.py", "task_inputs.py",
            "container.py", "run.py", "sandbox.py", "pi_run.py", "verify.py", "repair.py", "recovery.py",
            "pi/native.mjs", "pi/native-live.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/live.mjs", "pi/setup.mjs", "pi/package-lock.json")
 
@@ -53,7 +54,7 @@ def prepare(suite, image, config_path, output_root=None):
     validate_case(directory, case)
     config = validate_live_config(json.loads(config_path.read_text()))
     task = json.loads((directory / "agent/task.json").read_text())
-    pinned = json.loads((HERE / "task.json").read_text())
+    pinned = selected_task(suite)
     instructions = repository_instructions(pinned, directory / "agent")
     prompt = ("Repair this Mapbox TUI import bug in /workspace.\n" + task["expected_behaviour"] +
               "\nChange only go/import.go. Keep tests and other project files unchanged. "

@@ -14,6 +14,9 @@ from native_sandbox import NativeRun
 from pi_run import prepare_checkout
 from run import HERE, Stop, apply_patch, digest, now, write_json
 from verify import REGRESSION, REGRESSION_CHECKS, source_tree
+from case_suite import build
+from run import Run
+from task_inputs import definition
 
 
 class NativeCheckTests(unittest.TestCase):
@@ -43,8 +46,9 @@ class NativeCheckTests(unittest.TestCase):
             return {"exit_code": 0}, b"go version go1.27.1 linux/amd64\n"
         self.child_deadlines.append(run.deadline)
         source = (Path(cwd) / "go/import.go").read_text()
-        task = REGRESSION if name in REGRESSION_CHECKS else run.task
-        working = 'if n >= 3 && string(header[:3])' in source or (name not in REGRESSION_CHECKS and "known && n >= 3" in source)
+        task = run.task.get("regression", REGRESSION) if name in REGRESSION_CHECKS else run.task
+        working = ('if j > 0 {' not in source if run.task["id"] == "segment-distance-v1" else
+                   'if n >= 3 && string(header[:3])' in source or (name not in REGRESSION_CHECKS and "known && n >= 3" in source))
         action = "pass" if working else "fail"
         output = b"\n".join(json.dumps({"Action": action, "Test": test}).encode() for test in
                             [task["test"], *(task["test"] + "/" + case for case in task["cases"])])
@@ -70,6 +74,49 @@ class NativeCheckTests(unittest.TestCase):
         write_json(self.run.path / "project-snapshot.json", {"files": {"go/import.go": digest(source)}})
         self.run.result.update(candidate=name, snapshot_scope_valid=True, snapshot_source_sha256=digest(source), patch_sha256=digest(raw))
         self.child_deadlines.clear()
+
+    def distance_candidate(self, working):
+        suite = Run(self.root / "distance-suite")
+        manifest = build(suite, "segment-distance-v1")
+        case = manifest["cases"][0]
+        directory = suite.path / "cases" / case["id"]
+        native_check.prepare_verification(self.run, case)
+        self.assertEqual(self.run.task, definition(case["id"]))
+        if working:
+            patch = (directory / "private/reference.patch").read_bytes()
+        else:
+            patch = (HERE / "fixtures/wrong.patch").read_bytes()
+        before = (directory / "agent/go/import.go").read_text()
+        self.checkout.joinpath("go/import.go").write_text(before)
+        self.checkout.joinpath("go/import_calibration_test.go").write_bytes((directory / "agent/go/import_calibration_test.go").read_bytes())
+        (self.run.path / "candidate.patch").write_bytes(patch)
+        apply_patch(self.run, self.checkout, patch, "candidate", ["go/import.go"])
+        source = (self.checkout / "go/import.go").read_bytes()
+        (self.run.path / "candidate-source.bin").write_bytes(source)
+        write_json(self.run.path / "project-snapshot.json", {"files": {"go/import.go": digest(source)}})
+        self.run.result.update(snapshot_scope_valid=True, snapshot_source_sha256=digest(source), patch_sha256=digest(patch))
+
+    def test_distance_task_uses_its_own_visible_and_private_checks(self):
+        self.distance_candidate(True)
+        native_check.check_candidate(self.run)
+        self.assertTrue(self.run.result["independent_checks_passed"])
+        child = self.root / "verification/runs" / self.run.result["verification"]["run_id"]
+        task = json.loads((child / "task.json").read_text())
+        self.assertEqual(task["id"], "segment-distance-v1")
+        self.assertEqual(task["regression"]["test"], "TestHarnessJourneyDistanceVerifier")
+        self.assertEqual(len(self.run.result["verification"]["checks"]), 8)
+        page = render(self.run.result)
+        self.assertIn("TestHarnessJourneyDistance", page)
+        self.assertNotIn("TestXMLImportsAcceptLeadingUTF8BOM", page)
+        self.assertNotIn("XML-prefix", page)
+
+    def test_distance_bad_fix_stays_failed_and_never_reaches_repository_checks(self):
+        self.distance_candidate(False)
+        with self.assertRaises(Stop) as caught:
+            native_check.check_candidate(self.run)
+        self.assertEqual(caught.exception.outcome, "repair_failed")
+        self.assertFalse(self.run.result["independent_checks_passed"])
+        self.assertEqual([c["id"] for c in self.run.result["verification"]["checks"]], ["baseline", "seed", "candidate"])
 
     def test_saved_fix_passes_only_after_every_check_and_keeps_shared_deadline(self):
         self.candidate()

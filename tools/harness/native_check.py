@@ -4,15 +4,23 @@ import subprocess
 import tarfile
 import time
 
-from run import HERE, REPORTS, Stop, digest, now
+from run import REPORTS, Stop, digest, now
+from task_inputs import definition, materials
 from verify import REQUIRED_CHECKS, VerificationRun, check_evaluator, fingerprint, freeze_evaluator, receipt_matches, verify
 
 
 def prepare_verification(run, case):
+    run.task = definition(case["id"])
+    run.test_command = run.task["command"]
     if case["id"] != run.task["id"] or case["base_commit"] != run.task["base_commit"]:
         raise Stop("invalid_input", "This checker only supports the pinned development task")
+    inputs = materials(run.task)
+    if digest(inputs["regression"]) != case["private_files_sha256"]["verifier.go.txt"]:
+        raise Stop("invalid_input", "The private checking examples don't match this task")
+    if case.get("seed_sha256", run.task["seed_sha256"]) != run.task["seed_sha256"]:
+        raise Stop("invalid_input", "The planted change doesn't match this task")
     freeze_evaluator(run)
-    task_bytes = (HERE / "task.json").read_bytes()
+    task_bytes = inputs["task"]
     (run.path / "verification-task.json").write_bytes(task_bytes)
     run.result.update(independent_checks_passed=False, base_commit=case["base_commit"],
                       task_sha256=digest(task_bytes),
@@ -58,7 +66,7 @@ def check_candidate(run):
             snapshot["files"].get("go/import.go") != digest(source)):
         raise Stop("invalid_input", "The saved change or sandbox cleanup doesn't match its evidence")
     child = VerificationRun(REPORTS / "verification", run.image, parent_run_id=run.path.name,
-                            evaluator=run.result["evaluator"])
+                            evaluator=run.result["evaluator"], task=run.task)
     child.deadline = run.deadline
     child.result["candidate"] = "normal-pi-saved-patch"
     record = {"run_id": child.path.name, "outcome": "incomplete", "patch_sha256": digest(patch),

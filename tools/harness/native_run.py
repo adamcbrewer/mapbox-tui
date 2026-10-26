@@ -17,6 +17,7 @@ from native_worker import TIMEOUT_ERROR
 from pi_run import MAX_CALLS, scripted_calls
 from run import HERE, REPORTS, Stop, digest, now, write_json
 from sandbox import preflight
+from task_inputs import selected_task
 
 ALLOWED = {"read": {"read", "access"}, "edit": {"read", "access", "write"},
            "write": {"mkdir", "write"}, "bash": {"bash"}}
@@ -87,7 +88,11 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
                                                    shell_quote('raise RuntimeError("Project json.py must not run")\n') + " > json.py"}},
                 {"name": "read", "args": {"path": "native-note.txt"}},
                 {"name": "bash", "args": {"command": "rm native-note.txt json.py"}}]
-    edit = scripted_calls(SimpleNamespace(seeded=sandbox.seeded, run=run), demo)[3]["args"]
+    if run.task["id"] == "segment-distance-v1":
+        edit = ({"old": "if j > 0 {", "new": "if j > s.Start {"} if demo == "good" else
+                {"old": 'format := "FIT"', "new": 'format := "fit"'})
+    else:
+        edit = scripted_calls(SimpleNamespace(seeded=sandbox.seeded, run=run), demo)[3]["args"]
     if demo == "tailored":
         marker = "\t\td := xml.NewDecoder(reader)"
         insert = "\n".join(line[1:] for line in (HERE / "fixtures/tailored.patch").read_text().splitlines()
@@ -131,9 +136,10 @@ def render(result):
                   "the source mount is read-only, the network is unavailable and no model or Mapbox key is in the environment. "
                   "It also plants a Python module that would crash if our worker accidentally loaded code from the project.", ""]
     else:
+        command = result.get("evaluator", {}).get("commands", {}).get("candidate", [])
+        test = result.get("visible_test", command[command.index("-run") + 1].strip("^$") if "-run" in command else "the task's public test")
         lines += ["The supplied sequence writes a temporary note, reads the source, applies a supplied edit and runs "
-                  "`TestXMLImportsAcceptLeadingUTF8BOM`. The known fix and filename shortcut should pass this test. "
-                  "The wrong edit should fail with the planted XML-prefix bug.", "",
+                  f"`{test}`. The known fix should pass this test. The wrong edit should fail on the planted regression.", "",
                   "This is the public test Pi can run. The filename shortcut only handles the names in those visible examples. "
                   "It should pass there and fail on the extra examples with different names." if result["candidate"] == "tailored" else
                   "This is the public test Pi can run. A separate checker is needed before the repair counts.", ""]
@@ -274,16 +280,21 @@ def main():
         parser.error("--verify needs a supplied repair, not a boundary or timeout probe")
     manifest = load_suite(args.suite)
     case = next(case for case in manifest["cases"] if case["partition"] == "development")
+    if case["id"] == "segment-distance-v1" and args.demo == "tailored":
+        parser.error("The filename-shortcut demo belongs to the XML task")
     directory = args.suite / "cases" / case["id"]
     validate_case(directory, case)
     run = NativeRun(REPORTS / "native-tools", args.image)
+    run.task = selected_task(args.suite)
+    run.test_command = run.task["command"]
     run.result.update(workflow="pi-native-tools", candidate=args.demo, task=case["id"], actual_model_calls=0,
+                      visible_test=run.task["test"],
                       model="scripted (no AI)", pi_version="1.2.0", candidate_source="prepared", tool_results=[],
                       verification_requested=args.verify,
                       budgets={"tool_calls": MAX_CALLS, "model_requests": 0, "deadline_seconds": 600},
                       suite_sha256=digest((args.suite / "suite.json").read_bytes()),
                       source_sha256={name: digest((HERE / name).read_bytes()) for name in
-                                     ("native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "container.py", "pi/native.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/package-lock.json")})
+                                     ("native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "container.py", "task_inputs.py", "pi/native.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/package-lock.json")})
     handlers = {s: signal.signal(s, run.cancel) for s in (signal.SIGINT, signal.SIGTERM)}
     sandbox = None
     try:

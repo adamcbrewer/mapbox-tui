@@ -14,6 +14,7 @@ from container import ContainerRun, ENVIRONMENT, REPOSITORY_GOFLAGS
 from pi_run import prepare_checkout
 from run import HERE, REPORTS, Stop, apply_patch, classify_test, check_test, digest, now, read_input, write_json
 from sandbox import preflight
+from task_inputs import materials, selected_task
 
 WORKFLOW = "frozen-patch-verification"
 SCOPE = "frozen-evaluator-v1"
@@ -28,12 +29,13 @@ SCOPES = {"focused-only-v1": (1, STAGES), "repository-checks-v1": (2, STAGES + E
 REGRESSION_FILE = "go/import_verifier_test.go"
 REGRESSION = {"test": "TestXMLImportsVerifierCases", "cases": ["gpx", "tcx", "kml"],
               "failure_message": "independent BOM import changed or failed"}
-REGRESSION_COMMAND = ["go", "test", "./go", "-run", "^TestXMLImportsVerifierCases$", "-count=1", "-json"]
 
 
 def check_commands(task):
+    regression = task.get("regression", REGRESSION)
+    command = ["go", "test", "./go", "-run", "^" + regression["test"] + "$", "-count=1", "-json"]
     return {**{stage: task["command"] for stage in STAGES},
-            **{name: REGRESSION_COMMAND for name in REGRESSION_CHECKS},
+            **{name: command for name in REGRESSION_CHECKS},
             "candidate-format": ["python3", "scripts/check_format.py"],
             "candidate-suite": ["make", "test", "BUILD_VCS=false", "COMMIT=" + task["base_commit"], REPOSITORY_GOFLAGS]}
 
@@ -43,13 +45,14 @@ def fingerprint(value):
 
 
 def evaluator_definition(task):
+    inputs = materials(task)
     return {"schema_version": 1, "verification_scope": SCOPE, "suite_version": SUITE_VERSION,
-            "task_sha256": digest((HERE / "task.json").read_bytes()), "task_definition_sha256": fingerprint(task),
-            "regression_sha256": digest((HERE / "fixtures/import_verifier_test.go.txt").read_bytes()),
-            "regression_expectations": copy.deepcopy(REGRESSION), "commands": check_commands(task),
+            "task_sha256": digest(inputs["task"]), "task_definition_sha256": fingerprint(task),
+            "regression_sha256": digest(inputs["regression"]),
+            "regression_expectations": copy.deepcopy(task.get("regression", REGRESSION)), "commands": check_commands(task),
             "required_checks": list(REQUIRED_CHECKS), "environment": dict(ENVIRONMENT),
             "source_sha256": {name: digest((HERE / name).read_bytes()) for name in
-                              ("verify.py", "repair.py", "pi_run.py", "container.py", "run.py", "sandbox.py")}}
+                              ("verify.py", "repair.py", "pi_run.py", "container.py", "run.py", "sandbox.py", "task_inputs.py")}}
 
 
 def freeze_evaluator(run, evaluator=None):
@@ -69,6 +72,7 @@ def evaluator_receipt_matches(result, task):
             definition["schema_version"] == 1 and definition["verification_scope"] == result["verification_scope"] and
             definition["suite_version"] == SUITE_VERSION and definition["required_checks"] == list(REQUIRED_CHECKS) and
             definition["task_sha256"] == result["task_sha256"] and definition["task_definition_sha256"] == fingerprint(task) and
+            definition["regression_expectations"] == task.get("regression", REGRESSION) and
             definition["regression_sha256"] == result["regression_sha256"] and definition["commands"] == check_commands(task))
 
 
@@ -101,8 +105,11 @@ def file_changes(before, after):
 
 
 class VerificationRun(ContainerRun):
-    def __init__(self, reports, image, attempt=1, parent_run_id=None, evaluator=None):
+    def __init__(self, reports, image, attempt=1, parent_run_id=None, evaluator=None, task=None):
         super().__init__(reports, image)
+        if task is not None:
+            self.task = copy.deepcopy(task)
+            self.test_command = self.task["command"]
         self.phase = "setup"
         self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
@@ -238,7 +245,7 @@ def receipt_matches(result, directory, allow_failed=False):
                 logs[stream] = (directory / check[stream]).read_bytes()
                 if digest(logs[stream]) != check[stream + "_sha256"]:
                     return False
-            test = REGRESSION if name in REGRESSION_CHECKS else task
+            test = task.get("regression", REGRESSION) if name in REGRESSION_CHECKS else task
             actual = (classify_test(logs["stdout"], check["exit_code"], test) if name in STAGES + REGRESSION_CHECKS else
                       "passed" if check["exit_code"] == 0 else "failed")
             expected = "assertion_failed" if name in ("seed", "seed-regression") else "passed"
@@ -258,10 +265,11 @@ def receipt_matches(result, directory, allow_failed=False):
 
 def verify(run, patch):
     check_evaluator(run)
-    task_bytes = (HERE / "task.json").read_bytes()
+    inputs = materials(run.task)
+    task_bytes = inputs["task"]
     run.result.update(task=run.task["id"], task_sha256=digest(task_bytes),
                       base_commit=run.task["base_commit"], patch_sha256=digest(patch))
-    regression = (HERE / "fixtures/import_verifier_test.go.txt").read_bytes()
+    regression = inputs["regression"]
     run.result["regression_sha256"] = digest(regression)
     (run.path / "import_verifier_test.go.txt").write_bytes(regression)
     (run.path / "candidate.patch").write_bytes(patch)
@@ -300,8 +308,8 @@ def verify(run, patch):
                     (regression_copy / file).unlink()
                 (regression_copy / "go/import.go").write_bytes(run.sources[stage])
                 (regression_copy / REGRESSION_FILE).write_bytes(regression)
-                check, output = run.command(name, REGRESSION_COMMAND, regression_copy)
-                check_test(run, stage, check, output, REGRESSION)
+                check, output = run.command(name, check_commands(run.task)[name], regression_copy)
+                check_test(run, stage, check, output, run.task.get("regression", REGRESSION))
         (checkout / "bin").mkdir(exist_ok=True)
         for name in EXTRA_CHECKS:
             check, output = run.command(name, check_commands(run.task)[name], checkout)
@@ -325,11 +333,17 @@ def verify(run, patch):
 def main():
     parser = argparse.ArgumentParser(description="Independently check a frozen repair in a fresh sandboxed source copy.")
     parser.add_argument("--image", required=True, help="Immutable prepared local image ID")
+    parser.add_argument("--suite", type=Path, help="Use the registered development task from this saved suite")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--demo", choices=("good", "wrong", "unformatted", "tailored", "new-file", "forbidden-file", "empty"))
     source.add_argument("--patch", type=Path, help="Candidate patch against the pinned seeded source")
     args = parser.parse_args()
-    run = VerificationRun(REPORTS / "verification", args.image)
+    try:
+        task = selected_task(args.suite) if args.suite else None
+    except (Stop, OSError, ValueError, KeyError, TypeError) as error:
+        print(error.reason if isinstance(error, Stop) else str(error))
+        return 1
+    run = VerificationRun(REPORTS / "verification", args.image, task=task)
     run.result["candidate"] = args.demo or "local-patch"
     previous = {signum: signal.signal(signum, run.cancel) for signum in (signal.SIGINT, signal.SIGTERM)}
     try:

@@ -236,11 +236,34 @@ fix it must fail on the intended assertion. `calibration.md` explains all eight
 results. The original catalogue remains the default, and saved older suites
 still load. This new development task doesn't consume the held-out task.
 
-Task preparation and a live comparison are separate. The current full repair
-checker is pinned to the earlier XML task. It must be bound to this task before
-launching either live workflow. Both versions must receive identical broken
-copies, with private answers kept outside their sandbox. The protocol must also
-save the supervision measures above. No human timer starts during preparation.
+Task preparation and a live comparison are separate. The full checker now
+selects the registered task's planted change, visible test and private checking
+examples. It still checks the exact saved patch in a fresh copy, then formatting
+and the repository tests. The XML task remains the default. Changed task inputs
+or checking rules stop the run.
+
+To exercise that connection with supplied repairs through actual Pi tools:
+
+```sh
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite SUITE_DIR --image "$HARNESS_IMAGE_ID" --demo good --verify
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite SUITE_DIR --image "$HARNESS_IMAGE_ID" --demo wrong --verify
+```
+
+Expect the good fix to pass all eight independent checks (exit 0). The bad edit
+must fail its candidate test and stay failed (exit 1); later checks should say
+not run. The script supplies both edits. These commands don't use a repair AI.
+For a standalone saved patch, `verify.py --suite SUITE_DIR --image IMAGE_ID
+--patch PATCH_FILE` selects the same registered checking inputs.
+
+Before the live comparison, both workflows still need a saved protocol and a
+way to record my check-ins, interventions and review. Both must receive identical
+broken copies, with private answers kept outside their sandbox. This connection
+doesn't demonstrate a supervised or unattended AI repair. No human timer starts
+during preparation.
 
 ## Check normal Pi tools inside the sandbox
 
