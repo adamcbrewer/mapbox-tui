@@ -108,8 +108,13 @@ the whole import when an item exceeds the cap, without thinning or truncation.
 Independent items have independent caps; this is not a workspace memory budget.
 
 The workspace manages which items are loaded, visible and selected, along with
-recorded playback. The camera determines how we view them. These rules don't
-depend on the viewer's widgets or layout, so CLI and MCP can use them too.
+recorded playback. An explicit sequence of stable item references controls the
+activity list, legend and profiles independently of source file ownership.
+Reordering pauses playback while preserving the selected activity's local
+position, measurements and colour. Hidden activities retain their sequence
+positions but are excluded from visible profiles. The camera determines how we
+view them. These rules don't depend on the viewer's widgets or layout, so CLI and
+MCP can use them too.
 
 Planned journeys use the same workspace and renderer. We keep the user's chosen
 stops separate from the path returned by a routing provider. Plans don't have
@@ -140,8 +145,12 @@ Version 1 accepts at most 4 MiB, 1,024 documents and 5,000 stops per journey.
 Unknown fields, unsupported versions and invalid identities/state are rejected.
 There are no older supported versions to migrate. Imports carry SHA-256 fingerprints
 of their original bytes; parsing checks fingerprints before and after reading.
-Saved document/item IDs are independent of runtime IDs. Document order is retained
-for scene layering, including across partial loads and repairs. Original parser item keys
+Saved document/item IDs are independent of runtime IDs. Source document order is
+retained across partial loads and repairs. Activity order drives scene layering.
+The optional `item_order` field retains activity order using saved item IDs; older
+checkpoints without it fall back to document/item order. Missing imports retain
+their activity slots while loaded activities can be reordered. Repair restores
+those slots without resetting the current selection. Original parser item keys
 are applied only to byte-identical imports, including a deliberately retained subset
 when items have been removed. Missing/changed imports retain complete references
 and state separately from loaded geometry. Failed candidate loads leave the active

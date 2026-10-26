@@ -58,12 +58,24 @@ map navigation. Ctrl-K opens Commands from any panel or dialog.
 Ctrl-L manages imported files and items. Only the active recording plays;
 hiding or removing it stops playback. Context uses seek keys to scroll instead.
 
+Ctrl-L lists activities in sequence, including hidden items, with their source
+filenames. Files containing multiple tracks show `Track 1`, `Track 2`, etc. beside
+each track's name; single-track files show the name alone. Waypoints don't count
+as extra tracks, and hiding or reordering tracks doesn't change their numbering.
+Alt-Up/Alt-Down moves the highlighted activity, including across files. Moving
+pauses playback without changing the current activity or its recorded position.
+The legend and elevation chart follow the same
+order; hidden activities take no distance on the chart and return to their place
+when shown. Activity order is included in saved workspaces.
+
 | View | Action | Keys / behaviour |
 |---|---|---|
 | Import picker | Browse / open / cancel | Arrows; Enter; Esc |
 | Files | Choose row | Up/Down or `k`/`j`; Home/End for first/last; wheel scrolls |
-| Files | Select / show or hide | Enter / Space |
-| Files | Remove item / whole file | Delete or Backspace / Shift-D; document rows remove the whole file |
+| Files | Select / show or hide item | Enter / Space |
+| Files | Reorder activity | Alt-Up / Alt-Down; stops at the first/last row |
+| Files | Show or hide whole source file | `v`; applies the highlighted item's new visibility to its source file |
+| Files | Remove item / whole file | Delete or Backspace / Shift-D |
 | Map | Previous / next recorded point | `[` / `]`; pauses playback |
 | Map | Seek 100 points / first or last | PgUp/PgDn / Home/End |
 | Map | Play / pause | Space; pan and zoom keep playback running |

@@ -614,15 +614,15 @@ func TestEmptyJourneyDraftDoesNotBecomeLoadedFile(t *testing.T) {
 				t.Fatal("a single-location draft appeared in Files or became selected")
 			}
 			enterJourneyCoordinate(m, 1, "51.297454, -2.532641")
-			if len(m.workspaceRows()) != len(rows)+2 {
+			if len(m.workspaceRows()) != len(rows)+1 {
 				t.Fatal("a complete journey did not appear in Files")
 			}
 			m.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
-			if len(m.workspaceRows()) != len(rows)+2 {
+			if len(m.workspaceRows()) != len(rows)+1 {
 				t.Fatal("uncommitted waypoint removed the journey from Files")
 			}
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-			if len(m.workspaceRows()) != len(rows)+2 {
+			if len(m.workspaceRows()) != len(rows)+1 {
 				t.Fatal("undoing the unset waypoint did not restore the complete journey")
 			}
 			if imported && m.workspace.selection != selection {

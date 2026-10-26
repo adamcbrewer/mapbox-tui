@@ -583,7 +583,7 @@ func TestActivityLegendUsesReadableTextPalette(t *testing.T) {
 		t.Run(theme.ID, func(t *testing.T) {
 			m.applyTheme(i)
 			legend := m.workspaceLegend(120, nil)
-			column := strings.Index(ansi.Strip(legend), "1:1")
+			column := strings.Index(ansi.Strip(legend), "Lookout")
 			if column < 0 {
 				t.Fatal("first activity was absent from the legend")
 			}

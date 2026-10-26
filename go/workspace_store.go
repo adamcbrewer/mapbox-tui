@@ -31,6 +31,7 @@ type savedWorkspace struct {
 	Created   time.Time       `json:"created"`
 	Modified  time.Time       `json:"modified"`
 	Order     []string        `json:"order"`
+	ItemOrder []string        `json:"item_order,omitempty"`
 	Imports   []savedImport   `json:"imports"`
 	Journeys  []savedJourney  `json:"journeys"`
 	Selection *savedSelection `json:"selection,omitempty"`
@@ -216,6 +217,18 @@ func (v savedWorkspace) validate() error {
 	}
 	if v.Planner != "" && !journeys[v.Planner] {
 		return fmt.Errorf("invalid saved planner journey")
+	}
+	if v.ItemOrder != nil {
+		if len(v.ItemOrder) != len(items) {
+			return fmt.Errorf("invalid workspace activity order")
+		}
+		seen := make(map[string]bool, len(items))
+		for _, id := range v.ItemOrder {
+			if _, ok := items[id]; !ok || seen[id] {
+				return fmt.Errorf("unknown or repeated item in workspace activity order")
+			}
+			seen[id] = true
+		}
 	}
 	if v.Selection != nil {
 		if !items[v.Selection.Item] || v.Selection.Point < -1 {

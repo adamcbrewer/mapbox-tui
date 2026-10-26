@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -65,6 +66,112 @@ func TestWorkspaceAddsFilesWithActivePlaybackAndSharedProfiles(t *testing.T) {
 		!w.profile(80, 5).Available
 	if firstItemChanged {
 		t.Fatal("returning to an item changed its data or reused another item's state")
+	}
+}
+
+func TestWorkspaceReordersActivitiesWithoutChangingOwnershipOrPlaybackPosition(t *testing.T) {
+	var w Workspace
+	first := openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
+	other := w.items()[1].Ref
+	last := openWorkspaceFile(t, &w, "../fixtures/country-ride.gpx")
+	original := w.items()
+	if err := w.selectItem(first); err != nil {
+		t.Fatal(err)
+	}
+	p := w.selection.playback
+	p.toggle()
+	p.advance(w.selection.track, p.duration()/3)
+	position, elapsed, blend := *w.position(), p.Elapsed, p.Blend
+	selection, revision := w.selection, w.liveRevision
+	profile := w.profile(80, 5)
+	if err := w.moveItem(last, other); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(w.order, []ItemRef{first, last, other}) {
+		t.Fatal("activity did not move between items owned by another file", w.order)
+	}
+	if w.selection != selection || p.Playing || p.Elapsed != elapsed || p.Blend != blend {
+		t.Fatal("reorder reset playback or changed selection")
+	}
+	if !reflect.DeepEqual(*w.position(), position) || w.liveRevision <= revision {
+		t.Fatal("reorder moved the current point or did not record an edit")
+	}
+	for _, item := range w.items() {
+		before := original[slices.IndexFunc(original, func(candidate WorkspaceItem) bool { return candidate.Ref == item.Ref })]
+		if item != before {
+			t.Fatal("reorder changed identity, ownership, colour or geometry")
+		}
+	}
+	updated := w.profile(80, 5)
+	if updated == profile || updated.Distance != profile.Distance || updated.Items[1].Ref != last {
+		t.Fatal("reorder left a stale profile or changed its total distance")
+	}
+	if w.documents[0].document.Items[1].ID != other.ItemID {
+		t.Fatal("reorder changed source-local item order")
+	}
+	if err := w.moveItem(other, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.selectDocumentPoint(first.DocumentID, len(original[0].Item.Track.Points)); err != nil {
+		t.Fatal(err)
+	}
+	if w.selection.ref != other || w.position().Index != 0 {
+		t.Fatal("legacy document point index followed display order")
+	}
+}
+
+func TestWorkspaceReorderRejectsStaleReferencesAndKeepsHiddenPlaces(t *testing.T) {
+	var w Workspace
+	first := openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
+	second := w.items()[1].Ref
+	if err := w.setVisible(first, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.moveItem(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.setVisible(first, true); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(w.order, []ItemRef{second, first}) || w.sceneItems()[1].Ref != first {
+		t.Fatal("showing a hidden activity lost its place")
+	}
+	if err := w.selectItem(second); err != nil {
+		t.Fatal(err)
+	}
+	p := w.selection.playback
+	p.toggle()
+	revision := w.liveRevision
+	if err := w.moveItem(second, second); err != nil || !p.Playing || w.liveRevision != revision {
+		t.Fatal("no-op move interrupted playback or edited the workspace", err)
+	}
+	for _, test := range []struct {
+		name        string
+		ref, target ItemRef
+	}{
+		{name: "stale source", ref: ItemRef{DocumentID: 999, ItemID: 1}, target: first},
+		{name: "stale target", ref: second, target: ItemRef{DocumentID: 999, ItemID: 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := w.moveItem(test.ref, test.target); err == nil {
+				t.Fatal("accepted stale reference")
+			}
+			if !p.Playing || w.liveRevision != revision || !slices.Equal(w.order, []ItemRef{second, first}) {
+				t.Fatal("rejected move changed state")
+			}
+		})
+	}
+	if err := w.removeItem(second); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(w.order, []ItemRef{first}) || w.selection != nil {
+		t.Fatal("removed activity retained its order entry or selection")
+	}
+	if err := w.removeDocument(first.DocumentID); err != nil {
+		t.Fatal(err)
+	}
+	if len(w.order) != 0 || len(w.items()) != 0 {
+		t.Fatal("removed file retained its order entries")
 	}
 }
 

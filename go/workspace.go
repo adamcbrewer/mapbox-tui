@@ -40,6 +40,7 @@ type Workspace struct {
 	liveGeneration    string
 	liveRevision      uint64
 	documents         []*workspaceDocument
+	order             []ItemRef
 	selection         *workspaceSelection
 	nextID            int
 	nextColor         int
@@ -81,6 +82,7 @@ func (w *Workspace) appendDocument(d *Document) *workspaceDocument {
 	w.nextID++
 	entry := &workspaceDocument{id: w.nextID, document: d, colors: make(map[int]activityColor), saveID: rand.Text(), itemIDs: make(map[int]string)}
 	for _, item := range d.Items {
+		w.order = append(w.order, ItemRef{DocumentID: entry.id, ItemID: item.ID})
 		entry.itemIDs[item.ID] = rand.Text()
 		entry.colors[item.ID] = activityColor(w.nextColor%activityColorCount + 1)
 		w.nextColor++
@@ -122,19 +124,44 @@ func (w *Workspace) activateDocument(entry *workspaceDocument) ItemRef {
 }
 
 func (w *Workspace) items() []WorkspaceItem {
-	var items []WorkspaceItem
+	byRef := make(map[ItemRef]WorkspaceItem, len(w.order))
 	for _, entry := range w.documents {
 		for _, item := range entry.document.Items {
-			items = append(items, WorkspaceItem{
-				Ref:      ItemRef{DocumentID: entry.id, ItemID: item.ID},
+			ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
+			byRef[ref] = WorkspaceItem{
+				Ref:      ref,
 				Document: entry.document,
 				Item:     item,
 				Visible:  !entry.hidden[item.ID],
 				Color:    entry.colors[item.ID],
-			})
+			}
 		}
 	}
+	var items []WorkspaceItem
+	for _, ref := range w.order {
+		items = append(items, byRef[ref])
+	}
 	return items
+}
+
+func (w *Workspace) moveItem(ref, target ItemRef) error {
+	if _, _, err := w.lookup(ref); err != nil {
+		return err
+	}
+	if _, _, err := w.lookup(target); err != nil {
+		return err
+	}
+	from, to := slices.Index(w.order, ref), slices.Index(w.order, target)
+	if from == to {
+		return nil
+	}
+	w.order = slices.Delete(w.order, from, from+1)
+	w.order = slices.Insert(w.order, to, ref)
+	if w.selection != nil && w.selection.playback != nil {
+		w.selection.playback.Playing = false
+	}
+	w.edited()
+	return nil
 }
 
 func (w *Workspace) lookup(ref ItemRef) (*workspaceDocument, int, error) {
@@ -239,6 +266,7 @@ func (w *Workspace) removeItem(ref ItemRef) error {
 	}
 	w.edited()
 	entry.document.Items = slices.Delete(entry.document.Items, i, i+1)
+	w.order = slices.DeleteFunc(w.order, func(candidate ItemRef) bool { return candidate == ref })
 	delete(entry.hidden, ref.ItemID)
 	delete(entry.colors, ref.ItemID)
 	entry.document.Bounds = entry.document.Items[0].Track.Bounds
@@ -261,6 +289,7 @@ func (w *Workspace) removeDocument(id int) error {
 			}
 			w.edited()
 			w.documents = slices.Delete(w.documents, i, i+1)
+			w.order = slices.DeleteFunc(w.order, func(ref ItemRef) bool { return ref.DocumentID == id })
 			return nil
 		}
 	}
@@ -273,6 +302,7 @@ func (w *Workspace) clear() {
 	w.cancelJourneyRoutes()
 	w.clearSelection()
 	w.documents = nil
+	w.order = nil
 	w.unresolved = nil
 	w.deferredSelection = nil
 	w.elevation = nil
@@ -318,17 +348,19 @@ func (w *Workspace) seek(index int) error {
 
 func (w *Workspace) selectDocumentPoint(documentID, index int) error {
 	if index >= 0 {
-		for _, item := range w.items() {
-			if item.Ref.DocumentID != documentID {
+		for _, entry := range w.documents {
+			if entry.id != documentID {
 				continue
 			}
-			if index < len(item.Item.Track.Points) {
-				if err := w.selectItem(item.Ref); err != nil {
-					return err
+			for _, item := range entry.document.Items {
+				if index < len(item.Track.Points) {
+					if err := w.selectItem(ItemRef{DocumentID: documentID, ItemID: item.ID}); err != nil {
+						return err
+					}
+					return w.seek(index)
 				}
-				return w.seek(index)
+				index -= len(item.Track.Points)
 			}
-			index -= len(item.Item.Track.Points)
 		}
 	}
 	return fmt.Errorf("point_index outside track")

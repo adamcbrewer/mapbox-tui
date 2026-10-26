@@ -1242,12 +1242,7 @@ func (m *viewer) rebuild() {
 		}
 		if len(m.workspace.items()) > 1 {
 			ref := m.workspace.selection.ref
-			label := fmt.Sprintf(
-				"%d:%d %s",
-				ref.DocumentID,
-				ref.ItemID,
-				m.activeTrack().Name,
-			)
+			label := m.workspace.itemLabels()[ref]
 			status = ansi.Truncate(label, min(24, m.width/4), "…") + " | " + status
 		}
 		status = m.progress.ViewAs(playback.ratio()) + "  " + m.paint(status, roleActiveRoute, m.activeSwatch())

@@ -10,60 +10,78 @@ import (
 )
 
 type workspaceRow struct {
-	ref     ItemRef
-	label   string
-	path    string
-	visible bool
-	color   activityColor
+	ref          ItemRef
+	label        string
+	compactLabel string
+	path         string
+	source       string
+	visible      bool
+	color        activityColor
+}
+
+func (w *Workspace) itemLabels() map[ItemRef]string {
+	labels := make(map[ItemRef]string)
+	for _, entry := range w.documents {
+		var count int
+		for _, item := range entry.document.Items {
+			if len(item.Track.Points) > 0 {
+				count++
+			}
+		}
+		var number int
+		for _, item := range entry.document.Items {
+			label := item.Track.Name
+			if count > 1 && len(item.Track.Points) > 0 {
+				number++
+				label = fmt.Sprintf("Track %d · %s", number, label)
+			}
+			labels[ItemRef{DocumentID: entry.id, ItemID: item.ID}] = label
+		}
+	}
+	return labels
 }
 
 func (m *viewer) workspaceRows() []workspaceRow {
 	var rows []workspaceRow
-	for _, entry := range m.workspace.documents {
-		var visible, listed bool
-		for _, item := range entry.document.Items {
-			if item.Journey != nil && !item.Journey.hasCompleteLocations() && !m.workspace.savedJourney(entry.saveID) {
+	labels := m.workspace.itemLabels()
+	for _, item := range m.workspace.items() {
+		if item.Item.Journey != nil && !item.Item.Journey.hasCompleteLocations() {
+			entry, _, _ := m.workspace.lookup(item.Ref)
+			if !m.workspace.savedJourney(entry.saveID) {
 				continue
 			}
-			listed = true
-			visible = visible || !entry.hidden[item.ID]
 		}
-		if !listed {
-			continue
+		active, shown := " ", "x"
+		if m.workspace.selection != nil && m.workspace.selection.ref == item.Ref {
+			active = "*"
 		}
+		if !item.Visible {
+			shown = " "
+		}
+		prefix := fmt.Sprintf(
+			"%d. %s [%s] ",
+			len(rows)+1,
+			active,
+			shown,
+		)
+		source := clean(item.Document.Filename)
+		label := labels[item.Ref]
 		rows = append(rows, workspaceRow{
-			ref:     ItemRef{DocumentID: entry.id},
-			label:   fmt.Sprintf("[%d] %s", entry.id, clean(entry.document.Filename)),
-			path:    entry.document.Path,
-			visible: visible,
-		})
-		for _, item := range entry.document.Items {
-			if item.Journey != nil && !item.Journey.hasCompleteLocations() && !m.workspace.savedJourney(entry.saveID) {
-				continue
-			}
-			ref := ItemRef{DocumentID: entry.id, ItemID: item.ID}
-			active, shown := " ", "x"
-			if m.workspace.selection != nil && m.workspace.selection.ref == ref {
-				active = "*"
-			}
-			if entry.hidden[item.ID] {
-				shown = " "
-			}
-			label := fmt.Sprintf(
-				" %s [%s] %d %s",
+			ref:   item.Ref,
+			label: prefix + label,
+			compactLabel: fmt.Sprintf(
+				"%d.%s[%s] %s %s",
+				len(rows)+1,
 				active,
 				shown,
-				item.ID,
-				item.Track.Name,
-			)
-			rows = append(rows, workspaceRow{
-				ref:     ref,
-				label:   label,
-				path:    entry.document.Path,
-				visible: !entry.hidden[item.ID],
-				color:   entry.colors[item.ID],
-			})
-		}
+				source,
+				label,
+			),
+			path:    item.Document.Path,
+			source:  source,
+			visible: item.Visible,
+			color:   item.Color,
+		})
 	}
 	return rows
 }
@@ -86,30 +104,31 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 		m.ui.selected = 0
 	case "end":
 		m.ui.selected = len(rows) - 1
-	case "enter":
-		if row.ref.ItemID == 0 {
-			for _, entry := range m.workspace.documents {
-				if entry.id == row.ref.DocumentID {
-					m.workspace.activateDocument(entry)
-					break
-				}
-			}
-		} else {
-			err = m.workspace.selectItem(row.ref)
+	case "alt+up", "alt+down":
+		direction := -1
+		if key == "alt+down" {
+			direction = 1
 		}
+		target := m.ui.selected + direction
+		if target >= 0 && target < len(rows) {
+			err = m.workspace.moveItem(row.ref, rows[target].ref)
+			if err == nil {
+				m.ui.selected = target
+			}
+		}
+	case "enter":
+		err = m.workspace.selectItem(row.ref)
 		m.closeDialog()
 		m.ui.detailsOpen = true
 	case "space":
-		if row.ref.ItemID == 0 {
-			err = m.workspace.setDocumentVisible(row.ref.DocumentID, !row.visible)
-		} else {
-			err = m.workspace.setVisible(row.ref, !row.visible)
-		}
+		err = m.workspace.setVisible(row.ref, !row.visible)
+	case "v":
+		err = m.workspace.setDocumentVisible(row.ref.DocumentID, !row.visible)
 	case "delete", "backspace", "D":
 		m.loadID++
 		m.loading, m.pendingPaths = false, nil
 		m.startupCameraPending = false
-		if row.ref.ItemID == 0 || key == "D" {
+		if key == "D" {
 			err = m.workspace.removeDocument(row.ref.DocumentID)
 		} else {
 			err = m.workspace.removeItem(row.ref)
@@ -127,6 +146,18 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 	return nil
 }
 
+func workspaceListLayout(height int) (int, int) {
+	available := height
+	if height > 3 {
+		available -= 3
+	}
+	if height >= 7 {
+		available -= 2
+	}
+	rowHeight := min(2, max(1, available))
+	return max(1, available/rowHeight), rowHeight
+}
+
 func (m *viewer) workspaceDialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	rows := m.workspaceRows()
@@ -134,14 +165,12 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 		return "Loaded files", s.dialogMuted.Render("No files loaded. Use ctrl+o."), "esc close"
 	}
 	m.ui.selected = max(0, min(len(rows)-1, m.ui.selected))
-	count := max(1, height-3)
+	count, rowHeight := workspaceListLayout(height)
 	start := max(0, m.ui.selected-count+1)
 	lines := []string{}
 	for i := start; i < min(len(rows), start+count); i++ {
 		style := s.dialogText
-		if rows[i].ref.ItemID == 0 {
-			style = s.dialogHeading
-		} else if !rows[i].visible {
+		if !rows[i].visible {
 			style = s.dialogMuted
 		}
 		prefix := "  "
@@ -154,17 +183,34 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 				Foreground(lipgloss.Color(m.theme().activityTextColor(rows[i].color))).
 				Faint(!rows[i].visible)
 		}
-		lines = append(lines, style.Render(pad(prefix+rows[i].label, width)))
+		label := rows[i].label
+		if rowHeight == 1 {
+			label = rows[i].compactLabel
+		}
+		lines = append(lines, style.Render(pad(prefix+label, width)))
+		if rowHeight > 1 {
+			lines = append(lines, s.dialogMuted.Render(pad("    "+rows[i].source, width)))
+		}
 	}
 	if height > 3 {
+		path := rows[m.ui.selected].path
+		if path == "" {
+			path = rows[m.ui.selected].source
+		}
+		if height >= 7 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, s.dialogMuted.Render(pad(abbreviatedWorkspacePath(path, width, m.settings.ASCII), width)))
+		if height >= 7 {
+			lines = append(lines, "")
+		}
 		lines = append(
 			lines,
-			"",
-			s.dialogMuted.Render(pad(clean(rows[m.ui.selected].path), width)),
-			s.dialogMuted.Render(pad("del remove row · D remove file", width)),
+			s.dialogMuted.Render(pad("alt+up/down move · v file visibility", width)),
+			s.dialogMuted.Render(pad("del remove item · D remove file", width)),
 		)
 	}
-	return "Loaded files", strings.Join(lines, "\n"), "enter select · space hide/show · esc close"
+	return "Loaded files", strings.Join(lines, "\n"), "enter select · space hide/show · v file · esc close"
 }
 
 func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
@@ -180,26 +226,23 @@ func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
 	}
 	columnWidth := max(1, (width-ansi.StringWidth(suffix)-(count-1)*2)/count)
 	var labels []string
+	names := m.workspace.itemLabels()
 	for _, item := range items[:count] {
 		marker := " "
 		if item.Active {
 			marker = "*"
 		}
 		label := fmt.Sprintf(
-			"%s %d:%d %s",
+			"%s %s",
 			marker,
-			item.Ref.DocumentID,
-			item.Ref.ItemID,
-			item.Track.Name,
+			names[item.Ref],
 		)
 		missingElevation := profile != nil && len(item.Track.Points) > 0 && !profile.AvailableItems[item.Ref]
 		if missingElevation {
 			label = fmt.Sprintf(
-				"%s %d:%d no elevation: %s",
+				"%s no elevation: %s",
 				marker,
-				item.Ref.DocumentID,
-				item.Ref.ItemID,
-				item.Track.Name,
+				names[item.Ref],
 			)
 		}
 		style := s.text.Foreground(lipgloss.Color(m.theme().activityTextColor(item.Color))).Bold(item.Active)

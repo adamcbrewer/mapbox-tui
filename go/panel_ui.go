@@ -166,11 +166,11 @@ func (m *viewer) updateFilesPanelMouse(msg tea.Msg) tea.Cmd {
 		if event.Button != tea.MouseLeft {
 			return nil
 		}
-		count := max(1, m.camera.Height-8)
+		count, rowHeight := workspaceListLayout(max(1, m.camera.Height-5))
 		start := max(0, m.ui.selected-count+1)
 		row := event.Y - m.mapOriginY() - 3
-		if row >= 0 && row < count && start+row < len(m.workspaceRows()) {
-			m.ui.selected = start + row
+		if row >= 0 && row < count*rowHeight && start+row/rowHeight < len(m.workspaceRows()) {
+			m.ui.selected = start + row/rowHeight
 			return m.updateWorkspaceDialog("enter")
 		}
 	}

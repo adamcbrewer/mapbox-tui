@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -200,6 +201,137 @@ func TestLoadedFilesChangesStopAnimationWithoutMovingCurrentCamera(t *testing.T)
 				m.camera.Bearing != before.Bearing
 			if cameraMoved {
 				t.Fatal("a cancelled camera transition resumed")
+			}
+		})
+	}
+}
+
+func TestLoadedFilesLabelsNumberOnlyMultipleTracksWithinOneFile(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	m.workspace.clear()
+	multiple := importFile(t, "multiple.gpx", []byte(`<gpx><wpt lat="51" lon="0"><name>Water</name></wpt><trk><name>First</name><trkseg><trkpt lat="51" lon="0"/><trkpt lat="51" lon="0.01"/></trkseg></trk><trk><name>Second</name><trkseg><trkpt lat="51" lon="0.01"/><trkpt lat="51" lon="0.02"/></trkseg></trk></gpx>`))
+	openWorkspaceFile(t, &m.workspace, multiple)
+	single := importFile(t, "single.gpx", []byte(`<gpx><wpt lat="52" lon="0"><name>Cafe</name></wpt><trk><name>Solo</name><trkseg><trkpt lat="52" lon="0"/><trkpt lat="52" lon="0.01"/></trkseg><trkseg><trkpt lat="52" lon="0.02"/><trkpt lat="52" lon="0.03"/></trkseg></trk></gpx>`))
+	openWorkspaceFile(t, &m.workspace, single)
+	want := []string{"Water", "Track 1 · First", "Track 2 · Second", "Cafe", "Solo"}
+	rows := m.workspaceRows()
+	if len(rows) != len(want) {
+		t.Fatal("file list lost imported items")
+	}
+	for i, label := range want {
+		if !strings.HasSuffix(rows[i].label, label) || !strings.HasSuffix(rows[i].compactLabel, label) {
+			t.Fatal("normal or compact label used an internal ID or counted a waypoint/part as a track", rows[i])
+		}
+		ref := rows[i].ref
+		if strings.Contains(rows[i].label, fmt.Sprintf("%d:%d", ref.DocumentID, ref.ItemID)) {
+			t.Fatal("file list retained a document/item ID", rows[i].label)
+		}
+	}
+	first, second := rows[1].ref, rows[2].ref
+	if err := m.workspace.moveItem(second, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.workspace.setVisible(first, false); err != nil {
+		t.Fatal(err)
+	}
+	updated := m.workspaceRows()
+	if !strings.HasSuffix(updated[1].label, "Track 2 · Second") || !strings.HasSuffix(updated[2].label, "Track 1 · First") {
+		t.Fatal("reordering or hiding a track changed its source-local number")
+	}
+	legend := ansi.Strip(m.workspaceLegend(220, nil))
+	if !strings.Contains(legend, "Track 2 · Second") || !strings.Contains(legend, "Solo") {
+		t.Fatal("legend did not use the file list's track labels", legend)
+	}
+	if err := m.workspace.removeItem(first); err != nil {
+		t.Fatal(err)
+	}
+	remaining := m.workspaceRows()[1]
+	if remaining.ref != second || strings.Contains(remaining.label, "Track 2") || !strings.HasSuffix(remaining.label, "Second") {
+		t.Fatal("last remaining track retained an unnecessary number or changed identity", remaining)
+	}
+}
+
+func TestLoadedFilesReorderingPreservesCursorAndSourceOperations(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		width, height int
+		ascii         bool
+	}{
+		{name: "normal", width: 120, height: 40},
+		{name: "compact", width: 70, height: 24},
+		{name: "ascii", width: 70, height: 24, ascii: true},
+		{name: "narrow ascii", width: 30, height: 12, ascii: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := themeViewer(t, test.width, test.height, test.ascii)
+			m.workspace.clear()
+			first := openWorkspaceFile(t, &m.workspace, importFile(t, "ride.tcx", []byte(coursesWithGapTCX)))
+			body := strings.ReplaceAll(coursesWithGapTCX, "Outward", "Other outward")
+			body = strings.ReplaceAll(body, "Return", "Other return")
+			second := openWorkspaceFile(t, &m.workspace, importFile(t, "ride.tcx", []byte(body)))
+			p := m.activePlayback()
+			p.toggle()
+			p.advance(m.activeTrack(), p.duration()/3)
+			elapsed, blend := p.Elapsed, p.Blend
+			m.openDialog(dialogWorkspace)
+			rows := m.workspaceRows()
+			if len(rows) != 4 || rows[0].ref != first || rows[2].ref != second {
+				t.Fatal("file headers remained in the activity list")
+			}
+			firstLabel := "Track 1 · Outward"
+			secondLabel := "Track 1 · Other outward"
+			if !strings.Contains(rows[0].label, firstLabel) || !strings.Contains(rows[2].label, secondLabel) {
+				t.Fatal("multiple tracks did not retain their source-local numbers and names")
+			}
+			_, content, _ := m.workspaceDialogContent(36, 20)
+			if strings.Count(ansi.Strip(content), "ride.tcx") < len(rows) {
+				t.Fatal("normal-width rows truncated source filenames")
+			}
+			_, compact, _ := m.workspaceDialogContent(36, 1)
+			if !strings.Contains(ansi.Strip(compact), "ride.tcx") || lipgloss.Height(compact) != 1 {
+				t.Fatal("single-line activity row omitted its source or overflowed")
+			}
+			m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt})
+			m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt})
+			if m.workspace.selection.ref != second || p.Playing || p.Elapsed != elapsed || p.Blend != blend {
+				t.Fatal("keyboard reorder reset or switched the playback cursor")
+			}
+			rows = m.workspaceRows()
+			if m.ui.selected != 0 || rows[0].ref != second || !strings.HasPrefix(rows[0].label, "1.") {
+				t.Fatal("keyboard reorder lost row selection or numbering")
+			}
+			profile := m.workspace.profile(60, 5)
+			if profile.Items[0].Ref != second || m.workspace.sceneItems()[0].Ref != second {
+				t.Fatal("chart or scene ignored keyboard order")
+			}
+			header, _, _ := profile.frame(m.position())
+			if !strings.Contains(header, fmt.Sprintf("@ %.2f km", m.position().Distance/1000)) {
+				t.Fatal("reordered cursor retained its former activity offset", header)
+			}
+			legend := ansi.Strip(m.workspaceLegend(180, profile))
+			if strings.Index(legend, secondLabel) > strings.Index(legend, firstLabel) {
+				t.Fatal("legend ignored keyboard order", legend)
+			}
+			p.toggle()
+			m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModAlt})
+			if !p.Playing || m.ui.selected != 0 {
+				t.Fatal("boundary reorder paused playback or wrapped the row")
+			}
+			m.rebuild()
+			if lipgloss.Width(m.content) > test.width || lipgloss.Height(m.content) != test.height {
+				t.Fatal("reordered file list overflowed terminal")
+			}
+			m.Update(tea.KeyPressMsg{Code: 'v'})
+			if m.activePlayback() != nil || len(m.workspace.sceneItems()) != 2 {
+				t.Fatal("whole-file visibility affected the wrong source")
+			}
+			m.Update(tea.KeyPressMsg{Code: 'v'})
+			if len(m.workspace.sceneItems()) != 4 || m.workspace.items()[0].Ref != second {
+				t.Fatal("showing a file changed its activities' positions")
+			}
+			m.Update(tea.KeyPressMsg{Code: 'D', Text: "D"})
+			if len(m.workspaceRows()) != 2 || m.workspace.items()[0].Ref != first {
+				t.Fatal("whole-file removal followed list position instead of source ownership")
 			}
 		})
 	}
@@ -409,7 +541,6 @@ func TestViewerMultipleElevationsShareOnlyTheSelectedPlaybackCursor(t *testing.T
 		elapsed := oldPlayback.Elapsed
 		m.openDialog(dialogWorkspace)
 		m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
-		m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m.Update(tea.KeyPressMsg{Code: ' '})
 		otherActivityInterruptedPlayback := m.activePlayback() != oldPlayback ||
 			!oldPlayback.Playing ||

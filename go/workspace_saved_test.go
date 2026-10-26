@@ -374,6 +374,159 @@ func TestSavedWorkspaceValidationAndAtomicFailures(t *testing.T) {
 	}
 }
 
+func workspaceActivityNames(w *Workspace) []string {
+	var names []string
+	for _, item := range w.items() {
+		names = append(names, item.Item.Track.Name)
+	}
+	return names
+}
+
+func TestSavedWorkspaceActivityOrderRoundTripAndLegacyFallback(t *testing.T) {
+	var w Workspace
+	first := openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
+	second := w.items()[1].Ref
+	last := openWorkspaceFile(t, &w, "../fixtures/country-ride.gpx")
+	camera := fit(nil, 80, 24, 2)
+	store := workspaceStore{directory: t.TempDir()}
+	cp := saveTestWorkspace(t, &w, store, false)
+	w.rememberSavedState(camera, ItemRef{})
+	if err := w.moveItem(last, first); err != nil {
+		t.Fatal(err)
+	}
+	if !w.modified(camera, ItemRef{}) {
+		t.Fatal("activity order change was not marked unsaved")
+	}
+	if err := w.moveItem(second, first); err != nil {
+		t.Fatal(err)
+	}
+	want := workspaceActivityNames(&w)
+	cp = saveTestWorkspace(t, &w, store, false)
+	restored, _, err := prepareWorkspace(cp.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(workspaceActivityNames(restored), want) || restored.modified(camera, ItemRef{}) {
+		t.Fatal("save/open lost activity order or marked the restored order unsaved")
+	}
+	if err := restored.removeItem(restored.items()[1].Ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restored.snapshot("Removed item", camera, false); err != nil {
+		t.Fatal("removed item retained a persisted order entry", err)
+	}
+	var live Workspace
+	openWorkspaceFile(t, &live, "../fixtures/waypoints.gpx")
+	previousID := live.nextID
+	live.replace(restored)
+	for _, item := range live.items() {
+		if item.Ref.DocumentID <= previousID || item.Item == nil {
+			t.Fatal("workspace replacement retained old runtime order references")
+		}
+	}
+	legacy := cp.manifest
+	legacy.ItemOrder = nil
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	old, _, err := prepareWorkspace(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := workspaceActivityNames(old); names[0] != "Outward" || names[1] != "Return" {
+		t.Fatal("legacy save did not fall back to source file/item order", names)
+	}
+}
+
+func TestSavedWorkspaceActivityOrderSurvivesPartialEditsAndRepair(t *testing.T) {
+	for _, saveBeforeRepair := range []bool{false, true} {
+		name := "repair without save"
+		if saveBeforeRepair {
+			name = "save and reopen before repair"
+		}
+		t.Run(name, func(t *testing.T) {
+			var w Workspace
+			first := openWorkspaceFile(t, &w, importFile(t, "first.tcx", []byte(coursesWithGapTCX)))
+			second := w.items()[1].Ref
+			body := strings.ReplaceAll(coursesWithGapTCX, "Outward", "Other outward")
+			body = strings.ReplaceAll(body, "Return", "Other return")
+			source := importFile(t, "other.tcx", []byte(body))
+			other := openWorkspaceFile(t, &w, source)
+			if err := w.moveItem(other, second); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.setVisible(second, false); err != nil {
+				t.Fatal(err)
+			}
+			store := workspaceStore{directory: t.TempDir()}
+			cp := saveTestWorkspace(t, &w, store, false)
+			moved := source + ".moved"
+			if err := os.Rename(source, moved); err != nil {
+				t.Fatal(err)
+			}
+			partial, _, err := prepareWorkspace(cp.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := partial.moveItem(partial.items()[1].Ref, partial.items()[0].Ref); err != nil {
+				t.Fatal(err)
+			}
+			if saveBeforeRepair {
+				cp = saveTestWorkspace(t, partial, store, false)
+				partial, _, err = prepareWorkspace(cp.path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := partial.locateUnresolved(partial.unresolved[0].ID, moved); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"Return", "Other outward", "Outward", "Other return"}
+			if !slices.Equal(workspaceActivityNames(partial), want) || partial.items()[0].Visible {
+				t.Fatal("repair changed activity order or hidden state", workspaceActivityNames(partial))
+			}
+			if partial.items()[2].Ref.ItemID != first.ItemID {
+				t.Fatal("repair changed source-local identity")
+			}
+			cp = saveTestWorkspace(t, partial, store, false)
+			again, _, err := prepareWorkspace(cp.path)
+			if err != nil || !slices.Equal(workspaceActivityNames(again), want) {
+				t.Fatal("repaired order did not survive another save/open", err)
+			}
+		})
+	}
+}
+
+func TestSavedWorkspaceRejectsInvalidActivityOrder(t *testing.T) {
+	var w Workspace
+	openWorkspaceFile(t, &w, importFile(t, "courses.tcx", []byte(coursesWithGapTCX)))
+	v, err := w.snapshot("Order validation", fit(nil, 80, 24, 2), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		order []string
+	}{
+		{name: "missing", order: v.ItemOrder[:1]},
+		{name: "duplicate", order: []string{v.ItemOrder[0], v.ItemOrder[0]}},
+		{name: "unknown", order: []string{v.ItemOrder[0], "unknown-item"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := v
+			invalid.ItemOrder = test.order
+			if err := invalid.validate(); err == nil {
+				t.Fatal("accepted invalid activity order")
+			}
+		})
+	}
+}
+
 func TestSavedWorkspaceSwitchRejectsOldRouteResults(t *testing.T) {
 	var old Workspace
 	ref := old.newJourney()

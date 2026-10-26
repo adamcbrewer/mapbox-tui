@@ -129,7 +129,7 @@ func TestSavedWorkspaceRepairUIAndDraftAccess(t *testing.T) {
 	if m.savedWork.mode != "repair" {
 		t.Fatal("missing import was not explained")
 	}
-	if len(m.workspaceRows()) < 4 {
+	if len(m.workspaceRows()) < 2 {
 		t.Fatal("incomplete drafts are inaccessible")
 	}
 	savedKey(m, tea.KeyEscape)

@@ -80,7 +80,81 @@ func (w *Workspace) snapshot(name string, camera Camera, saveAs bool) (savedWork
 		}
 		v.Order = order
 	}
+	v.ItemOrder = w.savedItemOrder()
 	return v, v.validate()
+}
+
+func (v savedWorkspace) itemOrder() []string {
+	if v.ItemOrder != nil {
+		return v.ItemOrder
+	}
+	byDocument := make(map[string][]string)
+	for _, imported := range v.Imports {
+		for _, item := range imported.Items {
+			byDocument[imported.ID] = append(byDocument[imported.ID], item.ID)
+		}
+	}
+	for _, journey := range v.Journeys {
+		byDocument[journey.ID] = []string{journey.Item.ID}
+	}
+	var order []string
+	for _, id := range v.Order {
+		order = append(order, byDocument[id]...)
+	}
+	return order
+}
+
+func (w *Workspace) savedItemOrder() []string {
+	ids := make(map[ItemRef]string, len(w.order))
+	for _, entry := range w.documents {
+		for _, item := range entry.document.Items {
+			ids[ItemRef{DocumentID: entry.id, ItemID: item.ID}] = entry.itemIDs[item.ID]
+		}
+	}
+	var loaded []string
+	present := make(map[string]bool, len(w.order))
+	for _, ref := range w.order {
+		id := ids[ref]
+		loaded = append(loaded, id)
+		present[id] = true
+	}
+	missing := make(map[string]bool)
+	for _, imported := range w.unresolved {
+		for _, item := range imported.Items {
+			missing[item.ID] = true
+		}
+	}
+	var order []string
+	if manifest := w.savedManifest(); manifest != nil {
+		// Missing imports retain their slots while loaded activities fill the other slots in their current order.
+		for _, id := range manifest.itemOrder() {
+			if missing[id] {
+				order = append(order, id)
+			} else if present[id] {
+				order = append(order, loaded[0])
+				loaded = loaded[1:]
+			}
+		}
+	}
+	return append(order, loaded...)
+}
+
+func (w *Workspace) restoreItemOrder(ids []string) {
+	positions := make(map[string]int, len(ids))
+	for i, id := range ids {
+		positions[id] = i
+	}
+	ranks := make(map[ItemRef]int, len(w.order))
+	for _, entry := range w.documents {
+		for _, item := range entry.document.Items {
+			rank, ok := positions[entry.itemIDs[item.ID]]
+			if !ok {
+				rank = len(ids)
+			}
+			ranks[ItemRef{DocumentID: entry.id, ItemID: item.ID}] = rank
+		}
+	}
+	slices.SortStableFunc(w.order, func(a, b ItemRef) int { return ranks[a] - ranks[b] })
 }
 
 func (w *Workspace) savedManifest() *savedWorkspace {
@@ -202,6 +276,7 @@ func prepareWorkspaceContext(ctx context.Context, path string) (*Workspace, Came
 		entry.colors[item.ID] = saved.Item.Color
 	}
 	candidate.orderSavedDocuments()
+	candidate.restoreItemOrder(v.itemOrder())
 	candidate.clearSelection()
 	if err := candidate.restoreSelection(v.Selection); err != nil {
 		return nil, Camera{}, err
@@ -317,6 +392,9 @@ func (w *Workspace) replace(candidate *Workspace) {
 	for _, entry := range candidate.documents {
 		entry.id += offset
 	}
+	for i := range candidate.order {
+		candidate.order[i].DocumentID += offset
+	}
 	if candidate.selection != nil {
 		candidate.selection.ref.DocumentID += offset
 	}
@@ -374,12 +452,14 @@ func (w *Workspace) completeImportRepair(id string, document *Document) error {
 		return fmt.Errorf("file changed; locate the original or remove this reference and import the replacement")
 	}
 	saved.Path = document.Path
+	order := w.savedItemOrder()
 	if err := w.attachSavedImport(saved, document); err != nil {
 		return err
 	}
 	w.edited()
 	w.unresolved = slices.Delete(w.unresolved, index, index+1)
 	w.orderSavedDocuments()
+	w.restoreItemOrder(order)
 	if w.selection == nil {
 		return w.restoreSelection(w.deferredSelection)
 	}
