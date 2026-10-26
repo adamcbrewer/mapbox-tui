@@ -140,6 +140,30 @@ class ContainerTests(unittest.TestCase):
         with self.assertRaises(Stop):
             self.run.validate_container(changed, self.checkout)
 
+    def test_native_workspace_keeps_host_source_read_only_and_uses_bounded_scratch(self):
+        data = self.description(self.checkout)
+        data[0]["Mounts"][0]["Destination"] = "/input"
+        data[0]["HostConfig"]["Tmpfs"] = {"/tmp": "rw,size=512m", "/workspace": "rw,exec,nosuid,nodev,size=128m,mode=1777"}
+        self.run.validate_container(data, self.checkout, native_workspace=True)
+        for change in ("writable-source", "wrong-source", "extra-bind", "oversized-workspace", "no-workspace", "network"):
+            changed = copy.deepcopy(data)
+            if change == "writable-source":
+                changed[0]["Mounts"][0]["RW"] = True
+            elif change == "wrong-source":
+                changed[0]["Mounts"][0]["Destination"] = "/workspace"
+            elif change == "extra-bind":
+                changed[0]["Mounts"].append({"Type": "bind", "Source": "/home", "Destination": "/host", "RW": False})
+            elif change == "oversized-workspace":
+                changed[0]["HostConfig"]["Tmpfs"]["/workspace"] = "rw,exec,nosuid,nodev,size=1g,mode=1777"
+            elif change == "no-workspace":
+                del changed[0]["HostConfig"]["Tmpfs"]["/workspace"]
+            else:
+                changed[0]["HostConfig"]["NetworkMode"] = "host"
+            with self.subTest(change=change), self.assertRaises(Stop):
+                self.run.validate_container(changed, self.checkout, native_workspace=True)
+        with self.assertRaises(Stop):
+            self.run.validate_container(data, self.checkout, native_workspace=True, build_output=True)
+
     def test_podman_null_capabilities_are_empty_and_real_user_stays_unmapped(self):
         data = self.description(self.checkout)
         data[0]["BoundingCaps"] = None

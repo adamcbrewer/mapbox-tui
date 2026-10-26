@@ -60,7 +60,7 @@ export const schemas = [
 
 // Pi expects a model to reply. This stand-in returns our prepared tool calls so we
 // can test the real session and Python connection without calling an AI.
-async function createScriptedRuntime(start) {
+export async function createScriptedRuntime(start) {
   // Give Pi an empty credential store so the demo doesn't use or save real credentials.
   const credentials = {
     async read() {},
@@ -134,7 +134,7 @@ async function createScriptedRuntime(start) {
 }
 
 // Supply our prompt directly and skip automatic loading of local skills, extensions and instructions.
-function createResourceLoader(systemPrompt) {
+export function createResourceLoader(systemPrompt) {
   return {
     getExtensions: () => ({
       extensions: [],

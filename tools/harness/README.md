@@ -4,8 +4,9 @@ I want to know whether the extra code around Pi helps it fix bugs and saves me
 time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is the
 current stage. Recover (#106) is merged and closed.
 
-So far I've collected run records, checked one prepared comparison and built two
-bug tasks. I haven't run the real plain-Pi comparison yet. Earlier Pi setup and
+So far I've collected run records, checked one prepared comparison, built two
+bug tasks and connected Pi's normal tools to the sandbox. I haven't run the
+real plain-Pi comparison yet. Earlier Pi setup and
 live Luna examples are in the [Pi guide](pi/README.md).
 
 ## How I want these updates written
@@ -169,6 +170,81 @@ reacts to the misleading text. My review is still pending.
 
 The [shared glossary and file guide (#111)](https://github.com/adamcbrewer/mapbox-tui/issues/111)
 explains the evidence files.
+
+## Check normal Pi tools inside the sandbox
+
+I chose Pi's normal coding tools for the plain-Pi baseline: `read`, `edit`,
+`write` and `bash`. `native_run.py` connects the actual Pi SDK tools to a
+disposable project inside the container. The script supplies the calls for now.
+No repair AI runs, and this doesn't complete the comparison.
+
+The known fix should pass the public XML import test. The deliberately bad fix
+should fail that same test with the planted prefix bug. The boundary check tries
+host/private-file reads, normal file edits and commands, network access and a
+Python module planted in the project. It checks that our worker keeps running
+trusted code while the tools operate on the task files.
+
+From this checkout, with the existing prepared image and the locked Pi
+dependencies already available:
+
+```sh
+HARNESS_IMAGE_ID="$(cat /home/adam/localhost/mapbox-tui/reports/harness/prepared-image.id)"
+HARNESS_CASE_SUITE=reports/harness/case-suites/runs/f13f59cdb94441189474216479b9141e
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo good
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo wrong
+systemd-run --user --quiet --wait --pipe --collect --same-dir \
+  -p 'Delegate=cpu memory pids' python3 tools/harness/native_run.py \
+  --suite "$HARNESS_CASE_SUITE" --image "$HARNESS_IMAGE_ID" --demo probe
+```
+
+Use the suite path printed by `case_suite.py --prepare` if you're preparing a
+new checkout. The saved suite above is local to this worktree. Pi setup is in the
+[Pi guide](pi/README.md); these prepared checks need no sign-in. I reused the
+installed dependency tree after checking that its package and lock files matched.
+I didn't download packages or run install scripts for this step.
+
+Each command prints a new `normal-tools.md` under
+`reports/harness/native-tools/runs/<id>/`. Read that first. The neighbouring
+session, source snapshot, proposed patch and command logs keep the details.
+Exit 0 and `native_tools_ready` mean the supplied sequence matched its expected
+results. For `wrong`, that includes the test failing for the intended reason.
+They don't mean that a repair passed independent checking. A startup, snapshot,
+cleanup or unexpected tool failure stops the check instead.
+
+The host source copy stays read-only at `/input`. Changes happen in temporary
+container storage at `/workspace`. Known fixes and private test examples aren't
+mounted. Pi's file and command operations go through the sandbox connection;
+Node can't launch host commands or use the network. The SDK also needs read
+permission for `/workspace/*` to look up edit paths. File contents still go
+through the sandbox. Only output files created by the SDK in this run's temporary
+folder can be read back locally.
+
+The existing container limits stay in place: no network, an unprivileged user,
+no added capabilities, 1 GiB memory and 256 processes. This prepared check allows
+12 Pi tool calls, 100 sandbox operations and 600 seconds. Requests are limited
+to 64 KiB, reads and command output to 1 MiB. Images aren't part of these text
+tasks, so the read tool's image processing isn't enabled. This is normal Pi tool
+behaviour within those explicit task limits, not unrestricted host access.
+
+The [npm security guide](https://github.com/lirantal/npm-security-best-practices)
+informs this setup: keep locked versions and install scripts disabled, and keep
+task execution isolated from host credentials. No dependency versions, release
+cooldown or install policy changed here.
+
+```sh
+PYTHONPATH=tools/harness python3 -m unittest test_native test_container -v
+node --test tools/harness/pi/loop.test.mjs tools/harness/pi/native.test.mjs
+```
+
+The Python checks exercise path escapes, limits, tool ownership, project
+snapshots and container settings. The SDK checks preserve normal schemas and
+edits, retain failed command results and limit local reads to SDK output files.
+They use supplied replies. The commands above run the tools in a real container.
+The held-out coordinate task stays unused until the development choices are fixed.
 
 ## Recover a prepared session
 

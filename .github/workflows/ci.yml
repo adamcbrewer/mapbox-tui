@@ -53,7 +53,7 @@ jobs:
           NPM_CONFIG_MIN_RELEASE_AGE: '7'
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check Pi SDK tools and request limits
-        run: node --test tools/harness/pi/loop.test.mjs
+        run: node --test tools/harness/pi/loop.test.mjs tools/harness/pi/native.test.mjs
       - name: Check Python feedback through the real Pi SDK
         run: python3 tools/harness/pi_integration_test.py
 

@@ -4,7 +4,7 @@
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "awaiting-review",
-  "next": "Connect normal Pi coding tools inside the sandbox, then give plain Pi and Pi with the harness the same bug task. I still need the live comparison, a human-plus-script baseline and my learning review.",
+  "next": "Connect the saved normal-Pi patch to the separate checker, then freeze the settings for the first AI comparison. I still need the human-plus-script baseline and my learning review.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -74,7 +74,8 @@
     "I saved the plan before running eight prepared attempts. Automatic checking finished both working fixes; stopping left both unchecked. The bad fix never counted as successful. The task, exact fixes, limits and tests were the same, and I reversed the order for the second repeat. The checks took 958.8594 seconds in total; all 51 containers were removed. No repair AI or Pi session ran. This checks one part of our workflow, not AI repair skill or time saved for me. The report later gained stricter checks of failed-test evidence; the original receipts stayed intact and 228 Python tests passed. Evidence: reports/harness/compare/experiments/edc858322ce04d729a6fa0467fb8bf1b/.",
     "I asked to commit and continue, then chose normal Pi tools inside the sandbox for the baseline. I don't want the existing four restricted tools relabelled as plain Pi. Before connecting the tools, I prepared a development task about XML prefixes and a held-out task about coordinate validation. The known fixes and extra checking examples sit outside each agent project. No model call was made in this task-preparation step.",
     "Both tasks now pass their readiness checks: the original code and known fix pass; the planted bug and ineffective edit fail on the intended assertions. The first coordinate draft didn't reproduce the bug because GPX rejected the input earlier. I kept that failure and used KML in revision 2 to reach the shared check. I reused the unchanged development result after comparing its exact inputs, then reran the revised coordinate task. All 16 accepted saved check outputs and file fingerprints were rechecked. The final Python suite passed 238 tests, repository tests/formatting passed, and all 22 containers were removed. No repair AI or Pi session ran. I still need the normal-Pi sandbox connection before live use.",
-    "I asked for all #107 documentation, notes and summaries to use my voice and the wat skill's plain-language approach, including issue107-task-readiness.md. Future reports should explain what ran, whether an AI was involved, what worked or failed and what I can actually take from it. This is a wording request, not approval of the results or permission to close the issue."
+    "I asked for all #107 documentation, notes and summaries to use my voice and the wat skill's plain-language approach, including issue107-task-readiness.md. Future reports should explain what ran, whether an AI was involved, what worked or failed and what I can actually take from it. This is a wording request, not approval of the results or permission to close the issue.",
+    "I committed the plain-English #107 docs as f31c302, then connected Pi's actual read, edit, write and bash tools to the sandbox. The supplied good fix passed the public import test; the bad fix failed on the intended bug. Host/private-file reads were refused, the container network and source writes were blocked, and a project Python module couldn't replace our worker's imports. An unavailable image stopped before any Pi tools ran. I kept all 15 attempts, including four earlier connection failures and the deliberate missing-image stop. All 14 containers were removed. The final checks passed 252 Python tests, 26 Pi SDK tests, one Python-to-Pi integration test and repository tests/formatting. No repair AI ran. This proves the connection, not AI repair ability or time saved for me. The separate checker, live comparison, human baseline and learning review remain pending."
   ],
   "blockers": [],
   "questions": [
@@ -165,7 +166,9 @@
     "handoff": "https://github.com/adamcbrewer/mapbox-tui/issues/107#issuecomment-6411974251",
     "plain_pi_baseline": {
       "user_choice": "Normal Pi tools in the sandbox",
-      "status": "adapter-not-yet-connected"
+      "status": "prepared-native-tools-connected-awaiting-review",
+      "evidence": "reports/harness/issue107-task-readiness.md",
+      "verification": "reports/harness/issue107-native-tools-verification.json"
     },
     "task_suite": "reports/harness/case-suites/runs/f13f59cdb94441189474216479b9141e/",
     "task_readiness": "reports/harness/issue107-task-readiness.md",
