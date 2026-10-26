@@ -90,9 +90,6 @@ Copyright (c) 2016 Anmol Sethi
 Catppuccin palette (Catppuccin and Catppuccin Latte)
 Copyright (c) 2021 Catppuccin
 
-Tokyo Night palette
-Copyright (c) 2018-present Enkia
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

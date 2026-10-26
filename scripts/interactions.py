@@ -603,7 +603,8 @@ def theme_switching(binary, width, height):
         wait_for(lambda s: "Elevation profile" in s and "Paused 1x" in s)
         baseline = settled()
         original_colors = capture(colors=True)
-        palettes = [tomllib.loads(path.read_text()) for path in sorted((ROOT / "go/themes").glob("*.toml"))]
+        theme_ids = ["catppuccin", "nord", "synthwave", "noir", "paper"]
+        palettes = [tomllib.loads((ROOT / "go/themes" / f"{theme_id}.toml").read_text()) for theme_id in theme_ids]
         names = tuple(palette["name"] for palette in palettes)
         default = next(i for i, palette in enumerate(palettes) if palette["id"] == "catppuccin")
         synthwave = next(i for i, palette in enumerate(palettes) if palette["id"] == "synthwave")
@@ -1641,7 +1642,7 @@ def viewer_preferences(binary, width, height):
         start()
         assert not settings.exists(), "startup wrote defaults"
         theme_picker()
-        tmux("send-keys", "-t", "poc:0.0", "Down")
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down")
         wait_for(lambda s: "Theme: Noir" in s)
         assert not settings.exists(), "preview wrote settings"
         tmux("send-keys", "-t", "poc:0.0", "Escape")
@@ -1649,7 +1650,7 @@ def viewer_preferences(binary, width, height):
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Theme: Catppuccin" in s and not active_modal(s, "Commands"))
         theme_picker()
-        tmux("send-keys", "-t", "poc:0.0", "Down", "Enter")
+        tmux("send-keys", "-t", "poc:0.0", "Down", "Down", "Down", "Enter")
         wait_for(lambda s: "Theme: Noir" in s and not active_modal(s, "Colour theme"))
         send("ame")
         wait_for(lambda s: "Elevation profile" not in s and not any(0x2800 <= ord(c) <= 0x28ff for c in s))

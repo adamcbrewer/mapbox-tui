@@ -102,7 +102,7 @@ func TestProfileAndMapFollowShareInterpolatedCursor(t *testing.T) {
 	}
 	m.initUI()
 	m.layout()
-	if m.profileHeight != 7 || m.camera.Height != 29 {
+	if m.profileHeight != 7 || m.camera.Height != 30 {
 		t.Fatal("profile did not reserve viewport space")
 	}
 	m.camera.Zoom = 20

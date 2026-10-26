@@ -29,10 +29,10 @@ func (m *viewer) journeyPanelWidth() int {
 }
 
 func (m *viewer) journeyPanelX() int {
-	return m.width - m.journeyPanelWidth() - 1
+	return m.width - m.journeyPanelWidth()
 }
 
-func (m *viewer) mapOriginY() int { return 1 }
+func (m *viewer) mapOriginY() int { return 0 }
 
 func (m *viewer) journeyPanelY() int {
 	if m.ui.dialog == dialogJourney || m.ui.dialog == dialogJourneyLocation || m.camera.Height < 5 {

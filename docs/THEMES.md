@@ -15,29 +15,27 @@ previous theme. Closing or replacing the picker also cancels the preview.
 Dialogs don't dim the map, so you can judge the full colours. The context bar
 shows the current theme, including previews.
 
-Built-ins are `catppuccin`, `noir`, `nord`, `paper`,
-`synthwave` and `tokyo-night`.
+Built-ins appear in this order: `catppuccin`, `nord`, `synthwave`, `noir`,
+`paper`.
 Catppuccin uses mauve for its first activity, with blue UI accents.
+Nord uses the [Nord palette](https://www.nordtheme.com/docs/colors-and-palettes/):
+slate backgrounds and white activity lines, with icy blue UI accents.
 Synthwave pairs a deep plum canvas with candy pink, pearl-pink text, cyan and
-lilac, with neon gradient frames and a lilac first activity:
+lilac accents, muted yellow activity lines and neon gradient frames:
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme synthwave
 ```
 
-Nord uses the [Nord palette](https://www.nordtheme.com/docs/colors-and-palettes/):
-slate backgrounds, snow-coloured text and a snow-white first activity, with icy blue UI accents.
-Its activity colours use brighter tints to keep labels readable on dialog surfaces.
-Tokyo Night uses purple for its first activity, with blue UI accents.
+Noir uses black land, grey roads and oceans, brighter grey place names, and
+cyan activities and elevation profiles, with green UI accents.
 Paper replaces the Latte and Strava palettes with one light theme: a cool off-white
 canvas inspired by e-ink, pale grey roads, soft grey water, charcoal routes and elevation
 profiles, and green UI accents. Its six activity colours have at least 7:1 contrast against the canvas,
 so small Braille dots remain visible on large maps. Nord and Paper use solid borders.
-Noir uses black land, grey roads and oceans, brighter grey place names, and
-cyan activities and elevation profiles, with green UI accents.
 
-Activity palettes use blue, cyan, purple, pink and neutral shades, leaving green,
-yellow and red for traffic. The six slots remain stable as themes change.
+Activity palettes follow each theme's colours, while traffic keeps green, yellow
+and red. The six slots remain stable as themes change.
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme nord
@@ -89,7 +87,7 @@ Use a bundled palette as a complete template. These fields are required:
 | `selected` | Selected row and search input background |
 | `text`, `muted` | Primary and secondary UI text |
 | `accent`, `highlight` | Keys, headings, active border titles and input cursor |
-| `border` | Map, modal and context drawer frames |
+| `border` | Modal, context, Files and Journey panel frames |
 | `dimmed` | Disabled command text |
 | `progress_empty` | Unfilled playback progress bar |
 | `activities` | Exactly six colours, assigned to stable per-item slots |
@@ -124,7 +122,7 @@ fail validation. Traffic roles control colour, while severity priority and `1`â€
 `X` glyphs stay in the shared renderer.
 
 `border_gradient` is an optional array of at least two `#RRGGBB` stops. It blends
-around map, modal and context/files/journey panel borders. Repeat the first stop
+around modal and context/files/journey panel borders. Repeat the first stop
 at the end for a smooth loop. Themes without it retain solid `border` colours.
 With gradient borders, modal titles also blend from `accent` to `highlight`.
 Gradient effects change colours only; ASCII mode retains its plain box glyphs.

@@ -181,7 +181,7 @@ func TestSelectedPositionMarkerFollowsMapAndTheme(t *testing.T) {
 				m.Update(tea.KeyPressMsg{Code: key})
 				m.rebuild()
 				point := m.camera.screen(project(m.inspected.X, m.inspected.Y))
-				x, y := int(point.X/2)+1, int(point.Y/4)+m.mapOriginY()
+				x, y := int(point.X/2), int(point.Y/4)+m.mapOriginY()
 				rows := strings.Split(ansi.Strip(m.content), "\n")
 				if []rune(rows[y])[x] != '*' {
 					t.Fatalf("selected position marker missing: theme=%s ascii=%v key=%v", m.theme().ID, ascii, key)
@@ -307,7 +307,7 @@ func TestNarrowPlannerPickingIsExplicitAndCancellable(t *testing.T) {
 	}
 }
 
-func TestContextDrawerIsInsetWithinMapBorder(t *testing.T) {
+func TestContextDrawerAlignsWithRightEdgeWithoutMapFrame(t *testing.T) {
 	for _, width := range []int{120, 70, 30} {
 		for _, ascii := range []bool{false, true} {
 			m := themeViewer(t, width, 24, ascii)
@@ -316,13 +316,10 @@ func TestContextDrawerIsInsetWithinMapBorder(t *testing.T) {
 			rows := strings.Split(ansi.Strip(m.content), "\n")
 			top := []rune(rows[m.contextDrawerY()])
 			border := m.boxBorder()
-			if string(top[0]) != border.Left || string(top[width-1]) != border.Right {
-				t.Fatal("drawer obscured the outer map border", width, ascii)
+			if string(top[m.journeyPanelX()]) != border.TopLeft || string(top[width-1]) != border.TopRight {
+				t.Fatal("drawer did not align with the right edge", width, ascii)
 			}
-			if string(top[m.journeyPanelX()]) != border.TopLeft || string(top[width-2]) != border.TopRight {
-				t.Fatal("drawer was not inset by one column on both sides", width, ascii)
-			}
-			m.Update(tea.MouseWheelMsg{X: 0, Y: m.contextDrawerY() + 1, Button: tea.MouseWheelDown})
+			m.Update(tea.MouseWheelMsg{X: m.journeyPanelX() - 1, Y: m.contextDrawerY() + 1, Button: tea.MouseWheelDown})
 			if m.ui.details.YOffset() != 0 {
 				t.Fatal("drawer consumed the wheel outside its inset border")
 			}
@@ -366,18 +363,18 @@ func TestCollapsedStopEditorPreservesInputAndCamera(t *testing.T) {
 	}
 }
 
-func TestPlannerInsetPreservesOuterMapBorder(t *testing.T) {
+func TestPlannerAlignsWithRightEdgeWithoutMapFrame(t *testing.T) {
 	for _, width := range []int{120, 70, 30} {
 		m := journeyViewer(t)
 		m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
 		m.openJourney()
 		m.rebuild()
-		row := []rune(strings.Split(ansi.Strip(m.content), "\n")[1])
-		if string(row[0]) != m.boxBorder().Left || string(row[width-1]) != m.boxBorder().Right {
-			t.Fatal("planner obscured the map's outer border", width)
+		row := []rune(strings.Split(ansi.Strip(m.content), "\n")[m.mapOriginY()])
+		if string(row[m.journeyPanelX()]) != m.boxBorder().TopLeft || string(row[width-1]) != m.boxBorder().TopRight {
+			t.Fatal("planner did not align with the right edge", width)
 		}
 		selected := m.planner.row
-		m.Update(tea.MouseWheelMsg{X: width - 1, Y: 1, Button: tea.MouseWheelDown})
+		m.Update(tea.MouseWheelMsg{X: m.journeyPanelX() - 1, Y: m.mapOriginY(), Button: tea.MouseWheelDown})
 		if m.planner.row != selected {
 			t.Fatal("wheel outside the inset planner changed its selection")
 		}

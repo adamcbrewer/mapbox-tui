@@ -1,7 +1,7 @@
 id = "synthwave"
 name = "Synthwave"
 background = "#190d25"
-surface = "#2b163f"
+surface = "#190d25"
 selected = "#4a245d"
 text = "#fff0fa"
 muted = "#c8a4d4"
@@ -11,11 +11,11 @@ border = "#975db7"
 border_gradient = ["#ff4fb7", "#ff92d0", "#b995e8", "#4de8e0", "#ff4fb7"]
 dimmed = "#7f5a94"
 progress_empty = "#654071"
-activities = ["#d3a6ff", "#8db9ff", "#ff92d0", "#a6a7ff", "#e8cfff", "#fff0fa"]
+activities = ["#e6cc78", "#d6be70", "#c8b15e", "#ead58b", "#d9c77f", "#bca85b"]
 
 [map]
 none = "#c8a4d4"
-water = "#4de8e0"
+water = "#5c9f9b"
 road = "#362044"
 major_road = "#482c53"
 place = "#ffd1ee"

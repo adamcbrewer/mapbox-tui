@@ -40,7 +40,7 @@ func TestJourneyPanelOverlaysMapAndCollapsesAtEverySize(t *testing.T) {
 			rows := strings.Split(text, "\n")
 			for y := range g.Height {
 				row := []rune(rows[m.mapOriginY()+y])
-				actual := string(row[1 : m.camera.Width+1])
+				actual := string(row[:m.camera.Width])
 				expected := ansi.Strip(m.gridRow(g, y, ascii))
 				if actual != expected {
 					t.Fatal("planner covered the live map", size, ascii, y)
@@ -279,7 +279,7 @@ func TestJourneyMousePlacesEndpointsAndWaypointAndRecalculates(t *testing.T) {
 		}
 		m.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
 		x, y := m.camera.Width/2+3, m.mapOriginY()+m.camera.Height/2
-		geo := unproject(m.camera.world(XY{float64((x-1)*2 + 1), float64((y-m.mapOriginY())*4 + 2)}))
+		geo := unproject(m.camera.world(XY{float64(x*2 + 1), float64((y-m.mapOriginY())*4 + 2)}))
 		cmd := clickJourneyMap(m, x, y)
 		location := j.Stops[tc.index].Location
 		if location == nil || location.Source != placeSourceMapPoint ||

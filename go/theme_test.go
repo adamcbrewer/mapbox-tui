@@ -39,7 +39,18 @@ func themeViewer(t *testing.T, width, height int, ascii bool) *viewer {
 }
 
 func TestThemeRegistryLoadsBuiltinsAndCustomPalette(t *testing.T) {
-	ids := []string{"catppuccin", "noir", "nord", "paper", "synthwave", "tokyo-night"}
+	ids := []string{"catppuccin", "nord", "synthwave", "noir", "paper"}
+	loaded, _, err := loadThemes("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedIDs := make([]string, len(loaded))
+	for i, theme := range loaded {
+		loadedIDs[i] = theme.ID
+	}
+	if !slices.Equal(loadedIDs, ids) {
+		t.Fatal("built-in themes are in the wrong order", loadedIDs)
+	}
 	for _, id := range ids {
 		themes, selected, err := loadThemes(id)
 		builtInSelectionWrong := err != nil || len(themes) != len(ids) || themes[selected].ID != id
@@ -77,7 +88,7 @@ func TestThemeRegistryLoadsBuiltinsAndCustomPalette(t *testing.T) {
 	if !strings.Contains(ansi.Strip(content), "Custom palette (current)") {
 		t.Fatal("custom palette was absent from the picker")
 	}
-	for _, choice := range []string{"unknown-theme", path + ".missing.toml", importFile(t, "duplicate.toml", data)} {
+	for _, choice := range []string{"unknown-theme", "tokyo-night", path + ".missing.toml", importFile(t, "duplicate.toml", data)} {
 		if _, _, err := loadThemes(choice); err == nil {
 			t.Fatal("accepted unknown, missing or conflicting custom theme", choice)
 		}
@@ -136,13 +147,13 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 		),
 		"missing UI colour": strings.Replace(
 			valid,
-			"background = \"#1e1e2e\"\n",
+			"background = \"#13131e\"\n",
 			"",
 			1,
 		),
 		"missing map role": strings.Replace(
 			valid,
-			"water = \"#89b4fa\"\n",
+			"water = \"#5476b8\"\n",
 			"",
 			1,
 		),
@@ -150,7 +161,7 @@ func TestThemeDecoderRejectsIncompleteAndInvalidPalettes(t *testing.T) {
 		"unknown map role":    valid + "traffic = \"#123456\"\n",
 		"invalid colour": strings.Replace(
 			valid,
-			"#1e1e2e",
+			"#13131e",
 			"#gggggg",
 			1,
 		),

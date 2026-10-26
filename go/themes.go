@@ -36,6 +36,13 @@ var mapRoleNames = [...]string{
 }
 var themeIDPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var themeColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+var builtinThemeOrder = map[string]int{
+	"catppuccin": 0,
+	"nord":       1,
+	"synthwave":  2,
+	"noir":       3,
+	"paper":      4,
+}
 
 func decodeTheme(r io.Reader) (presentationTheme, error) {
 	var theme presentationTheme
@@ -128,6 +135,20 @@ func loadThemes(choice string) ([]presentationTheme, int, error) {
 		}
 		themes = append(themes, theme)
 	}
+	slices.SortFunc(themes, func(a, b presentationTheme) int {
+		aOrder, aBuiltIn := builtinThemeOrder[a.ID]
+		bOrder, bBuiltIn := builtinThemeOrder[b.ID]
+		if aBuiltIn && bBuiltIn {
+			return aOrder - bOrder
+		}
+		if aBuiltIn {
+			return -1
+		}
+		if bBuiltIn {
+			return 1
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
 	if choice == "" {
 		choice = "catppuccin"
 	}

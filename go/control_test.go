@@ -373,8 +373,8 @@ func TestControlPresentationSettingsAndAnimation(t *testing.T) {
 		return response
 	}
 	listed := run("theme.list", map[string]any{})
-	if len(controlTestResult(t, listed)["themes"].([]any)) < 6 {
-		t.Fatal("built-in themes missing")
+	if len(controlTestResult(t, listed)["themes"].([]any)) != 5 {
+		t.Fatal("wrong number of built-in themes")
 	}
 	m.pushDialog(dialogThemes)
 	selected := run("theme.set", map[string]any{"theme": "nord"})

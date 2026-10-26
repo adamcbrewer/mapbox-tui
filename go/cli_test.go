@@ -97,7 +97,7 @@ func TestCLICameraValuesAndProviderDefaults(t *testing.T) {
 		"fixtures/example.gpx", "--center-lat=51.5",
 		"--bearing", "-45",
 		"--ascii", "--no-animation",
-		"--theme", "tokyo-night",
+		"--theme", "synthwave",
 		"--zoom", "12", "--zoom=13",
 		"--point-index", "0",
 	}, io.Discard)
@@ -110,7 +110,7 @@ func TestCLICameraValuesAndProviderDefaults(t *testing.T) {
 		a.Lat == nil || *a.Lat != 51.5 ||
 		a.Bearing == nil || *a.Bearing != -45 ||
 		a.Zoom == nil || *a.Zoom != 13
-	viewerFlagsLost := !a.ASCII || !a.NoAnimation || a.Theme != "tokyo-night"
+	viewerFlagsLost := !a.ASCII || !a.NoAnimation || a.Theme != "synthwave"
 	pointSelectorLost := a.PointIndex == nil || *a.PointIndex != 0
 	if fileOrProviderChanged || cameraFlagsLost || viewerFlagsLost || pointSelectorLost {
 		t.Fatal("flags were mistaken for input files or explicit values were lost", command)
@@ -167,7 +167,7 @@ func TestCLIRejectsIrrelevantFlagsAndInvalidInputCounts(t *testing.T) {
 		{"summary", "fixtures/example.gpx", "--demo"},
 		{"inspect", "fixtures/example.gpx", "--zoom", "3"},
 		{"render", "--no-animation"}, {"render", "--frames", "2"},
-		{"render", "--theme", "tokyo-night"}, {"mcp", "--theme", "catppuccin"},
+		{"render", "--theme", "nord"}, {"mcp", "--theme", "catppuccin"},
 		{"bench", "fixtures/example.gpx", "--provider", "mapbox"},
 		{"bench", "fixtures/example.gpx", "--no-provider"},
 		{"summary", "fixtures/example.gpx", "--no-provider"},

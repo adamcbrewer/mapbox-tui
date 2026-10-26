@@ -235,7 +235,7 @@ func mapSize(w, h int) (int, int) {
 	if w < 60 {
 		footer = 4
 	}
-	return max(1, w-2), max(1, h-footer-2)
+	return max(1, w), max(1, h-footer-1)
 }
 func (m *viewer) fetch() tea.Cmd {
 	return m.fetchAt(time.Now())
@@ -810,12 +810,12 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		insideMapX := x >= 1 && x < m.camera.Width+1
+		insideMapX := x >= 0 && x < m.camera.Width
 		originY := m.mapOriginY()
 		insideMapY := y >= originY && y < m.camera.Height+originY
 		inside := insideMapX && insideMapY
 		drawerVisible := m.ui.dialog == dialogNone && m.ui.detailsOpen
-		panelX := x >= m.journeyPanelX() && x < m.width-1
+		panelX := x >= m.journeyPanelX() && x < m.width
 		overDetails := drawerVisible && panelX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
 		overPlanner := m.journeyPanelVisible() && panelX && y >= originY && y < m.camera.Height+1
@@ -865,7 +865,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseReleaseMsg:
 			if m.dragging && !m.moved && inside {
-				p := XY{float64((x-1)*2 + 1), float64((y-originY)*4 + 2)}
+				p := XY{float64(x*2 + 1), float64((y-originY)*4 + 2)}
 				world := unproject(m.camera.world(p))
 				m.dragging, m.rotating = false, false
 				if cmd, picked := m.pickJourneyLocation(world); picked {
@@ -892,7 +892,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					direction = 1
 				}
 				m.zoomWheel(
-					XY{float64((x-1)*2 + 1), float64((y-originY)*4 + 2)},
+					XY{float64(x*2 + 1), float64((y-originY)*4 + 2)},
 					direction,
 					mouse.Mod,
 					time.Now(),
@@ -1167,15 +1167,12 @@ func (m *viewer) rebuild() {
 	}
 	t, s := m.theme(), m.styles
 	var rows []string
-	border := m.boxBorder()
 	mapRows := []string{}
 	for y := 0; y < c.Height; y++ {
 		mapRows = append(mapRows, m.gridRow(g, y, m.settings.ASCII))
 	}
-	frame := t.borderStyle().
-		Border(border).
-		Render(strings.Join(mapRows, "\n"))
-	rows = append(rows, frame)
+	rows = append(rows, mapRows...)
+	rows = append(rows, strings.Repeat(" ", m.width))
 	profile := m.visibleProfile()
 	if len(m.workspace.items()) > 1 && m.profileHeight > 0 {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
