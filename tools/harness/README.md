@@ -120,6 +120,9 @@ receive one retry prompt after a failed candidate check. It keeps the conversati
 and the remaining budget, then checks the next saved candidate. It never gets the
 private test inputs or known fix.
 
+Each retry keeps separate sandbox setup, tool and removal logs, so its output
+doesn't replace the earlier attempt's evidence.
+
 Using the existing prepared image, saved task suite and subscription settings:
 
 ```sh

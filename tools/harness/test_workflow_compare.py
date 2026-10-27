@@ -58,6 +58,30 @@ class WorkflowComparisonTests(unittest.TestCase):
         with self.assertRaises(Stop):
             comparison.load_plan(self.path, execution=False)
 
+    def test_blocked_conversation_stops_later_cells_even_if_checking_reports_another_failure(self):
+        cases = (("timeout", "blocked", "blocked"), ("incomplete", "cancelled", "cancelled"),
+                 ("blocked", "finished", "blocked"), ("repair_failed", "finished", None))
+        for index, (outcome, agent, stop) in enumerate(cases):
+            with self.subTest(outcome=outcome, agent=agent):
+                experiment = self.path / str(index)
+                experiment.mkdir()
+                directory = experiment / "run"
+                directory.mkdir()
+                result = {"outcome": outcome, "agent_outcome": agent}
+                (directory / "result.json").write_text(json.dumps(result))
+                plan = {"cells": [{"position": n, "mode": "plain"} for n in (1, 2)]}
+                with patch("workflow_compare.load_plan", return_value=plan), \
+                        patch("workflow_compare.workflow.execute", return_value=(directory, result)) as execute, \
+                        patch("workflow_compare.summarize"):
+                    if stop:
+                        with self.assertRaises(Stop) as caught:
+                            comparison.execute(experiment)
+                        self.assertEqual(caught.exception.outcome, stop)
+                        self.assertEqual(execute.call_count, 1)
+                    else:
+                        comparison.execute(experiment)
+                        self.assertEqual(execute.call_count, 2)
+
     def test_tie_keeps_the_simple_workflow_and_bad_claims_block_adoption(self):
         plan = comparison.load_plan(self.path, execution=False)
         rows = [{**c, "status": "finished", "run_id": str(c["position"]), "receipt_sha256": "receipt",

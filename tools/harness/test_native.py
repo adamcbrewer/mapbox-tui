@@ -1,6 +1,9 @@
 import base64
+import json
 import os
 from pathlib import Path
+import shutil
+import sys
 import tempfile
 import time
 from types import SimpleNamespace
@@ -8,6 +11,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 import native_worker as worker
+import operator_log
+from workflow import WorkflowTools
 from native_run import NativeTools, ToolCallLimit
 from native_sandbox import NativeRun, NativeSandbox
 from run import Stop, digest
@@ -137,6 +142,33 @@ class SnapshotTests(unittest.TestCase):
         self.sandbox = NativeSandbox(self.run, checkout)
         self.snapshot = {"files": {"go/import.go": digest(b"new\n"), "task.json": digest(b"task")},
                          "source": base64.b64encode(b"new\n").decode(), "invalid": []}
+
+    def test_retry_preserves_setup_operation_and_cleanup_logs_from_both_sandboxes(self):
+        suite = self.sandbox.checkout.parent / "suite"
+        shutil.copytree(self.sandbox.checkout, suite / "cases/task/agent")
+        plan = {"suite": str(suite), "case": {"id": "task", "agent_files_sha256": self.sandbox.expected}}
+        tools = WorkflowTools(self.run, self.sandbox, plan, self.sandbox.checkout)
+        operator_log.create(self.run.path)
+        (self.run.path / "candidate-source.bin").write_bytes(b"new\n")
+        self.run.seccomp, self.run.hooks = "seccomp", Path("hooks")
+        script = ("import json,sys; print(json.dumps({'ok': True, 'value': {'args': sys.argv[1:]}})); "
+                  "print(sys.argv[1:], file=sys.stderr); sys.exit(1 if 'exists' in sys.argv[1:] else 0)")
+        fake_podman = [sys.executable, "-I", "-c", script]
+        with patch("native_sandbox.PODMAN", fake_podman), patch("container.PODMAN", fake_podman), \
+                patch.object(self.run, "validate_container"), patch.object(NativeSandbox, "capture"):
+            self.sandbox.start()
+            self.sandbox.request({"op": "read", "path": "task.json"})
+            tools.close()
+            original = {check[stream]: (self.run.path / check[stream]).read_bytes()
+                        for check in self.run.result["checks"] for stream in ("stdout", "stderr")}
+            tools.reopen()
+            tools.sandbox.request({"op": "read", "path": "go/import.go"})
+            tools.close()
+        checks = self.run.result["checks"]
+        self.assertEqual(len(checks), 14)
+        self.assertEqual(len({check["id"] for check in checks}), len(checks))
+        for name, raw in original.items():
+            self.assertEqual((self.run.path / name).read_bytes(), raw)
 
     def test_source_only_patch_is_recovered_and_test_changes_flagged(self):
         with patch.object(self.sandbox, "request", return_value={"ok": True, "value": self.snapshot}):

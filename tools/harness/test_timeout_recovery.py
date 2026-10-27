@@ -64,20 +64,26 @@ class TimeoutRecoveryTests(unittest.TestCase):
         with self.assertRaises(Stop):
             recovery.load_plan(self.path, execution=False)
 
-    def command_evidence(self):
+    def command_evidence(self, identity="native-op-2"):
         directory = self.root / "run"
         directory.mkdir()
         raw = json.dumps({"ok": True, "value": {"exitCode": 0, "output": base64.b64encode(b"/workspace\n").decode()}}).encode()
-        (directory / "native-op-2.stdout").write_bytes(raw)
+        (directory / (identity + ".stdout")).write_bytes(raw)
         (directory / "project-snapshot.json").write_text(json.dumps({"files": self.common["case"]["agent_files_sha256"], "invalid": []}))
         plan = {**self.common, "sources": {"native_worker.py": digest(b"worker")}}
         operation = {"op": "bash", "command": "pwd", "timeout": 120}
         result = {"snapshot_scope_valid": True, "changed_files": [], "containers": [{"name": "owned", "removed": True}],
                   "dispatches": [1], "model_requests": 1, "tool_results": [{"name": "bash", "error": None}],
-                  "command_checks": [{"check_id": "native-op-2", "stdout_sha256": digest(raw), "live_call": 1, "model_requests": 1}],
-                  "checks": [{"id": "native-op-2", "stdout": "native-op-2.stdout", "exit_code": 0,
+                  "command_checks": [{"check_id": identity, "stdout_sha256": digest(raw), "live_call": 1, "model_requests": 1}],
+                  "checks": [{"id": identity, "stdout": identity + ".stdout", "exit_code": 0,
                               "command": ["podman", "--remote=false", "exec", "owned", "/usr/bin/python3", "-I", "-c", "worker", json.dumps(operation)]}]}
         return result, directory, plan
+
+    def test_namespaced_command_evidence_still_requires_the_recorded_log_bytes(self):
+        result, directory, plan = self.command_evidence("native-1-op-2")
+        self.assertTrue(recovery.recovery_matches(result, directory, plan))
+        (directory / "native-1-op-2.stdout").write_text('{}')
+        self.assertFalse(recovery.recovery_matches(result, directory, plan))
 
     def test_claim_without_actual_command_or_unchanged_project_cannot_pass(self):
         result, directory, plan = self.command_evidence()

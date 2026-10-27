@@ -144,7 +144,7 @@ def recovery_matches(result, directory, plan):
             return False
         for record in result["command_checks"]:
             identity = record["check_id"]
-            if not re.fullmatch(r"native-op-[1-9][0-9]*", identity):
+            if not re.fullmatch(r"native-(?:[1-9][0-9]*-)?op-[1-9][0-9]*", identity):
                 return False
             check = next(c for c in result["checks"] if c["id"] == identity)
             args = check["command"]

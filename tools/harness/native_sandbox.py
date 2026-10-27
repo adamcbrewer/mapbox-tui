@@ -22,6 +22,7 @@ class NativeSandbox:
         self.checkout = run.checkout_path(checkout)
         self.container = {"name": "mapbox-harness-" + uuid.uuid4().hex, "check": "native-tools", "removed": False}
         run.result["containers"].append(self.container)
+        self.label = f"native-{len(run.result['containers'])}"
         self.operations = 0
         self.operation_limit = max(100, 10 * run.result.get("budgets", {}).get("tool_calls", 0))
         run.result["native_environment"] = NATIVE_ENVIRONMENT.copy()
@@ -31,6 +32,7 @@ class NativeSandbox:
                          for path in self.checkout.rglob("*") if path.is_file()}
 
     def host(self, name, args):
+        name = self.label + "-" + name.removeprefix("native-")
         check, output = Run.command(self.run, name, args, ROOT, output_limit=OUTPUT_LIMIT)
         if check["exit_code"] != 0:
             raise Stop("blocked", "I couldn't complete the sandbox operation; inspect its log")
@@ -124,6 +126,6 @@ class NativeSandbox:
             except (Stop, OSError, ValueError, KeyError, TypeError) as error:
                 self.run.result["snapshot_problem"] = error.reason if isinstance(error, Stop) else str(error)
             finally:
-                self.run.cleanup("native-tools", self.container)
+                self.run.cleanup(self.label, self.container)
         finally:
             self.run.deadline, self.run.finalizing, self.run.cancel_requested = previous

@@ -197,8 +197,10 @@ def execute(path):
             durable_json(path / "progress.json", progress)
             summarize(path)
             print(result["outcome"] + ": " + str(directory / "workflow.md"), flush=True)
-            if result["outcome"] in ("cancelled", "blocked", "invalid_input"):
-                raise Stop(result["outcome"], "The paired experiment stopped; later cells weren't started")
+            stop = next((result.get(key) for key in ("outcome", "agent_outcome")
+                         if result.get(key) in ("cancelled", "blocked", "invalid_input")), None)
+            if stop:
+                raise Stop(stop, "The paired experiment stopped; later cells weren't started")
     except KeyboardInterrupt as error:
         raise Stop("cancelled", "The paired experiment stopped") from error
     finally:
