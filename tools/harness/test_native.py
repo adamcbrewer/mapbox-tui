@@ -11,11 +11,14 @@ import unittest
 from unittest.mock import Mock, patch
 
 import native_worker as worker
+import native_run
 import operator_log
+from case_suite import build
 from workflow import WorkflowTools
 from native_run import NativeTools, ToolCallLimit
 from native_sandbox import NativeRun, NativeSandbox
-from run import Stop, digest
+from run import Run, Stop, digest
+from task_inputs import definition
 
 
 class WorkerTests(unittest.TestCase):
@@ -127,6 +130,39 @@ class NativeProtocolTests(unittest.TestCase):
         self.tools.dispatch({"type": "native_fs", "toolCallId": "one", "op": "bash", "command": "go test", "timeout": 600})
         self.assertLess(self.sandbox.request.call_args.args[0]["timeout"], 30)
         self.assertEqual(self.tools.dispatch({"type": "native_fs", "toolCallId": "one", "op": "bash", "timeout": True})["ok"], False)
+
+
+class PreparedDemoTests(unittest.TestCase):
+    def test_bounds_good_demo_restores_the_reference_source_and_wrong_demo_keeps_the_bug(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = Run(Path(temporary))
+            case = build(run, "geometry-bounds-v1")["cases"][0]
+            directory = run.path / "cases" / case["id"]
+            seeded = (directory / "agent/go/import.go").read_text()
+            original = (directory / "private/original-import.go.txt").read_text()
+            for demo in ("good", "wrong"):
+                with self.subTest(demo=demo):
+                    calls = native_run.prepared_calls(SimpleNamespace(task=definition(case["id"])),
+                                                      SimpleNamespace(seeded=seeded), demo, Path("host"), Path("private"))
+                    source = seeded
+                    for edit in calls[2]["args"]["edits"]:
+                        self.assertEqual(source.count(edit["oldText"]), 1)
+                        source = source.replace(edit["oldText"], edit["newText"], 1)
+                    self.assertIn("TestHarnessImportBounds", calls[-1]["args"]["command"])
+                    if demo == "good":
+                        self.assertEqual(source, original)
+                    else:
+                        self.assertNotEqual(source, original)
+                        self.assertIn("t.Bounds = [4]float64{}", source)
+
+    def test_bounds_suite_refuses_the_xml_filename_shortcut_before_starting_a_run(self):
+        manifest = {"cases": [{"id": "geometry-bounds-v1", "partition": "development"}]}
+        with patch("sys.argv", ["native_run.py", "--suite", "suite", "--image", "image", "--demo", "tailored"]), \
+                patch("native_run.load_suite", return_value=manifest), patch("native_run.validate_case") as validate, \
+                patch("native_run.NativeRun", side_effect=AssertionError("No run should start")), self.assertRaises(SystemExit) as caught:
+            native_run.main()
+        self.assertEqual(caught.exception.code, 2)
+        validate.assert_not_called()
 
 
 class SnapshotTests(unittest.TestCase):

@@ -99,6 +99,9 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
     if run.task["id"] == "segment-distance-v1":
         edit = ({"old": "if j > 0 {", "new": "if j > s.Start {"} if demo == "good" else
                 {"old": 'format := "FIT"', "new": 'format := "fit"'})
+    elif run.task["id"] == "geometry-bounds-v1":
+        edit = ({"old": "t.Bounds = [4]float64{}", "new": "t.Bounds = [4]float64{180, 90, -180, -90}"} if demo == "good" else
+                {"old": 'format := "FIT"', "new": 'format := "fit"'})
     else:
         edit = scripted_calls(SimpleNamespace(seeded=sandbox.seeded, run=run), demo)[3]["args"]
     if demo == "tailored":
@@ -295,7 +298,7 @@ def main():
         parser.error("--verify needs a supplied repair, not a boundary or timeout probe")
     manifest = load_suite(args.suite)
     case = next(case for case in manifest["cases"] if case["partition"] == "development")
-    if case["id"] == "segment-distance-v1" and args.demo == "tailored":
+    if case["id"] != "xml-leading-bom-v1" and args.demo == "tailored":
         parser.error("The filename-shortcut demo belongs to the XML task")
     directory = args.suite / "cases" / case["id"]
     validate_case(directory, case)
