@@ -3,8 +3,8 @@
   "updated_at": "2026-10-27",
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
-  "status": "active",
-  "next": "The revised-budget Terra run delivered a fix passing all eight independent checks. The original failed attempt is retained. Finish the explicitly reported supervision timing when Adam reports an activity change, then record his review/decision. No per-run attention or time savings is inferred.",
+  "status": "awaiting-review",
+  "next": "Review the successful repeat and the recorded 161.3742-second watcher-open interval. Earlier watching time is unknown and the old timing session is unusable. The AI result is fully checked; time savings, complete active attention and final stage approval remain unestablished. No later stage starts automatically.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -222,7 +222,7 @@
       }
     },
     "supervised_ai_baseline": {
-      "status": "ai-attempt-finished-attention-session-still-open",
+      "status": "fresh-watching-repeat-prepared",
       "user_statement": "I'm only gonna get an AI to solve the problem anyway and then monitor its responses. Context and management of a loop is still very important. Even if a task might be long-running, it's still important for me to have confidence to step away knowing that eventually an issue is resolved.",
       "baseline": "My normal AI-assisted workflow, including monitoring, scripts and any corrections I request. No manual-coding requirement.",
       "primary_measure": "Exact saved fix passes the independent checks within agreed limits without human repair steering after launch.",
@@ -287,8 +287,8 @@
         "rpc_bound": "At most 300 sandbox operations for a thirty-tool plan, with file/request/output bounds unchanged.",
         "evaluation_scope": "Authorised new diagnostic attempt from the original seeded copy, not a controlled comparison of one change.",
         "prior_attempt": "dace60a9424f4865b74b46521cf91e2d remains an unchecked failure.",
-        "attention": "The previously reported monitoring session remains open across setup, discussion and the next attempt. No per-run attention or focus is inferred.",
-        "status": "checked-fix-delivered-human-attention-session-still-open",
+        "attention": "Superseded: I later said I had stopped watching earlier without recording when. The earlier session timing is unusable; AI outcomes remain unchanged.",
+        "status": "checked-fix-delivered-earlier-monitoring-timing-unusable",
         "source_commit": "1781d15",
         "supplied_proof": "reports/harness/issue107-budget-verification.json",
         "plan": "reports/harness/workflows/plans/c91229dcb2604ebaadeb5c75f2d9781b",
@@ -303,6 +303,60 @@
         "in_run_corrections": 0,
         "claim_review": "Assistant found no unsupported success claim; the two named commands completed and all independent checks subsequently passed.",
         "causal_limit": "The run used fewer than twelve tools. This diagnostic changed the environment and checking policy too; it does not establish a benefit from the larger tool cap alone."
+      },
+      "monitoring_correction": {
+        "at": "2026-10-27T09:37:07.099586+00:00",
+        "user_statement": "sorry,m I had stiooped it ages, ago, I thought we needed to restart. COuld we try run it again?",
+        "interpretation": "The watcher had been stopped earlier, without a recorded stop time. The earlier continuous-monitoring assumption cannot be used.",
+        "affected_attention_record": "reports/harness/workflows/runs/dace60a9424f4865b74b46521cf91e2d/operator.json",
+        "timing_valid": false,
+        "actual_stop_time": null,
+        "attention_seconds": null,
+        "preserved": "Original AI result receipts and operator events remain unchanged. The correction supplements them; no elapsed interval is promoted to attention time."
+      },
+      "watching_repeat": {
+        "user_request": "Try the run again after clarifying the watcher had already been stopped.",
+        "plan": "/home/adam/localhost/mapbox-tui/feat-107-repeatable-evaluations/reports/harness/workflows/plans/fc7db74432034d129bde481b2aca2067",
+        "status": "checked-fix-delivered-partial-watcher-interval-recorded",
+        "mode": "plain",
+        "model": "gpt-6.1-terra",
+        "tool_calls": 30,
+        "model_requests": 10,
+        "deadline_seconds": 600,
+        "watcher": "reports/harness/issue107-watch-live.py",
+        "timing": "A clean watcher session starts when the run is available and ends on Ctrl+C or terminal closure. This records watcher-open time, not continuous focus.",
+        "human_readiness": "Switched to the new command",
+        "model_calls": 5,
+        "attention_seconds": null,
+        "run_id": "b1b2f2c1f80e43fe96b3069dceb00381",
+        "attention_record": "reports/harness/workflows/runs/b1b2f2c1f80e43fe96b3069dceb00381/operator.json",
+        "timing_start": "reports/harness/issue107-rewatch-timing-start.json",
+        "timing_coverage": "Only the interval after switching commands was recorded. It includes the end of independent checking and viewing the finished result. Earlier watching time and continuous focus are unknown.",
+        "result": "reports/harness/issue107-rewatch-result.json",
+        "independent_checks_passed": true,
+        "tool_calls_used": 7,
+        "reported_tokens": 22453,
+        "elapsed_seconds": 304.3553,
+        "watching_timing": {
+          "check_ins": 0,
+          "corrections_submitted": 0,
+          "corrections_consumed": 0,
+          "attention_seconds": 161.3742,
+          "recorded_intervals_seconds": {
+            "reviewing": 0.0,
+            "paused": 0.0,
+            "away": 0.0,
+            "monitoring": 161.3742
+          },
+          "timing_complete": true,
+          "self_reported": true,
+          "coverage": "Only explicitly recorded intervals; earlier and unrecorded attention remain unknown",
+          "participation": "recorded",
+          "state": "finished"
+        },
+        "watcher_open_seconds": 161.3742,
+        "timing_complete_for_recorded_interval": true,
+        "review_seconds": null
       }
     },
     "fresh_bug": {

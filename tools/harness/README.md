@@ -78,7 +78,11 @@ visible examples, then stopped at the twelve-tool allowance before independent
 checking. Its own full project test ran out of temporary disk space. This stays
 an unchecked failure, with nine requests and every tool outcome retained.
 I explicitly confirmed the watcher was open and later said I was still monitoring;
-the attention session remains open until I report a change.
+I then clarified I had stopped it earlier without recording when. That session's
+timing is unusable; the independently checked repair result remains valid.
+The next repeat uses a fresh timer. Its local live watcher records when the run
+becomes visible and records an end on Ctrl+C or terminal closure. This measures
+the watcher-open period, not continuous focus, and closing it doesn't cancel Pi.
 
 The next authorised attempt uses thirty tools and the same ten AI requests and
 ten-minute deadline. Its prompt distinguishes the host's mise setup from the
