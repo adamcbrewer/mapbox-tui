@@ -89,7 +89,14 @@ to independent checking within the remaining time, without further inference.
 The first failed attempt stays in the record. This is a diagnostic rerun after
 several workflow fixes, not a controlled comparison of one change.
 
-This is one supervised baseline,
+The revised Terra attempt passed all eight independent checks in 316 seconds,
+using five AI requests and seven tools. Its own full build passed inside the
+unchanged resource caps. It corrected one rejected timeout request and received
+no in-run repair correction. The thirty-tool allowance wasn't needed in this
+attempt. A supplied zero-AI example separately proved that call thirty-one is
+blocked and the saved patch can still pass checking after tool exhaustion.
+
+This supervised session now includes two attempts with different workflow settings,
 not a new paired comparison or evidence of time saved. Preparation and calibration
 make no model calls. I need to open the watcher before inference starts and explicitly
 record monitoring, away and review intervals. The plan and local watcher are

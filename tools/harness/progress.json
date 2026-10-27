@@ -4,7 +4,7 @@
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "active",
-  "next": "Complete the supplied live budget/build proof, then launch the authorised new thirty-tool plain-Pi Terra attempt with the same ten-request/ten-minute limits. Preserve the first failure and the ongoing explicit monitoring record.",
+  "next": "The revised-budget Terra run delivered a fix passing all eight independent checks. The original failed attempt is retained. Finish the explicitly reported supervision timing when Adam reports an activity change, then record his review/decision. No per-run attention or time savings is inferred.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -288,7 +288,21 @@
         "evaluation_scope": "Authorised new diagnostic attempt from the original seeded copy, not a controlled comparison of one change.",
         "prior_attempt": "dace60a9424f4865b74b46521cf91e2d remains an unchecked failure.",
         "attention": "The previously reported monitoring session remains open across setup, discussion and the next attempt. No per-run attention or focus is inferred.",
-        "status": "unit-and-project-checks-passed-supplied-live-proof-running"
+        "status": "checked-fix-delivered-human-attention-session-still-open",
+        "source_commit": "1781d15",
+        "supplied_proof": "reports/harness/issue107-budget-verification.json",
+        "plan": "reports/harness/workflows/plans/c91229dcb2604ebaadeb5c75f2d9781b",
+        "run_id": "1c8bf693ec44468e82e0aedde92cd2cd",
+        "shared_attention_record": "reports/harness/workflows/runs/dace60a9424f4865b74b46521cf91e2d/operator.json",
+        "result": "reports/harness/issue107-budget-terra-result.json",
+        "independent_checks_passed": true,
+        "model_requests_used": 5,
+        "tool_calls_used": 7,
+        "reported_tokens": 23320,
+        "elapsed_seconds": 316.0556,
+        "in_run_corrections": 0,
+        "claim_review": "Assistant found no unsupported success claim; the two named commands completed and all independent checks subsequently passed.",
+        "causal_limit": "The run used fewer than twelve tools. This diagnostic changed the environment and checking policy too; it does not establish a benefit from the larger tool cap alone."
       }
     },
     "fresh_bug": {
