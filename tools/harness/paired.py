@@ -208,7 +208,7 @@ def summarize(path):
     durable_json(path / "comparison.json", result)
     lines = ["# Does clearer container guidance help?", "",
              "I compared the original prompt with one extra paragraph about the tools available inside the container. "
-             "Real Luna runs used normal Pi tools. The pilot isn't included, and the held-out task wasn't used.", "",
+             f"Real runs used {plan['common']['config']['model']} with normal Pi tools. The pilot isn't included, and the held-out task wasn't used.", "",
              "The main measure was failed Pi tool calls. Every repair still had to pass the same independent checks. "
              "The order was baseline, guidance, guidance, baseline. Everything else stayed fixed in the saved plan.", "",
              "| Run | Pair | Version | Checked fix | Failed tools | All tools | Requests | Reported tokens | Seconds |",

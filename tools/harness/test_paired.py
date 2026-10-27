@@ -101,6 +101,8 @@ class PairedTests(PairedFixture, unittest.TestCase):
                 patch("paired.baseline.execute") as run:
             report = paired.summarize(self.root)
             self.assertTrue(report["complete"])
+            self.assertIn("chosen", (self.root / "comparison.md").read_text())
+            self.assertNotIn("Luna", (self.root / "comparison.md").read_text())
             with self.assertRaises(Stop):
                 paired.execute(self.root)
         run.assert_not_called()

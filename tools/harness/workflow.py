@@ -222,7 +222,11 @@ def execute(path, scripted_calls=None):
     finally:
         try:
             run.finalizing = True
-            run.result.update(ended_at=now(), duration_seconds=round(time.monotonic() - run.started, 4))
+            elapsed = time.monotonic() - run.started
+            run.result.update(ended_at=now(), duration_seconds=round(elapsed, 4))
+            if run.result.get("independent_checks_passed") and elapsed > plan["budgets"]["deadline_seconds"]:
+                run.result.update(outcome="timeout", independent_checks_passed=False, first_repair_passed=False,
+                                  reason="The saved checks completed, but the workflow exceeded its overall deadline")
             try:
                 run.result["usage_summary"] = baseline.token_summary(run.result["provider_usage"], len(run.result["dispatches"]))
             except (ValueError, KeyError, TypeError):

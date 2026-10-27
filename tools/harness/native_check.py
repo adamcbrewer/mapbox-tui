@@ -116,6 +116,8 @@ def check_candidate(run, attempt=1):
         raise Stop("invalid_input", "The independent checks don't match the saved patch, task or rules")
     if child.result["outcome"] == "repair_failed":
         raise Stop("repair_failed", child.result["reason"])
+    if time.monotonic() > run.deadline:
+        raise Stop("timeout", "Independent checking and cleanup exceeded the run's overall deadline")
     run.result.update(outcome="native_verification_passed", independent_checks_passed=True,
                       reason="The saved normal-Pi patch passed every independent check; my review is still pending")
     run.event("native_patch_verified")

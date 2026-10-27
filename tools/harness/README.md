@@ -50,7 +50,9 @@ limit also means I haven't demonstrated unattended work lasting hours.
 My judgement helps decide whether this is useful. Repeated runs and recorded
 interventions show what that judgement is based on. Old runs didn't measure my
 attention, so I won't reconstruct it from elapsed time or call it zero. The fresh
-supervised Terra session now records explicit activity, with final timing pending.
+supervised Terra session recorded 161 seconds with the replacement watcher open.
+That covers part of the latest run and viewing its result; earlier attention,
+continuous focus and review time remain unknown.
 The distance task and reserved coordinate task have
 completed fixed comparisons. These automated runs don't establish my supervised
 baseline or time saved. The next timed human session needs another fresh task;
@@ -67,7 +69,7 @@ Don't turn passing tests into a claim that I've approved the work.
 
 ## Run plain Pi or the managed repair loop
 
-The next supervised baseline uses the fresh synthetic `geometry-bounds-v1`
+The supervised baseline used the fresh synthetic `geometry-bounds-v1`
 task. Its map limits must enclose the imported geometry without adding unrelated
 locations. It has two visible examples and four private examples covering GPX,
 TCX and KML, with coordinates and geometry preserved. It belongs to a different
@@ -80,11 +82,11 @@ an unchecked failure, with nine requests and every tool outcome retained.
 I explicitly confirmed the watcher was open and later said I was still monitoring;
 I then clarified I had stopped it earlier without recording when. That session's
 timing is unusable; the independently checked repair result remains valid.
-The next repeat uses a fresh timer. Its local live watcher records when the run
-becomes visible and records an end on Ctrl+C or terminal closure. This measures
-the watcher-open period, not continuous focus, and closing it doesn't cancel Pi.
+The repeat used a fresh timer. Its local live watcher records a start when opened
+and an end on Ctrl+C or terminal closure. This measures the watcher-open period,
+not continuous focus, and closing it doesn't cancel Pi.
 
-The next authorised attempt uses thirty tools and the same ten AI requests and
+The revised attempts allowed thirty tools and the same ten AI requests and
 ten-minute deadline. Its prompt distinguishes the host's mise setup from the
 sandbox's plain Go commands. Native builds use the checker's serial, consistent
 Go flags so the visible test and full build can share their cache. The memory and
@@ -100,11 +102,17 @@ no in-run repair correction. The thirty-tool allowance wasn't needed in this
 attempt. A supplied zero-AI example separately proved that call thirty-one is
 blocked and the saved patch can still pass checking after tool exhaustion.
 
-This supervised session now includes two attempts with different workflow settings,
-not a new paired comparison or evidence of time saved. Preparation and calibration
-make no model calls. I need to open the watcher before inference starts and explicitly
-record monitoring, away and review intervals. The plan and local watcher are
-recorded in `progress.json`; earlier Luna results stay unchanged.
+The fresh repeat passed all eight checks in 304 seconds, again using five requests
+and seven tools. The replacement watcher recorded 161 seconds starting partway
+through this run. Earlier watching time is unknown, and that interval doesn't
+establish continuous focus or review time.
+
+These three attempts used different workflow settings, so they don't form a new
+paired comparison or establish time saved. Preparation and calibration make no
+model calls. For a complete timed session, I need to open the watcher before
+inference starts and explicitly record monitoring, away and review intervals.
+The plan and local watcher are recorded in `progress.json`; earlier Luna results
+stay unchanged.
 
 `workflow.py` keeps Pi's normal tools in the sandbox. Both modes use the same
 independent checker. Plain Pi gets no automatic repair feedback. Managed Pi can
@@ -229,6 +237,11 @@ Read that first. The neighbouring `inventory.json` keeps the saved results,
 settings, file fingerprints and all recorded check attempts. A fingerprint
 identifies a file's exact contents. Keep the original patches and logs too;
 the inventory doesn't copy every supporting file.
+
+If I record watching or review time after a run ends, the inventory reads that
+separate record too. It keeps a copy and fingerprint without changing the
+original result. If that record can't be read, human time stays unknown and the
+repair's checks still count on their own evidence.
 
 One task can contain several checks. I count the task once, including the time
 and cost of failed attempts. First-attempt success means one repair passed every

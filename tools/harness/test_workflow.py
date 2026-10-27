@@ -139,6 +139,38 @@ class WorkflowTests(unittest.TestCase):
         preflight.assert_not_called()
         session.assert_not_called()
 
+    def test_cleanup_crossing_the_deadline_changes_the_saved_success_to_timeout(self):
+        agent = self.root / "suite/cases/task/agent"
+        agent.mkdir(parents=True)
+        (agent / "source").write_text("fixture")
+        plan = {"image": self.run.image, "mode": "plain", "checkpoint_limit": 4,
+                "config": {"model": "fixture", "provider": "openai", "maxModelRequests": 10},
+                "budgets": {"tool_calls": 30, "deadline_seconds": 600}, "case": {"id": "task"},
+                "suite": str(self.root / "suite"), "context": {"task": {}, "prompt": "fixture"},
+                "evaluator": {}, "runtime": {}, "environment": {}, "seccomp_sha256": "profile"}
+        for finish in (699.95, 700.1):
+            with self.subTest(finish=finish):
+                run = NativeRun(self.root / str(finish), self.run.image)
+                run.started, run.deadline = 100, 700
+                directory = self.root / ("plan-" + str(finish))
+                directory.mkdir()
+                clock = {"now": 699.9}
+                sandbox = Mock(seeded="fixture")
+                sandbox.close.side_effect = lambda: clock.update(now=finish)
+                def checked(target, tools, *args):
+                    tools.checkpoints = 1
+                    target.result.update(outcome="native_verification_passed", independent_checks_passed=True, first_repair_passed=True)
+                with patch("workflow.load_plan", return_value=plan), patch("workflow.NativeRun", return_value=run), \
+                        patch("workflow.prepare_verification", side_effect=lambda target, case: target.result.update(evaluator={})), \
+                        patch("workflow.preflight", side_effect=lambda target: target.result.update(runtime={}, environment={}, seccomp_sha256="profile")), \
+                        patch.object(run, "prepare"), patch("workflow.NativeSandbox", return_value=sandbox), \
+                        patch("workflow.session", side_effect=checked), patch("workflow.time.monotonic", side_effect=lambda: clock["now"]):
+                    path, result = workflow.execute(directory)
+                expected = "timeout" if finish > 700 else "native_verification_passed"
+                self.assertEqual(result["outcome"], expected)
+                self.assertEqual(result["independent_checks_passed"], finish <= 700)
+                self.assertEqual(json.loads((path / "result.json").read_text())["outcome"], expected)
+
 
 class WorkflowReceiptTests(unittest.TestCase):
     def setUp(self):

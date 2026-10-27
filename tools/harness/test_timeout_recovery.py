@@ -18,7 +18,7 @@ class TimeoutRecoveryTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.context = {key: key for key in recovery.baseline.CONTEXT}
         self.context["prompt"] = recovery.prompt("clear")
-        self.common = {"context": self.context, "config": {"provider": "openai", "model": "gpt-6-luna", "maxModelRequests": 10},
+        self.common = {"context": self.context, "config": {"provider": "openai", "model": "gpt-6.1-terra", "maxModelRequests": 10},
                        "budgets": {"tool_calls": 12, "model_requests": 10, "deadline_seconds": 600},
                        "case": {"agent_files_sha256": {"go/import.go": "source"}}}
         self.path = self.root / "experiment"
@@ -30,6 +30,8 @@ class TimeoutRecoveryTests(unittest.TestCase):
         self.plan = recovery.load_plan(self.path, execution=False)
 
     def test_only_feedback_differs_and_order_is_reversed(self):
+        self.assertIn("gpt-6.1-terra", (self.path / "plan.md").read_text())
+        self.assertNotIn("Luna", (self.path / "plan.md").read_text())
         self.assertEqual([(c["pair"], c["version"]) for c in self.plan["cells"]], list(recovery.ORDER))
         self.assertEqual(self.plan["maximum_model_requests"], 40)
         first = recovery.read_child(self.path, self.plan["cells"][0])
@@ -136,6 +138,8 @@ class TimeoutRecoveryTests(unittest.TestCase):
             self.assertTrue(result["guardrail_met"])
             self.assertFalse(result["primary_improved"])
             self.assertEqual(result["reductions"], [0, 0])
+            self.assertIn("gpt-6.1-terra", (self.path / "comparison.md").read_text())
+            self.assertNotIn("Luna", (self.path / "comparison.md").read_text())
             raw_path = reports / "timeout-recovery/runs" / ("1" * 32) / "result.json"
             raw_path.write_text('{}')
             with self.assertRaises(Stop):
@@ -144,12 +148,12 @@ class TimeoutRecoveryTests(unittest.TestCase):
     def test_observed_context_or_reservations_cannot_change(self):
         directory = self.root / "run"
         directory.mkdir()
-        result = {"run_id": "run", "provider": "openai", "model": "gpt-6-luna", "budgets": self.common["budgets"],
+        result = {"run_id": "run", "provider": "openai", "model": self.common["config"]["model"], "budgets": self.common["budgets"],
                   "model_requests": 1, "dispatches": [1], "provider_usage": [], "tool_calls": 1,
                   "tool_results": [{"name": "bash", "error": recovery.MESSAGES["clear"]}]}
         context = {**self.context, "permissions": {"network": True, "childProcess": False}}
         (directory / "context.json").write_text(json.dumps(context))
-        reservations = [{"request": 1, "provider": "openai", "model": "gpt-6-luna"}]
+        reservations = [{"request": 1, "provider": "openai", "model": self.common["config"]["model"]}]
         (directory / "reservations.json").write_text(json.dumps(reservations))
         self.assertFalse(recovery.validate_receipt(result, directory, self.common, recovery.MESSAGES["clear"])["complete"])
         context["prompt"] = "another task"

@@ -60,7 +60,7 @@ def prepare(suite, image, config):
     (path / "plan.md").write_text("# Does a clearer timeout error help the AI recover?\n\n"
         "I saved four fresh runs: generic, clear, clear, generic. The only difference is the error returned for an invalid timeout. "
         "Both versions start with the same supplied failed pwd request. It is recorded as a fixture, not an AI action, and consumes one tool call. "
-        "Luna then chooses its own correction using normal Pi tools. This is a focused recovery task, not a bug-repair benchmark.\n\n"
+        f"{common['config']['model']} then chooses its own correction using normal Pi tools. This is a focused recovery task, not a bug-repair benchmark.\n\n"
         "The main measure is repeated invalid timeout calls after the supplied failure. A useful result needs fewer repeats in both pairs, "
         "with every run executing pwd, keeping the project unchanged and finishing. If both recover immediately, there is no measured improvement. "
         "The tool schema, task instructions, model, reasoning, image and limits stay fixed. Only the quoted feedback differs.\n\n"
@@ -279,7 +279,7 @@ def summarize(path):
               "model_cost_usd": None, "execution_cost_usd": None, "human_review_time_seconds": None, "review": "pending"}
     durable_json(path / "comparison.json", result)
     lines = ["# Does the clear timeout error help recovery?", "",
-             "I supplied the same invalid pwd request to both versions, then let real Luna runs choose a correction. "
+             f"I supplied the same invalid pwd request to both versions, then let real {plan['common']['config']['model']} runs choose a correction. "
              "Only the error text changed. This is a focused recovery test; no code repair or held-out task was tested.", "",
              "| Run | Pair | Error | Recovered | Repeated bad timeouts | Requests | Tools, including supplied failure | Tokens | Seconds |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]

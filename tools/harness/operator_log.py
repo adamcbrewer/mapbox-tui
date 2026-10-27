@@ -89,8 +89,8 @@ def take_feedback(directory):
     return None
 
 
-def summary(directory):
-    record = json.loads((directory / "operator.json").read_text())
+def summary(directory, record=None):
+    record = json.loads((directory / "operator.json").read_text()) if record is None else record
     events = [e for e in record["events"] if e["actor"] == "operator"]
     totals = {name: 0.0 for name in STATES - {"finished"}}
     state = None

@@ -8,6 +8,7 @@ import uuid
 from types import SimpleNamespace
 
 from repair import repair_receipt_matches
+import operator_log
 from run import REPORTS, Stop, digest, now, write_json
 from verify import SCOPE, fingerprint, receipt_matches
 
@@ -105,10 +106,26 @@ def record(path, reports):
         result.get("candidate_source") in ("prepared", "supplied") or
         result.get("model") == "scripted (no AI)" or result.get("model") is None) else "unknown"
     operator = result.get("operator") or {}
+    operator_evidence = None
+    operator_path = path.parent / "operator.json"
+    if operator_path.exists() or operator_path.is_symlink():
+        operator_evidence = {"path": operator_path.relative_to(reports).as_posix(), "sha256": None}
+        try:
+            if operator_path.is_symlink():
+                raise ValueError("Linked operator evidence needs inspection")
+            operator_raw = operator_path.read_bytes()
+            operator_evidence["sha256"] = digest(operator_raw)
+            operator_record = json.loads(operator_raw)
+            operator = operator_log.summary(path.parent, operator_record)
+            operator_evidence["record"] = operator_record
+        except (OSError, ValueError, KeyError, TypeError, Stop):
+            operator = {}
+            operator_evidence["problem"] = "Supplemental operator timing needs inspection; human measurements stay unknown"
     intervals = operator.get("recorded_intervals_seconds") or {}
     return {
         "receipt": path.relative_to(reports).as_posix(), "receipt_sha256": digest(raw),
         "receipt_snapshot": result,
+        "operator_evidence": operator_evidence,
         "run_id": result.get("run_id", path.parent.name), "workflow": result.get("workflow", "host-calibration"),
         "parent_run_id": result.get("parent_run_id"), "started_at": result.get("started_at"),
         "outcome": result.get("outcome", "incomplete"), "synthetic": result.get("synthetic"), "mode": mode,

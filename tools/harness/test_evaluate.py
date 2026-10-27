@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import evaluate
+import operator_log
 from pi_run import scripted_calls
 from recovery import Journal
 from run import Stop, digest, write_json
@@ -49,6 +50,31 @@ class InventoryTests(unittest.TestCase):
         self.assertIsNone(row["review_seconds"])
         self.assertEqual(row["mode"], "live")
         self.assertIn("budgets", row["missing_pins"])
+
+    def test_post_run_review_uses_a_bound_supplement_without_rewriting_the_receipt(self):
+        path = self.receipt("late-review", {"outcome": "blocked", "operator": {"attention_seconds": None}})
+        raw = path.read_bytes()
+        operator_log.create(path.parent)
+        operator_log.close(path.parent)
+        with patch("operator_log.time.monotonic", return_value=10):
+            operator_log.append(path.parent, "reviewing")
+        with patch("operator_log.time.monotonic", return_value=17):
+            operator_log.append(path.parent, "finished")
+        row = evaluate.record(path, self.root)
+        self.assertEqual(row["review_seconds"], 7)
+        self.assertEqual(row["attention_seconds"], 7)
+        self.assertEqual(row["operator_evidence"]["sha256"], digest((path.parent / "operator.json").read_bytes()))
+        self.assertEqual(row["operator_evidence"]["record"]["events"][-1]["phase"], "review")
+        self.assertEqual(path.read_bytes(), raw)
+
+    def test_unreadable_human_supplement_does_not_erase_checked_repair_evidence(self):
+        path = self.receipt("bad-review", {"outcome": "native_verification_passed"})
+        (path.parent / "operator.json").write_text("not JSON")
+        with patch("evaluate.verified", return_value=True):
+            row = evaluate.record(path, self.root)
+        self.assertTrue(row["verified_success"])
+        self.assertIsNone(row["attention_seconds"])
+        self.assertIn("problem", row["operator_evidence"])
 
     def test_focused_pass_and_model_done_are_not_verified_success(self):
         self.receipt("focused", {"outcome": "live_repair_passed", "model_claim": "done"})

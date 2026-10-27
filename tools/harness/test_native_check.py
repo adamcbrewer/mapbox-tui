@@ -110,6 +110,19 @@ class NativeCheckTests(unittest.TestCase):
         self.assertNotIn("TestXMLImportsAcceptLeadingUTF8BOM", page)
         self.assertNotIn("XML-prefix", page)
 
+    def test_completed_checks_cannot_promote_a_patch_after_the_shared_deadline(self):
+        self.candidate()
+        original = native_check.verification_matches
+        def expired(parent, child):
+            matched = original(parent, child)
+            parent.deadline = time.monotonic() - 1
+            return matched
+        with patch("native_check.verification_matches", side_effect=expired), self.assertRaises(Stop) as caught:
+            native_check.check_candidate(self.run)
+        self.assertEqual(caught.exception.outcome, "timeout")
+        self.assertFalse(self.run.result["independent_checks_passed"])
+        self.assertEqual(self.run.result["verification"]["outcome"], "repository_verification_passed")
+
     def test_distance_bad_fix_stays_failed_and_never_reaches_repository_checks(self):
         self.distance_candidate(False)
         with self.assertRaises(Stop) as caught:
