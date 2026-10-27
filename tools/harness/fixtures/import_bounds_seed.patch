@@ -1,0 +1,11 @@
+--- a/go/import.go
++++ b/go/import.go
+@@ -161,7 +161,7 @@
+ 	}
+ 	t.Name = cleanName(t.Name)
+ 	t.Distance = 0
+-	t.Bounds = [4]float64{180, 90, -180, -90}
++	t.Bounds = [4]float64{}
+ 	for _, points := range [][]Point{t.Points, t.Waypoints} {
+ 		for i := range points {
+ 			p := &points[i]

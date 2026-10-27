@@ -40,6 +40,20 @@ class TaskInputTests(unittest.TestCase):
         with self.assertRaises(Stop):
             definition("unknown")
 
+    def test_fresh_bounds_task_binds_its_own_seed_and_private_examples(self):
+        suite = Run(self.root / "bounds")
+        case = build(suite, "geometry-bounds-v1")["cases"][0]
+        task = selected_task(suite.path)
+        inputs = materials(task)
+        self.assertEqual(task["id"], "geometry-bounds-v1")
+        self.assertEqual(digest(inputs["seed"]), case["seed_sha256"])
+        self.assertEqual(digest(inputs["regression"]), case["private_files_sha256"]["verifier.go.txt"])
+        self.assertEqual(task["allowed_files"], ["go/import.go"])
+        self.assertEqual(task["allowed_new_files"], [])
+        run = NativeRun(self.root / "checking", "sha256:" + "a" * 64)
+        prepare_verification(run, case)
+        self.assertEqual(run.task["id"], task["id"])
+
     def test_held_out_task_requires_explicit_selection_and_keeps_its_own_inputs(self):
         suite = Run(self.root / "original-suite")
         manifest = build(suite)

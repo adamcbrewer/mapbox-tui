@@ -27,7 +27,9 @@ class CaseSuiteTests(unittest.TestCase):
         case = next(case for case in self.manifest["cases"] if case["id"] == run.result["case"])
         visibility = name.rsplit("-", 1)[1]
         source = (Path(cwd) / case_suite.SOURCE).read_text()
-        if case["id"] == "segment-distance-v1":
+        if case["id"] == "geometry-bounds-v1":
+            broken = 't.Bounds = [4]float64{}' in source
+        elif case["id"] == "segment-distance-v1":
             broken = 'if j > 0 {' in source
         else:
             broken = ('if n >= 3 && string(header[:3])' not in source if case["partition"] == "development" else
@@ -177,6 +179,20 @@ class CaseSuiteTests(unittest.TestCase):
             case_suite.main()
         self.assertEqual(caught.exception.code, 2)
         self.execute_mock.assert_not_called()
+
+    def test_bounds_task_calibrates_all_variants_and_keeps_private_material_outside_the_agent(self):
+        run = Run(self.root / "bounds")
+        self.manifest = case_suite.build(run, "geometry-bounds-v1")
+        case = self.manifest["cases"][0]
+        self.assertEqual(case_suite.load_suite(run.path), self.manifest)
+        case_suite.validate_case(run.path / "cases" / case["id"], case)
+        agent = run.path / "cases" / case["id"] / "agent"
+        self.assertFalse((agent / case_suite.PRIVATE_FILE).exists())
+        self.assertFalse(list(agent.rglob("*.patch")))
+        self.assertNotEqual(case["family"], case_suite.definitions("segment-distance-v1")[0]["family"])
+        _, result = case_suite.calibrate(run.path, case, "sha256:" + "a" * 64)
+        self.assertEqual(result["outcome"], "case_calibration_passed", result.get("reason"))
+        self.assertEqual(len(result["observations"]), 8)
 
 
 if __name__ == "__main__":

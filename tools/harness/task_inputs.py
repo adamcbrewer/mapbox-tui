@@ -5,6 +5,7 @@ from case_suite import FAILURE_MESSAGES, PUBLIC_FILE, definitions, load_suite, v
 from run import HERE, Stop, digest
 
 REGISTERED = {"segment-distance-v1": ("segment-distance-v1", "import_distance_seed.patch"),
+              "geometry-bounds-v1": ("geometry-bounds-v1", "import_bounds_seed.patch"),
               "coordinate-latitude-limits-v2": ("import-v1", "import_coordinate_seed.patch")}
 
 

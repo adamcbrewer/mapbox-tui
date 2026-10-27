@@ -66,6 +66,18 @@ Don't turn passing tests into a claim that I've approved the work.
 
 ## Run plain Pi or the managed repair loop
 
+The next supervised baseline uses the fresh synthetic `geometry-bounds-v1`
+task. Its map limits must enclose the imported geometry without adding unrelated
+locations. It has two visible examples and four private examples covering GPX,
+TCX and KML, with coordinates and geometry preserved. It belongs to a different
+bug family from the earlier XML, latitude and distance tasks.
+
+I selected plain Pi with Terra for this session. This is one supervised baseline,
+not a new paired comparison or evidence of time saved. Preparation and calibration
+make no model calls. I need to open the watcher before inference starts and explicitly
+record monitoring, away and review intervals. The plan and local watcher are
+recorded in `progress.json`; earlier Luna results stay unchanged.
+
 `workflow.py` keeps Pi's normal tools in the sandbox. Both modes use the same
 independent checker. Plain Pi gets no automatic repair feedback. Managed Pi can
 receive one retry prompt after a failed candidate check. It keeps the conversation

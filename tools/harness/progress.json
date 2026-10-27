@@ -3,8 +3,8 @@
   "updated_at": "2026-10-27",
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
-  "status": "awaiting-review",
-  "next": "Review the completed #107 comparisons and reflect on the four learning questions. Keep plain Pi as the recommendation. Human attention/time savings and confidence remain unmeasured; no later stage starts automatically.",
+  "status": "active",
+  "next": "The fresh bounds task is calibrated and the plain-Pi Terra plan is ready. Start after Adam confirms the watcher is open, then record explicit monitoring/review intervals. No AI attempt or human timer has started.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -222,7 +222,7 @@
       }
     },
     "supervised_ai_baseline": {
-      "status": "controls-ready-human-session-not-measured",
+      "status": "ready-awaiting-human-watcher",
       "user_statement": "I'm only gonna get an AI to solve the problem anyway and then monitor its responses. Context and management of a loop is still very important. Even if a task might be long-running, it's still important for me to have confidence to step away knowing that eventually an issue is resolved.",
       "baseline": "My normal AI-assisted workflow, including monitoring, scripts and any corrections I request. No manual-coding requirement.",
       "primary_measure": "Exact saved fix passes the independent checks within agreed limits without human repair steering after launch.",
@@ -242,7 +242,26 @@
       "previous_attention_time": "unknown",
       "reviewed_stage_decision": null,
       "long_running_limit": "Current 600-second cap is retained. Longer unattended work remains unproven.",
-      "protocol_draft": "reports/harness/issue107-supervision-protocol-draft.md"
+      "protocol_draft": "reports/harness/issue107-supervision-protocol-draft.md",
+      "fresh_session": {
+        "user_instruction": "okay, let's go",
+        "task": "geometry-bounds-v1",
+        "synthetic": true,
+        "suite": "reports/harness/case-suites/runs/55bbad5d796f48acb35e5bebeda9257d",
+        "plan": "reports/harness/workflows/plans/4c0280f24b2c443da64a53bdbe0fc76f",
+        "mode": "plain",
+        "model": "gpt-6.1-terra",
+        "watcher": "reports/harness/issue107-watch.py",
+        "status": "ready-not-started",
+        "human_monitoring_confirmation": null,
+        "model_requests": 0,
+        "attention_seconds": null,
+        "review_seconds": null,
+        "purpose": "Measure my normal AI-supervised workflow on a fresh task. This is one baseline, not a paired workflow comparison or proof of time savings.",
+        "calibration": "All eight original/seeded/reference/ineffective public/private observations matched; all 9 calibration containers removed.",
+        "stage_approval": null,
+        "verification": "reports/harness/issue107-bounds-verification.json"
+      }
     },
     "fresh_bug": {
       "status": "development-comparison-complete-awaiting-review",

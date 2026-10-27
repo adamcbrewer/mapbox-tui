@@ -1,0 +1,67 @@
+package main
+
+import "testing"
+
+func TestHarnessImportBoundsVerifier(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		body      string
+		points    []Point
+		waypoints bool
+		bounds    [4]float64
+	}{
+		{
+			name:   "south-west",
+			body:   `<gpx><trk><trkseg><trkpt lat="-25" lon="-35"/><trkpt lat="-24" lon="-31"/></trkseg></trk></gpx>`,
+			points: []Point{{Lat: -25, Lon: -35}, {Lat: -24, Lon: -31}},
+			bounds: [4]float64{-35, -25, -31, -24},
+		},
+		{
+			name:      "gpx-waypoints",
+			body:      `<gpx><wpt lat="-8" lon="55"/><wpt lat="-6" lon="52"/></gpx>`,
+			points:    []Point{{Lat: -8, Lon: 55}, {Lat: -6, Lon: 52}},
+			waypoints: true,
+			bounds:    [4]float64{52, -8, 55, -6},
+		},
+		{
+			name:   "tcx-single-point",
+			body:   `<TrainingCenterDatabase><Courses><Course><Track><Trackpoint><Position><LatitudeDegrees>18</LatitudeDegrees><LongitudeDegrees>-42</LongitudeDegrees></Position></Trackpoint></Track></Course></Courses></TrainingCenterDatabase>`,
+			points: []Point{{Lat: 18, Lon: -42}},
+			bounds: [4]float64{-42, 18, -42, 18},
+		},
+		{
+			name:      "kml-single-point",
+			body:      `<kml><Placemark><Point><coordinates>68,-12</coordinates></Point></Placemark></kml>`,
+			points:    []Point{{Lat: -12, Lon: 68}},
+			waypoints: true,
+			bounds:    [4]float64{68, -12, 68, -12},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			track, err := loadTrack(importFile(t, "independent-bounds.xml", []byte(test.body)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			points := track.Points
+			if test.waypoints {
+				points = track.Waypoints
+				if len(track.Points) != 0 || len(track.Segments) != 0 {
+					t.Fatal("independent waypoint geometry changed")
+				}
+			} else if len(track.Waypoints) != 0 || len(track.Segments) != 1 {
+				t.Fatal("independent journey geometry changed")
+			}
+			if len(points) != len(test.points) {
+				t.Fatal("independent geometry size changed")
+			}
+			for i, point := range points {
+				if point.Lat != test.points[i].Lat || point.Lon != test.points[i].Lon {
+					t.Fatal("independent coordinates changed")
+				}
+			}
+			if track.Bounds != test.bounds {
+				t.Fatalf("independent import bounds include unrelated locations: got %v, want %v", track.Bounds, test.bounds)
+			}
+		})
+	}
+}
