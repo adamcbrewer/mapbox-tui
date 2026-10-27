@@ -80,6 +80,15 @@ an unchecked failure, with nine requests and every tool outcome retained.
 I explicitly confirmed the watcher was open and later said I was still monitoring;
 the attention session remains open until I report a change.
 
+The next authorised attempt uses thirty tools and the same ten AI requests and
+ten-minute deadline. Its prompt distinguishes the host's mise setup from the
+sandbox's plain Go commands. Native builds use the checker's serial, consistent
+Go flags so the visible test and full build can share their cache. The memory and
+disk limits stay unchanged. A tool-limit stop can still send the exact saved patch
+to independent checking within the remaining time, without further inference.
+The first failed attempt stays in the record. This is a diagnostic rerun after
+several workflow fixes, not a controlled comparison of one change.
+
 This is one supervised baseline,
 not a new paired comparison or evidence of time saved. Preparation and calibration
 make no model calls. I need to open the watcher before inference starts and explicitly
@@ -104,7 +113,7 @@ systemd-run --user --quiet --wait --pipe --collect --same-dir \
 Read the printed `PLAN_DIR/plan.md`. Use `--mode plain` for the comparison version.
 The plan fixes model/settings, task, tools, image, checking rules and limits before
 inference. It allows one run: ten model requests with the current preferences,
-twelve Pi tools, two candidate checks and ten minutes overall. Checks share that
+thirty Pi tools, two candidate checks and ten minutes overall. Checks share that
 time allowance. Provider requests keep their two-minute limit and no transport
 retries. A stopped or failed attempt stays spent.
 

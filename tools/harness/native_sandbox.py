@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 import uuid
 
-from container import ContainerRun, ENVIRONMENT, OUTPUT_LIMIT, PODMAN
+from container import ContainerRun, NATIVE_ENVIRONMENT, OUTPUT_LIMIT, PODMAN
 from run import HERE, ROOT, Run, Stop, digest, write_json
 
 
@@ -23,6 +23,8 @@ class NativeSandbox:
         self.container = {"name": "mapbox-harness-" + uuid.uuid4().hex, "check": "native-tools", "removed": False}
         run.result["containers"].append(self.container)
         self.operations = 0
+        self.operation_limit = max(100, 10 * run.result.get("budgets", {}).get("tool_calls", 0))
+        run.result["native_environment"] = NATIVE_ENVIRONMENT.copy()
         self.worker = (HERE / "native_worker.py").read_text()
         self.seeded = (self.checkout / "go/import.go").read_text()
         self.expected = {str(path.relative_to(self.checkout)): digest(path.read_bytes())
@@ -49,7 +51,7 @@ class NativeSandbox:
                            "--timeout=" + str(max(1, math.ceil(run.deadline - time.monotonic()))),
                            "--mount=type=bind,src=" + str(self.checkout) + ",dst=/input,ro",
                            "--workdir=/workspace", "--entrypoint=/usr/bin/python3"]
-        for key, value in ENVIRONMENT.items():
+        for key, value in NATIVE_ENVIRONMENT.items():
             create += ["--env=" + key + "=" + value]
         bootstrap = ('import shutil,time; from pathlib import Path\n'
                      'try:\n'
@@ -77,7 +79,7 @@ class NativeSandbox:
 
     def request(self, request):
         self.operations += 1
-        if self.operations > 100:
+        if self.operations > self.operation_limit:
             raise Stop("budget_exhausted", "The sandbox operation limit was reached")
         payload = json.dumps(request)
         if len(payload.encode()) > 64 * 1024:

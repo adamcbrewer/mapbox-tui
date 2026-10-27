@@ -10,13 +10,15 @@ import time
 
 import baseline
 from native_check import check_candidate, prepare_verification
-from native_run import session
+from native_run import ToolCallLimit, session
 from native_sandbox import NativeRun, NativeSandbox
 import operator_log
 from recovery import durable_json
 from run import HERE, REPORTS, Stop, digest, now
 from sandbox import preflight
 from verify import REQUIRED_CHECKS, fingerprint, receipt_matches
+
+WORKFLOW_TOOL_CALLS = 30
 
 
 def sources():
@@ -30,13 +32,14 @@ def prepare(suite, image, config, mode, case_id=None, output_root=None):
     plan.update(kind="native-repair-workflow-v1", mode=mode, sources=sources(), checkpoint_limit=4,
                 primary_metric="Exact final candidate passes every independent check within the shared limits; operator feedback and attention are separate measurements")
     plan["budgets"]["verification_attempts"] = 2
+    plan["budgets"]["tool_calls"] = WORKFLOW_TOOL_CALLS
     durable_json(path / "plan.json", {"definition": plan, "sha256": fingerprint(plan)})
     (path / "plan.md").write_text("# A saved repair workflow\n\n"
         f"Mode: {mode}. Pi keeps its normal tools and standard prompt. Both modes use the same task, model, image, limits and final checker. "
         "Plain Pi receives operator corrections only. Managed Pi may receive one automatic correction request after a failed check. "
         "The checker gives no private examples or known fix to the repair agent.\n\n"
-        f"{plan['config']['maxModelRequests']} model requests, twelve Pi tools, two candidate checks and ten minutes overall, including checking. "
-        "Each request keeps its two-minute limit. No transport retries or replacement attempts. "
+        f"{plan['config']['maxModelRequests']} model requests, {plan['budgets']['tool_calls']} Pi tools, two candidate checks and ten minutes overall, including checking. "
+        "Each request keeps its two-minute limit. A tool-limit stop can still send the saved patch to independent checking within the remaining time, without more AI requests. No transport retries or replacement attempts. "
         "Context is retained across continuations; request and tool counts never reset.\n\n"
         "Operator messages arrive after the current conversation stops. Stop sends cancellation to this run's verified process identity. "
         "Check-ins and attention states must be explicitly recorded. Missing human participation/time stays unknown. "
@@ -170,6 +173,7 @@ def execute(path, scripted_calls=None):
                       provider=plan["config"]["provider"], model_requests=0, dispatches=[], provider_usage=[],
                       auth=plan["config"].get("auth") if scripted_calls is None else None,
                       reasoning="low" if scripted_calls is None else "off", pi_version="1.2.0",
+                      native_environment=plan.get("native_environment"),
                       model_cost_usd=0 if scripted_calls is not None else None, budgets=plan["budgets"], independent_checks_passed=False)
     if plan.get("comparison"):
         run.result["comparison"] = plan["comparison"]
@@ -198,7 +202,11 @@ def execute(path, scripted_calls=None):
                     start.update(mode="live", config=plan["config"], authDir=str(Path.home() / ".pi/agent"))
                 else:
                     start["calls"] = scripted_calls
-                session(run, tools, start, Path(node))
+                try:
+                    session(run, tools, start, Path(node))
+                except ToolCallLimit:
+                    tools.close()
+                    tools.checkpoint({"agentOutcome": "budget_exhausted", "limit": "tool_calls"})
             finally:
                 tools.close()
         if not tools.checkpoints:
@@ -239,6 +247,7 @@ def validated_result(directory, reports=None):
     result = json.loads((directory / "result.json").read_text())
     plan = load_plan(Path(result["plan"]), execution=False)
     if (result["run_id"] != directory.name or result["plan_sha256"] != fingerprint(plan) or result["budgets"] != plan["budgets"] or
+            result.get("native_environment") != plan.get("native_environment") or
             result["mode"] != plan["mode"] or result["config"] != plan["config"] or result["image"] != plan["image"] or
             not 0 <= result["model_requests"] <= plan["config"]["maxModelRequests"] or
             not 0 <= result.get("tool_calls", 0) <= plan["budgets"]["tool_calls"]):

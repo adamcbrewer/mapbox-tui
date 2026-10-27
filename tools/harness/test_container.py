@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import sandbox
-from container import ContainerRun, ENVIRONMENT, MEMORY, OUTPUT_LIMIT
+from container import ContainerRun, ENVIRONMENT, MEMORY, NATIVE_ENVIRONMENT, OUTPUT_LIMIT
 from report import render
 from run import HERE, ROOT, Run, Stop
 
@@ -142,10 +142,11 @@ class ContainerTests(unittest.TestCase):
 
     def test_native_workspace_keeps_host_source_read_only_and_uses_bounded_scratch(self):
         data = self.description(self.checkout)
+        data[0]["Config"]["Env"] = [f"{k}={v}" for k, v in NATIVE_ENVIRONMENT.items()]
         data[0]["Mounts"][0]["Destination"] = "/input"
         data[0]["HostConfig"]["Tmpfs"] = {"/tmp": "rw,size=512m", "/workspace": "rw,exec,nosuid,nodev,size=128m,mode=1777"}
         self.run.validate_container(data, self.checkout, native_workspace=True)
-        for change in ("writable-source", "wrong-source", "extra-bind", "oversized-workspace", "no-workspace", "network"):
+        for change in ("writable-source", "wrong-source", "extra-bind", "oversized-workspace", "no-workspace", "network", "build-flags"):
             changed = copy.deepcopy(data)
             if change == "writable-source":
                 changed[0]["Mounts"][0]["RW"] = True
@@ -157,6 +158,8 @@ class ContainerTests(unittest.TestCase):
                 changed[0]["HostConfig"]["Tmpfs"]["/workspace"] = "rw,exec,nosuid,nodev,size=1g,mode=1777"
             elif change == "no-workspace":
                 del changed[0]["HostConfig"]["Tmpfs"]["/workspace"]
+            elif change == "build-flags":
+                changed[0]["Config"]["Env"] = [f"{k}={v}" for k, v in ENVIRONMENT.items()]
             else:
                 changed[0]["HostConfig"]["NetworkMode"] = "host"
             with self.subTest(change=change), self.assertRaises(Stop):

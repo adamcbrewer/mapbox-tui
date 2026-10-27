@@ -10,6 +10,7 @@ import time
 import uuid
 
 from case_suite import load_suite, validate_case
+from container import NATIVE_ENVIRONMENT
 from native_check import check_candidate, prepare_verification
 from native_run import NativeTools, session
 from native_sandbox import NativeRun, NativeSandbox
@@ -66,7 +67,13 @@ def prepare(suite, image, config_path, output_root=None, case_id=None):
               "The container has no network; don't install or download anything. "
               "Report what you changed, what you tested and anything unfinished.\nVisible test: " +
               " ".join(task["command"]) + "\n\nApproved repository instructions:\n" +
-              "\n\n".join(item["text"] for item in instructions))
+              "\n\n".join(item["text"] for item in instructions) +
+              "\n\nSandbox execution context: the mise prefix in those instructions applies to the host agent environment. "
+              "You are inside the disposable sandbox, where Go v1.27.1 and make are already on PATH. "
+              "Use plain go and make commands; mise is not installed. There is no .git directory. "
+              "GOFLAGS already selects -mod=readonly -p=1 -trimpath; keep it so tests and builds reuse the same cache "
+              "and fit the temporary disk allowance. For the full repository check use make test BUILD_VCS=false COMMIT=" +
+              case["base_commit"] + ". Don't install tools or change these settings.")
     run = NativeRun(REPORTS / "native-baseline-preflight", image)
     try:
         preflight(run)
@@ -80,7 +87,7 @@ def prepare(suite, image, config_path, output_root=None, case_id=None):
                 "primary_metric": "The saved patch passes every independent check within the original 600-second deadline",
                 "suite": str(suite.resolve()), "suite_sha256": digest((suite / "suite.json").read_bytes()), "case": case,
                 "config": config, "reasoning": "low", "context": context, "image": image,
-                "runtime": run.result["runtime"], "environment": run.result["environment"],
+                "runtime": run.result["runtime"], "environment": run.result["environment"], "native_environment": NATIVE_ENVIRONMENT,
                 "seccomp_sha256": run.result["seccomp_sha256"], "sources": sources(),
                 "evaluator": evaluator_definition(pinned), "one_use": True,
                 "budgets": {"tool_calls": 12, "model_requests": config["maxModelRequests"], "deadline_seconds": 600,

@@ -16,6 +16,7 @@ ENVIRONMENT = {
     "GOPATH": "/go", "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOWORK": "off",
     "GOENV": "off", "GOFLAGS": "-mod=readonly", "CGO_ENABLED": "0",
 }
+NATIVE_ENVIRONMENT = {**ENVIRONMENT, "GOFLAGS": REPOSITORY_GOFLAGS.removeprefix("GOFLAGS=")}
 
 
 class ContainerRun(Run):
@@ -83,7 +84,8 @@ class ContainerRun(Run):
                 raise ValueError("Seccomp profile changed")
             if item["Config"]["User"] != "65534:65534":
                 raise ValueError("Container user changed")
-            if sorted(item["Config"]["Env"]) != sorted(f"{key}={value}" for key, value in ENVIRONMENT.items()):
+            expected_environment = NATIVE_ENVIRONMENT if native_workspace else ENVIRONMENT
+            if sorted(item["Config"]["Env"]) != sorted(f"{key}={value}" for key, value in expected_environment.items()):
                 raise ValueError("Unexpected container environment")
             mounts = item["Mounts"]
             binds = [mount for mount in mounts if mount["Type"] == "bind"]

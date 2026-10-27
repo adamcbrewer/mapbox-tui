@@ -88,6 +88,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(self.run.result["independent_checks_passed"])
         self.assertEqual(self.run.result["outcome"], "blocked")
 
+    def test_exhausted_tools_can_check_a_saved_patch_without_more_inference(self):
+        self.tools.calls = 12
+        def passed():
+            self.run.result.update(outcome="native_verification_passed", independent_checks_passed=True)
+            self.run.result["verification_attempts"].append({"outcome": "repository_verification_passed"})
+            return True
+        self.tools.grade.side_effect = passed
+        self.assertEqual(self.tools.checkpoint({"agentOutcome": "budget_exhausted", "limit": "tool_calls"}), {"action": "stop"})
+        self.assertTrue(self.run.result["independent_checks_passed"])
+        self.assertEqual(self.run.result["agent_outcome"], "budget_exhausted")
+        self.assertEqual(self.run.result["model_requests"], 1)
+        self.tools.reopen.assert_not_called()
+
     def test_stop_recorded_during_checker_finalization_prevents_a_retry(self):
         def stopped():
             with patch("operator_log.os.kill"):

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import native_worker as worker
-from native_run import NativeTools
+from native_run import NativeTools, ToolCallLimit
 from native_sandbox import NativeRun, NativeSandbox
 from run import Stop, digest
 
@@ -76,6 +76,17 @@ class NativeProtocolTests(unittest.TestCase):
 
     def start(self, name="read", identity="one"):
         self.tools.dispatch({"type": "native_tool", "toolCallId": identity, "name": name})
+
+    def test_saved_thirty_call_budget_stops_before_executing_call_thirty_one(self):
+        self.run.result["budgets"] = {"tool_calls": 30}
+        self.tools = NativeTools(self.run, self.sandbox)
+        for number in range(30):
+            self.start(identity=str(number))
+            self.tools.dispatch({"type": "native_tool_finished", "toolCallId": str(number)})
+        with self.assertRaises(ToolCallLimit):
+            self.start(identity="too-many")
+        self.assertEqual(self.tools.calls, 30)
+        self.assertIsNone(self.tools.active)
 
     def test_operations_require_the_right_active_tool_and_identity(self):
         for request in ({"type": "native_fs", "toolCallId": "one", "op": "read"},

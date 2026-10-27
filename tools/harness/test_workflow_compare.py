@@ -18,7 +18,7 @@ class WorkflowComparisonTests(unittest.TestCase):
         self.path.mkdir()
         self.common = {"kind": "native-repair-workflow-v1", "mode": "plain", "config": {"maxModelRequests": 10},
                        "case": {"id": "task", "partition": "development"}, "checkpoint_limit": 4,
-                       "budgets": {"verification_attempts": 2}, "sources": comparison.workflow.sources()}
+                       "budgets": {"verification_attempts": 2, "tool_calls": 30}, "sources": comparison.workflow.sources()}
         with patch("workflow_compare.workflow.prepare", return_value=self.path), \
                 patch("workflow_compare.workflow.load_plan", return_value=copy.deepcopy(self.common)):
             comparison.prepare(Path("suite"), "image", Path("config"))

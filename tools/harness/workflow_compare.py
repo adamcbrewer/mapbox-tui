@@ -53,7 +53,7 @@ def prepare(suite, image, config, case_id=None):
         "I also record first-checked-candidate success, failed attempts, requests, tools, tokens and elapsed time. "
         "Keep the simpler plain workflow if managed doesn't improve that result. Incorrect success claims block adoption.\n\n"
         f"Task: {common['case']['id']}; partition: {common['case']['partition']}. At most {plan['maximum_model_requests']} model requests. "
-        "Each run keeps twelve tools, two candidate checks, ten minutes overall and two minutes per provider request. "
+        f"Each run keeps {common['budgets']['tool_calls']} tools, two candidate checks, ten minutes overall and two minutes per provider request. "
         "No replacement attempts or automatic transport retries. A blocked, cancelled or invalid run stops later cells.\n\n"
         "A run without operator feedback isn't a measured human-supervised baseline. Attention/review time and billing stay unknown "
         "without explicit evidence. These are synthetic tasks and a small sample, not a broad repair benchmark. "

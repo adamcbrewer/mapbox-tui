@@ -23,11 +23,19 @@ ALLOWED = {"read": {"read", "access"}, "edit": {"read", "access", "write"},
            "write": {"mkdir", "write"}, "bash": {"bash"}}
 
 
+class ToolCallLimit(Stop):
+    def __init__(self):
+        super().__init__("budget_exhausted", "The normal-tool call limit was reached")
+
+
 class NativeTools:
     def __init__(self, run, sandbox):
         self.run, self.sandbox = run, sandbox
         self.active = None
         self.calls = 0
+        self.limit = run.result.get("budgets", {}).get("tool_calls", MAX_CALLS)
+        if type(self.limit) is not int or not 1 <= self.limit <= 30:
+            raise Stop("invalid_input", "The normal-tool allowance must be between one and thirty")
         self.ids = set()
         self.results = []
         self.timeout_error = TIMEOUT_ERROR
@@ -38,8 +46,8 @@ class NativeTools:
         if kind == "native_tool":
             if self.active is not None or not isinstance(identity, str) or identity in self.ids or request.get("name") not in ALLOWED:
                 raise Stop("invalid_input", "The normal-tool sequence changed")
-            if self.calls >= MAX_CALLS:
-                raise Stop("budget_exhausted", "The normal-tool call limit was reached")
+            if self.calls >= self.limit:
+                raise ToolCallLimit()
             self.calls += 1
             self.run.result["tool_calls"] = self.calls
             self.ids.add(identity)

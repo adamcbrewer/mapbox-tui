@@ -4,7 +4,7 @@
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "active",
-  "next": "Terra stopped at the tool limit after passing the two visible examples; no independent check ran. Adam explicitly remains monitoring. Keep timing open until he reports an activity change, then finish the supervision/review record. Original failed attempt stays retained.",
+  "next": "Complete the supplied live budget/build proof, then launch the authorised new thirty-tool plain-Pi Terra attempt with the same ten-request/ten-minute limits. Preserve the first failure and the ongoing explicit monitoring record.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -273,6 +273,22 @@
         "result": "reports/harness/issue107-supervised-terra-result.json",
         "human_current_statement": "Still monitoring",
         "watcher_feedback": "The raw-counter display was confusing. The local observer now shows readable actions and errors; no frozen inference inputs changed."
+      },
+      "budget_revision": {
+        "user_instruction": "okya, let's amend those and do another run",
+        "tool_calls": 30,
+        "model_requests": 10,
+        "deadline_seconds": 600,
+        "request_seconds": 120,
+        "output_tokens_per_request": null,
+        "sandbox_resources": "Unchanged 1 GiB RAM, two CPU cores, 512 MiB temporary space and 128 MiB project space. Native GOFLAGS now matches the checker: -mod=readonly -p=1 -trimpath.",
+        "instructions": "Explicitly distinguish host-only mise instructions from sandbox Go/make on PATH; no .git; give the exact full-check command without a known repair.",
+        "tool_exhaustion": "Only typed normal-tool exhaustion can check the exact saved patch within the remaining deadline; no more AI, no deadline reset, and cancellation/invalid/error paths stay failures.",
+        "rpc_bound": "At most 300 sandbox operations for a thirty-tool plan, with file/request/output bounds unchanged.",
+        "evaluation_scope": "Authorised new diagnostic attempt from the original seeded copy, not a controlled comparison of one change.",
+        "prior_attempt": "dace60a9424f4865b74b46521cf91e2d remains an unchecked failure.",
+        "attention": "The previously reported monitoring session remains open across setup, discussion and the next attempt. No per-run attention or focus is inferred.",
+        "status": "unit-and-project-checks-passed-supplied-live-proof-running"
       }
     },
     "fresh_bug": {
