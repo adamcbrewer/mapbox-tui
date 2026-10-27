@@ -4,7 +4,7 @@ I want to know whether the extra code around Pi helps it fix bugs and saves me
 time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is the
 current stage. Recover (#106) is merged and closed.
 
-I've finished the automated comparisons. Plain Pi delivered four checked fixes
+I've finished the earlier fixed comparisons with Luna. Plain Pi delivered four checked fixes
 out of four; managed Pi delivered three out of four. Both passed the two
 development runs. On the reserved evaluation task, one managed run spent its
 tool allowance before checking. That stays a failure. The automatic retry wasn't
@@ -49,8 +49,9 @@ limit also means I haven't demonstrated unattended work lasting hours.
 
 My judgement helps decide whether this is useful. Repeated runs and recorded
 interventions show what that judgement is based on. Old runs didn't measure my
-attention, so I won't reconstruct it from elapsed time or call it zero. No human
-timer has started. The new distance task and reserved coordinate task now have
+attention, so I won't reconstruct it from elapsed time or call it zero. The fresh
+supervised Terra session now records explicit activity, with final timing pending.
+The distance task and reserved coordinate task have
 completed fixed comparisons. These automated runs don't establish my supervised
 baseline or time saved. The next timed human session needs another fresh task;
 reusing these familiar examples wouldn't establish the same thing.
@@ -72,7 +73,14 @@ locations. It has two visible examples and four private examples covering GPX,
 TCX and KML, with coordinates and geometry preserved. It belongs to a different
 bug family from the earlier XML, latitude and distance tasks.
 
-I selected plain Pi with Terra for this session. This is one supervised baseline,
+I selected plain Pi with Terra for this session. Its first attempt passed both
+visible examples, then stopped at the twelve-tool allowance before independent
+checking. Its own full project test ran out of temporary disk space. This stays
+an unchecked failure, with nine requests and every tool outcome retained.
+I explicitly confirmed the watcher was open and later said I was still monitoring;
+the attention session remains open until I report a change.
+
+This is one supervised baseline,
 not a new paired comparison or evidence of time saved. Preparation and calibration
 make no model calls. I need to open the watcher before inference starts and explicitly
 record monitoring, away and review intervals. The plan and local watcher are

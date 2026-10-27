@@ -4,7 +4,7 @@
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "active",
-  "next": "The fresh bounds task is calibrated and the plain-Pi Terra plan is ready. Start after Adam confirms the watcher is open, then record explicit monitoring/review intervals. No AI attempt or human timer has started.",
+  "next": "Terra stopped at the tool limit after passing the two visible examples; no independent check ran. Adam explicitly remains monitoring. Keep timing open until he reports an activity change, then finish the supervision/review record. Original failed attempt stays retained.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -222,7 +222,7 @@
       }
     },
     "supervised_ai_baseline": {
-      "status": "ready-awaiting-human-watcher",
+      "status": "ai-attempt-finished-attention-session-still-open",
       "user_statement": "I'm only gonna get an AI to solve the problem anyway and then monitor its responses. Context and management of a loop is still very important. Even if a task might be long-running, it's still important for me to have confidence to step away knowing that eventually an issue is resolved.",
       "baseline": "My normal AI-assisted workflow, including monitoring, scripts and any corrections I request. No manual-coding requirement.",
       "primary_measure": "Exact saved fix passes the independent checks within agreed limits without human repair steering after launch.",
@@ -252,15 +252,27 @@
         "mode": "plain",
         "model": "gpt-6.1-terra",
         "watcher": "reports/harness/issue107-watch.py",
-        "status": "ready-not-started",
-        "human_monitoring_confirmation": null,
-        "model_requests": 0,
+        "status": "ai-stopped-human-still-monitoring",
+        "human_monitoring_confirmation": "Watcher is open",
+        "model_requests": 9,
         "attention_seconds": null,
         "review_seconds": null,
         "purpose": "Measure my normal AI-supervised workflow on a fresh task. This is one baseline, not a paired workflow comparison or proof of time savings.",
         "calibration": "All eight original/seeded/reference/ineffective public/private observations matched; all 9 calibration containers removed.",
         "stage_approval": null,
-        "verification": "reports/harness/issue107-bounds-verification.json"
+        "verification": "reports/harness/issue107-bounds-verification.json",
+        "run_id": "dace60a9424f4865b74b46521cf91e2d",
+        "supervision_start": "reports/harness/issue107-supervision-start.json",
+        "source_commit": "d0ae281",
+        "tool_calls": 12,
+        "outcome": "budget_exhausted",
+        "independent_checks_passed": false,
+        "public_examples_passed": 2,
+        "elapsed_seconds": 112.0217,
+        "reported_tokens": 50143,
+        "result": "reports/harness/issue107-supervised-terra-result.json",
+        "human_current_statement": "Still monitoring",
+        "watcher_feedback": "The raw-counter display was confusing. The local observer now shows readable actions and errors; no frozen inference inputs changed."
       }
     },
     "fresh_bug": {
@@ -346,7 +358,7 @@
       "worktree_config": "The ignored tools/harness/pi/config.local.json links to the shared preference file.",
       "readiness": "Exact model resolves through Pi v1.2.0 with the existing OpenAI Responses subscription provider. Signed in and liveExecutionEnabled true; zero model calls.",
       "catalogue": "The bundled catalogue lacks the requested ID. The harness registers its official metadata only when selected and missing; other models remain available.",
-      "account_access": "Not tested with a live request.",
+      "account_access": "Confirmed by nine actual Terra requests with complete usage during the supervised run. The run later stopped at its tool allowance.",
       "past_results": "The earlier fixed comparisons remain Luna runs. Their saved plans and raw results are unchanged.",
       "conversation_model": "Unchanged: gpt-6.1-sol.",
       "reviewed_stage_decision": null
