@@ -60,6 +60,20 @@ export function requireSubscription(provider, credential) {
 }
 
 export function resolveLiveModel(runtime, config) {
+  if (config.provider === "openai" && config.model === "gpt-6.1-terra" && !runtime.getModel(config.provider, config.model)) {
+    runtime.registerProvider("openai", {
+      models: [...runtime.getModels("openai"), {
+        id: "gpt-6.1-terra",
+        name: "GPT-6.1 Terra",
+        api: "openai-responses",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25 },
+        contextWindow: 1050000,
+        maxTokens: 128000,
+      }],
+    });
+  }
   const model = runtime.getModel(config.provider, config.model);
   if (!model || model.api !== "openai-responses" || config.provider !== "openai") {
     throw new SetupError("Choose an available openai subscription Responses model from the listed models; the selected model was not substituted");

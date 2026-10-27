@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-26",
+  "updated_at": "2026-10-27",
   "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
   "stage": "Compare",
   "status": "awaiting-review",
@@ -318,6 +318,19 @@
       "takeaway": "I get confidence from a fix passing the separate checks. This is useful in either plain or managed Pi.",
       "stage_approval": null,
       "time_saved": "unmeasured"
+    },
+    "model_preference": {
+      "user_request": "Swap the testing harness model to GPT-6.1 Terra, rather than changing the conversation model.",
+      "selected_model": "gpt-6.1-terra",
+      "previous_model": "gpt-6-luna",
+      "config": "/home/adam/localhost/mapbox-tui/tools/harness/pi/config.local.json",
+      "worktree_config": "The ignored tools/harness/pi/config.local.json links to the shared preference file.",
+      "readiness": "Exact model resolves through Pi v1.2.0 with the existing OpenAI Responses subscription provider. Signed in and liveExecutionEnabled true; zero model calls.",
+      "catalogue": "The bundled catalogue lacks the requested ID. The harness registers its official metadata only when selected and missing; other models remain available.",
+      "account_access": "Not tested with a live request.",
+      "past_results": "The earlier fixed comparisons remain Luna runs. Their saved plans and raw results are unchanged.",
+      "conversation_model": "Unchanged: gpt-6.1-sol.",
+      "reviewed_stage_decision": null
     }
   }
 }

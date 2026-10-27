@@ -146,10 +146,17 @@ useful explanation without printing private token responses. Credentials stay
 in `~/.pi/agent/auth.json`, outside the repository, reports, prompts and
 containers. Keep that file private and don't paste its contents into chat.
 
-My local defaults are `gpt-6-luna`, ten model requests and no hard output-token
+My current local choice is `gpt-6.1-terra`, ten model requests and no hard output-token
 cap (`maxOutputTokensPerRequest: null`). The fields are `model`, `maxModelRequests` and
 `maxOutputTokensPerRequest`. Auth must be `"subscription"`; API-key mode is
 rejected.
+
+Pi v1.2.0's bundled catalogue doesn't include this model. The harness adds its
+exact [official model metadata](https://developers.openai.com/api/docs/models/gpt-6.1-terra)
+when selected, using the existing OpenAI Responses transport and subscription
+sign-in. Other models stay available. Readiness makes no model calls and doesn't
+prove the account can use Terra. Earlier Luna results keep their original model;
+changing this preference doesn't rerun a comparison or alter a saved plan.
 
 ## Run one subscription repair attempt
 

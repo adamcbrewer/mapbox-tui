@@ -126,6 +126,28 @@ test("live readiness requires the exact catalogue model and supported transport 
   assert.equal(liveReadiness(runtime, { ...config, maxModelRequests: null }, true).liveExecutionEnabled, false);
 });
 
+test("Terra resolves offline through the existing subscription provider without replacing other models", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error("Selecting a model must not use the network"); };
+  try {
+    const runtime = await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false,
+      refreshOnCreate: false, credentials: { async read() {}, async list() { return []; } } });
+    const previous = runtime.getModels("openai").map(model => model.id);
+    const config = { provider: "openai", model: "gpt-6.1-terra", auth: "subscription",
+      maxOutputTokensPerRequest: null, maxModelRequests: 10 };
+    const model = resolveLiveModel(runtime, config);
+    assert.equal(model.id, config.model);
+    assert.equal(model.api, "openai-responses");
+    assert.equal(runtime.getProvider("openai").auth.oauth.isSubscription, true);
+    for (const id of previous) assert.ok(runtime.getModel("openai", id));
+    assert.deepEqual(liveReadiness(runtime, config, true), { liveExecutionEnabled: true, liveBlocker: null });
+    assert.equal(runtime.getModels("openai").filter(item => item.id === config.model).length, 1);
+    assert.equal(liveReadiness(runtime, config, false).liveExecutionEnabled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("sign-in options persist one Pi installation ID and preserve existing settings", async () => {
   const temporary = mkdtempSync(join(tmpdir(), "mapbox-pi-login-"));
   try {
