@@ -100,7 +100,7 @@ func (n *controlNotification) update(response controlResponse, now time.Time) {
 	n.expires = now.Add(controlActivityDuration)
 }
 
-func (n controlNotification) label(op *controlOperation, now time.Time, ascii bool) string {
+func (n controlNotification) label(op *controlOperation, now time.Time, ascii, animated bool) string {
 	label := controlLabel(n.action)
 	routing := n.routingFailure || (op != nil && op.routeID != 0 && n.state == "pending")
 	if routing {
@@ -113,6 +113,9 @@ func (n controlNotification) label(op *controlOperation, now time.Time, ascii bo
 			frames = []string{"|", "/", "-", "\\"}
 		}
 		frame := frames[(now.UnixMilli()/80)%int64(len(frames))]
+		if !animated {
+			frame = "*"
+		}
 		return frame + " Remote: " + text
 	}
 	text := label.complete
@@ -152,7 +155,7 @@ func (m *viewer) updateControlActivity(now time.Time) {
 		}
 		entries = append(entries, notice)
 		if len(labels) < limit {
-			labels = append(labels, notice.label(op, now, m.settings.ASCII))
+			labels = append(labels, notice.label(op, now, m.settings.ASCII, !m.settings.NoAnimation))
 		}
 	}
 	clear(a.entries[len(entries):])

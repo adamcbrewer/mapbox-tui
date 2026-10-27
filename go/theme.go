@@ -130,12 +130,13 @@ func (m *viewer) applyTheme(index int) {
 
 func (m *viewer) stylePicker() {
 	s := m.styles
+	m.ui.picker.Cursor = ">"
 	m.ui.picker.Styles = filepicker.Styles{
 		File:             s.dialogText,
 		Directory:        s.dialogAccent,
 		Symlink:          s.dialogAccent,
 		DisabledFile:     s.dialogMuted,
-		DisabledSelected: s.dialogMuted,
+		DisabledSelected: s.selected.Foreground(lipgloss.Color(m.theme().Dimmed)),
 		DisabledCursor:   s.dialogMuted,
 		Selected:         s.selected,
 		Cursor:           s.dialogAccent,

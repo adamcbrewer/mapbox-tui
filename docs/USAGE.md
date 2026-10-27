@@ -148,6 +148,21 @@ MCP keep their own defaults.
 | Safe-start conflicts | `--safe-start --reset-view` | Rejected; safe start doesn't repair/delete settings or reset credentials |
 | Invalid settings | Open Context for warning | File left untouched; defaults used; repair before saving preferences |
 
+The row beneath the map shows current activity without changing the map size.
+Imports show the filename, queue position and completed-file count. The progress
+bar counts completed files, not time spent parsing the current file. Search,
+routing and workspace loading also show activity beside the action.
+
+Map and traffic failures remain visible while retries run. Feedback distinguishes
+retained previous data, partial results and no data. Press Alt-V from any view for
+source details and recovery guidance (`v` also works from the map). The Context
+tab lists overlapping activity. File imports and workspace saves briefly confirm completion.
+Routine background refreshes finish quietly.
+
+The animation choice (`m` or `--no-animation`) controls both camera movement and
+activity spinners. With animation off, a static `*` and descriptive text indicate
+busy work. ASCII mode uses plain spinner frames, progress bars and confirmations.
+
 ## Saved workspaces
 
 Saving is manual. No autosave or automatic session/crash recovery. Saves reference

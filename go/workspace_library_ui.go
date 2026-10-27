@@ -18,11 +18,10 @@ type workspaceLibraryReady struct {
 func (m *viewer) loadWorkspaceLibrary() tea.Cmd {
 	m.savedWork.request++
 	request := m.savedWork.request
-	m.savedWork.mode, m.savedWork.busy = "library", true
-	m.savedWork.entries, m.savedWork.candidate = nil, nil
-	m.savedWork.selected = 0
+	m.savedWork.mode, m.savedWork.busy, m.savedWork.opening = "library", true, false
+	m.savedWork.candidate = nil
 	m.ui.search.Blur()
-	m.ui.notice = "Reading saved workspaces..."
+	m.ui.notice = ""
 	return func() tea.Msg {
 		store, err := localWorkspaceStore()
 		if err != nil {
@@ -51,6 +50,7 @@ func (m *viewer) acceptWorkspaceLibrary(result workspaceLibraryReady) tea.Cmd {
 
 func (m *viewer) filterWorkspaceLibrary() {
 	anchor := m.savedWork.anchor
+	offset := m.ui.page.YOffset()
 	entries := []workspaceListing{}
 	query := strings.ToLower(strings.TrimSpace(m.savedWork.query))
 	for _, entry := range m.savedWork.allEntries {
@@ -72,12 +72,15 @@ func (m *viewer) filterWorkspaceLibrary() {
 	m.savedWork.entries = entries
 	selected := slices.IndexFunc(entries, func(entry workspaceListing) bool { return entry.path == anchor })
 	m.selectLibraryWorkspace(max(0, selected))
+	if m.savedWork.anchor == anchor {
+		m.ui.page.SetYOffset(offset)
+	}
 }
 
 func (m *viewer) selectLibraryWorkspace(index int) tea.Cmd {
 	m.savedWork.request++
 	m.savedWork.candidate = nil
-	m.savedWork.busy = false
+	m.savedWork.busy, m.savedWork.opening = false, false
 	m.ui.notice = ""
 	m.ui.page.GotoTop()
 	if len(m.savedWork.entries) == 0 {
@@ -95,7 +98,8 @@ func (m *viewer) selectLibraryWorkspace(index int) tea.Cmd {
 
 func (m *viewer) updateWorkspaceLibrary(msg tea.KeyPressMsg) tea.Cmd {
 	count := len(m.savedWork.entries)
-	if m.savedWork.busy && count > 0 {
+	leave := msg.String() == "p" || msg.String() == "tab"
+	if m.savedWork.busy && count > 0 && !leave {
 		return nil
 	}
 	switch msg.String() {
@@ -188,21 +192,36 @@ func (m *viewer) workspaceLibraryContent(width, height int) (string, string, str
 	if m.savedWork.mode == "library-search" {
 		filter = m.ui.search.View() + " | Sort: " + sort
 	}
+	if m.savedWork.busy {
+		filter = m.busyLabel("Reading saved workspaces")
+	}
 	if count == 0 {
 		body := "No saved workspaces yet.\nUse Save workspace to create one, or Tab to choose a file."
 		if len(m.savedWork.allEntries) > 0 {
 			body = "No matching workspaces. Press / to change or clear the search."
 		}
+		if m.ui.notice != "" {
+			body = "Could not read saved workspaces. Press r to retry, or Tab to choose a file."
+		}
 		if m.savedWork.busy {
-			body = "Reading saved workspaces..."
+			return "Open saved workspace", m.styles.dialogAccent.Render(pad(filter, width)), "esc cancel"
 		}
 		return "Open saved workspace", ansi.Hardwrap(filter+"\n\n"+body, width, true), hints
 	}
 	rows := min(count, max(1, min(5, height/4)))
 	start := max(0, min(m.savedWork.selected-rows/2, count-rows))
-	lines := []string{
-		ansi.Truncate(filter, width, ""),
-		fmt.Sprintf("Saved workspaces (%d/%d)", m.savedWork.selected+1, count),
+	summary := fmt.Sprintf("Saved workspaces (%d/%d)", m.savedWork.selected+1, count)
+	var lines []string
+	switch {
+	case height > 3:
+		lines = append(lines, ansi.Truncate(filter, width, ""), summary)
+	case height > 1:
+		if m.savedWork.busy || m.savedWork.mode == "library-search" {
+			summary = filter
+		}
+		lines = append(lines, ansi.Truncate(summary, width, ""))
+	case m.savedWork.mode == "library-search":
+		return "Open saved workspace", filter, hints
 	}
 	for i := start; i < start+rows; i++ {
 		entry := m.savedWork.entries[i]
@@ -245,6 +264,9 @@ func (m *viewer) workspaceLibraryContent(width, height int) (string, string, str
 			style = m.styles.selected
 		}
 		lines = append(lines, style.Render(pad(line, width)))
+	}
+	if height <= 3 {
+		return "Open saved workspace", strings.Join(lines, "\n"), hints
 	}
 	entry := m.savedWork.entries[m.savedWork.selected]
 	details := entry.preview.pickerDetails(width, m.settings.ASCII)

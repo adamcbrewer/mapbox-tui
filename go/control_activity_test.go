@@ -92,6 +92,7 @@ func TestControlActivityAcknowledgesImmediatelyAndExpiresWithoutRetryReset(t *te
 func TestControlActivityPendingOverlapAndFailure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := journeyViewer(t)
+		m.settings.NoAnimation = false
 		t.Cleanup(m.cancelControlOperations)
 		var requests []controlRequest
 		var commands []tea.Cmd

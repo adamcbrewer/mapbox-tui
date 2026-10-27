@@ -96,7 +96,7 @@ func parseCLI(argv []string, output io.Writer) (cliCommand, error) {
 			return nil
 		})
 		fs.StringVar(&a.Elevation, "elevation", "auto", "elevation profiles: auto, show or hide (launch only)")
-		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions")
+		fs.BoolVar(&a.NoAnimation, "no-animation", false, "disable camera transitions and activity animation")
 		fs.StringVar(
 			&a.Theme,
 			"theme",

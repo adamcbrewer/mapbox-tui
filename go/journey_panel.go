@@ -42,7 +42,7 @@ func (m *viewer) journeyPanelY() int {
 }
 
 func (m *viewer) journeyPanel() string {
-	width, height := m.journeyPanelWidth(), m.camera.Height+1-m.journeyPanelY()
+	width, height := m.journeyPanelWidth(), m.camera.Height-m.journeyPanelY()
 	innerWidth := max(1, width-4)
 	showNotice := m.ui.notice != "" && height >= 5
 	footerLines := 1
@@ -50,9 +50,9 @@ func (m *viewer) journeyPanel() string {
 		footerLines = 2
 	}
 	if m.ui.dialog == dialogJourney {
-		footerLines = min(3, max(0, height-3))
+		footerLines = min(3, max(0, height-4))
 		if showNotice {
-			footerLines = min(footerLines, max(0, height-4))
+			footerLines = min(footerLines, max(0, height-5))
 		}
 	}
 	if m.ui.feedback != "" && height >= 6 {
@@ -149,7 +149,7 @@ func (m *viewer) clickJourneyPanelRow(x, y int) tea.Cmd {
 	if m.ui.dialog == dialogJourney {
 		row--
 	}
-	if m.ui.notice != "" && m.camera.Height+1-m.journeyPanelY() >= 5 {
+	if m.ui.notice != "" && m.camera.Height-m.journeyPanelY() >= 5 {
 		row--
 	}
 	if row < 0 || row >= m.planner.menuCount {

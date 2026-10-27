@@ -232,7 +232,7 @@ func TestFilePickerWrapsSelection(t *testing.T) {
 	m := journeyViewer(t)
 	m.openDialog(dialogFiles)
 	m.ui.picker.CurrentDirectory = ".."
-	m.Update(m.ui.picker.Init()())
+	m.Update(m.readFilePicker(m.ui.picker.Init())())
 	first := m.ui.picker.HighlightedPath()
 	m.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
 	last := m.ui.picker.HighlightedPath()
@@ -263,7 +263,7 @@ func TestFilePickerWrapsSelection(t *testing.T) {
 	}
 	m.openDialog(dialogFiles)
 	m.ui.picker.CurrentDirectory = t.TempDir()
-	m.Update(m.ui.picker.Init()())
+	m.Update(m.readFilePicker(m.ui.picker.Init())())
 	for _, code := range []rune{tea.KeyUp, tea.KeyDown, tea.KeyEnter} {
 		_, cmd := m.Update(tea.KeyPressMsg{Code: code})
 		if cmd != nil || m.ui.picker.HighlightedPath() != "" || m.ui.dialog != dialogFiles {

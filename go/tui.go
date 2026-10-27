@@ -35,6 +35,8 @@ type viewer struct {
 	workspace                 Workspace
 	control                   *viewerControl
 	pendingPaths              []string
+	imports                   importActivity
+	confirmation              activityConfirmation
 	startupCameraPending      bool
 	savedView                 *savedView
 	viewChanged               bool
@@ -123,6 +125,8 @@ func (m *viewer) freeRoam() tea.Cmd {
 	m.camera = m.destination()
 	m.motion.Active = false
 	m.loading = false
+	m.imports = importActivity{}
+	m.confirmation = activityConfirmation{}
 	m.setFollowing(false)
 	m.inspected = nil
 	m.ui.details.GotoTop()
@@ -206,9 +210,18 @@ func (m *viewer) applyStartupSelection(ref ItemRef) error {
 	return m.workspace.selectDocumentPoint(ref.DocumentID, *m.args.PointIndex)
 }
 func (m *viewer) load(path string) tea.Cmd {
+	if m.loading {
+		m.pendingPaths = nil
+	}
+	m.imports = importActivity{total: len(m.pendingPaths) + 1}
+	m.confirmation = activityConfirmation{}
+	return m.loadImport(path)
+}
+func (m *viewer) loadImport(path string) tea.Cmd {
 	m.loadID++
 	id := m.loadID
 	m.loading = true
+	m.imports.path = path
 	m.dirty = true
 	absolute, err := filepath.Abs(path)
 	if err != nil {
@@ -268,6 +281,7 @@ func (m *viewer) fetchAt(now time.Time) tea.Cmd {
 	return tea.Batch(commands...)
 }
 func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	defer m.keepCommandSelection()()
 	// Finalise operations after input has recorded its revision changes.
 	defer m.reconcileOperations()
 	// Only navigation from input marks the view for saving. Startup imports,
@@ -292,6 +306,8 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.startControlWorkspaceSave(v)
 	case controlLoaded:
 		return m, m.acceptControlLoad(v)
+	case filePickerReady:
+		return m, m.acceptFilePicker(v)
 	case workspaceLibraryReady:
 		return m, m.acceptWorkspaceLibrary(v)
 	case savedWorkspaceReady:
@@ -435,14 +451,23 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = false
 		if v.err != nil {
+			m.imports.failed = true
 			m.pendingPaths = nil
 			m.startupCameraPending = false
 			m.initialised = true
 			m.dirty = true
 			cmd := m.openDialog(dialogFiles)
-			m.ui.notice = "Could not open track file: " + v.err.Error()
+			name := "track file"
+			if v.path != "" {
+				name = cleanPlaceText(filepath.Base(v.path))
+			}
+			m.ui.notice = "Could not open " + name + ": " + v.err.Error()
+			if m.imports.total > 1 {
+				m.ui.notice += fmt.Sprintf(" (%d of %d files opened; queue stopped)", m.imports.completed, m.imports.total)
+			}
 			return m, cmd
 		}
+		m.imports.completed++
 		initial := !m.initialised
 		m.initialised = true
 		m.path = v.path
@@ -485,8 +510,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.pendingPaths) > 0 {
 			path := m.pendingPaths[0]
 			m.pendingPaths = m.pendingPaths[1:]
-			return m, m.load(path)
+			return m, m.loadImport(path)
 		}
+		label := "File opened"
+		if m.imports.total > 1 {
+			label = fmt.Sprintf("%d files opened", m.imports.completed)
+		}
+		m.confirmActivity(label)
 		return m, tea.Batch(m.fetch(), m.startJourneyFromArgs())
 	case sourceResult:
 		m.configureSources()
@@ -514,9 +544,13 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.reconcileOperations()
 		m.updateControlActivity(time.Now())
+		m.expireActivity(now)
 		command := m.fetchAt(now)
-		if !m.sources.busy() && !m.loading {
+		m.configureSpinner()
+		if !m.activityBusy() || m.settings.NoAnimation {
 			m.ui.spinning = false
+		} else {
+			command = tea.Batch(command, m.startSpinner())
 		}
 		if m.dirty {
 			m.rebuild()
@@ -525,7 +559,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.captureConnectionNotice()
 		return m, tea.Batch(tick(), command)
 	case spinner.TickMsg:
-		if m.ui.spinning {
+		if m.ui.spinning && !m.settings.NoAnimation {
 			var cmd tea.Cmd
 			m.ui.spinner, cmd = m.ui.spinner.Update(msg)
 			m.dirty = true
@@ -545,6 +579,9 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == "ctrl+k" && m.ui.dialog != dialogCommands {
 			return m, m.pushDialog(dialogCommands)
+		}
+		if key == "alt+v" && m.ui.dialog != dialogCredits {
+			return m, m.pushDialog(dialogCredits)
 		}
 		if key == "esc" && !m.planner.pickingStop && len(m.ui.parents) == 0 &&
 			(m.ui.dialog == dialogWorkspace || m.ui.dialog == dialogJourney) {
@@ -818,7 +855,7 @@ func (m *viewer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		panelX := x >= m.journeyPanelX() && x < m.width
 		overDetails := drawerVisible && panelX && y >= m.contextDrawerY() && y < m.contextDrawerY()+m.contextDrawerHeight()
 		mapGesture := m.dragging || m.rotating
-		overPlanner := m.journeyPanelVisible() && panelX && y >= originY && y < m.camera.Height+1
+		overPlanner := m.journeyPanelVisible() && panelX && y >= originY && y < m.camera.Height
 		if overPlanner && !mapGesture {
 			return m, m.updateDialog(msg)
 		}
@@ -1172,7 +1209,7 @@ func (m *viewer) rebuild() {
 		mapRows = append(mapRows, m.gridRow(g, y, m.settings.ASCII))
 	}
 	rows = append(rows, mapRows...)
-	rows = append(rows, strings.Repeat(" ", m.width))
+	rows = append(rows, m.activityRow())
 	profile := m.visibleProfile()
 	if len(m.workspace.items()) > 1 && m.profileHeight > 0 {
 		rows = append(rows, m.workspaceLegend(m.width, profile))
@@ -1222,7 +1259,7 @@ func (m *viewer) rebuild() {
 		if m.loading {
 			label = "Loading track file…"
 		}
-		status = m.ui.spinner.View() + " " + label + " " + status
+		status = m.busyMarker() + " " + label + " " + status
 	}
 	contextStatus := status
 	if playback != nil {

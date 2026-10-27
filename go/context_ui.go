@@ -134,11 +134,6 @@ func (m *viewer) contextSummaryRows() []string {
 		}
 	}
 	hints := "ctrl+b " + action + separator + strings.Join(shortcuts, separator)
-	if m.loading || m.sources.busy() {
-		second = m.ui.spinner.View() + " loading"
-	} else if m.sources.view().status() != "" {
-		second = "source status: v"
-	}
 	facts := first + " · " + second
 	theme := "Theme: " + m.theme().Name
 	if m.width < 60 {
@@ -182,6 +177,10 @@ func (m *viewer) contextDrawerY() int { return m.mapOriginY() }
 
 func (m *viewer) contextDetails() []string {
 	lines := m.details()
+	if activity := m.activityDetails(); len(activity) > 0 {
+		lines = append(lines, "", "Activity")
+		lines = append(lines, activity...)
+	}
 	if notice := m.preferenceNotice(); notice != "" {
 		lines = append(lines, "", notice)
 	}

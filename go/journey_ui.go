@@ -523,8 +523,12 @@ func (m *viewer) journeyDialogContent(width, height int) (string, string, string
 	rows := []string{}
 	entry, itemIndex, _ := m.workspace.lookup(m.planner.ref)
 	track := entry.document.Items[itemIndex].Track
-	if height > 3 && (len(track.Points) > 0 || j.Busy || j.Error != "") {
+	showStatus := height > 3 && (len(track.Points) > 0 || j.Error != "")
+	if showStatus || j.Busy && height > 1 {
 		status := strings.TrimPrefix(journeyRoutingStatus(j, track), j.Mode.label()+" · ")
+		if j.Busy {
+			status = m.busyLabel("Calculating " + strings.ToLower(j.Mode.label()) + " route")
+		}
 		if j.Mode == journeyManual {
 			status = fmt.Sprintf("%.2f km · straight-line", track.Distance/1000)
 		}

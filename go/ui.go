@@ -53,6 +53,9 @@ type uiState struct {
 	parents        []dialogFrame
 	help           help.Model
 	picker         filepicker.Model
+	pickerRequest  uint64
+	pickerBusy     bool
+	pickerError    string
 	search         textinput.Model
 	inputID        string
 	page, details  pager.Model
@@ -232,7 +235,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 				binding("ctrl+k", "command palette"),
 				binding("a", "ASCII map"),
 				binding("v", "credits"),
-				binding("m", "toggle camera animation"),
+				binding("m", "toggle animations"),
 				binding("esc", "close panel / clear location"),
 				binding("q", "quit"),
 			},
@@ -270,7 +273,7 @@ func (k shortcutMap) FullHelp() [][]key.Binding {
 			binding("ctrl+k", "command palette"),
 			binding("a", "ASCII map"),
 			binding("v", "credits"),
-			binding("m", "toggle camera animation"),
+			binding("m", "toggle animations"),
 			binding("esc", "close panel / clear location"),
 			binding("q", "quit"),
 		},
@@ -331,13 +334,13 @@ func (m *viewer) initUI() error {
 	m.ui.search.CharLimit = 80
 	m.ui.search.SetVirtualCursor(false)
 	m.ui.spinner = spinner.New()
-	m.ui.spinner.Spinner = spinner.Dot
+	m.configureSpinner()
 	m.applyTheme(selected)
 	return nil
 }
 
 func (m *viewer) startSpinner() tea.Cmd {
-	if m.ui.spinning {
+	if m.ui.spinning || m.settings.NoAnimation {
 		return nil
 	}
 	m.ui.spinning = true
@@ -387,6 +390,8 @@ func (m *viewer) closeDialog() {
 	m.dirty = true
 }
 func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
+	m.ui.pickerRequest++
+	m.ui.pickerBusy, m.ui.pickerError = false, ""
 	wasPlanner := m.journeyPanelOpen()
 	if m.ui.dialog == dialogWorkspace {
 		m.ui.filesSelected = m.ui.selected
@@ -448,7 +453,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		picker.Cursor = "›"
 		m.ui.picker = picker
 		m.stylePicker()
-		return picker.Init()
+		return m.readFilePicker(picker.Init())
 	case dialogThemes:
 		m.ui.themeBefore = m.settings.Theme
 		m.ui.selected = m.settings.Theme
@@ -519,7 +524,7 @@ func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 				pickingStop:    m.planner.pickingStop,
 			}
 		}
-		if frame.kind == dialogFiles {
+		if m.filePickerOpen() {
 			picker := m.ui.picker
 			frame.picker = &picker
 		}
@@ -626,7 +631,7 @@ func (m *viewer) backDialog() tea.Cmd {
 		m.ui.picker = *frame.picker
 		m.ui.picker.SetHeight(max(1, min(17, m.height-10)-2))
 		m.stylePicker()
-		command = m.ui.picker.Init()
+		command = m.readFilePicker(m.ui.picker.Init())
 	}
 	if frame.kind == dialogMapbox {
 		for i, action := range m.mapboxActions() {
@@ -920,18 +925,8 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			}
 		}
 	case dialogFiles:
-		highlighted := m.ui.picker.HighlightedPath()
-		m.ui.picker, cmd = m.ui.picker.Update(msg)
-		atEdge := highlighted != "" && highlighted == m.ui.picker.HighlightedPath()
-		if pressed, ok := msg.(tea.KeyPressMsg); ok && atEdge {
-			switch {
-			case key.Matches(pressed, m.ui.picker.KeyMap.Up):
-				m.ui.picker, _ = m.ui.picker.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
-			case key.Matches(pressed, m.ui.picker.KeyMap.Down):
-				m.ui.picker, _ = m.ui.picker.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
-			}
-		}
-		if selected, path := m.ui.picker.DidSelectFile(msg); selected {
+		cmd = m.updateFilePicker(msg)
+		if selected, path := m.ui.picker.DidSelectFile(msg); selected && !m.ui.pickerBusy && m.ui.pickerError == "" {
 			m.closeDialog()
 			return m.load(path)
 		}
@@ -947,6 +942,27 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		m.ui.page, cmd = m.ui.page.Update(msg)
 	}
 	return cmd
+}
+
+func (m *viewer) keepCommandSelection() func() {
+	if m.ui.dialog != dialogCommands {
+		return func() {}
+	}
+	commands := m.commands()
+	selected, query := m.ui.selected, m.ui.search.Value()
+	if selected >= len(commands) {
+		return func() {}
+	}
+	action := commands[selected].action
+	return func() {
+		if m.ui.dialog != dialogCommands || m.ui.selected != selected || m.ui.search.Value() != query {
+			return
+		}
+		index := slices.IndexFunc(m.commands(), func(command viewerCommand) bool { return command.action == action })
+		if index >= 0 {
+			m.ui.selected = index
+		}
+	}
 }
 
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
@@ -990,11 +1006,19 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 				style = style.Foreground(lipgloss.Color(m.theme().Dimmed))
 			}
 			label := command.title
+			prefix := "  "
+			if i == m.ui.selected {
+				prefix = "> "
+			}
 			if command.checked {
 				tick := style.Foreground(lipgloss.Color(m.theme().Accent)).Render("✓")
 				label += " " + tick
 			}
-			line := pad(label, max(1, width-len(command.shortcut)-3)) + "  " + command.shortcut
+			line := prefix + label
+			shortcutWidth := ansi.StringWidth(command.shortcut)
+			if shortcutWidth > 0 && ansi.StringWidth(line)+shortcutWidth+3 <= width {
+				line = pad(line, width-shortcutWidth-3) + "  " + command.shortcut
+			}
 			rows = append(rows, style.Render(pad(line, width)))
 		}
 		if len(commands) == 0 {
@@ -1002,13 +1026,8 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		}
 		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose   space toggle   enter run   esc close"
 	case dialogFiles:
-		m.ui.picker.SetHeight(max(1, height-2))
-		m.ui.picker.Styles.Selected = m.ui.picker.Styles.Selected.Width(max(1, width-1)).MaxWidth(max(1, width-1))
-		m.ui.picker.Styles.File = s.dialogText.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		m.ui.picker.Styles.Directory = s.dialogAccent.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		m.ui.picker.Styles.DisabledFile = s.dialogMuted.Width(max(1, width-2)).MaxWidth(max(1, width-2))
-		path := s.dialogMuted.Render(pad(ansi.Truncate(m.ui.picker.CurrentDirectory, width, "…"), width))
-		return "Open track file", path + "\n\n" + m.ui.picker.View(), "↑/↓ choose   ←/→ folders   enter open   esc close"
+		hints := m.filePickerHints("↑/↓ choose   ←/→ folders   enter open   esc close")
+		return "Open track file", m.filePickerContent(width, height), hints
 	case dialogSpeed:
 		rows := []string{s.dialogMuted.Render(pad("Playback speed multiplier", width)), ""}
 		for i, speed := range []int{1, 5, 20, 60, 120} {
@@ -1110,6 +1129,15 @@ func (m *viewer) sourceCreditsContent(sources sourceView) string {
 		}
 		if source.Name == "traffic" {
 			content.WriteString("\n" + m.trafficLegend())
+		}
+		for _, state := range m.sources.states {
+			if state.enabled && state.name == source.Name && state.snapshot.Failed {
+				guidance := "Check Mapbox settings, account access and your connection."
+				if source.RefreshAt != nil {
+					guidance = "Retry scheduled automatically. " + guidance
+				}
+				content.WriteString("\n" + state.activityFailure(false) + "\n" + guidance)
+			}
 		}
 	}
 	return content.String()

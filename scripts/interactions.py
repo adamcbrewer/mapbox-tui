@@ -24,7 +24,7 @@ def tmux(*args, check=True):
 
 
 def capture(colors=False):
-    text = tmux("capture-pane", "-p", *( ["-e"] if colors else []), "-t", "poc:0.0")
+    text = tmux("capture-pane", "-p", *( ["-e", "-N"] if colors else []), "-t", "poc:0.0")
     if colors:
         return text
     width = int(tmux("display-message", "-p", "-t", "poc:0.0", "#{pane_width}"))
@@ -64,6 +64,9 @@ def settled():
         if current != previous:
             previous, unchanged = current, time.monotonic()
         elif time.monotonic() - unchanged >= .3:
+            confirmation = r"^(?:✓|OK) (?:File opened|\d+ files opened|Workspace saved|Workspace opened)\s*$"
+            if re.search(confirmation, current, re.MULTILINE):
+                continue
             return current
     raise AssertionError(f"Camera did not settle:\n{capture()}")
 
@@ -475,7 +478,7 @@ def dialogs(binary):
             tmux("send-keys", "-t", "poc:0.0", "g")
             for _ in range(20):
                 current = capture()
-                if re.search(r"›\s+" + re.escape(name), current):
+                if re.search(r">\s+" + re.escape(name), current):
                     tmux("send-keys", "-t", "poc:0.0", activate)
                     return
                 send("j")
@@ -522,7 +525,7 @@ def dialogs(binary):
         send("\x0f")
         wait_for(lambda s: "Open track file" in s and "example.gpx" in s)
         select_file("invalid.gpx")
-        wait_for(lambda s: "Could not open track file" in s)
+        wait_for(lambda s: "Could not open invalid.gpx" in s)
         tmux("send-keys", "-t", "poc:0.0", "Escape")
         wait_for(lambda s: "Riverside exploration" in s and "Open track file" not in s)
         send("\x0f")
@@ -1864,7 +1867,7 @@ def saved_workspace_controls(binary, width, height, ascii_mode=False):
         command("Repair missing workspace files")
         wait_for(lambda s: active_modal(s, "Missing or changed files"))
         tmux("send-keys", "-t", "poc:0.0", "Enter")
-        wait_for(lambda s: active_modal(s, "Locate original import") and "Folder:" in s and "ride.moved.gpx" in s)
+        wait_for(lambda s: active_modal(s, "Locate original import") and "ride.moved.gpx" in s)
         save_svg(screenshots / f"workspace-file-picker-{width}x{height}-ascii-{ascii_mode}.svg", width, height)
         tmux("send-keys", "-t", "poc:0.0", "Tab")
         wait_for(lambda s: "ctrl+u replace path" in s)

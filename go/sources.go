@@ -72,6 +72,7 @@ type sourceState struct {
 	wanted, requested   Camera
 	hasView, hasRequest bool
 	completed           bool
+	retained            bool
 	changed, started    time.Time
 	snapshot            sourceSnapshot
 }
@@ -117,6 +118,7 @@ func (l *sourceLoader) set(name string, source mapSource, enabled bool) {
 	state.source, state.enabled = source, enabled
 	state.hasView, state.hasRequest = false, false
 	state.completed = false
+	state.retained = false
 	state.snapshot = sourceSnapshot{}
 }
 
@@ -192,6 +194,7 @@ func (l *sourceLoader) accept(result sourceResult, camera Camera, now time.Time)
 		}
 		retainPrevious := snapshot.Failed && len(snapshot.Features) == 0
 		previousComplete := len(state.snapshot.Features) > 0 || !state.snapshot.FetchedAt.IsZero()
+		state.retained = retainPrevious && len(state.snapshot.Features) > 0
 		if retainPrevious && previousComplete {
 			snapshot.Features = state.snapshot.Features
 			snapshot.Credits = state.snapshot.Credits

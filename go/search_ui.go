@@ -47,7 +47,7 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 	case m.places.token == "":
 		hints = "enter coordinates / click map"
 	}
-	if height > 2 && len(m.planner.suggestions) == 0 {
+	if (height > 2 || m.planner.searchBusy && height > 1) && len(m.planner.suggestions) == 0 {
 		status := "Mapbox search · type a place"
 		style := s.dialogAccent
 		if m.places.token == "" {
@@ -61,9 +61,9 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 			style = s.dialogMuted
 		}
 		if m.planner.searchBusy {
-			status = "Looking up location..."
+			status = m.busyLabel("Looking up location")
 			if m.planner.savingFavourite {
-				status = "Saving favourite..."
+				status = m.busyLabel("Saving favourite")
 			}
 		}
 		rows = append(rows, style.Render(pad(status, width)))
@@ -80,6 +80,9 @@ func (m *viewer) placeSearchContent(width, height int) (string, string) {
 				rows = append(rows, s.dialogMuted.Render(pad(guidance, width)))
 			}
 		}
+	}
+	if m.planner.searchBusy && height == 1 {
+		hints = m.busyLabel("Looking up location") + "\n" + hints
 	}
 	if height > 3 {
 		hints = "ctrl+f favourites / alt+s toggle\n" + hints

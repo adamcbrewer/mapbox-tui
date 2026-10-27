@@ -347,7 +347,7 @@ func TestJourneyPanelSectionsAndInsetTitle(t *testing.T) {
 	m.openJourney()
 	m.rebuild()
 	rows := strings.Split(ansi.Strip(m.journeyPanel()), "\n")
-	if !strings.Contains(rows[0], "Context · Files · Journey") || len(rows) != m.camera.Height+1-m.journeyPanelY() {
+	if !strings.Contains(rows[0], "Context · Files · Journey") || len(rows) != m.camera.Height-m.journeyPanelY() {
 		t.Fatal("planner title or vertical inset is incorrect")
 	}
 	text := strings.Join(rows, "\n")

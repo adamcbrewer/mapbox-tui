@@ -71,6 +71,42 @@ func TestWorkspaceLibraryPreviewSwitchCancelAndOpen(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLibraryRefreshPreservesSelectionAndDetailScroll(t *testing.T) {
+	m := themeViewer(t, 70, 24, false)
+	store, err := localWorkspaceStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		saveTestWorkspace(t, &m.workspace, store, true)
+	}
+	list := m.openSavedWorkspaceDialog("open")
+	m.Update(list())
+	m.selectLibraryWorkspace(2)
+	m.workspaceLibraryContent(48, 8)
+	m.ui.page.GotoBottom()
+	offset, anchor := m.ui.page.YOffset(), m.savedWork.anchor
+	if offset == 0 {
+		t.Fatal("fixture has no scrollable details")
+	}
+	refresh := m.loadWorkspaceLibrary()
+	_, body, _ := m.workspaceLibraryContent(48, 8)
+	if m.savedWork.anchor != anchor || len(m.savedWork.entries) != 4 ||
+		!strings.Contains(body, "Reading saved workspaces") || !strings.Contains(body, "Saved workspaces (3/4)") {
+		t.Fatal("refresh replaced the selected list with an empty loading screen", body)
+	}
+	saveTestWorkspace(t, &m.workspace, store, true)
+	m.Update(refresh())
+	m.workspaceLibraryContent(48, 8)
+	if m.savedWork.anchor != anchor || m.ui.page.YOffset() != offset {
+		t.Fatal("refresh lost selected identity or detail scroll", m.savedWork.anchor, m.ui.page.YOffset())
+	}
+	_, body, _ = m.workspaceLibraryContent(48, 2)
+	if !strings.Contains(body, "> ") {
+		t.Fatal("compact picker hid the selected entry", body)
+	}
+}
+
 func TestWorkspaceLibraryEmptyInvalidAndAlternatePath(t *testing.T) {
 	m := themeViewer(t, 70, 24, true)
 	list := m.openSavedWorkspaceDialog("open")
