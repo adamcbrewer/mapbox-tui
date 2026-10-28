@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-27",
-  "source": "GitHub issue #107; I asked to start Compare in a new feature branch/worktree on 26 October 2026.",
-  "stage": "Compare",
+  "updated_at": "2026-10-28",
+  "source": "GitHub issue #108 and Adam's explicit approval in chat on 28 October 2026 to proceed with supervised use.",
+  "stage": "Use",
   "status": "awaiting-review",
-  "next": "Review the successful repeat and the recorded 161.3742-second watcher-open interval. Earlier watching time is unknown and the old timing session is unusable. The AI result is fully checked; time savings, complete active attention and final stage approval remain unestablished. No later stage starts automatically.",
+  "next": "Review the synthetic import patch and passing independent receipt, discuss the four learning questions and select a real maintainer-triaged reproducer if one becomes available. Keep submission manual pending the reviewed trigger decision.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -84,14 +84,17 @@
     "I clarified that I normally ask an AI to solve the bug and monitor its responses, rather than write the fix myself. I can judge whether Pi's loop and verification improve that workflow. Context management and confidence to step away matter even when a run takes longer. The assistant's proposed no-AI manual-coding baseline was the wrong interpretation. The comparison will record independently checked fixes within the agreed limits without human repair steering, monitoring/check-ins, interventions, review/correction time, elapsed time, usage/cost and my judgement after review. Final review is still required. An unattended run and a monitored run with zero interventions are different observations. Context, recovery and automatic checking can differ as a frozen whole-workflow treatment; task copies, model/settings, environment, overall limits and final checker stay fixed. This cannot attribute an effect to one component. A clean stop is useful but not a successful repair, and the existing ten-minute cap does not demonstrate hours-long work. No human timer or fresh AI comparison was started. Previous human-attention figures remain unknown. This records the scope correction, not stage approval or a promise that every issue will be solved.",
     "I asked whether we were waiting for a bug or manufacturing one. I prepared a new synthetic development task, segment-distance-v1, in a disposable copy of the pinned project. The bug inflates journey distance across separate recording sections. The visible test has continuous and split journeys; the private checks cover other section shapes and GPX/TCX/KML inputs, preserving point coordinates and geometry. The original code and supplied known fix passed both check sets. The planted bug and an edit that doesn't fix it failed both for the intended distance assertion. All eight observations matched in 196.9056 seconds; all nine containers were removed. No Pi session, repair AI or human timer ran. The original two-case suite still loads and the held-out coordinate task stayed unused. All 292 Python tests and repository tests/formatting passed. An attempt to select a case outside the fresh suite exited 2 before container execution. This prepares the exercise, not a live comparison or evidence of less supervision. The full repair checker still pins the earlier XML task and needs this task bound before launch. Evidence stays local under reports/harness/issue107-distance-verification.json; task suite reports/harness/case-suites/runs/555a7c718ea84d86a3c454838e92483b/.",
     "I asked to proceed with the manufactured bug. The full checker now selects registered task inputs instead of assuming the XML task: planted patch, protected visible examples, private checks, commands and exact task identity. Default XML behaviour remains supported. The actual Pi/Python/container connection applied supplied good and bad edits to the fresh distance task and passed the exact saved patches to fresh independent checkouts. The good run passed all eight required checks in 234.0812 seconds overall; the bad run failed its candidate test in 101.1067 seconds and later checks stayed not run. Both used the same task and checking-rule fingerprints. All fifteen containers were removed. No repair model or human timer ran. All 299 Python tests, 29 Pi tests, three integration tests and repository tests/formatting passed. A completeness pass found that the report introduction still named the old XML test; the reporter now uses the saved task's test name. After that report-only correction, 24 native/checker tests passed and both Markdown reports were refreshed with original receipts unchanged. A final 27 verifier tests also passed after an unused constant was removed. The next comparison protocol is a draft, not an executable or approved experiment. The operator prompt channel, attention record and managed loop for this task still need connecting before either live workflow starts. The held-out task and learning review remain pending. Local evidence: reports/harness/issue107-distance-checker-verification.json.",
-    "I asked to keep progressing through the rest of #107 and save review/reflection for the end. Only ask for intervention when it is absolutely required; otherwise make the smallest workable assumption. I also asked for periodic progress updates in the conversation. This authorises the remaining bounded implementation and evaluations within #107, not invented human measurements, stage approval or automatic advancement to #111/#108."
+    "I asked to keep progressing through the rest of #107 and save review/reflection for the end. Only ask for intervention when it is absolutely required; otherwise make the smallest workable assumption. I also asked for periodic progress updates in the conversation. This authorises the remaining bounded implementation and evaluations within #107, not invented human measurements, stage approval or automatic advancement to #111/#108.",
+    "On 28 October 2026 Adam answered \"Yes, proceed with supervised use\" when asked about the #107/#111 learning-review gate. This selects #108 without inventing missing discussion answers, review time or acceptance of a candidate repair."
   ],
-  "blockers": [],
+  "blockers": [
+    "A real import run needs a maintainer-triaged bug, public/minimised reproducer and agreed expected behaviour. No suitable open issue was found on 28 October 2026."
+  ],
   "questions": [
-    "Why does a failed repair followed by a passing retry count as one task?",
-    "Why do these historical records not prove that a harness change helped?",
-    "Why does this prepared comparison not prove the AI became better at fixing bugs?",
-    "What must we measure to know whether automatic checking saves Adam time?"
+    "Which parts of the import recipe are specific to the format, and which runner/checker controls did we reuse?",
+    "Which import tasks should we decline rather than expand the scope?",
+    "How much task-definition and review work did Adam still do?",
+    "Should submission stay manual after this supervised slice?"
   ],
   "provider_scope": [
     "openai"
@@ -447,5 +450,41 @@
       "conversation_model": "Unchanged: gpt-6.1-sol.",
       "reviewed_stage_decision": null
     }
+  },
+  "import_learning_review": {
+    "issue": 108,
+    "status": "synthetic-checked-awaiting-review",
+    "recipe": "tools/harness/IMPORT_RECIPE.md",
+    "synthetic_task": "segment-distance-v1",
+    "real_task": null,
+    "real_task_blocker": "No suitable maintainer-triaged open import regression found in the issue search on 28 October 2026.",
+    "automatic_trigger_decision": null,
+    "reviewed_decision": null,
+    "suite": "reports/harness/case-suites/runs/5544c04ac3534814b42d3409f1a11835",
+    "calibration": "reports/harness/case-calibration-batches/runs/b0a68ab852a5435f863d8d5864b58f62/calibration.md",
+    "plan": "reports/harness/workflows/plans/3349b66fce1543d9bcc2dec78526d5d8",
+    "run": "reports/harness/workflows/runs/a31d6985625e4a5fa74a1bda81481a54",
+    "model": "gpt-6.1-terra",
+    "mode": "plain",
+    "attention_seconds": null,
+    "outcome": "native_verification_passed",
+    "duration_seconds": 294.7423,
+    "model_requests": 4,
+    "tool_calls": 6,
+    "patch_sha256": "f659085931a6f10d7bd92c5ca3aa222be4d879777b3e7774ae312959b88fedf7",
+    "verification": "reports/harness/verification/runs/2f771118810c4cd0982b02522875acf7/result.json",
+    "handoff": "reports/harness/issue108-handoff.md",
+    "corrections": [],
+    "review_time_seconds": null,
+    "failure_example": {
+      "run": "reports/harness/native-tools/runs/5c128f19939e4d7a9c2f504833f5f4e5",
+      "outcome": "repair_failed",
+      "expected": true,
+      "candidate_source": "supplied; no repair AI",
+      "duration_seconds": 115.2004,
+      "containers_removed": 5
+    },
+    "automatic_trigger_recommendation": "Keep submission manual; this familiar synthetic task does not justify a failed-CI trigger. Awaiting Adam's decision.",
+    "assistant_review": "No actionable defect found in the recipe/progress changes after correcting the unsupported stage label to Use. Adam's review remains pending."
   }
 }

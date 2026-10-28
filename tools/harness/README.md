@@ -1,8 +1,11 @@
 # Developer harness pilot
 
 I want to know whether the extra code around Pi helps it fix bugs and saves me
-time. Compare ([#107](https://github.com/adamcbrewer/mapbox-tui/issues/107)) is the
-current stage. Recover (#106) is merged and closed.
+time. The current stage is supervised import use
+([#108](https://github.com/adamcbrewer/mapbox-tui/issues/108)). Start with the
+[import recipe](IMPORT_RECIPE.md) for scope, calibration, a complete local attempt
+and stop/restart instructions. Adam explicitly agreed to move on on 28 October
+2026. The notes below retain the earlier Compare results and their limitations.
 
 I've finished the earlier fixed comparisons with Luna. Plain Pi delivered four checked fixes
 out of four; managed Pi delivered three out of four. Both passed the two
