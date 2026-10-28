@@ -4,7 +4,8 @@ import json
 from case_suite import FAILURE_MESSAGES, PUBLIC_FILE, definitions, load_suite, validate_case
 from run import HERE, Stop, digest
 
-REGISTERED = {"segment-distance-v1": ("segment-distance-v1", "import_distance_seed.patch"),
+REGISTERED = {"cli-inspect-v1": ("cli-inspect-v1", "cli_inspect_seed.patch"),
+              "segment-distance-v1": ("segment-distance-v1", "import_distance_seed.patch"),
               "geometry-bounds-v1": ("geometry-bounds-v1", "import_bounds_seed.patch"),
               "coordinate-latitude-limits-v2": ("import-v1", "import_coordinate_seed.patch")}
 
@@ -25,6 +26,9 @@ def definition(identity=None):
                 seed_sha256=digest((HERE / "fixtures" / seed_file).read_bytes()),
                 regression={"test": case["private_test"], "cases": case["private_cases"],
                             "failure_message": messages["private"]})
+    if case.get("source"):
+        task["allowed_files"] = [case["source"]]
+        task["source_sha256"][case["source"]] = case["source_sha256"]
     task["source_sha256"][PUBLIC_FILE] = digest((HERE / "fixtures" / case["public_fixture"]).read_bytes())
     return task
 

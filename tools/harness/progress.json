@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "updated_at": "2026-10-28",
-  "source": "GitHub issue #108 and Adam's explicit approval in chat on 28 October 2026 to proceed with supervised use.",
-  "stage": "Use",
+  "source": "Adam requested issue #109 through pre-PR and agreed the CLI point-0/default versus explicit MCP selector contract in chat on 28 October 2026.",
+  "stage": "Extend",
   "status": "awaiting-review",
-  "next": "Review the synthetic import patch and passing independent receipt, discuss the four learning questions and select a real maintainer-triaged reproducer if one becomes available. Keep submission manual pending the reviewed trigger decision.",
+  "next": "Review the CLI/MCP contract patch, successful and deliberately failed reports, then discuss the four learning questions. Keep #109 open and do not start a later stage automatically.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -85,16 +85,15 @@
     "I asked whether we were waiting for a bug or manufacturing one. I prepared a new synthetic development task, segment-distance-v1, in a disposable copy of the pinned project. The bug inflates journey distance across separate recording sections. The visible test has continuous and split journeys; the private checks cover other section shapes and GPX/TCX/KML inputs, preserving point coordinates and geometry. The original code and supplied known fix passed both check sets. The planted bug and an edit that doesn't fix it failed both for the intended distance assertion. All eight observations matched in 196.9056 seconds; all nine containers were removed. No Pi session, repair AI or human timer ran. The original two-case suite still loads and the held-out coordinate task stayed unused. All 292 Python tests and repository tests/formatting passed. An attempt to select a case outside the fresh suite exited 2 before container execution. This prepares the exercise, not a live comparison or evidence of less supervision. The full repair checker still pins the earlier XML task and needs this task bound before launch. Evidence stays local under reports/harness/issue107-distance-verification.json; task suite reports/harness/case-suites/runs/555a7c718ea84d86a3c454838e92483b/.",
     "I asked to proceed with the manufactured bug. The full checker now selects registered task inputs instead of assuming the XML task: planted patch, protected visible examples, private checks, commands and exact task identity. Default XML behaviour remains supported. The actual Pi/Python/container connection applied supplied good and bad edits to the fresh distance task and passed the exact saved patches to fresh independent checkouts. The good run passed all eight required checks in 234.0812 seconds overall; the bad run failed its candidate test in 101.1067 seconds and later checks stayed not run. Both used the same task and checking-rule fingerprints. All fifteen containers were removed. No repair model or human timer ran. All 299 Python tests, 29 Pi tests, three integration tests and repository tests/formatting passed. A completeness pass found that the report introduction still named the old XML test; the reporter now uses the saved task's test name. After that report-only correction, 24 native/checker tests passed and both Markdown reports were refreshed with original receipts unchanged. A final 27 verifier tests also passed after an unused constant was removed. The next comparison protocol is a draft, not an executable or approved experiment. The operator prompt channel, attention record and managed loop for this task still need connecting before either live workflow starts. The held-out task and learning review remain pending. Local evidence: reports/harness/issue107-distance-checker-verification.json.",
     "I asked to keep progressing through the rest of #107 and save review/reflection for the end. Only ask for intervention when it is absolutely required; otherwise make the smallest workable assumption. I also asked for periodic progress updates in the conversation. This authorises the remaining bounded implementation and evaluations within #107, not invented human measurements, stage approval or automatic advancement to #111/#108.",
-    "On 28 October 2026 Adam answered \"Yes, proceed with supervised use\" when asked about the #107/#111 learning-review gate. This selects #108 without inventing missing discussion answers, review time or acceptance of a candidate repair."
+    "On 28 October 2026 Adam answered \"Yes, proceed with supervised use\" when asked about the #107/#111 learning-review gate. This selects #108 without inventing missing discussion answers, review time or acceptance of a candidate repair.",
+    "Adam selected #109 after #108 was closed as completed. He agreed the intended CLI/MCP contract before implementation. This records permission to extend the workflow, not unrecorded discussion answers or acceptance of the resulting patch."
   ],
-  "blockers": [
-    "A real import run needs a maintainer-triaged bug, public/minimised reproducer and agreed expected behaviour. No suitable open issue was found on 28 October 2026."
-  ],
+  "blockers": [],
   "questions": [
-    "Which parts of the import recipe are specific to the format, and which runner/checker controls did we reuse?",
-    "Which import tasks should we decline rather than expand the scope?",
-    "How much task-definition and review work did Adam still do?",
-    "Should submission stay manual after this supervised slice?"
+    "When CLI, MCP schema and shared code disagree, which evidence establishes the intended contract?",
+    "Why can CLI/MCP parity pass while both interfaces are wrong?",
+    "What belongs in the shared harness, and what belongs in this recipe?",
+    "Did extending the runner reveal an abstraction introduced too early?"
   ],
   "provider_scope": [
     "openai"
@@ -486,5 +485,56 @@
     },
     "automatic_trigger_recommendation": "Keep submission manual; this familiar synthetic task does not justify a failed-CI trigger. Awaiting Adam's decision.",
     "assistant_review": "No actionable defect found in the recipe/progress changes after correcting the unsupported stage label to Use. Adam's review remains pending."
+  },
+  "contract_learning_review": {
+    "issue": 109,
+    "status": "synthetic-checked-awaiting-review",
+    "recipe": "tools/harness/CONTRACT_RECIPE.md",
+    "synthetic_task": "cli-inspect-v1",
+    "contract_agreed": "28 October 2026, chat",
+    "reviewed_decision": null,
+    "attention_seconds": null,
+    "review_time_seconds": null,
+    "excluded_runs": [
+      {
+        "run": "reports/harness/workflows/runs/f67d83fa52e94381ad5b6631d2eb43e2",
+        "reason": "Visible script included private branches; stopped and retained. Not a held-out result."
+      },
+      {
+        "run": "reports/harness/native-tools/runs/d0c50cdcd14e4155a12c600a7d9f3774",
+        "reason": "Test helper wrote a protected Python cache file. Scope checker refused extra file. Fixed with Python -B; not a repair result."
+      }
+    ],
+    "suite": "reports/harness/case-suites/runs/4762cd92b4b14b9d9d6a3ab86c4f4298",
+    "model": "gpt-6.1-terra",
+    "mode": "plain",
+    "failure_example": {
+      "run": "reports/harness/native-tools/runs/519e1b1e562848269421dbe8d68fa701",
+      "outcome": "repair_failed",
+      "expected": true,
+      "candidate_source": "supplied; no repair AI",
+      "duration_seconds": 135.4849,
+      "containers_removed": 5
+    },
+    "calibration": "reports/harness/case-calibration-batches/runs/578451eae7644671872611ea68b4ff6c/calibration.md",
+    "plan": "reports/harness/workflows/plans/cfbc38e8caa041e983e2a168d442bd21",
+    "extension_decisions": [
+      "Register the CLI recipe and its pinned source and fixtures.",
+      "Use the task's single permitted source file in native snapshots, independent reconstruction and initial prompt.",
+      "Reuse runtime, verifier, budgets, one-use plans and operator records; preserve import defaults and legacy receipt paths.",
+      "Keep standalone MCP separate from live viewer control; no new live-control capability."
+    ],
+    "assistant_review": "One finding fixed: public test script leaked private branches. Private examples now use separate data and remain outside public fixture bytes. Review found no remaining actionable defects. A subsequent writable-sandbox run exposed Python bytecode output; fixtures now use Python -B without relaxing scope.",
+    "import_regression": "reports/harness/case-calibration-batches/runs/d221eea134e5496ab5e708bcb05673fe/calibration.md",
+    "run": "reports/harness/workflows/runs/d0b0f206b21240fa876d1a0ebfb9b0a7",
+    "outcome": "native_verification_passed",
+    "duration_seconds": 321.0407,
+    "model_requests": 7,
+    "tool_calls": 11,
+    "patch_sha256": "356613b40ddc40070e73c07e615d2edb66a5c83cae93186678284b9eca17da14",
+    "verification": "reports/harness/verification/runs/b9a0d9e0e5d3430789145df2c9c7bba5/result.json",
+    "handoff": "reports/harness/issue109-handoff.md",
+    "comparison": "reports/harness/issue109-comparison.json",
+    "corrections": []
   }
 }

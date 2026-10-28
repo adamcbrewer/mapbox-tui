@@ -45,10 +45,12 @@ class NativeCheckTests(unittest.TestCase):
         if name == "go-version":
             return {"exit_code": 0}, b"go version go1.27.1 linux/amd64\n"
         self.child_deadlines.append(run.deadline)
-        source = (Path(cwd) / "go/import.go").read_text()
+        source = (Path(cwd) / run.task["allowed_files"][0]).read_text()
         task = run.task.get("regression", REGRESSION) if name in REGRESSION_CHECKS else run.task
         working = ('if j > 0 {' not in source if run.task["id"] == "segment-distance-v1" else
                    'if n >= 3 && string(header[:3])' in source or (name not in REGRESSION_CHECKS and "known && n >= 3" in source))
+        if run.task["id"] == "cli-inspect-v1":
+            working = "index = 1" not in source
         action = "pass" if working else "fail"
         output = b"\n".join(json.dumps({"Action": action, "Test": test}).encode() for test in
                             [task["test"], *(task["test"] + "/" + case for case in task["cases"])])
@@ -109,6 +111,35 @@ class NativeCheckTests(unittest.TestCase):
         self.assertIn("TestHarnessJourneyDistance", page)
         self.assertNotIn("TestXMLImportsAcceptLeadingUTF8BOM", page)
         self.assertNotIn("XML-prefix", page)
+
+    def cli_candidate(self):
+        suite = Run(self.root / "cli-suite")
+        case = build(suite, "cli-inspect-v1")["cases"][0]
+        directory = suite.path / "cases" / case["id"]
+        native_check.prepare_verification(self.run, case)
+        for name in ("go/cli.go", "go/import_calibration_test.go"):
+            (self.checkout / name).write_bytes((directory / "agent" / name).read_bytes())
+        patch = (directory / "private/reference.patch").read_bytes()
+        (self.run.path / "candidate.patch").write_bytes(patch)
+        apply_patch(self.run, self.checkout, patch, "candidate", ["go/cli.go"])
+        source = (self.checkout / "go/cli.go").read_bytes()
+        (self.run.path / "candidate-source.bin").write_bytes(source)
+        write_json(self.run.path / "project-snapshot.json", {"files": {"go/cli.go": digest(source)}})
+        self.run.result.update(snapshot_scope_valid=True, snapshot_source_sha256=digest(source), patch_sha256=digest(patch))
+
+    def test_cli_candidate_reconstructs_the_correct_source_in_separate_checks(self):
+        self.cli_candidate()
+        native_check.check_candidate(self.run)
+        self.assertTrue(self.run.result["independent_checks_passed"])
+        self.assertEqual(len(self.run.result["verification"]["checks"]), 8)
+
+    def test_cli_snapshot_cannot_substitute_the_import_source(self):
+        self.cli_candidate()
+        raw = (self.run.path / "candidate-source.bin").read_bytes()
+        write_json(self.run.path / "project-snapshot.json", {"files": {"go/import.go": digest(raw)}})
+        with self.assertRaises(Stop):
+            native_check.check_candidate(self.run)
+        self.assertFalse(self.run.result["independent_checks_passed"])
 
     def test_completed_checks_cannot_promote_a_patch_after_the_shared_deadline(self):
         self.candidate()

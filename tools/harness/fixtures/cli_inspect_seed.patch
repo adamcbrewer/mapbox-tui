@@ -1,0 +1,10 @@
+--- a/go/cli.go
++++ b/go/cli.go
+@@ -243,6 +243,7 @@
+ 		}
+ 	}
+ 	if command.Name == "inspect" && a.PointIndex == nil && a.Distance == nil {
++		index = 1
+ 		a.PointIndex = &index
+ 	}
+ 	return command, nil

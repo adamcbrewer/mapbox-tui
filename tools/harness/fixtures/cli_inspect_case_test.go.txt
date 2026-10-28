@@ -1,0 +1,93 @@
+package main
+
+import (
+	"context"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestHarnessInspectContract(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	binary := filepath.Join(t.TempDir(), "mapbox-contract")
+	build := exec.CommandContext(ctx, "go", "build", "-buildvcs=false", "-o", binary, "./go")
+	build.Dir = ".."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("contract binary build failed: %v\n%s", err, output)
+	}
+	for _, name := range []string{"default", "explicit", "errors", "render"} {
+		t.Run(name, func(t *testing.T) {
+			check := exec.CommandContext(ctx, "python3", "-B", "-c", `import json, os, sys
+from pathlib import Path
+sys.path.insert(0, "scripts")
+from validate import MCP
+binary, state, case = sys.argv[1:]
+state = Path(state)
+env = {**os.environ, "MAPBOX_ACCESS_TOKEN": "", "HOME": str(state), "XDG_CONFIG_HOME": str(state / "config"), "XDG_CACHE_HOME": str(state / "cache"), "XDG_RUNTIME_DIR": str(state / "runtime"), "MAPBOX_CONFIG_DIR": str(state / "mapbox")}
+Path(env["XDG_RUNTIME_DIR"]).mkdir(mode=0o700)
+import subprocess
+points = [(0, 0), (0, 0.001), (0, 0.002)]
+path = state / "invented.gpx"
+path.write_text('<gpx><trk><name>Invented contract fixture</name><trkseg>' + ''.join('<trkpt lat="%s" lon="%s"/>' % p for p in points) + '</trkseg></trk></gpx>')
+def cli(*args, ok=True):
+    r = subprocess.run([binary, *map(str, args)], env=env, capture_output=True, text=True, timeout=20)
+    print(json.dumps({"interface": "CLI", "args": list(map(str,args)), "exit": r.returncode, "stdout": r.stdout, "stderr": r.stderr}))
+    assert (r.returncode == 0) == ok, r.stderr
+    assert "\x1b" not in r.stdout + r.stderr
+    if ok:
+        return json.loads(r.stdout)
+    assert r.stderr.strip() and not r.stdout.strip()
+m = MCP(binary, env=env)
+try:
+    m.send("initialize", {"protocolVersion":"2025-11-25", "clientInfo":{"name":"contract-check", "version":"1"}, "capabilities":{}})
+    m.send("notifications/initialized", {}, notify=True)
+    def call(tool, args, ok=True):
+        r = m.call(tool, args)
+        print(json.dumps({"interface":"MCP", "tool":tool, "args":args, "response":r}))
+        assert "\x1b" not in json.dumps(r, ensure_ascii=False)
+        assert bool(r.get("error") or r.get("result",{}).get("isError")) != ok, r
+        if ok:
+            v = r["result"]["structuredContent"]
+            assert json.loads(r["result"]["content"][0]["text"]) == v
+            return v
+    track = call("load_track", {"path":str(path)})["track_id"]
+    args = {"track_id":track}
+    if case == "default":
+        result = cli("inspect", path)
+        assert result["point_index"] == 0 and result["point"]["lat"] == 0 and result["point"]["lon"] == 0, result
+        assert result == call("inspect_track", {**args, "point_index":0})
+        call("inspect_track", args, ok=False)
+    elif case == "explicit":
+        selector, value, expected = ("point_index", 1, 1)
+        result = cli("inspect", "--"+selector.replace("_","-"), value, path)
+        assert result["point_index"] == expected
+        assert result == call("inspect_track", {**args, selector:value})
+    elif case == "errors":
+        for selector, value in (("point_index", -1), ("point_index", 99), ("distance_m", -1)):
+            cli("inspect", path, "--"+selector.replace("_","-"), value, ok=False)
+            call("inspect_track", {**args, selector:value}, ok=False)
+        cli("inspect", path, "--point-index", 0, "--distance-m", 0, ok=False)
+        call("inspect_track", {**args, "point_index":0, "distance_m":0}, ok=False)
+        call("inspect_track", {**args, "point_index":"zero"}, ok=False)
+        call("inspect_track", args, ok=False)
+    else:
+        result = cli("render", path, "--provider", "none", "--ascii", "--json", "--width", 40, "--height", 12)
+        actual = call("render_map", {**args, "provider":"none", "ascii":True, "width":40, "height":12})
+        assert result == actual
+        assert result["scene"]["width"] == 40 and result["scene"]["height"] == 12
+        assert len(result["text"].splitlines()) == 12 and result["text"].isascii()
+        assert "\x1b" not in result["text"] and result["text"].strip()
+finally:
+    m.close()
+`, binary, t.TempDir(), name)
+			check.Dir = ".."
+			output, err := check.CombinedOutput()
+			t.Logf("CLI and MCP observations:\n%s", output)
+			if err != nil {
+				t.Fatalf("CLI inspection default violated: %v", err)
+			}
+		})
+	}
+}

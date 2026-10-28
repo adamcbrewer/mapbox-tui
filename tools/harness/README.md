@@ -1,11 +1,12 @@
 # Developer harness pilot
 
 I want to know whether the extra code around Pi helps it fix bugs and saves me
-time. The current stage is supervised import use
-([#108](https://github.com/adamcbrewer/mapbox-tui/issues/108)). Start with the
-[import recipe](IMPORT_RECIPE.md) for scope, calibration, a complete local attempt
-and stop/restart instructions. Adam explicitly agreed to move on on 28 October
-2026. The notes below retain the earlier Compare results and their limitations.
+time. The current stage extends the import workflow to CLI/MCP contract repairs
+([#109](https://github.com/adamcbrewer/mapbox-tui/issues/109)). Start with the
+[contract recipe](CONTRACT_RECIPE.md) for the agreed behaviour, scope, checks and
+stop/restart instructions. Adam selected this stage and contract on 28 October
+2026. The [import recipe](IMPORT_RECIPE.md) and earlier comparison notes remain
+available. The learning review is still a separate decision.
 
 I've finished the earlier fixed comparisons with Luna. Plain Pi delivered four checked fixes
 out of four; managed Pi delivered three out of four. Both passed the two

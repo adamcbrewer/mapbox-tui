@@ -147,7 +147,7 @@ class VerificationRun(ContainerRun):
                 raise Stop("invalid_input", "The candidate changed between required checks")
             self.result["trees"][self.phase] = tree
             if name in STAGES:
-                self.sources[name] = (checkout / "go/import.go").read_bytes()
+                self.sources[name] = (checkout / self.task["allowed_files"][0]).read_bytes()
             if name in REGRESSION_CHECKS:
                 expected = {**self.result["trees"][name.removesuffix("-regression")]["files"],
                             REGRESSION_FILE: self.result["regression_sha256"]}
@@ -306,7 +306,7 @@ def verify(run, patch):
                 shutil.copytree(checkout, regression_copy, dirs_exist_ok=True)
                 for file in candidate_files.keys() - run.result["trees"][stage]["files"].keys():
                     (regression_copy / file).unlink()
-                (regression_copy / "go/import.go").write_bytes(run.sources[stage])
+                (regression_copy / run.task["allowed_files"][0]).write_bytes(run.sources[stage])
                 (regression_copy / REGRESSION_FILE).write_bytes(regression)
                 check, output = run.command(name, check_commands(run.task)[name], regression_copy)
                 check_test(run, stage, check, output, run.task.get("regression", REGRESSION))
@@ -326,7 +326,7 @@ def verify(run, patch):
         if not receipt_matches(run.result, run.path):
             raise Stop("invalid_input", "The patch, source identities or required check evidence changed")
     run.result.update(outcome="repository_verification_passed",
-                      reason="This frozen patch passed the original and independent import cases, formatting and repository checks; human review remains pending")
+                      reason="This frozen patch passed the original and independent task cases, formatting and repository checks; human review remains pending")
     run.event("repository_verification_completed")
 
 

@@ -64,6 +64,13 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(result["source"]), b"source")
         self.assertEqual(result["invalid"], ["linked", "pipe"])
 
+    def test_snapshot_captures_the_host_selected_cli_source(self):
+        (self.root / "go").mkdir()
+        (self.root / "go/import.go").write_text("unchanged parser")
+        (self.root / "go/cli.go").write_text("candidate CLI")
+        result = worker.dispatch({"op": "snapshot", "source_file": "go/cli.go"})["source"]
+        self.assertEqual(base64.b64decode(result), b"candidate CLI")
+
     def test_bash_returns_combined_output_and_nonzero_exit(self):
         result = worker.bash("printf hello; printf error >&2; exit 7", 2)
         self.assertEqual(base64.b64decode(result["output"]), b"helloerror")

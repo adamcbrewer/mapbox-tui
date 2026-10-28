@@ -13,7 +13,7 @@ import tempfile
 
 from run import HERE, REPORTS, ROOT, Stop, digest, now, write_json
 
-STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
+STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use", "Extend")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
 EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt",
                   "journal.json", "handoff.json", "partial.patch", "recovery-stop.json", "first-entry-result.json", "second-entry-result.json")
@@ -739,8 +739,8 @@ Saved outcome: {escape(outcome)}.</p></details></article>'''))
     return (''.join(current) + history(earlier, "Earlier demonstrations")) if ordered else '<p>No live sandbox demonstrations recorded.</p>'
 
 
-def render_import_reports(reports, progress, link_root=None):
-    review = progress.get("import_learning_review", {})
+def render_import_reports(reports, progress, link_root=None, review_key="import_learning_review"):
+    review = progress.get(review_key, {})
     entries = (("AI repair attempt", "workflows/runs", "workflow.md", review.get("run")),
                ("Deliberately ineffective repair", "native-tools/runs", "normal-tools.md", review.get("failure_example", {}).get("run")))
     rows = []
@@ -914,9 +914,26 @@ and a working repair should pass both import test sets plus formatting and repos
 missing tools, cancellation or unfinished checking cannot establish repair success. A real bug still needs an agreed reproducer.</p>
 <p>The snapshot retains these readable reports and run files. Plans and other referenced evidence may still require the original local folders.
 Use workflow.py --report with the original run directory to revalidate its evidence without inference.</p></details>'''
+    if progress["stage"] == "Extend":
+        stage_title = 'CLI and MCP contract repairs'
+        intro = 'Extend follows Use. The synthetic CLI inspection task checks that the same runner can repair another source file while preserving an agreed interface contract.'
+        takeaway = 'Matching outputs can both be wrong. Fixed expected values, frozen schemas and separate examples check the intended behaviour. Human approval remains pending.'
+        results_title = 'Review the CLI/MCP contract attempts'
+        results_intro = 'CLI inspection defaults to point 0. Standalone MCP requires exactly one explicit selector. These are separate from commands targeting a live viewer.'
+        comparison_label = 'Read the contract reports'
+        records = render_import_reports(reports, progress, link_root, "contract_learning_review")
+        sandbox = pi_section = ''
+        comparison_note = 'The recipe keeps the import workflow model settings. A small synthetic example shows extension feasibility, not a repair-quality trend or time saved.'
+        experiment_guide = '''<details id="experiment-guide"><summary>How to review the contract attempts</summary>
+<p>Original code should pass. The deliberately planted default of point 1 should fail. A repair must restore point 0,
+keep explicit selectors and errors, and pass separate examples plus formatting and repository checks.</p>
+<p>The extra examples include a one-point file, different option placement, distance zero and invalid selectors.
+Both interfaces use isolated test state and offline rendering. No live viewer is contacted.</p>
+<p>The AI proposes a repair. Our code freezes and independently checks it. The deliberately ineffective repair uses supplied steps without a repair model.
+Opening this overview does not revalidate the saved results. Read the linked reports and retain their evidence.</p></details>'''
     if recovery:
         review_step = '<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>'
-    elif define or verification or progress["stage"] == "Use":
+    elif define or verification or progress["stage"] in ("Use", "Extend"):
         review_step = '<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>'
     else:
         review_step = '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>'

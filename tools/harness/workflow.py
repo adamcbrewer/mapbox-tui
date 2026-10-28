@@ -125,7 +125,7 @@ class WorkflowTools(baseline.LiveTools):
             shutil.rmtree(child) if child.is_dir() else child.unlink()
         original = Path(self.plan["suite"]) / "cases" / self.plan["case"]["id"] / "agent"
         shutil.copytree(original, self.project, dirs_exist_ok=True)
-        (self.project / "go/import.go").write_bytes(source)
+        (self.project / self.run.task["allowed_files"][0]).write_bytes(source)
         self.sandbox = NativeSandbox(self.run, self.project)
         self.sandbox.seeded = self.seeded
         self.sandbox.expected = self.plan["case"]["agent_files_sha256"].copy()
@@ -349,9 +349,26 @@ def render(result):
              " Mode: " + result["mode"] + ".", "",
              f"Candidate checks: {len(attempts)}. Model requests: {result['model_requests']}. Pi tools: {result.get('tool_calls', 0)}. "
              f"Elapsed time: {result['duration_seconds']} seconds.", ""]
+    if result.get("task") == "cli-inspect-v1":
+        lines += ["This extends the import workflow to an agreed CLI/MCP contract. CLI inspect without a selector must return point 0. "
+                  "Standalone MCP still requires exactly one explicit selector. Explicit selectors, errors, structured results and offline ANSI-free maps must remain usable.", "",
+                  "The planted bug defaults CLI inspection to point 1. Separate examples include a one-point file, option placement and distance zero. "
+                  "Schemas and tests are frozen outside the repair scope. No live viewer is contacted.", ""]
     for index, attempt in enumerate(attempts, 1):
         lines.append(f"Attempt {index}: " + ("Passed all required checks." if attempt["outcome"] == "repository_verification_passed" else
                                           "Failed the required checks." if attempt["outcome"] == "repair_failed" else "Checking couldn't finish."))
+        check_labels = {"baseline": "Original code", "seed": "Planted bug, expected failure", "candidate": "Proposed repair",
+                        "baseline-regression": "Original code, separate examples", "seed-regression": "Planted bug, separate examples, expected failure",
+                        "candidate-regression": "Proposed repair, separate examples", "candidate-format": "Formatting", "candidate-suite": "Repository tests"}
+        lines += ["", "| Check | Observed result |", "| --- | --- |"]
+        observed = {check["id"]: check for check in attempt.get("checks", [])}
+        for identity in REQUIRED_CHECKS:
+            check = observed.get(identity)
+            status = "Not run" if check is None else check["outcome"]
+            log = ("../../../verification/runs/" + attempt["run_id"] + "/" + identity + ".stdout") if check else None
+            label = "Passed" if status == "passed" else "Failed as intended" if status == "assertion_failed" and identity.startswith("seed") else "Failed" if status in ("assertion_failed", "failed", "build_failed") else status
+            lines.append("| " + check_labels[identity] + " | " + ("[" + label + "](" + log + ")" if log else label) + " |")
+        lines += ["", "Read the [saved candidate patch](candidate.patch) and [separate check receipt](../../../verification/runs/" + attempt["run_id"] + "/result.json).", ""]
     lines += ["", labels.get(agent, "The conversation didn't complete") + ". " + result.get("reason", ""), "",
               "Operator feedback delivered: " + str(sum(c["origin"] == "operator" for c in result.get("continuations", []))) + ". "
               "This doesn't establish zero human attention. Explicit attention records are self-reported; missing time stays unknown.", "",

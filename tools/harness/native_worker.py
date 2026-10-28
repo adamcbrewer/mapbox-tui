@@ -58,7 +58,7 @@ def bash(command, timeout):
         process.stdout.close()
 
 
-def snapshot():
+def snapshot(source_file="go/import.go"):
     files, invalid = {}, []
     source = None
     for path in sorted(ROOT.rglob("*")):
@@ -73,7 +73,7 @@ def snapshot():
                 continue
             raw = path.read_bytes()
             files[str(relative)] = hashlib.sha256(raw).hexdigest()
-            if str(relative) == "go/import.go":
+            if str(relative) == source_file:
                 source = base64.b64encode(raw).decode()
         elif not path.is_dir():
             invalid.append(str(relative))
@@ -85,7 +85,7 @@ def snapshot():
 def dispatch(request):
     operation = request["op"]
     if operation == "snapshot":
-        return snapshot()
+        return snapshot(request.get("source_file", "go/import.go"))
     if operation == "bash":
         return bash(request["command"], request["timeout"])
     path = project_path(request["path"])

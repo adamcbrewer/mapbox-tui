@@ -27,7 +27,8 @@ class NativeSandbox:
         self.operation_limit = max(100, 10 * run.result.get("budgets", {}).get("tool_calls", 0))
         run.result["native_environment"] = NATIVE_ENVIRONMENT.copy()
         self.worker = (HERE / "native_worker.py").read_text()
-        self.seeded = (self.checkout / "go/import.go").read_text()
+        self.source = run.task["allowed_files"][0]
+        self.seeded = (self.checkout / self.source).read_text()
         self.expected = {str(path.relative_to(self.checkout)): digest(path.read_bytes())
                          for path in self.checkout.rglob("*") if path.is_file()}
 
@@ -95,7 +96,7 @@ class NativeSandbox:
 
     def capture(self):
         self.run.result.update(snapshot_scope_valid=False, patch_sha256=None)
-        response = self.request({"op": "snapshot"})
+        response = self.request({"op": "snapshot", "source_file": self.source})
         if not response["ok"]:
             raise Stop("incomplete", "I couldn't recover the current project files")
         snapshot = response["value"]
@@ -109,10 +110,10 @@ class NativeSandbox:
                    if self.expected.get(name) != snapshot["files"].get(name)}
         self.run.result["changed_files"] = sorted(changed)
         patch = "".join(difflib.unified_diff(self.seeded.splitlines(True), raw.decode().splitlines(True),
-                                           fromfile="a/go/import.go", tofile="b/go/import.go")).encode()
+                                           fromfile="a/" + self.source, tofile="b/" + self.source)).encode()
         (self.run.path / "candidate.patch").write_bytes(patch)
         self.run.result.update(patch_sha256=digest(patch), snapshot_scope_valid=not snapshot["invalid"] and
-                               not changed - {"go/import.go"}, snapshot_source_sha256=digest(raw))
+                               not changed - {self.source}, snapshot_source_sha256=digest(raw))
         self.run.result.pop("snapshot_problem", None)
         self.run.event("native_snapshot_captured", changed_files=sorted(changed))
         return snapshot

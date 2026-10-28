@@ -71,7 +71,7 @@ def prepare_checkout(run, checkout):
         if stage == "seed":
             apply_patch(run, checkout, seed, "seed", task["allowed_files"])
         check, output = run.command(stage, task["command"], checkout)
-        check["source_sha256"] = digest((checkout / "go/import.go").read_bytes())
+        check["source_sha256"] = digest((checkout / task["allowed_files"][0]).read_bytes())
         check_test(run, stage, check, output, task)
     run.result["startup_verified"] = True
     run.event("startup_verified", expected_failure=task["failure_message"])

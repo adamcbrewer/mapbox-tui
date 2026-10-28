@@ -41,6 +41,19 @@ class ImportReportTests(unittest.TestCase):
         self.assertNotIn("No runs recorded", page)
         self.assertNotIn('href="#sandbox"', page)
 
+    def test_extend_stage_uses_contract_reports_and_preserves_them(self):
+        self.progress.update(stage="Extend", contract_learning_review=self.progress["import_learning_review"])
+        page = report.render(self.source, self.progress)
+        self.assertIn("Standalone MCP requires exactly one explicit selector", page)
+        self.assertIn('href="' + self.success + '/workflow.md"', page)
+        self.assertNotIn("segment-gap task", page)
+        self.assertNotIn("remove handling for a UTF-8 marker", page)
+        reports = self.root / "extend-reports"
+        report.save_stage(reports, self.progress, self.source, source_ref="a" * 40)
+        shutil.rmtree(self.source)
+        saved = report.render_saved(reports, "extend").read_text()
+        self.assertIn('snapshots/extend/' + self.failure + '/normal-tools.md', saved)
+
     def test_saved_use_reports_survive_source_removal_and_bundle_move(self):
         reports = self.root / "reports"
         report.save_stage(reports, self.progress, self.source, source_ref="a" * 40)

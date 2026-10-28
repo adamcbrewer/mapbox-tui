@@ -31,6 +31,28 @@ class TaskInputTests(unittest.TestCase):
         self.assertEqual(task["allowed_files"], ["go/import.go"])
         self.assertEqual(task["allowed_new_files"], [])
 
+    def test_cli_task_freezes_source_scope_and_both_test_sets(self):
+        suite = Run(self.root / "cli-suite")
+        case = build(suite, "cli-inspect-v1")["cases"][0]
+        task = selected_task(suite.path)
+        inputs = materials(task)
+        self.assertEqual(task["allowed_files"], ["go/cli.go"])
+        self.assertEqual(task["allowed_new_files"], [])
+        self.assertEqual(digest(inputs["seed"]), case["seed_sha256"])
+        self.assertEqual(digest(inputs["regression"]), case["private_files_sha256"]["verifier.go.txt"])
+        self.assertIn("go/cli.go", task["source_sha256"])
+        public = inputs["public_files"][PUBLIC_FILE]
+        for marker in (b"single-point", b"options-after-file", b"separate-example.gpx", b"(12, 24.002)"):
+            self.assertNotIn(marker, public)
+            self.assertIn(marker, inputs["regression"])
+        for field, value in (("allowed_files", ["go/service.go"]), ("source_sha256", {}),
+                             ("regression", {"test": "NoChecks", "cases": []})):
+            with self.subTest(field=field), self.assertRaises(Stop):
+                materials({**task, field: value})
+        run = NativeRun(self.root / "cli-check", "sha256:" + "a" * 64)
+        prepare_verification(run, case)
+        self.assertEqual(run.task, task)
+
     def test_default_inputs_remain_the_existing_xml_task(self):
         task = definition()
         inputs = materials(task)

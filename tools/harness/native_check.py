@@ -22,7 +22,7 @@ def prepare_verification(run, case):
     freeze_evaluator(run)
     task_bytes = inputs["task"]
     (run.path / "verification-task.json").write_bytes(task_bytes)
-    run.result.update(independent_checks_passed=False, base_commit=case["base_commit"],
+    run.result.update(independent_checks_passed=False, task=case["id"], base_commit=case["base_commit"],
                       task_sha256=digest(task_bytes),
                       verification_seed_tree_sha256=fingerprint({name: value for name, value in case["agent_files_sha256"].items()
                                                                  if name != "task.json"}),
@@ -40,7 +40,7 @@ def verification_matches(run, child):
                     ("image", "base_commit", "task_sha256", "patch_sha256", "evaluator_sha256")) and
                 result["trees"]["seed"]["sha256"] == run.result["verification_seed_tree_sha256"] and
                 result["regression_sha256"] == run.result["verification_regression_sha256"] and
-                result["trees"]["candidate"]["files"]["go/import.go"] == run.result["snapshot_source_sha256"] and
+                result["trees"]["candidate"]["files"][run.task["allowed_files"][0]] == run.result["snapshot_source_sha256"] and
                 receipt_matches(result, child.path, allow_failed=failed))
     except (OSError, ValueError, KeyError, TypeError):
         return False
@@ -65,7 +65,7 @@ def check_candidate(run, attempt=1):
             digest(patch) != run.result["patch_sha256"] or
             digest(source) != run.result["snapshot_source_sha256"] or
             not isinstance(snapshot, dict) or not isinstance(snapshot.get("files"), dict) or
-            snapshot["files"].get("go/import.go") != digest(source)):
+            snapshot["files"].get(run.task["allowed_files"][0]) != digest(source)):
         raise Stop("invalid_input", "The saved change or sandbox cleanup doesn't match its evidence")
     child = VerificationRun(REPORTS / "verification", run.image, attempt=attempt, parent_run_id=run.path.name,
                             evaluator=run.result["evaluator"], task=run.task)

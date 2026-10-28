@@ -210,7 +210,7 @@ def check_test(run, stage, check, output, task):
                             task["failure_message"].encode() not in output):
         raise Stop("calibration_failed", "Seed did not reproduce the intended assertion failure")
     if stage == "candidate" and check["outcome"] != "passed":
-        raise Stop("repair_failed", "Candidate did not restore the expected import behaviour")
+        raise Stop("repair_failed", "Candidate did not restore the expected behaviour")
 
 
 def read_input(path):

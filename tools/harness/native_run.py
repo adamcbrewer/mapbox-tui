@@ -96,7 +96,10 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
                                                    shell_quote('raise RuntimeError("Project json.py must not run")\n') + " > json.py"}},
                 {"name": "read", "args": {"path": "native-note.txt"}},
                 {"name": "bash", "args": {"command": "rm native-note.txt json.py"}}]
-    if run.task["id"] == "segment-distance-v1":
+    if run.task["id"] == "cli-inspect-v1":
+        edit = ({"old": "\t\tindex = 1\n", "new": ""} if demo == "good" else
+                {"old": "index = 1", "new": "index = 2"})
+    elif run.task["id"] == "segment-distance-v1":
         edit = ({"old": "if j > 0 {", "new": "if j > s.Start {"} if demo == "good" else
                 {"old": 'format := "FIT"', "new": 'format := "fit"'})
     elif run.task["id"] == "geometry-bounds-v1":
@@ -111,8 +114,8 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
         edit = {"old": marker, "new": insert + marker}
     command = "cat native-note.txt && rm native-note.txt && " + " ".join(shell_quote(arg) for arg in run.task["command"][:-1])
     return [{"name": "write", "args": {"path": "native-note.txt", "content": "Prepared normal-tool check\n"}},
-            {"name": "read", "args": {"path": "go/import.go"}},
-            {"name": "edit", "args": {"path": "go/import.go", "edits": [{"oldText": edit["old"], "newText": edit["new"]}]}},
+            {"name": "read", "args": {"path": run.task["allowed_files"][0]}},
+            {"name": "edit", "args": {"path": run.task["allowed_files"][0], "edits": [{"oldText": edit["old"], "newText": edit["new"]}]}},
             {"name": "bash", "args": {"command": command}}]
 
 
@@ -131,10 +134,18 @@ def render(result):
         title = "The saved fix passed the separate checker"
     elif result["outcome"] == "repair_failed":
         title = "The separate checker caught the bad fix"
+    if result.get("task") == "cli-inspect-v1":
+        title = title.replace("import test", "CLI/MCP contract test")
     introduction = ("I used Pi's actual read, edit, write and bash tools with supplied steps." if ready else
                     "I set out to check Pi's actual read, edit, write and bash tools with supplied steps.")
     lines = ["# " + title, "", introduction + " No repair AI ran.", "",
              "This checks the connection needed for the plain-Pi baseline in #107. It doesn't complete the AI comparison.", ""]
+    if result.get("task") == "cli-inspect-v1":
+        lines += ["This extends the import recipe in #109. CLI inspect without a selector must return point 0; standalone MCP requires exactly one explicit selector. "
+                  "Both interfaces must preserve explicit selection, structured results, errors and ANSI-free offline maps. No live viewer is contacted.", "",
+                  "The planted bug changes the CLI default to 1. This supplied sequence " +
+                  ("removes that planted assignment." if result["candidate"] == "good" else "changes the bad default from 1 to 2, which deliberately leaves the contract broken.") +
+                  " The candidate should " + ("pass." if result["candidate"] == "good" else "fail. This is an expected repair failure, not a successful fix."), ""]
     if result["candidate"] == "timeout":
         lines += ["I supplied a command with timeout 120000. The runner refused it before execution and explained that "
                   "the value is in seconds, must be greater than zero and at most 600, and can be 120 for two minutes.", "",
