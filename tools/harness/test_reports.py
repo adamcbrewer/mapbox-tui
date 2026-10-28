@@ -13,6 +13,57 @@ from recovery import Journal, RecoveryTools
 from test_repair import RepairFixture
 
 
+class ImportReportTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.source = self.root / "source"
+        self.success = "workflows/runs/" + "a" * 32
+        self.failure = "native-tools/runs/" + "b" * 32
+        self.progress = dict(json.loads((HERE / "progress.json").read_text()), stage="Use",
+                             import_learning_review={"run": "reports/harness/" + self.success,
+                                                     "failure_example": {"run": "reports/harness/" + self.failure}})
+        for folder, filename, text in ((self.success, "workflow.md", "Saved fix passed its checks"),
+                                       (self.failure, "normal-tools.md", "Separate checker caught the ineffective edit")):
+            path = self.source / folder
+            path.mkdir(parents=True)
+            (path / "result.json").write_text("{}")
+            (path / filename).write_text(text)
+
+    def test_use_stage_names_current_import_reports_without_old_xml_instructions(self):
+        page = report.render(self.source, self.progress)
+        self.assertIn('href="' + self.success + '/workflow.md"', page)
+        self.assertIn('href="' + self.failure + '/normal-tools.md"', page)
+        self.assertIn("segment-gap task", page)
+        self.assertIn("This page has not revalidated", page)
+        self.assertNotIn("remove handling for a UTF-8 marker", page)
+        self.assertNotIn("No runs recorded", page)
+        self.assertNotIn('href="#sandbox"', page)
+
+    def test_saved_use_reports_survive_source_removal_and_bundle_move(self):
+        reports = self.root / "reports"
+        report.save_stage(reports, self.progress, self.source, source_ref="a" * 40)
+        shutil.rmtree(self.source)
+        moved = self.root / "moved"
+        reports.rename(moved)
+        page = report.render_saved(moved, "use").read_text()
+        for folder, filename in ((self.success, "workflow.md"), (self.failure, "normal-tools.md")):
+            relative = "snapshots/use/" + folder + "/" + filename
+            self.assertIn('href="' + relative + '"', page)
+            self.assertTrue((moved / relative).is_file())
+
+    def test_missing_linked_or_untrusted_report_paths_do_not_create_links(self):
+        path = self.source / self.success / "workflow.md"
+        path.unlink()
+        path.symlink_to(self.source / self.failure / "normal-tools.md")
+        self.progress["import_learning_review"]["failure_example"]["run"] = "reports/harness/../../private"
+        page = report.render(self.source, self.progress)
+        self.assertEqual(page.count("Readable report not recorded in this snapshot."), 2)
+        self.assertNotIn('href="' + self.success + '/workflow.md"', page)
+        self.assertNotIn('href="reports/harness/../../private', page)
+
+
 class RecoveryReportTests(RepairFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()

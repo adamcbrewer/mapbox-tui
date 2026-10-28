@@ -66,9 +66,10 @@ and reference repair. Never expose `private/` to the repair agent.
 
 ## Run one complete attempt
 
-Prerequisites are Python 3, Git with the pinned history, the existing Node/Pi
-installation and signed-in local configuration, rootless Podman with delegated
+Prerequisites are Python 3, host Go v1.27.1 on PATH, Git with the pinned history,
+the existing Node/Pi installation and signed-in local configuration, rootless Podman with delegated
 cgroups, and the prepared Go v1.27.1 image. This recipe installs nothing. The
+calibration records the host Go version separately from the image toolchain. The
 Go sandbox has no network and uses cached dependencies. Model access occurs
 outside that sandbox through the existing configured provider.
 
@@ -118,6 +119,13 @@ evidence without inference. Keep `workflow.md`, `result.json`, `events.jsonl`,
 `candidate.patch`, `attempts/`, the referenced independent verification folders,
 the saved plan and suite together under ignored `reports/harness/`.
 The readable report is the starting point; raw logs are for investigation.
+
+`python3 tools/harness/report.py` builds the shared Use overview at
+`reports/harness/use.html` and updates `index.html`. It links to the current AI
+attempt and supplied ineffective repair, preserving their readable reports and
+run files in the stage snapshot. The overview doesn't revalidate either result.
+Plans and other referenced evidence may still need the original local folders;
+use `workflow.py --report RUN_DIR` for validation.
 
 This workflow continues a conversation within one process, but it cannot resume
 one after cancellation or a crash. The one-use plan stays spent. To try again,

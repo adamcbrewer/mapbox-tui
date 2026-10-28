@@ -4,6 +4,7 @@ import hashlib
 import html
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -16,7 +17,8 @@ STAGES = ("Define", "Connect", "Verify", "Recover", "Compare", "Use")
 STATES = ("planned", "active", "blocked", "awaiting-review", "reviewed")
 EVIDENCE_FILES = ("result.json", "task.json", "events.jsonl", "candidate.patch", "seed.patch", "context.json", "pi-session.json", "import_verifier_test.go.txt",
                   "journal.json", "handoff.json", "partial.patch", "recovery-stop.json", "first-entry-result.json", "second-entry-result.json")
-RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs", "repair/runs", "recovery/runs")
+RUN_FOLDERS = ("runs", "sandbox-preflight/runs", "sandbox-probes/runs", "pi/runs", "verification/runs", "repair/runs", "recovery/runs",
+               "workflows/runs", "native-tools/runs")
 
 
 def escape(value):
@@ -737,6 +739,26 @@ Saved outcome: {escape(outcome)}.</p></details></article>'''))
     return (''.join(current) + history(earlier, "Earlier demonstrations")) if ordered else '<p>No live sandbox demonstrations recorded.</p>'
 
 
+def render_import_reports(reports, progress, link_root=None):
+    review = progress.get("import_learning_review", {})
+    entries = (("AI repair attempt", "workflows/runs", "workflow.md", review.get("run")),
+               ("Deliberately ineffective repair", "native-tools/runs", "normal-tools.md", review.get("failure_example", {}).get("run")))
+    rows = []
+    for label, folder, filename, recorded in entries:
+        match = re.fullmatch(r"reports/harness/" + folder + r"/([0-9a-f]{32})", recorded or "")
+        path = reports / folder / match[1] / filename if match else None
+        if path is None or not path.is_file() or any(parent.is_symlink() for parent in (path, *path.parents)):
+            rows.append(f'<article class="run"><h3>{label}</h3><p>Readable report not recorded in this snapshot.</p></article>')
+            continue
+        link = escape(path.relative_to(link_root or reports).as_posix())
+        receipt = escape(path.with_name("result.json").relative_to(link_root or reports).as_posix())
+        rows.append(f'<article class="run"><h3>{label}</h3><p>Run ID: <code>{match[1]}</code>.</p>'
+                    f'<p><a href="{link}">Read the saved run report</a> for the outcome, model involvement and individual checks. '
+                    'This page has not revalidated that result.</p>'
+                    f'<p><a href="{receipt}" data-evidence="{receipt}">Receipt</a></p></article>')
+    return ''.join(rows)
+
+
 def render(reports, progress, *, link_root=None, snapshot=None):
     if progress["status"] not in STATES or progress["stage"] not in STAGES:
         raise ValueError("Unknown progress stage or status")
@@ -874,9 +896,27 @@ Setup problems such as missing tools or dependencies mean we couldn't judge the 
         results_intro = ('Compare the latest good and wrong examples' + (' requested in containers' if container_mode else '') +
                          '. A failure in the middle step is expected.')
         comparison_label = 'Compare good and wrong'
+    comparison_note = 'No comparisons yet. Prepared examples test the harness; one live attempt cannot establish a trend. Later we will compare repeated AI attempts on the same tasks and settings. These timings alone do not show improved repair ability.'
+    if progress["stage"] == "Use":
+        stage_title = 'supervised import repairs'
+        intro = 'Use follows Compare. The segment-gap task checks that imported journey distance excludes travel between recording sections.'
+        takeaway = 'Pi proposes a repair, separate code checks its exact saved patch, and human review remains a separate decision. Familiar synthetic tasks do not establish time saved.'
+        results_title = 'Review the current import attempts'
+        results_intro = 'These links preserve the recorded import reports. Older XML calibration examples are not the results of this stage.'
+        comparison_label = 'Read the import reports'
+        records = render_import_reports(reports, progress, link_root)
+        sandbox = pi_section = ''
+        comparison_note = 'Earlier comparisons belong to the saved Compare stage. This familiar synthetic import task does not establish real-bug performance, a trend or time saved. Human attention and review time remain unknown unless explicitly recorded.'
+        experiment_guide = '''<details id="experiment-guide"><summary>How to review the import attempts</summary>
+<p>The synthetic task deliberately counts distance across section gaps. Original code should pass, the planted bug should fail,
+and a working repair should pass both import test sets plus formatting and repository checks.</p>
+<p>The AI attempt and the supplied ineffective repair have separate readable reports. A deliberate candidate failure is expected;
+missing tools, cancellation or unfinished checking cannot establish repair success. A real bug still needs an agreed reproducer.</p>
+<p>The snapshot retains these readable reports and run files. Plans and other referenced evidence may still require the original local folders.
+Use workflow.py --report with the original run directory to revalidate its evidence without inference.</p></details>'''
     if recovery:
         review_step = '<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>'
-    elif define or verification:
+    elif define or verification or progress["stage"] == "Use":
         review_step = '<li><a href="#experiment-guide">Review setup failures</a>Missing dependencies and timeouts must remain separate from failed repairs.</li>'
     else:
         review_step = '<li><a href="#sandbox">Inspect the boundary checks</a>Look for access denial and confirmed cleanup.</li>'
@@ -999,8 +1039,7 @@ Receipt links open the evidence drawer. Select the result, task, events, patches
 <li><strong>Use:</strong> try real tasks under human supervision, starting with imports.</li>
 </ol><ul>{items(progress["decisions"])}</ul>
 <p>Obstacles: {escape('; '.join(progress['blockers']) or 'none recorded')}.</p></details>
-<details><summary>Is the AI getting better at repairs?</summary><p>No comparisons yet. Prepared examples test the harness; one live attempt cannot establish a trend.
-Later we'll compare repeated AI attempts on the same tasks and settings. These timings alone don't show improved repair ability.</p></details>
+<details><summary>Is the AI getting better at repairs?</summary><p>{escape(comparison_note)}</p></details>
 </section></main>
 <aside id="review" aria-label="Review guide"><section><h2>Your review path</h2>
 <ol class="review-links"><li><a href="#results">{comparison_label}</a>Explain why their final steps differ.</li>
