@@ -199,3 +199,14 @@ Local starting points are `reports/harness/issue109-handoff.md`,
 The checkout passed 343 Python tests, 32 SDK tests, four Python-to-Pi integration
 tests and `make test format-check`. No viewer source changed, so no terminal
 interaction check was run. The learning checkpoint remains awaiting review.
+
+## Review-stack follow-up
+
+Review found that managed retry reports linked every attempt to the final patch,
+and CLI probe/timeout reports described a repair they never made. Attempt links
+now target their own frozen patches; repair text appears only for repair demos.
+The new regressions failed before these changes and pass afterwards. The full
+Python suite now passes 345 tests, and `make test format-check` passes. No new
+repair-model run was needed. The original checked repair remains valid; the
+human learning checkpoint still awaits review. The consolidated local report is
+`reports/harness/issue109-review-stack.md`.

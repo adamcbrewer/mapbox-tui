@@ -216,6 +216,15 @@ class WorkflowReceiptTests(unittest.TestCase):
     def save(self):
         (self.directory / "result.json").write_text(json.dumps(self.result))
 
+    def test_each_reported_attempt_links_to_its_own_frozen_patch(self):
+        report = workflow.render(self.result)
+        for index, attempt in enumerate(self.result["verification_attempts"], 1):
+            with self.subTest(attempt=index):
+                section = report.split(f"Attempt {index}:", 1)[1].split("\nAttempt ", 1)[0]
+                link = section.split("[saved candidate patch](", 1)[1].split(")", 1)[0]
+                patch_bytes = (self.directory / link).read_bytes()
+                self.assertEqual(digest(patch_bytes), attempt["patch_sha256"])
+
     def test_changed_parent_outcome_or_first_repair_flag_cannot_relabel_a_failed_attempt(self):
         self.assertTrue(workflow.validated_result(self.directory, self.root)["independent_checks_passed"])
         original = copy.deepcopy(self.result)

@@ -368,7 +368,7 @@ def render(result):
             log = ("../../../verification/runs/" + attempt["run_id"] + "/" + identity + ".stdout") if check else None
             label = "Passed" if status == "passed" else "Failed as intended" if status == "assertion_failed" and identity.startswith("seed") else "Failed" if status in ("assertion_failed", "failed", "build_failed") else status
             lines.append("| " + check_labels[identity] + " | " + ("[" + label + "](" + log + ")" if log else label) + " |")
-        lines += ["", "Read the [saved candidate patch](candidate.patch) and [separate check receipt](../../../verification/runs/" + attempt["run_id"] + "/result.json).", ""]
+        lines += ["", f"Read the [saved candidate patch](attempts/{index}/candidate.patch) and [separate check receipt](../../../verification/runs/" + attempt["run_id"] + "/result.json).", ""]
     lines += ["", labels.get(agent, "The conversation didn't complete") + ". " + result.get("reason", ""), "",
               "Operator feedback delivered: " + str(sum(c["origin"] == "operator" for c in result.get("continuations", []))) + ". "
               "This doesn't establish zero human attention. Explicit attention records are self-reported; missing time stays unknown.", "",

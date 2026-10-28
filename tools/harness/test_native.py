@@ -140,6 +140,17 @@ class NativeProtocolTests(unittest.TestCase):
 
 
 class PreparedDemoTests(unittest.TestCase):
+    def test_cli_probe_and_timeout_reports_do_not_claim_a_repair(self):
+        for demo in ("probe", "timeout"):
+            with self.subTest(demo=demo):
+                result = {"outcome": "native_tools_ready", "task": "cli-inspect-v1", "candidate": demo,
+                          "containers": [], "tool_results": [], "snapshot_scope_valid": True}
+                report = native_run.render(result)
+                self.assertIn("No repair AI ran", report)
+                self.assertNotIn("changes the bad default", report)
+                self.assertNotIn("expected repair failure", report)
+                self.assertIn("invalid timeout" if demo == "timeout" else "boundary checks", report)
+
     def test_bounds_good_demo_restores_the_reference_source_and_wrong_demo_keeps_the_bug(self):
         with tempfile.TemporaryDirectory() as temporary:
             run = Run(Path(temporary))

@@ -524,7 +524,7 @@
       "Reuse runtime, verifier, budgets, one-use plans and operator records; preserve import defaults and legacy receipt paths.",
       "Keep standalone MCP separate from live viewer control; no new live-control capability."
     ],
-    "assistant_review": "One finding fixed: public test script leaked private branches. Private examples now use separate data and remain outside public fixture bytes. Review found no remaining actionable defects. A subsequent writable-sandbox run exposed Python bytecode output; fixtures now use Python -B without relaxing scope.",
+    "assistant_review": "Review-stack found two reporting defects: retry attempts linked to the final patch, and CLI probe/timeout demos falsely described a repair. Both fixed with failing-before/passing-after regressions. Completeness, fixture, failure-path, security and local-history review found no additional actionable defects. Human learning review remains pending.",
     "import_regression": "reports/harness/case-calibration-batches/runs/d221eea134e5496ab5e708bcb05673fe/calibration.md",
     "run": "reports/harness/workflows/runs/d0b0f206b21240fa876d1a0ebfb9b0a7",
     "outcome": "native_verification_passed",
@@ -535,6 +535,7 @@
     "verification": "reports/harness/verification/runs/b9a0d9e0e5d3430789145df2c9c7bba5/result.json",
     "handoff": "reports/harness/issue109-handoff.md",
     "comparison": "reports/harness/issue109-comparison.json",
-    "corrections": []
+    "corrections": [],
+    "review_stack": "reports/harness/issue109-review-stack.md"
   }
 }

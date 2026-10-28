@@ -142,8 +142,9 @@ def render(result):
              "This checks the connection needed for the plain-Pi baseline in #107. It doesn't complete the AI comparison.", ""]
     if result.get("task") == "cli-inspect-v1":
         lines += ["This extends the import recipe in #109. CLI inspect without a selector must return point 0; standalone MCP requires exactly one explicit selector. "
-                  "Both interfaces must preserve explicit selection, structured results, errors and ANSI-free offline maps. No live viewer is contacted.", "",
-                  "The planted bug changes the CLI default to 1. This supplied sequence " +
+                  "Both interfaces must preserve explicit selection, structured results, errors and ANSI-free offline maps. No live viewer is contacted.", ""]
+        if result["candidate"] in ("good", "wrong"):
+            lines += ["The planted bug changes the CLI default to 1. This supplied sequence " +
                   ("removes that planted assignment." if result["candidate"] == "good" else "changes the bad default from 1 to 2, which deliberately leaves the contract broken.") +
                   " The candidate should " + ("pass." if result["candidate"] == "good" else "fail. This is an expected repair failure, not a successful fix."), ""]
     if result["candidate"] == "timeout":
