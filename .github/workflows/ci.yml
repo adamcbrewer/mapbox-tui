@@ -97,7 +97,7 @@ jobs:
           name: release-workflow-captures
           path: reports/generated/release/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 3
       - name: Save terminal captures on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -105,4 +105,4 @@ jobs:
           name: terminal-captures
           path: reports/generated/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 3
