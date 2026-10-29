@@ -64,7 +64,9 @@ def normalize(row, by_path, reports):
     result = row.get("receipt_snapshot", {})
     attempts = row.get("verification_attempts", [])
     usable = [a for a in attempts if isinstance(a, dict)]
-    count = len(usable) if "verification_attempts" in result or "attempts" in result or usable else None
+    raw_history = result.get("attempts", result.get("verification_attempts"))
+    recorded_history = "attempts" in result or "verification_attempts" in result
+    count = len(usable) if isinstance(raw_history, list) or not recorded_history and usable else None
     if len(usable) != len(attempts):
         count = None
     usage = row.get("token_summary")
@@ -95,12 +97,15 @@ def normalize(row, by_path, reports):
     evaluator = result.get("evaluator") or {}
     review = claim_review(row, reports)
     task_name = result.get("task")
+    if not isinstance(task_name, str):
+        task_name = None
     if task_name is None:
         for name in ("verification-task.json", "task.json"):
             try:
                 raw = read_local(reports / Path(row["receipt"]).parent / name, reports)
                 if digest(raw) == result.get("task_sha256"):
-                    task_name = json.loads(raw).get("id")
+                    saved_name = json.loads(raw).get("id")
+                    task_name = saved_name if isinstance(saved_name, str) else None
                     break
             except (OSError, ValueError, AttributeError):
                 continue

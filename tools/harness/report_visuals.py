@@ -26,12 +26,16 @@ def snapshot_time(value):
 
 def model_name(row):
     model = row.get("pins", {}).get("model")
+    if not isinstance(model, str):
+        return "Prepared example" if model is None and row.get("mode") == "prepared" else "Unknown model"
     return {"gpt-6.1-sol": "Sol", "gpt-6-luna": "Luna", "gpt-6.1-terra": "Terra",
             "scripted (no AI)": "Prepared example"}.get(model) or model or ("Prepared example" if row.get("mode") == "prepared" else "Unknown model")
 
 
 def run_name(row):
     task = row["measurement"]["identity"]["task"]
+    if not isinstance(task, str):
+        task = None
     task = {"xml-leading-bom-v1": "XML import", "segment-distance-v1": "Journey distance"}.get(task, task or "Task not recorded")
     return f"{model_name(row)}: {task}"
 

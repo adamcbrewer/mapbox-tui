@@ -153,6 +153,28 @@ class TelemetryTests(unittest.TestCase):
         self.assertIn("Unsupported receipt schema", value["records"][0]["problem"])
         self.assertFalse(value["records"][0]["verified_success"])
 
+    def test_malformed_identity_fields_do_not_hide_other_runs_or_abort_rendering(self):
+        self.receipt("valid")
+        for index, (field, invalid) in enumerate((("model", []), ("model", {}), ("task", []), ("task", {}),
+                                                ("workflow", []), ("synthetic", []))):
+            directory = self.receipt(f"malformed-{index}")
+            path = directory / "result.json"
+            result = json.loads(path.read_text())
+            result[field] = invalid
+            path.write_text(json.dumps(result))
+        value = telemetry.load(self.root)
+        self.assertEqual(len(value["records"]), 7)
+        invalid_rows = [r for r in value["records"] if r.get("problem")]
+        self.assertEqual(len(invalid_rows), 6)
+        self.assertTrue(all(not r["verified_success"] for r in invalid_rows))
+        page = telemetry.render(value, self.root, self.output)
+        self.assertIn("Malformed receipt metadata", page)
+        self.assertIn("Unknown model", page)
+        self.assertIn("valid", page)
+        with patch("sys.argv", ["telemetry.py", "--reports", str(self.root)]):
+            self.assertEqual(telemetry.main(), 1)
+        self.assertTrue(self.output.is_file())
+
     def test_retry_success_counts_one_task_and_keeps_failed_attempt(self):
         directory = self.receipt("retry")
         value = json.loads((directory / "result.json").read_text())

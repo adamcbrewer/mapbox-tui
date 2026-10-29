@@ -131,6 +131,22 @@ class MeasurementTests(unittest.TestCase):
         value = measurements.normalize(row, {}, self.root)
         self.assertIsNone(value["metrics"]["total_cost_usd"])
 
+    def test_null_or_malformed_attempt_history_stays_unknown_but_empty_list_is_zero(self):
+        path = self.root / "workflows/runs/cancelled/result.json"
+        original = json.loads(path.read_text())
+        for field in ("attempts", "verification_attempts"):
+            for history in (None, "partial", 1, {}, []):
+                with self.subTest(field=field, history=history):
+                    result = dict(original)
+                    result.pop("attempts", None)
+                    result.pop("verification_attempts", None)
+                    result[field] = history
+                    path.write_text(json.dumps(result))
+                    row = next(r for r in telemetry.load(self.root)["records"] if r["run_id"] == "cancelled")
+                    expected = 0 if history == [] else None
+                    self.assertEqual(row["measurement"]["metrics"]["repair_attempts"], expected)
+                    self.assertEqual(row["measurement"]["metrics"]["retries"], expected)
+
     def test_task_label_uses_only_the_hash_bound_saved_task(self):
         row = copy.deepcopy(self.value["records"][0])
         raw = json.dumps({"id": "saved-task-name"}).encode()

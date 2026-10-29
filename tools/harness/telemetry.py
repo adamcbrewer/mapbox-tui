@@ -52,18 +52,31 @@ def events(directory, run_id):
     return rows, problems, digest(raw)
 
 
+def flag_record(row, problem):
+    row["problem"] = '; '.join(filter(None, (row.get("problem"), problem)))
+    row["unconfirmed_completion"] = row["unconfirmed_completion"] or row["verified_success"]
+    row["verified_success"] = row["first_attempt_success"] = False
+
+
 def load(reports, progress=None):
     value = evaluate.inventory(reports)
     for row in value["records"]:
         receipt_version = row.get("receipt_snapshot", {}).get("schema_version")
         if receipt_version not in (None, 1):
-            row["problem"] = f"Unsupported receipt schema version: {receipt_version}"
-            row["unconfirmed_completion"] = row["unconfirmed_completion"] or row["verified_success"]
-            row["verified_success"] = row["first_attempt_success"] = False
+            flag_record(row, f"Unsupported receipt schema version: {receipt_version}")
+        result = row.get("receipt_snapshot", {})
+        shapes = {"model": (str, type(None)), "task": (str, type(None)), "workflow": (str,), "synthetic": (bool, type(None))}
+        invalid = [field for field, types in shapes.items() if field in result and type(result[field]) not in types]
+        if invalid:
+            flag_record(row, "Malformed receipt metadata: " + ', '.join(invalid))
+            row["missing_pins"] = [*row.get("missing_pins", []), *("invalid " + field for field in invalid)]
+            if "workflow" in invalid:
+                row["workflow"] = "unknown-workflow"
+            if "synthetic" in invalid:
+                row["synthetic"] = None
         if not isinstance(row["run_id"], str):
             row["run_id"] = Path(row["receipt"]).parent.name
-            row["problem"] = "Invalid run ID in receipt; using the directory label for inspection."
-            row["verified_success"] = row["first_attempt_success"] = False
+            flag_record(row, "Invalid run ID in receipt; using the directory label for inspection.")
     for row in value["records"]:
         row.update(duplicate=False, conflicting_duplicate=False)
         directory = reports / Path(row["receipt"]).parent
@@ -486,10 +499,15 @@ function revealSection(){{
   const target=document.getElementById(location.hash.slice(1));
   if(!target)return;
   for(let parent=target;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
-  if(target.classList.contains('run')){{target.hidden=false;target.querySelector('summary').focus();}}
+  if(target.classList.contains('run')){{
+    for(const field of filters)if(field.value&&target.dataset[field.dataset.filter]!==field.value)field.value='';
+    applyFilters();
+    target.querySelector('summary').focus();
+  }}
   target.scrollIntoView();
 }}
 window.addEventListener('hashchange',revealSection);
+for(const link of document.querySelectorAll('.runtime-label[href]'))link.addEventListener('click',()=>{{if(link.hash===location.hash)revealSection();}});
 revealSection();
 </script>
 </main></body></html>'''
