@@ -249,7 +249,10 @@ def execute(path, scripted_calls=None):
 
 def validated_result(directory, reports=None):
     result = json.loads((directory / "result.json").read_text())
-    plan = load_plan(Path(result["plan"]), execution=False)
+    plan_path = Path(result["plan"])
+    if reports is not None and plan_path.is_relative_to("reports/harness"):
+        plan_path = reports / plan_path.relative_to("reports/harness")
+    plan = load_plan(plan_path, execution=False)
     if (result["run_id"] != directory.name or result["plan_sha256"] != fingerprint(plan) or result["budgets"] != plan["budgets"] or
             result.get("native_environment") != plan.get("native_environment") or
             result["mode"] != plan["mode"] or result["config"] != plan["config"] or result["image"] != plan["image"] or

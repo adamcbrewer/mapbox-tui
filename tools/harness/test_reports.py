@@ -13,6 +13,16 @@ from recovery import Journal, RecoveryTools
 from test_repair import RepairFixture
 
 
+class SharedReferenceTests(unittest.TestCase):
+    def test_developer_reference_matches_the_shared_report_explanations(self):
+        self.assertEqual((HERE / "REFERENCE.md").read_text(), report.reference_markdown())
+
+    def test_telemetry_entry_point_keeps_stage_operations_separate(self):
+        with patch("sys.argv", ["report.py", "--telemetry", "--refresh-saved"]), self.assertRaises(SystemExit) as error:
+            report.main()
+        self.assertEqual(error.exception.code, 2)
+
+
 class ImportReportTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

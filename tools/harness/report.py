@@ -59,7 +59,7 @@ OUTCOMES = {
     "scripted_loop_passed": "The real Pi tool loop completed using prepared responses. No AI model ran.",
     "live_repair_passed": "The AI-written repair passed the fixed import check. Human review is still pending.",
     "focused_verification_passed": "This frozen patch passed the focused check in a fresh copy. Broader checks and human review remain pending.",
-    "repository_verification_passed": "This frozen patch passed the import, formatting and repository checks. Extra independent cases and human review remain pending.",
+    "repository_verification_passed": "The receipt records passing repository checks. Its verification scope says which independent cases were included. Human review remains separate.",
     "repair_failed": "The proposed repair did not pass this check.",
     "calibration_failed": "The setup did not produce the expected working and broken examples.",
     "blocked": "We couldn’t complete the checks. This does not tell us whether the repair works.",
@@ -83,7 +83,7 @@ GLOSSARY = {
     "Candidate patch": "The proposed repair we are testing. Prepared examples use a supplied patch; live Pi runs save the model's edit.",
     "Patch": "A file listing code lines to add or remove.",
     "Fixture": "Prepared example input used by a test, rather than your personal activity data.",
-    "Run / attempt / check": "A run is one execution of a task. An attempt is one proposed solution within it. A check is an individual test or validation step. This pilot tries one solution per run.",
+    "Run / attempt / check": "A run is one execution of a task. An attempt is one proposed solution within it. A check is an individual test or validation step. A run can contain several repair attempts, sharing its original limits.",
     "Run ID / hash": "A run ID labels its folder; the short ID beside Receipt helps you find it. A hash is a fingerprint identifying exact file contents. They are different things.",
     "Receipt": "The saved result summary and references to its evidence. It is not human approval.",
     "Frozen patch": "The exact saved repair bytes, identified by a fingerprint. Changing them invalidates their verification evidence.",
@@ -114,6 +114,10 @@ FILE_GUIDE = {
     "tools/harness/task.json": "The instruction sheet: starting code, expected behaviour, allowed changes and required test.",
     "tools/harness/fixtures/*.patch": "The deliberate bug and prepared example repairs.",
     "tools/harness/report.py": "Builds this HTML page from saved records. It does not run tests.",
+    "tools/harness/telemetry.py / measurements.py": "Build the offline progress, timeline and comparison report from existing receipts. Measurements are a versioned reading of the evidence, not a second source of truth.",
+    "tools/harness/report_visuals.py": "Builds the visible stat summaries, outcome bars and linked runtime charts. It keeps AI attempts separate from prepared examples and uses native SVG without external assets.",
+    "tools/harness/measurement-schema.json": "Defines the versioned measurement fields and aggregation rules. Missing measurements are null, not zero.",
+    "reports/harness/telemetry.html": "Open this for project progress, run timelines, comparisons and the shared reference guide. No server is needed.",
     "tools/harness/progress.json": "Records our stage, decisions and pending discussion. Test results do not update our approval.",
     "tools/harness/test_harness.py": "Tests the Python machinery itself.",
     "tools/harness/README.md": "Commands and instructions for using and reviewing this pilot.",
@@ -122,12 +126,26 @@ FILE_GUIDE = {
     "reports/harness/snapshots/<stage>/": "Saved progress, provenance and copied evidence for one stage. Include this folder for original-file links and logs; the evidence drawer's files are embedded in the HTML.",
     "reports/harness/runs/<run-id>/": "Evidence from one experiment. Within it, task.json preserves the instructions, seed.patch preserves the deliberately broken change, and candidate.patch preserves the proposed repair.",
     "reports/harness/sandbox-preflight/runs/<run-id>/": "Separate runtime-readiness receipts and Podman inspection logs. These are not repair attempts or proof of container isolation.",
-    "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Receipt links open the embedded copy in the evidence drawer.",
+    "result.json (inside a run folder)": "The final summary: outcome, timings and exactly what was checked. Saved stage reports open it in an evidence drawer. Telemetry embeds a readable receipt under each run and links to the original file.",
     "events.jsonl (inside a run folder)": "A chronological diary, with one event per line: a command started, finished, or a test result was recorded.",
     "*.stdout / *.stderr (inside a run folder)": "Command output and diagnostics. Usually only needed to investigate a problem. baseline and seed refer to the original and deliberately broken code; candidate refers to the proposed repair. scope checks allowed files; metadata checks file operations such as renaming or deleting; apply records applying a patch. go-version records the compiler version.",
     "snapshot.stdout": "An exception to the readable logs: this contains the archived source copy. snapshot.stderr contains any archive-command diagnostics.",
     "reports/harness/*.log": "Checks run on the harness implementation, separate from the individual experiments.",
 }
+
+
+def reference_markdown():
+    lines = ["# Harness reference", "", "Open `reports/harness/telemetry.html` for current progress, timelines and comparisons. "
+             "Open `index.html` for the saved stage report. Start with a run's receipt and exact candidate when reviewing a result; "
+             "command logs and source archives are for investigating problems.", "", "## Worked example", "",
+             "Original code passes, deliberately broken code fails, then a working proposed repair passes or an ineffective repair still fails. "
+             "The middle failure is expected: it proves the example exposes the planted bug. A passing repair still needs human review. "
+             "Pi chooses tools and proposes edits. Our runner owns limits, evidence and checks. The report reads the saved records.", "",
+             "## Glossary", ""]
+    lines.extend(f"- **{term}:** {meaning}" for term, meaning in GLOSSARY.items())
+    lines.extend(["", "## File guide", ""])
+    lines.extend(f"- `{name}`: {meaning}" for name, meaning in FILE_GUIDE.items())
+    return "\n".join([*lines, ""])
 
 
 def definitions(entries):
@@ -1233,7 +1251,17 @@ def main():
     parser.add_argument("--restore-from", metavar="COMMIT", help="Read historical progress from this Git commit")
     parser.add_argument("--evidence", type=Path, help="Original report directory; required with --restore-from")
     parser.add_argument("--refresh-saved", action="store_true", help="Apply the current design to saved snapshots without recapturing evidence")
+    parser.add_argument("--telemetry", action="store_true", help="Build current project progress, run timelines and measured comparisons without changing saved stages")
+    parser.add_argument("--reports", type=Path, help="Evidence directory for --telemetry")
+    parser.add_argument("--output", type=Path, help="HTML destination for --telemetry")
     args = parser.parse_args()
+    if args.telemetry:
+        if args.restore_from or args.evidence or args.refresh_saved:
+            parser.error("Build telemetry separately from historical stage operations")
+        from telemetry import build
+        return build((args.reports or REPORTS).resolve(), (args.output or REPORTS / "telemetry.html").resolve(), HERE / "progress.json")
+    if args.reports or args.output:
+        parser.error("--reports and --output require --telemetry")
     if bool(args.restore_from) != bool(args.evidence) or (args.refresh_saved and args.restore_from):
         parser.error("Use --restore-from and --evidence together, separately from --refresh-saved")
     try:
@@ -1264,4 +1292,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

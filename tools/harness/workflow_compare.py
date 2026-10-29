@@ -80,19 +80,19 @@ def load_plan(path, execution=True):
     return plan
 
 
-def collect(path, cell):
+def collect(path, cell, reports=None):
     directory = path / "cells" / str(cell["position"])
     if not (directory / "attempt.json").exists():
         return {**cell, "status": "not_started"}
     identity = json.loads((directory / "attempt.json").read_text())["run_id"]
     if not re.fullmatch(r"[0-9a-f]{32}", identity):
         raise Stop("invalid_input", "Invalid workflow run identity")
-    run = REPORTS / "workflows/runs" / identity
+    run = (reports or REPORTS) / "workflows/runs" / identity
     raw = (run / "result.json").read_bytes()
     initial = json.loads(raw)
     if not initial.get("ended_at"):
         return {**cell, "status": "incomplete", "run_id": identity}
-    result = workflow.validated_result(run)
+    result = workflow.validated_result(run, reports=reports)
     if (result.get("comparison") != {k: cell[k] for k in ("position", "pair", "mode", "experiment_id")} or
             result["plan_sha256"] != cell["plan_sha256"] or result["candidate_source"] != "AI" or
             result["model"] != result["config"]["model"] or result["provider"] != result["config"]["provider"]):

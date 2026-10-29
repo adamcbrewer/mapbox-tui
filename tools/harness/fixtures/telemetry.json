@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "kind": "supplied-test-expectations",
+  "description": "Synthetic report tests only. No model or product checks run. Expected verification flags are supplied by tests, never trusted by the real inventory verifier.",
+  "cases": [
+    {
+      "id": "success",
+      "outcome": "native_verification_passed",
+      "verified": true,
+      "first": true,
+      "attempts": 1,
+      "seconds": 10,
+      "tokens": 100,
+      "model_cost": 0.1,
+      "execution_cost": 0.02,
+      "false_claim": false
+    },
+    {
+      "id": "failure",
+      "outcome": "repair_failed",
+      "verified": false,
+      "first": false,
+      "attempts": 1,
+      "seconds": 12,
+      "tokens": 150,
+      "model_cost": null,
+      "execution_cost": null,
+      "false_claim": true
+    },
+    {
+      "id": "retry",
+      "outcome": "native_verification_passed",
+      "verified": true,
+      "first": false,
+      "attempts": 2,
+      "seconds": 20,
+      "tokens": 200,
+      "model_cost": 0.3,
+      "execution_cost": 0.03,
+      "false_claim": false
+    },
+    {
+      "id": "cancelled",
+      "outcome": "cancelled",
+      "verified": false,
+      "first": false,
+      "attempts": 0,
+      "seconds": 3,
+      "tokens": null,
+      "model_cost": null,
+      "execution_cost": null,
+      "false_claim": null
+    },
+    {
+      "id": "incomplete",
+      "outcome": "incomplete",
+      "verified": false,
+      "first": false,
+      "attempts": null,
+      "seconds": null,
+      "tokens": null,
+      "model_cost": null,
+      "execution_cost": null,
+      "false_claim": null
+    },
+    {
+      "id": "recovery",
+      "outcome": "native_verification_passed",
+      "verified": true,
+      "first": false,
+      "attempts": 2,
+      "seconds": 30,
+      "tokens": 400,
+      "model_cost": 0.4,
+      "execution_cost": 0.05,
+      "false_claim": false,
+      "recovery_outcome": "verified after resume"
+    }
+  ],
+  "expected": {
+    "submitted_tasks": 6,
+    "first_attempt_successes": 1,
+    "eventual_successes": 3,
+    "false_completions": 1,
+    "claim_reviews_missing": 2,
+    "interruptions": 3,
+    "recovery_observations": 1,
+    "known_tokens": 4,
+    "known_costs": 3,
+    "duration_median": 12
+  }
+}

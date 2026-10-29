@@ -1195,6 +1195,116 @@ It isn't live. Run `report.py` again after new experiments, then refresh the pag
 That script saves the current stage's progress and evidence, then rebuilds its
 HTML page. It doesn't run tests.
 
+### Read run timelines and grouped observations
+
+Build a separate offline execution report from the existing receipts and event journals:
+
+```sh
+python3 tools/harness/report.py --telemetry
+```
+
+Open `reports/harness/telemetry.html`. The direct `telemetry.py` entry point is
+also supported. This makes no model calls and runs no
+product checks. It reuses `evaluate.py` to check the evidence behind saved passes.
+Project milestones and human review decisions remain in the stage reports.
+
+Start with the stat numbers and visible outcome/runtime charts. AI submissions
+and prepared test examples have separate views; choosing one also narrows the
+evidence list. Select a runtime row to open that attempt's checks. Human labels
+come before run hashes, which remain available in the details. Technical filters,
+progress notes and the glossary sit below the visual summary. The charts use
+native SVG with no library, CDN requests or new dependencies.
+
+Use `--reports PATH` to read another local evidence directory, and `--output PATH`
+to write the HTML elsewhere. For example, from a new worktree:
+
+```sh
+python3 tools/harness/report.py --telemetry --reports ../reports/harness --output reports/harness/telemetry.html
+```
+
+The page contains its styles and timelines, so it opens without a server or
+network. Receipt links still need the original evidence files. Nothing is uploaded.
+Regeneration preserves those files; only the generated page is replaced. The
+generation timestamp changes, while unchanged records produce the same results.
+
+Open a group to see its task count, outcomes, first-repair and eventual checked
+fixes, and individual elapsed times. Exact recorded task, suite, model/settings,
+workflow and environment identities stay separate. Missing identity fields prevent
+a claim of comparability. These are historical observations, not a controlled
+comparison or proof that the harness improved. Demonstrations stay separate from
+live AI attempts. Billing and human time remain unknown unless recorded.
+
+Open a run, then its timeline, to follow tool calls, checks and stopping events.
+The original journal order is retained. Each independent attempt keeps its own
+patch fingerprint, so a successful retry doesn't hide the failed repair. The
+planted-bug checks deliberately fail; their failure is expected.
+
+Replayed event IDs count once. Conflicting events, partial journals, missing
+receipts and duplicate run IDs are visible. Identical run replays count once.
+Conflicting copies of a run ID are all excluded pending inspection, and stay
+visible. Child checker receipts don't count as extra tasks. Exit 1 means
+evidence needs inspection, not that a new repair failed. A clean generation exits
+0 even when the saved records contain correctly recorded failed repairs.
+The page is published atomically. If source receipts, journals, operator records,
+claim reviews, paired plans or progress change during rendering, the previous page
+is retained. Unsupported receipt versions are flagged rather than silently read
+as the current format.
+
+Project progress comes from `progress.json`, with its source, last update and
+questions visible. Historical stage states are read from retained snapshots,
+never inferred from passing tests or closed issues. Filters select complete
+workflow/task/suite/model/environment groups; they don't silently change a
+group's denominator. Clear filters to restore every record.
+
+Each group includes first-repair and eventual success, failure categories,
+interruptions/recovery, checked candidates and retries, tokens, elapsed time,
+corrections, human attention/review and model/execution/total cost. The charts
+show individual observations in recorded calendar order with raw values and
+receipt/candidate links. Known sample counts, medians and ranges remain visible;
+totals with any missing input stay unknown. At five observations, a Wilson 95%
+interval shows sampling uncertainty in success rates. It cannot account for
+task-selection bias, different models or unmeasured human effort.
+
+The [measurement schema](measurement-schema.json) defines version 1 and its
+aggregation rules. It is a projection of the receipts, not another source of
+truth; the generated HTML embeds that projection for inspection. Each check
+retains its own result, timing and evidence identity. Candidate attempts remain
+bound to their distinct patch hashes. Usage must be complete before tokens are
+counted. Costs are never guessed from tokens. Any supplied estimate must retain
+its rate/version assumptions in `cost_basis`; missing billing stays unknown.
+
+An incorrect model success claim is counted only from a claim review bound to
+that exact receipt hash. A saved pass whose evidence cannot be confirmed is
+reported separately. A report cannot infer the model's honesty from a missing
+file or infer zero human attention from zero corrections.
+
+Controlled comparisons are read from existing `workflow-pairs/experiments`
+plans using their original plan and receipt validators. Reporting never starts
+new runs or rewrites the comparisons. Missing, unfinished or inconsistent cells
+stay visible and cannot produce a certified comparison. Development and held-out
+tasks remain labelled separately. Even a valid held-out comparison supports only
+that small sample, not a claim of general reliability. With no retained paired
+evidence, the report shows an empty state instead of inventing an improvement.
+
+The report and [shared reference guide](REFERENCE.md) use the same glossary and
+file explanations as the saved stage reports. The reference guide includes the
+working-code / planted-bug / proposed-repair example.
+
+`fixtures/telemetry.json` supplies six clearly synthetic test expectations:
+success, failed repair, retry, cancellation, incomplete execution and recovery.
+`test_measurements.py` checks their exact totals, missing values and reloading.
+It supplies verification outcomes for those report tests; the real inventory
+verifier refuses to certify those invented receipts. To rebuild a labelled local
+sample without a model or product check:
+
+```sh
+PYTHONPATH=tools/harness python3 -c 'from pathlib import Path; from test_measurements import write_sample; print(write_sample(Path("reports/harness/telemetry-synthetic")))'
+```
+
+Review its supplied 1/6 first-repair and 3/6 eventual successes alongside the
+failed attempt, cancellation, incomplete run and recovery. These expected values
+test the report; they are not measured repair ability. All evidence remains local.
+
 ### Keep a report for each stage
 
 `report.py` uses the stage recorded in `progress.json` to name the report:

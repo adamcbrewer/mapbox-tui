@@ -1,0 +1,482 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mapbox-tui:harness:measurement:1",
+  "title": "Local harness measurement projection, version 1",
+  "description": "Derived on demand from original receipts and journals. Never used to certify a patch. No raw prompts or logs are needed in the projection.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "receipt",
+    "identity",
+    "outcome",
+    "metrics",
+    "checks",
+    "attempts",
+    "first_attempt_success",
+    "eventual_success",
+    "false_completion",
+    "recovery",
+    "role",
+    "origin",
+    "settings_sha256",
+    "missing_pins",
+    "claim_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "receipt": {
+      "type": "string"
+    },
+    "receipt_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "events_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "task",
+        "fixture_sha256",
+        "suite_version",
+        "workflow",
+        "pins",
+        "base_sha256_or_commit",
+        "patch_sha256",
+        "harness_version",
+        "pi_version"
+      ],
+      "properties": {
+        "task": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fixture_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_sha256_or_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patch_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pi_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suite_version": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pins": {
+          "type": "object"
+        }
+      }
+    },
+    "outcome": {
+      "enum": [
+        "verified_fix",
+        "failed_repair",
+        "environment_or_evidence_failure",
+        "cancelled",
+        "timeout",
+        "incomplete",
+        "budget_exhausted",
+        "unconfirmed_pass",
+        "other_or_focused_result"
+      ]
+    },
+    "started_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "first_attempt_success": {
+      "type": "boolean"
+    },
+    "eventual_success": {
+      "type": "boolean"
+    },
+    "false_completion": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Only a receipt-hash-bound claim review supplies this. Unconfirmed evidence is not a false model claim."
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "duration_seconds",
+        "repair_attempts",
+        "retries",
+        "tokens",
+        "model_cost_usd",
+        "execution_cost_usd",
+        "total_cost_usd",
+        "user_corrections",
+        "attention_seconds",
+        "review_seconds"
+      ],
+      "properties": {
+        "duration_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "repair_attempts": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "retries": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tokens": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "model_cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "execution_cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_cost_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "user_corrections": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "attention_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "review_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "attempt",
+          "started_at",
+          "ended_at",
+          "duration_seconds",
+          "exit_code",
+          "outcome",
+          "receipt",
+          "receipt_sha256",
+          "patch_sha256"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "receipt_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patch_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stdout": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stderr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duration_seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "receipt": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "outcome",
+          "patch_sha256",
+          "receipt_sha256"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patch_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "receipt_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "required": [
+        "observed",
+        "outcome"
+      ],
+      "properties": {
+        "observed": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "cost_basis": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Recorded actual billing or estimate rate, currency, rate version and assumptions. Unknown costs are not estimated automatically."
+    },
+    "role": {
+      "type": "object",
+      "required": [
+        "is_child",
+        "duplicate",
+        "conflicting_duplicate"
+      ],
+      "properties": {
+        "is_child": {
+          "type": "boolean"
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "conflicting_duplicate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "origin": {
+      "type": "object",
+      "required": [
+        "mode",
+        "synthetic",
+        "simulated_checks"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "live",
+            "prepared",
+            "unknown"
+          ]
+        },
+        "synthetic": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "simulated_checks": {
+          "type": "boolean"
+        }
+      }
+    },
+    "settings_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "missing_pins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "claim_review": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "incorrect_success_claim": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "aggregation_rules": [
+    "Count each unique submitted root task once; separate child checker receipts.",
+    "Count byte-identical run replays once. Exclude all conflicting copies of a run ID and show their exclusion.",
+    "Keep prepared, simulated and live runs separate. Keep unknown identity fields visible.",
+    "Group by complete recorded task, suite, workflow, model/settings, environment and harness identities.",
+    "Repair attempts count separately recorded checked candidates, not tool calls or model requests. Unchecked edits are not inferred candidates.",
+    "Success requires the existing evidence verifier, never a model message.",
+    "Show first-repair and eventual success over every submitted task in that group, including cancelled and incomplete runs.",
+    "Sum total cost only when both model and execution costs are known for all attempts. No token-to-price estimate is invented.",
+    "Missing tokens or incomplete usage records are null. Human intervals count only when explicitly recorded.",
+    "Show known and missing sample counts, raw points and medians/ranges. A total with missing inputs is null.",
+    "Wilson 95% intervals describe within-group success uncertainty; they do not account for task-selection bias or establish a causal effect.",
+    "Chronological plots are descriptive. Only a validated paired plan on a held-out task supports a within-sample workflow comparison."
+  ]
+}

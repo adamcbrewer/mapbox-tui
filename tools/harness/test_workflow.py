@@ -238,6 +238,37 @@ class WorkflowReceiptTests(unittest.TestCase):
         with self.assertRaises(Stop):
             workflow.validated_result(self.directory, self.root)
 
+    def test_explicit_reports_root_resolves_a_relative_plan_from_another_checkout(self):
+        self.result["plan"] = "reports/harness/workflows/plans/example"
+        self.save()
+        path = self.root / "workflows/plans/example"
+        path.mkdir(parents=True)
+        (path / "plan.json").write_text(json.dumps(self.plan))
+        with patch("workflow.load_plan", side_effect=lambda directory, **_: json.loads((directory / "plan.json").read_text())):
+            self.assertTrue(workflow.validated_result(self.directory, self.root)["independent_checks_passed"])
+
+    def test_paired_collection_uses_the_supplied_evidence_root(self):
+        import workflow_compare
+        cell = {"position": 1, "pair": 1, "mode": "managed", "experiment_id": "experiment"}
+        self.plan["config"].update(provider="example", model="example-model")
+        self.plan["context"] = {key: "supplied context" for key in workflow.baseline.CONTEXT}
+        (self.directory / "context.json").write_text(json.dumps(dict(self.plan["context"], permissions={"network": True, "childProcess": False})))
+        (self.directory / "reservations.json").write_text(json.dumps([{"request": 1, "provider": "example", "model": "example-model"}]))
+        self.result.update(comparison=cell, provider="example", model="example-model", candidate_source="AI",
+                           model_requests=1, dispatches=[1],
+                           ended_at="2026-01-01T00:00:00Z", usage_summary={"complete": False},
+                           plan_sha256=workflow.fingerprint(self.plan))
+        self.save()
+        experiment = self.root / "experiment"
+        directory = experiment / "cells/1"
+        directory.mkdir(parents=True)
+        (directory / "attempt.json").write_text(json.dumps({"run_id": self.directory.name}))
+        (experiment / "progress.json").write_text(json.dumps({"cells": [{**cell, "status": "finished", "run_id": self.directory.name,
+                                                                         "receipt_sha256": digest((self.directory / "result.json").read_bytes())}]}))
+        observed = workflow_compare.collect(experiment, dict(cell, plan_sha256=self.result["plan_sha256"]), reports=self.root)
+        self.assertTrue(observed["verified"])
+        self.assertEqual(observed["status"], "finished")
+
     def test_cancelled_child_remains_readable_but_can_never_establish_a_pass(self):
         child = self.children[-1]
         checked = json.loads((child / "result.json").read_text())
