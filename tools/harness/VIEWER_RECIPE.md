@@ -200,7 +200,7 @@ seconds were recorded, excluding development/calibration and other checks.
 No general reliability or time-saving conclusion follows from this sample.
 
 The earlier import and CLI/MCP calibrations each matched all eight expected
-outcomes, with nine containers removed apiece. The checkout passed 358 Python
+outcomes, with nine containers removed apiece. After integrating the #111 reporting changes, the checkout passed 393 Python
 tests, 32 SDK tests, four actual-Pi integration tests, `make test format-check`
 and both `make interactions` scripts. Capture-integrity checks rejected a
 modified PNG. Review also corrected capture metadata propagation, task deadline
