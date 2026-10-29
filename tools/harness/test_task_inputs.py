@@ -53,6 +53,24 @@ class TaskInputTests(unittest.TestCase):
         prepare_verification(run, case)
         self.assertEqual(run.task, task)
 
+    def test_viewer_task_freezes_probe_and_keeps_extra_examples_private(self):
+        suite = Run(self.root / "viewer")
+        case = build(suite, "viewer-modal-v1")["cases"][0]
+        task = selected_task(suite.path)
+        inputs = materials(task)
+        self.assertEqual(task["allowed_files"], ["go/control.go"])
+        self.assertEqual(task["allowed_new_files"], [])
+        self.assertIn("scripts/harness_viewer_probe.py", inputs["public_files"])
+        self.assertEqual(digest(inputs["seed"]), case["seed_sha256"])
+        directory = suite.path / "cases/viewer-modal-v1"
+        self.assertTrue((directory / "private/reference.patch").read_bytes())
+        self.assertIn(b"if m.ui.dialog != dialogNone", (directory / "agent/go/control.go").read_bytes())
+        self.assertNotIn(b'"narrow-ascii"', inputs["public_files"][PUBLIC_FILE])
+        self.assertIn(b'"narrow-ascii"', inputs["regression"])
+        (directory / "agent/scripts/harness_viewer_probe.py").write_text("print('fake pass')")
+        with self.assertRaises(Stop):
+            selected_task(suite.path)
+
     def test_default_inputs_remain_the_existing_xml_task(self):
         task = definition()
         inputs = materials(task)

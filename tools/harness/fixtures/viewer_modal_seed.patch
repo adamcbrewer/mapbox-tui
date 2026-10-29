@@ -1,0 +1,12 @@
+--- a/go/control.go
++++ b/go/control.go
+@@ -299,6 +299,9 @@
+ }
+ 
+ func (m *viewer) acceptControlLoad(result controlLoaded) tea.Cmd {
++	if m.ui.dialog != dialogNone {
++		return nil
++	}
+ 	m.reconcileOperations()
+ 	op := m.control.operations[result.id]
+ 	if op == nil || op.response.State != "pending" {

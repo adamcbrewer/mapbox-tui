@@ -42,6 +42,7 @@ class ImportReportTests(unittest.TestCase):
         self.assertNotIn('href="#sandbox"', page)
 
     def test_extend_stage_uses_contract_reports_and_preserves_them(self):
+        self.progress.pop("viewer_learning_review", None)
         self.progress.update(stage="Extend", contract_learning_review=self.progress["import_learning_review"])
         page = report.render(self.source, self.progress)
         self.assertIn("Standalone MCP requires exactly one explicit selector", page)
@@ -53,6 +54,16 @@ class ImportReportTests(unittest.TestCase):
         shutil.rmtree(self.source)
         saved = report.render_saved(reports, "extend").read_text()
         self.assertIn('snapshots/extend/' + self.failure + '/normal-tools.md', saved)
+
+    def test_viewer_overview_links_its_own_reports_and_explains_limits(self):
+        self.progress.update(stage="Extend", viewer_learning_review=self.progress["import_learning_review"])
+        page = report.render(self.source, self.progress)
+        self.assertIn("Viewer interaction repairs", page)
+        self.assertIn("twenty-minute deadline", page)
+        self.assertIn("Structured assertions", page)
+        self.assertIn('href="' + self.success + '/workflow.md"', page)
+        self.assertIn('href="' + self.failure + '/normal-tools.md"', page)
+        self.assertNotIn("CLI inspection defaults to point 0", page)
 
     def test_saved_use_reports_survive_source_removal_and_bundle_move(self):
         reports = self.root / "reports"

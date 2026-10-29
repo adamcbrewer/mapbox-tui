@@ -129,7 +129,7 @@ class WorkflowTests(unittest.TestCase):
         directory = self.root / "plan"
         directory.mkdir()
         workflow.baseline.claim(directory, "spent")
-        plan = {"image": self.run.image, "config": {"model": "test", "provider": "openai"}, "mode": "plain", "budgets": {}}
+        plan = {"image": self.run.image, "config": {"model": "test", "provider": "openai"}, "mode": "plain", "budgets": {"deadline_seconds": 1200}}
         with patch("workflow.load_plan", return_value=plan), patch("workflow.preflight") as preflight, \
                 patch("workflow.REPORTS", self.root), patch("workflow.session") as session:
             _, result = workflow.execute(directory)
@@ -215,6 +215,22 @@ class WorkflowReceiptTests(unittest.TestCase):
 
     def save(self):
         (self.directory / "result.json").write_text(json.dumps(self.result))
+
+    def test_capture_metadata_survives_receipt_validation_and_cannot_be_relabelled(self):
+        child = self.children[-1]
+        checked = json.loads((child / "result.json").read_text())
+        check = {"id": "candidate", "outcome": "passed", "exit_code": 0,
+                 "viewer_artifacts": {"commands/after-import.png": "capture-hash"}}
+        checked["checks"] = [check]
+        raw = json.dumps(checked).encode()
+        (child / "result.json").write_bytes(raw)
+        self.result["verification_attempts"][-1].update(receipt_sha256=digest(raw), checks=[copy.deepcopy(check)])
+        self.save()
+        self.assertTrue(workflow.validated_result(self.directory, self.root)["independent_checks_passed"])
+        self.result["verification_attempts"][-1]["checks"][0]["viewer_artifacts"]["commands/after-import.png"] = "changed"
+        self.save()
+        with self.assertRaises(Stop):
+            workflow.validated_result(self.directory, self.root)
 
     def test_each_reported_attempt_links_to_its_own_frozen_patch(self):
         report = workflow.render(self.result)

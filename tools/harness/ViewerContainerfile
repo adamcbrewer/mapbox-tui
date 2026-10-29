@@ -1,0 +1,5 @@
+ARG HARNESS_IMAGE
+FROM ${HARNESS_IMAGE}
+RUN apt-get update && apt-get install -y --no-install-recommends tmux librsvg2-bin fontconfig fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN tmux -V && rsvg-convert --version && fc-match monospace && dpkg-query -W tmux librsvg2-bin fontconfig fonts-dejavu-core
+RUN usermod --shell /bin/sh nobody

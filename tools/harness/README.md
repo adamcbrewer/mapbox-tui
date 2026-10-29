@@ -1,12 +1,16 @@
 # Developer harness pilot
 
 I want to know whether the extra code around Pi helps it fix bugs and saves me
-time. The current stage extends the import workflow to CLI/MCP contract repairs
-([#109](https://github.com/adamcbrewer/mapbox-tui/issues/109)). Start with the
-[contract recipe](CONTRACT_RECIPE.md) for the agreed behaviour, scope, checks and
-stop/restart instructions. Adam selected this stage and contract on 28 October
-2026. The [import recipe](IMPORT_RECIPE.md) and earlier comparison notes remain
-available. The learning review is still a separate decision.
+time. The current stage extends the shared harness to viewer interaction repairs
+([#110](https://github.com/adamcbrewer/mapbox-tui/issues/110)). Start with the
+[viewer recipe](VIEWER_RECIPE.md) for the agreed modal/import input sequence,
+expected state, container setup and local success/failure evidence. Adam selected
+this task and requested the full remaining implementation on 29 October 2026.
+Pi proposes a scoped repair; the separate checker runs fixed viewer examples and
+the full interaction suite on its exact saved patch. Final learning review stays
+separate from automated results. The
+[contract recipe](CONTRACT_RECIPE.md), [import recipe](IMPORT_RECIPE.md) and
+earlier comparison notes remain available. Learning review is a separate decision.
 
 I've finished the earlier fixed comparisons with Luna. Plain Pi delivered four checked fixes
 out of four; managed Pi delivered three out of four. Both passed the two

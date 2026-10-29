@@ -96,7 +96,10 @@ def prepared_calls(run, sandbox, demo, host_file, private_file):
                                                    shell_quote('raise RuntimeError("Project json.py must not run")\n') + " > json.py"}},
                 {"name": "read", "args": {"path": "native-note.txt"}},
                 {"name": "bash", "args": {"command": "rm native-note.txt json.py"}}]
-    if run.task["id"] == "cli-inspect-v1":
+    if run.task["id"] == "viewer-modal-v1":
+        edit = ({"old": "\tif m.ui.dialog != dialogNone {\n\t\treturn nil\n\t}\n", "new": ""} if demo == "good" else
+                {"old": "m.ui.dialog != dialogNone {", "new": "m.ui.dialog != dialogNone && m.ui.dialog != dialogMapbox {"})
+    elif run.task["id"] == "cli-inspect-v1":
         edit = ({"old": "\t\tindex = 1\n", "new": ""} if demo == "good" else
                 {"old": "index = 1", "new": "index = 2"})
     elif run.task["id"] == "segment-distance-v1":
@@ -136,10 +139,13 @@ def render(result):
         title = "The separate checker caught the bad fix"
     if result.get("task") == "cli-inspect-v1":
         title = title.replace("import test", "CLI/MCP contract test")
+    if result.get("task") == "viewer-modal-v1":
+        title = title.replace("import test", "viewer interaction test")
     introduction = ("I used Pi's actual read, edit, write and bash tools with supplied steps." if ready else
                     "I set out to check Pi's actual read, edit, write and bash tools with supplied steps.")
     lines = ["# " + title, "", introduction + " No repair AI ran.", "",
-             "This checks the connection needed for the plain-Pi baseline in #107. It doesn't complete the AI comparison.", ""]
+             ("This checks the viewer workflow in #110. Human learning review remains pending." if result.get("task") == "viewer-modal-v1" else
+              "This checks the connection needed for the plain-Pi baseline in #107. It doesn't complete the AI comparison."), ""]
     if result.get("task") == "cli-inspect-v1":
         lines += ["This extends the import recipe in #109. CLI inspect without a selector must return point 0; standalone MCP requires exactly one explicit selector. "
                   "Both interfaces must preserve explicit selection, structured results, errors and ANSI-free offline maps. No live viewer is contacted.", ""]
@@ -147,6 +153,10 @@ def render(result):
             lines += ["The planted bug changes the CLI default to 1. This supplied sequence " +
                   ("removes that planted assignment." if result["candidate"] == "good" else "changes the bad default from 1 to 2, which deliberately leaves the contract broken.") +
                   " The candidate should " + ("pass." if result["candidate"] == "good" else "fail. This is an expected repair failure, not a successful fix."), ""]
+    if result.get("task") == "viewer-modal-v1":
+        lines += ["This is the viewer workflow in #110. A test-owned terminal keeps a dialog open while an attached MCP import completes. "
+                  "The fixed checks require the selected visible imported data, preserve the dialog and retain terminal captures. "
+                  "Original/seed/candidate and extra examples run inside disposable containers. No personal viewer is targeted.", ""]
     if result["candidate"] == "timeout":
         lines += ["I supplied a command with timeout 120000. The runner refused it before execution and explained that "
                   "the value is in seconds, must be greater than zero and at most 600, and can be 120 for two minutes.", "",
@@ -175,7 +185,7 @@ def render(result):
         record = result.get("verification")
         lines += ["", "## What did the separate checker find?", "",
                   "This path fixes the checking rules before starting Pi's tools. After the tools stop and their container is removed, "
-                  "our existing checker can apply the exact saved patch to a fresh source copy. It shares the original ten-minute limit.", ""]
+                  f"our existing checker can apply the exact saved patch to a fresh source copy. It shares the original {result.get('budgets', {}).get('deadline_seconds', 600)}-second task limit.", ""]
         if record:
             lines += ["| Check | Result |", "| --- | --- |"]
             labels = {"baseline": "Original code, visible examples", "seed": "Planted bug, visible examples",
@@ -190,6 +200,13 @@ def render(result):
                            {"passed": "Passed", "assertion_failed": "Failed", "failed": "Failed",
                             "build_failed": "Couldn't build", "blocked": "Couldn't run"}.get(check["outcome"], "Not finished"))
                 lines.append(f"| {label} | {outcome} |")
+            if result.get("task") == "viewer-modal-v1":
+                lines += ["", "Retained viewer evidence:"]
+                for check in record["checks"]:
+                    for file in sorted(check.get("viewer_artifacts", {})):
+                        if file.endswith(("before-import.png", "after-import.png", "states.jsonl")):
+                            target = "../../../verification/runs/" + record["run_id"] + "/captures/" + check["id"] + "/" + file
+                            lines.append("- [" + check["id"] + " / " + file + "](" + target + ")")
             lines += ["", "Read [the separate checker's saved result](../../../verification/runs/" + record["run_id"] + "/result.json). "
                       f"Its containers removed: {record['containers_removed']}/{record['containers_created']}.", ""]
         else:
@@ -317,11 +334,12 @@ def main():
     run = NativeRun(REPORTS / "native-tools", args.image)
     run.task = selected_task(args.suite)
     run.test_command = run.task["command"]
+    run.deadline = run.started + run.task["deadline_seconds"]
     run.result.update(workflow="pi-native-tools", candidate=args.demo, task=case["id"], actual_model_calls=0,
                       visible_test=run.task["test"],
                       model="scripted (no AI)", pi_version="1.2.0", candidate_source="prepared", tool_results=[],
                       verification_requested=args.verify,
-                      budgets={"tool_calls": MAX_CALLS, "model_requests": 0, "deadline_seconds": 600},
+                      budgets={"tool_calls": MAX_CALLS, "model_requests": 0, "deadline_seconds": run.task["deadline_seconds"]},
                       suite_sha256=digest((args.suite / "suite.json").read_bytes()),
                       source_sha256={name: digest((HERE / name).read_bytes()) for name in
                                      ("native_run.py", "native_check.py", "native_sandbox.py", "native_worker.py", "container.py", "task_inputs.py", "pi/native.mjs", "pi/native-cli.mjs", "pi/loop.mjs", "pi/package-lock.json")})

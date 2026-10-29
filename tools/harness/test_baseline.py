@@ -102,7 +102,7 @@ class BaselineTests(unittest.TestCase):
     def test_reusing_plan_creates_no_model_or_container_work_and_still_reports(self):
         baseline.claim(self.root, "existing-run")
         (self.root / "plan.md").write_text("A frozen plan")
-        plan = {"image": "sha256:" + "a" * 64, "config": self.config, "primary_metric": "fixed measure", "budgets": {}}
+        plan = {"image": "sha256:" + "a" * 64, "config": self.config, "primary_metric": "fixed measure", "budgets": {"deadline_seconds": 1200}}
         with patch("baseline.REPORTS", self.root / "reports"), patch("baseline.load_plan", return_value=plan), \
                 patch("baseline.NativeSandbox") as sandbox, patch("baseline.session") as session, \
                 patch("baseline.token_summary", side_effect=ValueError("malformed usage")):

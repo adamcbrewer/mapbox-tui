@@ -1,0 +1,57 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestHarnessViewerModalImportVerifier(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Second)
+	defer cancel()
+	binary := filepath.Join(t.TempDir(), "mapbox-viewer")
+	build := exec.CommandContext(ctx, "go", "build", "-buildvcs=false", "-o", binary, "./go")
+	build.Dir = ".."
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("HARNESS_VIEWER_BLOCKED: build failed: %v\n%s", err, output)
+	}
+	for _, tc := range []struct {
+		name, key, title, points, width, height string
+		ascii                                   bool
+	}{
+		{name: "help", key: "?", title: "Keyboard shortcuts", points: "3", width: "120", height: "40", ascii: false},
+		{name: "narrow-ascii", key: "C-k", title: "Commands", points: "4", width: "70", height: "24", ascii: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := []string{"-B", "scripts/harness_viewer_probe.py", binary, filepath.Join(t.TempDir(), "evidence"),
+				"--key", tc.key, "--title", tc.title, "--points", tc.points, "--width", tc.width, "--height", tc.height, "--label", tc.name}
+			if tc.ascii {
+				args = append(args, "--ascii")
+			}
+			check := exec.CommandContext(ctx, "python3", args...)
+			check.Dir = ".."
+			output, err := check.CombinedOutput()
+			t.Logf("Viewer observations and captures:\n%s", output)
+			var result struct {
+				Outcome string `json:"outcome"`
+			}
+			for _, line := range strings.Split(string(output), "\n") {
+				if strings.HasPrefix(line, "HARNESS_VIEWER_RESULT ") {
+					if decodeErr := json.Unmarshal([]byte(strings.TrimPrefix(line, "HARNESS_VIEWER_RESULT ")), &result); decodeErr != nil {
+						t.Fatal("HARNESS_VIEWER_BLOCKED: unreadable probe result")
+					}
+				}
+			}
+			if result.Outcome == "modal_import_stalled" {
+				t.Fatal("independent viewer import completion violated")
+			}
+			if err != nil || result.Outcome != "passed" {
+				t.Fatalf("HARNESS_VIEWER_BLOCKED: uncertain viewer result %q: %v", result.Outcome, err)
+			}
+		})
+	}
+}

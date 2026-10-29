@@ -38,7 +38,7 @@ def prepare(suite, image, config, mode, case_id=None, output_root=None):
         f"Mode: {mode}. Pi keeps its normal tools and standard prompt. Both modes use the same task, model, image, limits and final checker. "
         "Plain Pi receives operator corrections only. Managed Pi may receive one automatic correction request after a failed check. "
         "The checker gives no private examples or known fix to the repair agent.\n\n"
-        f"{plan['config']['maxModelRequests']} model requests, {plan['budgets']['tool_calls']} Pi tools, two candidate checks and ten minutes overall, including checking. "
+        f"{plan['config']['maxModelRequests']} model requests, {plan['budgets']['tool_calls']} Pi tools, two candidate checks and {plan['budgets']['deadline_seconds']} seconds overall, including checking. "
         "Each request keeps its two-minute limit. A tool-limit stop can still send the saved patch to independent checking within the remaining time, without more AI requests. No transport retries or replacement attempts. "
         "Context is retained across continuations; request and tool counts never reset.\n\n"
         "Operator messages arrive after the current conversation stops. Stop sends cancellation to this run's verified process identity. "
@@ -167,6 +167,7 @@ class WorkflowTools(baseline.LiveTools):
 def execute(path, scripted_calls=None):
     plan = load_plan(path)
     run = NativeRun(REPORTS / "workflows", plan["image"])
+    run.deadline = run.started + plan["budgets"]["deadline_seconds"]
     run.result.update(workflow="native-repair-workflow", mode=plan["mode"], plan=str(path), plan_sha256=fingerprint(plan),
                       candidate_source="supplied" if scripted_calls is not None else "AI", config=plan["config"],
                       model=plan["config"]["model"] if scripted_calls is None else "supplied (no AI)",
@@ -281,7 +282,9 @@ def validated_result(directory, reports=None):
         failed = checked["outcome"] == "repair_failed"
         complete = checked["outcome"] in ("repository_verification_passed", "repair_failed")
         patch = (directory / "attempts" / str(index) / "candidate.patch").read_bytes()
-        observed_checks = [{k: c.get(k) for k in ("id", "outcome", "exit_code")} for c in checked["checks"] if c["id"] in REQUIRED_CHECKS]
+        observed_checks = [{**{k: c.get(k) for k in ("id", "outcome", "exit_code")},
+                            **({"viewer_artifacts": c["viewer_artifacts"]} if "viewer_artifacts" in c else {})}
+                           for c in checked["checks"] if c["id"] in REQUIRED_CHECKS]
         if (digest(raw) != record["receipt_sha256"] or
                 checked["parent_run_id"] != result["run_id"] or checked["attempt"] != index or
                 any(checked[key] != result[key] for key in ("image", "evaluator_sha256")) or
@@ -354,6 +357,12 @@ def render(result):
                   "Standalone MCP still requires exactly one explicit selector. Explicit selectors, errors, structured results and offline ANSI-free maps must remain usable.", "",
                   "The planted bug defaults CLI inspection to point 1. Separate examples include a one-point file, option placement and distance zero. "
                   "Schemas and tests are frozen outside the repair scope. No live viewer is contacted.", ""]
+    if result.get("task") == "viewer-modal-v1":
+        lines += ["This is the viewer interaction workflow in #110. The planted bug drops import completion while a dialog is open. "
+                  "The saved repair must complete the accepted import, select its visible synthetic data and keep the dialog open. "
+                  "The checker also uses extra modal/terminal examples kept outside Pi's project. All viewers are test-owned, isolated and offline.", "",
+                  "Structured assertions prove completion and imported state. Retained captures need human review for appearance. "
+                  "Missing terminal tools or uncertain state block the check. A pending response alone is not success.", ""]
     for index, attempt in enumerate(attempts, 1):
         lines.append(f"Attempt {index}: " + ("Passed all required checks." if attempt["outcome"] == "repository_verification_passed" else
                                           "Failed the required checks." if attempt["outcome"] == "repair_failed" else "Checking couldn't finish."))
@@ -368,6 +377,13 @@ def render(result):
             log = ("../../../verification/runs/" + attempt["run_id"] + "/" + identity + ".stdout") if check else None
             label = "Passed" if status == "passed" else "Failed as intended" if status == "assertion_failed" and identity.startswith("seed") else "Failed" if status in ("assertion_failed", "failed", "build_failed") else status
             lines.append("| " + check_labels[identity] + " | " + ("[" + label + "](" + log + ")" if log else label) + " |")
+        if result.get("task") == "viewer-modal-v1":
+            lines += ["", "Retained viewer evidence:"]
+            for check in attempt.get("checks", []):
+                for file in sorted(check.get("viewer_artifacts", {})):
+                    if file.endswith(("before-import.png", "after-import.png", "states.jsonl")):
+                        target = "../../../verification/runs/" + attempt["run_id"] + "/captures/" + check["id"] + "/" + file
+                        lines.append("- [" + check["id"] + " / " + file + "](" + target + ")")
         lines += ["", f"Read the [saved candidate patch](attempts/{index}/candidate.patch) and [separate check receipt](../../../verification/runs/" + attempt["run_id"] + "/result.json).", ""]
     lines += ["", labels.get(agent, "The conversation didn't complete") + ". " + result.get("reason", ""), "",
               "Operator feedback delivered: " + str(sum(c["origin"] == "operator" for c in result.get("continuations", []))) + ". "

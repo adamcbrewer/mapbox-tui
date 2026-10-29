@@ -71,6 +71,20 @@ class WorkerTests(unittest.TestCase):
         result = worker.dispatch({"op": "snapshot", "source_file": "go/cli.go"})["source"]
         self.assertEqual(base64.b64decode(result), b"candidate CLI")
 
+    def test_viewer_reports_are_generated_artifacts_but_source_and_helpers_stay_tracked(self):
+        (self.root / "go").mkdir()
+        (self.root / "go/control.go").write_text("candidate source")
+        (self.root / "scripts").mkdir()
+        (self.root / "scripts/helper.py").write_text("frozen helper")
+        (self.root / "reports/generated").mkdir(parents=True)
+        (self.root / "reports/generated/capture.png").write_bytes(b"generated")
+        ordinary = worker.snapshot("go/control.go")
+        viewer = worker.dispatch({"op": "snapshot", "source_file": "go/control.go", "viewer_reports": True})
+        self.assertIn("reports/generated/capture.png", ordinary["files"])
+        self.assertNotIn("reports/generated/capture.png", viewer["files"])
+        self.assertEqual(viewer["files"]["go/control.go"], digest(b"candidate source"))
+        self.assertEqual(viewer["files"]["scripts/helper.py"], digest(b"frozen helper"))
+
     def test_bash_returns_combined_output_and_nonzero_exit(self):
         result = worker.bash("printf hello; printf error >&2; exit 7", 2)
         self.assertEqual(base64.b64decode(result["output"]), b"helloerror")
@@ -150,6 +164,19 @@ class PreparedDemoTests(unittest.TestCase):
                 self.assertNotIn("changes the bad default", report)
                 self.assertNotIn("expected repair failure", report)
                 self.assertIn("invalid timeout" if demo == "timeout" else "boundary checks", report)
+
+    def test_viewer_failure_report_keeps_budget_and_capture_links(self):
+        result = {"outcome": "repair_failed", "candidate": "wrong", "task": "viewer-modal-v1", "tool_results": [],
+                  "containers": [], "verification_requested": True, "budgets": {"deadline_seconds": 1200},
+                  "verification": {"run_id": "a" * 32, "containers_removed": 4, "containers_created": 4,
+                                   "checks": [{"id": "candidate", "outcome": "assertion_failed",
+                                               "viewer_artifacts": {"commands/after-import.png": "hash"}}]}}
+        page = native_run.render(result)
+        self.assertIn("1200-second task limit", page)
+        self.assertIn("/captures/candidate/commands/after-import.png", page)
+        self.assertIn("No repair AI ran", page)
+        self.assertNotIn("ten-minute limit", page)
+        self.assertNotIn("baseline in #107", page)
 
     def test_bounds_good_demo_restores_the_reference_source_and_wrong_demo_keeps_the_bug(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -94,6 +94,25 @@ class ContainerTests(unittest.TestCase):
         with self.assertRaises(Stop):
             self.run.execute("candidate-suite", ["make", "install"], self.checkout, build_output=True)
 
+    def test_viewer_suite_requires_interactions_and_bounded_report_storage(self):
+        from container import repository_command
+        self.run.task["id"] = "viewer-modal-v1"
+        args = repository_command(self.run.task)
+        self.assertIn("interactions", args)
+        description = self.description(self.checkout)
+        description[0]["HostConfig"]["Tmpfs"] = {
+            "/tmp": "rw,size=512m", "/workspace/bin": "rw,exec,nosuid,nodev,size=128m,mode=1777",
+            "/workspace/reports": "rw,noexec,nosuid,nodev,size=128m,mode=1777"}
+        with self.patched_command(), patch.object(self, "description", return_value=description):
+            self.run.execute("candidate-suite", args, self.checkout, build_output=True)
+        self.assertIn("--tmpfs=/workspace/reports:rw,noexec,nosuid,nodev,size=128m,mode=1777", self.calls[0][1])
+        bad = copy.deepcopy(description)
+        bad[0]["HostConfig"]["Tmpfs"]["/workspace/reports"] = "rw,exec,size=1g"
+        with self.assertRaises(Stop):
+            self.run.validate_container(bad, self.checkout, build_output=True)
+        with self.assertRaises(Stop):
+            self.run.execute("candidate-suite", [word for word in args if word != "interactions"], self.checkout, build_output=True)
+
     def test_build_output_policy_requires_one_exact_temporary_mount(self):
         description = self.description(self.checkout)
         with self.assertRaises(Stop):

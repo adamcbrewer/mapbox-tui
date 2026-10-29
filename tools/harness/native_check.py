@@ -98,7 +98,8 @@ def check_candidate(run, attempt=1):
             record.update(outcome=child.result["outcome"], reason=child.result.get("reason"),
                           receipt_sha256=digest((child.path / "result.json").read_bytes()),
                           duration_seconds=child.result["duration_seconds"],
-                          checks=[{key: check.get(key) for key in ("id", "outcome", "exit_code")}
+                          checks=[{**{key: check.get(key) for key in ("id", "outcome", "exit_code")},
+                                   **({"viewer_artifacts": check["viewer_artifacts"]} if "viewer_artifacts" in check else {})}
                                   for check in child.result["checks"] if check["id"] in REQUIRED_CHECKS],
                           containers_removed=sum(container["removed"] for container in child.result["containers"]),
                           containers_created=len(child.result["containers"]))

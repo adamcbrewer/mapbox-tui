@@ -1,1 +1,2 @@
 *.patch whitespace=-space-before-tab
+viewer_modal_seed.patch whitespace=-space-before-tab,-blank-at-eol

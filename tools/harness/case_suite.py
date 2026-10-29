@@ -23,6 +23,18 @@ FAILURE_MESSAGES = {
 
 
 def definitions(catalogue="import-v1"):
+    if catalogue == "viewer-modal-v1":
+        return [{"id": "viewer-modal-v1", "partition": "development", "family": "Viewer import completion under dialogs",
+                 "source": "go/control.go", "source_sha256": "5266934957316896f2bd39a6756f84c468b85600c782ee342d0bb5d1b371518e",
+                 "description": "A remote fixture import accepted while Commands is open must complete asynchronously, appear as the selected visible item, and leave the dialog open. Preserve missing-session errors, failed-import state and revision guards. Synthetic regression; only go/control.go may change. Tests and terminal capture helpers are frozen.",
+                 "public_test": "TestHarnessViewerModalImport", "public_cases": ["commands"],
+                 "public_fixture": "viewer_modal_case_test.go.txt", "private_fixture": "viewer_modal_verifier_test.go.txt",
+                 "support_files": {"scripts/harness_viewer_probe.py": "viewer_probe.py"},
+                 "private_test": "TestHarnessViewerModalImportVerifier", "private_cases": ["help", "narrow-ascii"],
+                 "failure_messages": {"public": "viewer import completion violated", "private": "independent viewer import completion violated"},
+                 "seed_replace": {"old": "func (m *viewer) acceptControlLoad(result controlLoaded) tea.Cmd {\n",
+                                  "new": "func (m *viewer) acceptControlLoad(result controlLoaded) tea.Cmd {\n\tif m.ui.dialog != dialogNone {\n\t\treturn nil\n\t}\n"},
+                 "ineffective_replace": {"old": "m.ui.dialog != dialogNone {", "new": "m.ui.dialog != dialogNone && m.ui.dialog != dialogMapbox {"}}]
     if catalogue == "cli-inspect-v1":
         return [{"id": "cli-inspect-v1", "partition": "development", "family": "CLI inspection default",
                  "source": "go/cli.go", "source_sha256": "051d04e808a257a2b7c7934e0515557a0997470d1dec4b6076f459a409b8ab8e",
@@ -69,6 +81,13 @@ def definitions(catalogue="import-v1"):
     ]
 
 
+def public_materials(case):
+    files = {name: (HERE / source).read_bytes() for name, source in case.get("support_files", {}).items()}
+    if case.get("public_fixture"):
+        files[PUBLIC_FILE] = (HERE / "fixtures" / case["public_fixture"]).read_bytes()
+    return files
+
+
 def patch_bytes(before, after, source=SOURCE):
     return "".join(difflib.unified_diff(before.splitlines(True), after.splitlines(True),
                                        fromfile="a/" + source, tofile="b/" + source)).encode()
@@ -113,15 +132,17 @@ def build(run, catalogue="import-v1"):
         original = (agent / source).read_text()
         if definition.get("source_sha256") and digest((agent / source).read_bytes()) != definition["source_sha256"]:
             raise Stop("invalid_input", "Repair source does not match the pinned definition")
-        if definition.get("public_fixture"):
-            (agent / PUBLIC_FILE).write_bytes((HERE / "fixtures" / definition["public_fixture"]).read_bytes())
+        for name, content in public_materials(definition).items():
+            (agent / name).write_bytes(content)
         if definition.get("seed_file"):
             seed = (HERE / "fixtures" / definition["seed_file"]).read_bytes()
-            path = private / "seed.patch"
-            path.write_bytes(seed)
-            check, _ = run.command("seed-" + definition["id"], ["git", "apply", "--whitespace=error", str(path)], agent)
-            if check["exit_code"] != 0:
-                raise Stop("invalid_input", "Pinned seed patch could not be applied")
+            (private / "seed.patch").write_bytes(seed)
+            with tempfile.TemporaryDirectory(prefix="mapbox-calibration-seed-") as temporary:
+                isolated = Path(temporary)
+                (isolated / source).parent.mkdir(parents=True)
+                (isolated / source).write_text(original)
+                apply_patch(run, isolated, seed, "seed-" + definition["id"], [source])
+                (agent / source).write_bytes((isolated / source).read_bytes())
         else:
             edit = definition["seed_replace"]
             if original.count(edit["old"]) != 1:
@@ -226,7 +247,8 @@ def calibrate(suite, case, image, batch=None):
                     run.result["observations"].append({"variant": variant, "visibility": visibility,
                                                        "expected": expected, "actual": actual})
                     if actual != expected:
-                        raise Stop("calibration_failed", "Case did not produce its expected original/seed/reference/ineffective result")
+                        raise Stop("blocked" if actual == "blocked" else "calibration_failed",
+                                   "Case did not produce its expected original/seed/reference/ineffective result")
             run.result.update(outcome="case_calibration_passed", reason="Original/reference pass and seed/ineffective fail in both public and private checks")
     except Stop as error:
         run.result.update(outcome=error.outcome, reason=error.reason)
@@ -298,7 +320,7 @@ def main():
     action.add_argument("--prepare", action="store_true")
     action.add_argument("--calibrate", type=Path)
     parser.add_argument("--image")
-    catalogues = ("import-v1", "segment-distance-v1", "geometry-bounds-v1", "cli-inspect-v1")
+    catalogues = ("import-v1", "segment-distance-v1", "geometry-bounds-v1", "cli-inspect-v1", "viewer-modal-v1")
     parser.add_argument("--catalogue", choices=catalogues, help="Choose tasks when preparing a new suite")
     parser.add_argument("--case", choices=[case["id"] for name in catalogues for case in definitions(name)],
                         help="Calibrate only the selected case")

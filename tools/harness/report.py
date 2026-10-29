@@ -931,6 +931,23 @@ keep explicit selectors and errors, and pass separate examples plus formatting a
 Both interfaces use isolated test state and offline rendering. No live viewer is contacted.</p>
 <p>The AI proposes a repair. Our code freezes and independently checks it. The deliberately ineffective repair uses supplied steps without a repair model.
 Opening this overview does not revalidate the saved results. Read the linked reports and retain their evidence.</p></details>'''
+    if progress["stage"] == "Extend" and progress.get("viewer_learning_review"):
+        stage_title = 'Viewer interaction repairs'
+        intro = 'The final workflow checks input, asynchronous completion and visible state in test-owned terminal viewers.'
+        takeaway = 'Accepted work can stay pending forever. Structured assertions must observe completion and imported data; captures support separate human visual review.'
+        results_title = 'Review the viewer repair attempts'
+        results_intro = 'Commands stays open while an attached MCP import completes. The planted bug drops that completion; the repaired viewer must retain the dialog and select the imported data.'
+        comparison_label = 'Read the viewer reports'
+        records = render_import_reports(reports, progress, link_root, "viewer_learning_review")
+        comparison_note = 'Model settings match the earlier recipes. The viewer image includes terminal tools and its twenty-minute deadline includes the full interaction suite. These different workloads and budgets establish no speed or reliability improvement.'
+        experiment_guide = '''<details id="experiment-guide"><summary>How to review the viewer attempts</summary>
+<p>Original code should pass; the planted stalled import should fail. The saved repair must pass the visible example,
+extra modal and terminal examples, formatting, repository tests and both terminal interaction scripts.</p>
+<p>Pi proposes a repair; our code checks the exact saved patch in separate restricted containers. The deliberately ineffective repair uses supplied steps without a repair model.
+Missing terminal prerequisites and uncertain states are blockers, never successful repairs.</p>
+<p>Read the linked run reports for before/after captures and structured state. No personal viewer is targeted.
+Opening this overview does not revalidate evidence or record human approval. Visual quality, attention/review time and retention of this workflow still need human judgement.</p>
+<p><a href="https://github.com/adamcbrewer/mapbox-tui/issues/111">Shared glossary and file guide</a>.</p></details>'''
     if recovery:
         review_step = '<li><a href="#experiment-guide">Review the recovery rules</a>Explain one successful example and one conflict or failed example without opening JSON.</li>'
     elif define or verification or progress["stage"] in ("Use", "Extend"):

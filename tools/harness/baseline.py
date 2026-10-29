@@ -84,13 +84,13 @@ def prepare(suite, image, config_path, output_root=None, case_id=None):
         context = preview(task, prompt)
         plan = {"schema_version": 1, "created_at": now(), "kind": "plain-pi-baseline-pilot", "synthetic": True,
                 "purpose": "I want one real plain-Pi repair to use as a baseline. This is not a paired comparison.",
-                "primary_metric": "The saved patch passes every independent check within the original 600-second deadline",
+                "primary_metric": f"The saved patch passes every independent check within the {pinned['deadline_seconds']}-second task deadline",
                 "suite": str(suite.resolve()), "suite_sha256": digest((suite / "suite.json").read_bytes()), "case": case,
                 "config": config, "reasoning": "low", "context": context, "image": image,
                 "runtime": run.result["runtime"], "environment": run.result["environment"], "native_environment": NATIVE_ENVIRONMENT,
                 "seccomp_sha256": run.result["seccomp_sha256"], "sources": sources(),
                 "evaluator": evaluator_definition(pinned), "one_use": True,
-                "budgets": {"tool_calls": 12, "model_requests": config["maxModelRequests"], "deadline_seconds": 600,
+                "budgets": {"tool_calls": 12, "model_requests": config["maxModelRequests"], "deadline_seconds": pinned["deadline_seconds"],
                             "output_tokens_per_request": config["maxOutputTokensPerRequest"], "request_seconds": 120,
                             "transport_retries": 0, "verification_attempts": 1}}
         path = (output_root or REPORTS / "native-baseline/plans") / uuid.uuid4().hex
@@ -98,7 +98,7 @@ def prepare(suite, image, config_path, output_root=None, case_id=None):
         durable_json(path / "plan.json", {"definition": plan, "sha256": fingerprint(plan)})
         (path / "plan.md").write_text("# The first plain-Pi baseline\n\n" + plan["purpose"] + "\n\n" +
             "I saved the task, Pi's standard prompt and normal tools, model settings, image, checking rules and limits before launch. "
-            "The main measure is whether the saved fix passes every required check inside ten minutes. "
+            f"The main measure is whether the saved fix passes every required check inside {pinned['deadline_seconds']} seconds. "
             "The separate checker runs after the repair conversation and gets no extra time. "
             "A stopped conversation and a checked patch are recorded separately.\n\n" +
             f"Model: {config['model']}, low reasoning, subscription access. Limits: {config['maxModelRequests']} requests, "
@@ -222,6 +222,7 @@ def render(result):
 def execute(path):
     plan = load_plan(path)
     run = NativeRun(REPORTS / "native-baseline", plan["image"])
+    run.deadline = run.started + plan["budgets"]["deadline_seconds"]
     run.result.update(workflow="plain-pi-live-baseline", candidate_source="AI", model_cost_usd=None,
                       model=plan["config"]["model"], provider=plan["config"]["provider"], auth="subscription", pi_version="1.2.0",
                       model_requests=0, dispatches=[], provider_usage=[], primary_metric=plan["primary_metric"],

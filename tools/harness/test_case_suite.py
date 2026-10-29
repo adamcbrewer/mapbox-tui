@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -67,6 +68,16 @@ class CaseSuiteTests(unittest.TestCase):
             self.assertNotEqual((agent / case_suite.SOURCE).read_bytes(), (directory / "private/original-import.go.txt").read_bytes())
             self.assertTrue((directory / "private/reference.patch").is_file())
 
+    def test_seed_file_is_applied_even_when_evidence_is_inside_a_git_repository(self):
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        nested = Run(self.root / "nested-suite")
+        manifest = case_suite.build(nested)
+        case = manifest["cases"][0]
+        directory = nested.path / "cases" / case["id"]
+        original = (directory / "private/original-import.go.txt").read_bytes()
+        self.assertNotEqual((directory / "agent/go/import.go").read_bytes(), original)
+        self.assertTrue((directory / "private/reference.patch").read_bytes())
+
     def test_case_calibration_includes_reference_and_ineffective_repair_for_both_check_sets(self):
         for case in self.manifest["cases"]:
             _, result = case_suite.calibrate(self.run.path, case, "sha256:" + "a" * 64)
@@ -116,7 +127,7 @@ class CaseSuiteTests(unittest.TestCase):
 
         self.execute_mock.side_effect = missing
         _, result = case_suite.calibrate(self.run.path, self.manifest["cases"][1], "sha256:" + "a" * 64)
-        self.assertEqual(result["outcome"], "calibration_failed")
+        self.assertEqual(result["outcome"], "blocked")
 
     def test_interruption_keeps_the_stopped_case_and_remaining_case_visible(self):
         batch = Run(self.root / "batches")

@@ -58,12 +58,12 @@ def bash(command, timeout):
         process.stdout.close()
 
 
-def snapshot(source_file="go/import.go"):
+def snapshot(source_file="go/import.go", viewer_reports=False):
     files, invalid = {}, []
     source = None
     for path in sorted(ROOT.rglob("*")):
         relative = path.relative_to(ROOT)
-        if relative.parts[0] in ("bin", ".git"):
+        if relative.parts[0] in ("bin", ".git") or viewer_reports and relative.parts[0] == "reports":
             continue
         if path.is_symlink():
             invalid.append(str(relative))
@@ -85,7 +85,7 @@ def snapshot(source_file="go/import.go"):
 def dispatch(request):
     operation = request["op"]
     if operation == "snapshot":
-        return snapshot(request.get("source_file", "go/import.go"))
+        return snapshot(request.get("source_file", "go/import.go"), request.get("viewer_reports", False))
     if operation == "bash":
         return bash(request["command"], request["timeout"])
     path = project_path(request["path"])

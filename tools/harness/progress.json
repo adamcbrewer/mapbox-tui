@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-28",
-  "source": "Adam requested issue #109 through pre-PR and agreed the CLI point-0/default versus explicit MCP selector contract in chat on 28 October 2026.",
+  "updated_at": "2026-10-29",
+  "source": "Adam selected the planted modal/import task and requested the full remaining #110 implementation in chat on 29 October 2026.",
   "stage": "Extend",
   "status": "awaiting-review",
-  "next": "Review the CLI/MCP contract patch, successful and deliberately failed reports, then discuss the four learning questions. Keep #109 open and do not start a later stage automatically.",
+  "next": "Review the verified viewer repair, deliberate failure and captures. Discuss visual judgement, setup failures and the opt-in retention recommendation; final learning acceptance remains pending.",
   "decisions": [
     "This is a developer tool, separate from the shipped map app. Pi tool wiring is being checked with prepared responses before live AI calls.",
     "Define (#103) is closed. Adam selected Connect (#104) as the next stage on 22 October 2026. This records the decision to advance, not unrecorded answers to the learning questions.",
@@ -86,7 +86,8 @@
     "I asked to proceed with the manufactured bug. The full checker now selects registered task inputs instead of assuming the XML task: planted patch, protected visible examples, private checks, commands and exact task identity. Default XML behaviour remains supported. The actual Pi/Python/container connection applied supplied good and bad edits to the fresh distance task and passed the exact saved patches to fresh independent checkouts. The good run passed all eight required checks in 234.0812 seconds overall; the bad run failed its candidate test in 101.1067 seconds and later checks stayed not run. Both used the same task and checking-rule fingerprints. All fifteen containers were removed. No repair model or human timer ran. All 299 Python tests, 29 Pi tests, three integration tests and repository tests/formatting passed. A completeness pass found that the report introduction still named the old XML test; the reporter now uses the saved task's test name. After that report-only correction, 24 native/checker tests passed and both Markdown reports were refreshed with original receipts unchanged. A final 27 verifier tests also passed after an unused constant was removed. The next comparison protocol is a draft, not an executable or approved experiment. The operator prompt channel, attention record and managed loop for this task still need connecting before either live workflow starts. The held-out task and learning review remain pending. Local evidence: reports/harness/issue107-distance-checker-verification.json.",
     "I asked to keep progressing through the rest of #107 and save review/reflection for the end. Only ask for intervention when it is absolutely required; otherwise make the smallest workable assumption. I also asked for periodic progress updates in the conversation. This authorises the remaining bounded implementation and evaluations within #107, not invented human measurements, stage approval or automatic advancement to #111/#108.",
     "On 28 October 2026 Adam answered \"Yes, proceed with supervised use\" when asked about the #107/#111 learning-review gate. This selects #108 without inventing missing discussion answers, review time or acceptance of a candidate repair.",
-    "Adam selected #109 after #108 was closed as completed. He agreed the intended CLI/MCP contract before implementation. This records permission to extend the workflow, not unrecorded discussion answers or acceptance of the resulting patch."
+    "Adam selected #109 after #108 was closed as completed. He agreed the intended CLI/MCP contract before implementation. This records permission to extend the workflow, not unrecorded discussion answers or acceptance of the resulting patch.",
+    "Adam requested a full send of #110 on 29 October 2026, authorising the remaining viewer implementation. This does not record unasked learning answers or final approval."
   ],
   "blockers": [],
   "questions": [
@@ -537,5 +538,66 @@
     "comparison": "reports/harness/issue109-comparison.json",
     "corrections": [],
     "review_stack": "reports/harness/issue109-review-stack.md"
+  },
+  "viewer_learning_review": {
+    "issue": 110,
+    "status": "synthetic-checked-awaiting-review",
+    "recipe": "tools/harness/VIEWER_RECIPE.md",
+    "task": "modal-import",
+    "task_agreed": "29 October 2026, chat",
+    "reviewed_decision": null,
+    "model_calls": 0,
+    "attention_seconds": null,
+    "review_time_seconds": null,
+    "limits": [
+      "One synthetic repair, not a general repair-quality or time-saving claim.",
+      "Earlier incomplete/cancelled AI attempts remain counted.",
+      "Viewer image and twenty-minute budget differ from earlier ten-minute recipes.",
+      "Human visual quality review, monitoring/review time, billing and final acceptance remain unrecorded."
+    ],
+    "calibrations": [
+      "reports/harness/viewer-calibration/runs/72544c9d77274fec91d1dab4a48eaa44",
+      "reports/harness/viewer-calibration/runs/904c1544cb464ebdb1d3b14aaf376349"
+    ],
+    "blocked_example": "reports/harness/issue110-missing-binary/result.json",
+    "cancelled_example": "reports/harness/issue110-cancel-example/cancellation.json",
+    "hard_stop_example": "reports/harness/viewer-hard-stop/runs/0643e02a2ede41aeaef6604c59a00afe/result.json",
+    "verification": "reports/harness/verification/runs/6bdf9283f7164332b890d9722642cd1e/result.json",
+    "run": "reports/harness/workflows/runs/46aa631215de4dfda242c8fcb225d565",
+    "plan": "reports/harness/workflows/plans/c178065e2eaf43bdabd0eef96ba88591",
+    "suite": "reports/harness/case-suites/runs/ce4068365cbc43b29daf75af8db5b5a2",
+    "image": "sha256:d61adbe3220ade21ccb77d2111b316bed4349868874ea1e03921ae85b6359c6e",
+    "model": "gpt-6.1-terra",
+    "mode": "plain",
+    "outcome": "native_verification_passed",
+    "duration_seconds": 918.6097,
+    "model_requests": 8,
+    "tool_calls": 14,
+    "patch_sha256": "a45081ebf96aa55d9ba9ce600ea114d2ce542be4d2ffcd643f19b4af994e173f",
+    "handoff": "reports/harness/issue110-handoff.md",
+    "verification_receipt": "reports/harness/issue110-completion.json",
+    "failure_example": {
+      "run": "reports/harness/native-tools/runs/2055f72ed8734daa84a36b3bc310991a",
+      "outcome": "repair_failed",
+      "expected": true,
+      "candidate_source": "supplied; no repair AI"
+    },
+    "earlier_ai_attempts": [
+      {
+        "run": "reports/harness/workflows/runs/055ed3218ecf4e1eb23a3a3a9f7c5d12",
+        "outcome": "incomplete",
+        "reason": "Generated reports and Python bytecode made the source snapshot invalid. Retained; no successful repair claim."
+      },
+      {
+        "run": "reports/harness/workflows/runs/8eb55a6a4b0b4b13a01a87d5b7e8ef06",
+        "outcome": "cancelled",
+        "reason": "Stopped to disable Python bytecode before another invalid source snapshot. Retained and counted."
+      }
+    ],
+    "container_calibration": "reports/harness/case-calibration-batches/runs/bd7614c777794af288077220111a2f12/calibration.md",
+    "import_regression": "reports/harness/case-calibration-batches/runs/99b2df9e7b8543708bcebcce3fbf2855/calibration.md",
+    "contract_regression": "reports/harness/case-calibration-batches/runs/4208e8b8c14344788a79b1837aaf1cd7/calibration.md",
+    "missing_terminal": "reports/harness/case-calibration-batches/runs/892d0e9e4c884e9cbfaa62b4e667c0a6/calibration.md",
+    "retention_recommendation": "Keep this opt-in for reproducible viewer regressions. Full validation is slow; one synthetic success does not justify general reliability or time-saving claims. Final decision awaits Adam."
   }
 }

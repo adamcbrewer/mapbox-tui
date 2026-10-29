@@ -63,7 +63,7 @@ class NativeSandbox:
                      '  shutil.copytree(source,destination) if source.is_dir() else shutil.copy2(source,destination)\n'
                      ' Path("/tmp/native-ready").touch()\n'
                      'except Exception as error: Path("/tmp/native-error").write_text(str(error))\n'
-                     'time.sleep(600)')
+                     f'time.sleep({max(1, math.ceil(run.deadline - time.monotonic()))})')
         self.container["id"] = self.host("native-create", create + [run.image, "-I", "-u", "-c", bootstrap]).decode().strip()
         data = json.loads(self.host("native-inspect", PODMAN + ["container", "inspect", self.container["name"]]))
         run.validate_container(data, self.checkout, native_workspace=True)
@@ -96,7 +96,7 @@ class NativeSandbox:
 
     def capture(self):
         self.run.result.update(snapshot_scope_valid=False, patch_sha256=None)
-        response = self.request({"op": "snapshot", "source_file": self.source})
+        response = self.request({"op": "snapshot", "source_file": self.source, "viewer_reports": self.run.task["id"] == "viewer-modal-v1"})
         if not response["ok"]:
             raise Stop("incomplete", "I couldn't recover the current project files")
         snapshot = response["value"]

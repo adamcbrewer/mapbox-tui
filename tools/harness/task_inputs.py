@@ -1,10 +1,11 @@
 import copy
 import json
 
-from case_suite import FAILURE_MESSAGES, PUBLIC_FILE, definitions, load_suite, validate_case
+from case_suite import FAILURE_MESSAGES, definitions, load_suite, public_materials, validate_case
 from run import HERE, Stop, digest
 
-REGISTERED = {"cli-inspect-v1": ("cli-inspect-v1", "cli_inspect_seed.patch"),
+REGISTERED = {"viewer-modal-v1": ("viewer-modal-v1", "viewer_modal_seed.patch"),
+              "cli-inspect-v1": ("cli-inspect-v1", "cli_inspect_seed.patch"),
               "segment-distance-v1": ("segment-distance-v1", "import_distance_seed.patch"),
               "geometry-bounds-v1": ("geometry-bounds-v1", "import_bounds_seed.patch"),
               "coordinate-latitude-limits-v2": ("import-v1", "import_coordinate_seed.patch")}
@@ -26,10 +27,12 @@ def definition(identity=None):
                 seed_sha256=digest((HERE / "fixtures" / seed_file).read_bytes()),
                 regression={"test": case["private_test"], "cases": case["private_cases"],
                             "failure_message": messages["private"]})
+    if identity == "viewer-modal-v1":
+        task["deadline_seconds"] = 1200
     if case.get("source"):
         task["allowed_files"] = [case["source"]]
         task["source_sha256"][case["source"]] = case["source_sha256"]
-    task["source_sha256"][PUBLIC_FILE] = digest((HERE / "fixtures" / case["public_fixture"]).read_bytes())
+    task["source_sha256"].update({name: digest(raw) for name, raw in public_materials(case).items()})
     return task
 
 
@@ -42,7 +45,7 @@ def materials(task):
         return {"task": (json.dumps(definition(task["id"]), indent=2) + "\n").encode(),
                 "seed": (HERE / "fixtures" / seed_file).read_bytes(),
                 "regression": (HERE / "fixtures" / case["private_fixture"]).read_bytes(),
-                "public_files": {PUBLIC_FILE: (HERE / "fixtures" / case["public_fixture"]).read_bytes()}}
+                "public_files": public_materials(case)}
     if task["id"] != definition()["id"]:
         raise Stop("invalid_input", "This task has no registered full checker")
     return {"task": (HERE / "task.json").read_bytes(), "seed": (HERE / "fixtures/seed.patch").read_bytes(),

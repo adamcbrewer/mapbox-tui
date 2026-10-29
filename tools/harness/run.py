@@ -167,6 +167,8 @@ class Run:
 
 
 def classify_test(output, exit_code, task):
+    if b"HARNESS_VIEWER_BLOCKED:" in output:
+        return "blocked"
     try:
         events = [json.loads(line) for line in output.splitlines() if line.strip()]
     except (ValueError, UnicodeDecodeError):

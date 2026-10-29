@@ -1,4 +1,5 @@
 import json
+import base64
 import math
 from pathlib import Path
 import re
@@ -14,9 +15,50 @@ REPOSITORY_GOFLAGS = "GOFLAGS=-mod=readonly -p=1 -trimpath"
 ENVIRONMENT = {
     "PATH": "/usr/local/go/bin:/usr/bin:/bin", "HOME": "/tmp", "GOCACHE": "/tmp/go-build",
     "GOPATH": "/go", "GOPROXY": "off", "GOTOOLCHAIN": "local", "GOWORK": "off",
-    "GOENV": "off", "GOFLAGS": "-mod=readonly", "CGO_ENABLED": "0",
+    "GOENV": "off", "GOFLAGS": "-mod=readonly", "CGO_ENABLED": "0", "PYTHONDONTWRITEBYTECODE": "1",
 }
 NATIVE_ENVIRONMENT = {**ENVIRONMENT, "GOFLAGS": REPOSITORY_GOFLAGS.removeprefix("GOFLAGS=")}
+
+
+def repository_command(task):
+    targets = ["test", "interactions"] if task["id"] == "viewer-modal-v1" else ["test"]
+    return ["make", *targets, "BUILD_VCS=false", "COMMIT=" + task["base_commit"], REPOSITORY_GOFLAGS]
+
+
+def retain_viewer_artifacts(output, directory=None):
+    artifacts = {}
+    total = 0
+    text = []
+    for raw in output.splitlines():
+        try:
+            event = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if isinstance(event, dict) and isinstance(event.get("Output"), str):
+            text.append(event["Output"])
+    for line in "".join(text).splitlines():
+        line = line.strip()
+        if not line.startswith("HARNESS_VIEWER_ARTIFACT "):
+            continue
+        try:
+            item = json.loads(line.removeprefix("HARNESS_VIEWER_ARTIFACT "))
+            name = item["name"]
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9-]{0,40}/[a-z][a-z0-9-]{0,50}\.(png|svg|txt|json|jsonl|gpx)", name):
+                raise ValueError("Invalid artifact name")
+            if name in artifacts or len(artifacts) >= 64:
+                raise ValueError("Duplicate or excessive artifacts")
+            content = base64.b64decode(item["data"], validate=True)
+            total += len(content)
+            if len(content) > 512 * 1024 or total > OUTPUT_LIMIT:
+                raise ValueError("Artifact size limit exceeded")
+        except (ValueError, KeyError, TypeError) as error:
+            raise Stop("blocked", "Viewer capture output is invalid") from error
+        if directory is not None:
+            target = directory / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        artifacts[name] = digest(content)
+    return artifacts
 
 
 class ContainerRun(Run):
@@ -97,6 +139,9 @@ class ContainerRun(Run):
                 raise ValueError("Only the read-only disposable source may be mounted")
             workspace_output = "/workspace" if native_workspace else "/workspace/bin"
             temporary_paths = {"/tmp", workspace_output} if build_output or native_workspace else {"/tmp"}
+            viewer_reports = build_output and self.task["id"] == "viewer-modal-v1"
+            if viewer_reports:
+                temporary_paths.add("/workspace/reports")
             if any(mount["Type"] != "bind" and
                    (mount["Type"] != "tmpfs" or mount["Destination"] not in temporary_paths) for mount in mounts):
                 raise ValueError("Unexpected container mount")
@@ -109,6 +154,11 @@ class ContainerRun(Run):
                         options - required - {"rprivate", "tmpcopyup"} or len(outputs) > 1 or
                         any(mount["Type"] != "tmpfs" or mount["RW"] is not True for mount in outputs)):
                     raise ValueError("Build output must use its own writable temporary filesystem")
+            if viewer_reports:
+                required = {"rw", "noexec", "nosuid", "nodev", "size=128m", "mode=1777"}
+                options = set(config["Tmpfs"]["/workspace/reports"].split(","))
+                if not required <= options or options - required - {"rprivate", "tmpcopyup"}:
+                    raise ValueError("Viewer reports must use bounded non-executable temporary storage")
             if config["Devices"] or config["VolumesFrom"] or item.get("Pod"):
                 raise ValueError("Unexpected device, shared volume or pod")
             if config["LogConfig"]["Type"] != "none":
@@ -166,8 +216,7 @@ class ContainerRun(Run):
     def execute(self, name, args, cwd, build_output=False):
         if not self.prepared:
             raise Stop("blocked", "Container execution is not prepared")
-        if build_output and (name != "candidate-suite" or args != [
-                "make", "test", "BUILD_VCS=false", "COMMIT=" + self.task["base_commit"], REPOSITORY_GOFLAGS]):
+        if build_output and (name != "candidate-suite" or args != repository_command(self.task)):
             raise Stop("invalid_input", "Temporary build output is only available to the fixed repository check")
         version = name == "go-version"
         checkout = None if version else self.checkout_path(cwd)
@@ -191,6 +240,8 @@ class ContainerRun(Run):
             create += ["--mount=type=bind,src=" + str(checkout) + ",dst=/workspace,ro"]
         if build_output:
             create += ["--tmpfs=/workspace/bin:rw,exec,nosuid,nodev,size=128m,mode=1777"]
+            if self.task["id"] == "viewer-modal-v1":
+                create += ["--tmpfs=/workspace/reports:rw,noexec,nosuid,nodev,size=128m,mode=1777"]
         for key, value in ENVIRONMENT.items():
             create += ["--env=" + key + "=" + value]
         try:
@@ -227,6 +278,10 @@ class ContainerRun(Run):
                 raise Stop("blocked", "Could not confirm the container's final state") from error
             if name == "candidate":
                 self.result["candidate_executed"] = True
+            if (self.task["id"] == "viewer-modal-v1" or self.result.get("case") == "viewer-modal-v1") and name != "go-version":
+                artifacts = retain_viewer_artifacts(output, self.path / "captures" / name)
+                check["viewer_artifacts"] = artifacts
+                self.result.setdefault("viewer_artifacts", {})[name] = artifacts
             return check, output
         finally:
             self.cleanup(name, container)

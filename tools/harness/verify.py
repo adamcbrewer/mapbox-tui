@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 import time
 
-from container import ContainerRun, ENVIRONMENT, REPOSITORY_GOFLAGS
+from container import ContainerRun, ENVIRONMENT, retain_viewer_artifacts, repository_command
 from pi_run import prepare_checkout
 from run import HERE, REPORTS, Stop, apply_patch, classify_test, check_test, digest, now, read_input, write_json
 from sandbox import preflight
@@ -37,7 +37,7 @@ def check_commands(task):
     return {**{stage: task["command"] for stage in STAGES},
             **{name: command for name in REGRESSION_CHECKS},
             "candidate-format": ["python3", "scripts/check_format.py"],
-            "candidate-suite": ["make", "test", "BUILD_VCS=false", "COMMIT=" + task["base_commit"], REPOSITORY_GOFLAGS]}
+            "candidate-suite": repository_command(task)}
 
 
 def fingerprint(value):
@@ -110,6 +110,7 @@ class VerificationRun(ContainerRun):
         if task is not None:
             self.task = copy.deepcopy(task)
             self.test_command = self.task["command"]
+            self.deadline = self.started + self.task["deadline_seconds"]
         self.phase = "setup"
         self.sources = {}
         self.result.update(workflow=WORKFLOW, verification_scope=SCOPE, fully_verified=False,
@@ -245,6 +246,12 @@ def receipt_matches(result, directory, allow_failed=False):
                 logs[stream] = (directory / check[stream]).read_bytes()
                 if digest(logs[stream]) != check[stream + "_sha256"]:
                     return False
+            if task["id"] == "viewer-modal-v1":
+                artifacts = retain_viewer_artifacts(logs["stdout"])
+                if artifacts != check.get("viewer_artifacts", {}):
+                    return False
+                if any(digest((directory / "captures" / name / file).read_bytes()) != sha for file, sha in artifacts.items()):
+                    return False
             test = task.get("regression", REGRESSION) if name in REGRESSION_CHECKS else task
             actual = (classify_test(logs["stdout"], check["exit_code"], test) if name in STAGES + REGRESSION_CHECKS else
                       "passed" if check["exit_code"] == 0 else "failed")
@@ -311,6 +318,8 @@ def verify(run, patch):
                 check, output = run.command(name, check_commands(run.task)[name], regression_copy)
                 check_test(run, stage, check, output, run.task.get("regression", REGRESSION))
         (checkout / "bin").mkdir(exist_ok=True)
+        if run.task["id"] == "viewer-modal-v1":
+            (checkout / "reports").mkdir(exist_ok=True)
         for name in EXTRA_CHECKS:
             check, output = run.command(name, check_commands(run.task)[name], checkout)
             diagnostics = (output + (run.path / check["stderr"]).read_bytes()).lower()
