@@ -87,14 +87,15 @@
     "I asked to keep progressing through the rest of #107 and save review/reflection for the end. Only ask for intervention when it is absolutely required; otherwise make the smallest workable assumption. I also asked for periodic progress updates in the conversation. This authorises the remaining bounded implementation and evaluations within #107, not invented human measurements, stage approval or automatic advancement to #111/#108.",
     "On 28 October 2026 Adam answered \"Yes, proceed with supervised use\" when asked about the #107/#111 learning-review gate. This selects #108 without inventing missing discussion answers, review time or acceptance of a candidate repair.",
     "Adam selected #109 after #108 was closed as completed. He agreed the intended CLI/MCP contract before implementation. This records permission to extend the workflow, not unrecorded discussion answers or acceptance of the resulting patch.",
-    "Adam requested a full send of #110 on 29 October 2026, authorising the remaining viewer implementation. This does not record unasked learning answers or final approval."
+    "Adam requested a full send of #110 on 29 October 2026, authorising the remaining viewer implementation. This does not record unasked learning answers or final approval.",
+    "Adam asked to finish the remaining #111 reporting work, then stop for review. Reporting reuses saved receipts and journals, makes no new model calls, retains unknown billing and human time, and leaves the learning checkpoint awaiting discussion. Older referenced comparison folders are not present in the available local evidence; their results are not reconstructed from prose."
   ],
   "blockers": [],
   "questions": [
-    "When CLI, MCP schema and shared code disagree, which evidence establishes the intended contract?",
-    "Why can CLI/MCP parity pass while both interfaces are wrong?",
-    "What belongs in the shared harness, and what belongs in this recipe?",
-    "Did extending the runner reveal an abstraction introduced too early?"
+    "Which claims can structured state assertions prove, and which need visual review?",
+    "Is a failure a regression, a timing problem or a broken test environment?",
+    "How do we avoid fixing a test's timing rather than the product bug?",
+    "Is automation saving enough effort to justify the extra upkeep?"
   ],
   "provider_scope": [
     "openai"
@@ -546,7 +547,7 @@
     "task": "modal-import",
     "task_agreed": "29 October 2026, chat",
     "reviewed_decision": null,
-    "model_calls": 0,
+    "model_calls": 8,
     "attention_seconds": null,
     "review_time_seconds": null,
     "limits": [
@@ -599,5 +600,16 @@
     "contract_regression": "reports/harness/case-calibration-batches/runs/4208e8b8c14344788a79b1837aaf1cd7/calibration.md",
     "missing_terminal": "reports/harness/case-calibration-batches/runs/892d0e9e4c884e9cbfaa62b4e667c0a6/calibration.md",
     "retention_recommendation": "Keep this opt-in for reproducible viewer regressions. Full validation is slow; one synthetic success does not justify general reliability or time-saving claims. Final decision awaits Adam."
+  },
+  "reporting_review": {
+    "issue": 111,
+    "status": "awaiting-review",
+    "measurement_schema_version": 1,
+    "human_approval": null,
+    "discussion_answers": {},
+    "implementation_scope": "Offline project progress, run/attempt/check timelines, grouped historical charts and validated paired-plan comparisons. Unknown measurements and missing comparison records remain explicit.",
+    "report": "reports/harness/telemetry.html",
+    "evidence": "reports/harness/issue111-verification.json",
+    "next_stage_authorized": false
   }
 }
