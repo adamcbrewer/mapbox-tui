@@ -1,8 +1,10 @@
 # Developer harness pilot
 
-I want to know whether the extra code around Pi helps it fix bugs and saves me
-time. The current stage extends the shared harness to viewer interaction repairs
-([#110](https://github.com/adamcbrewer/mapbox-tui/issues/110)). Start with the
+I want confidence that Pi can return a separately checked fix without me steering
+the repair, within agreed limits. The three synthetic workflows are implemented:
+imports, CLI/MCP contracts and viewer interactions. Final close-out of
+[#102](https://github.com/adamcbrewer/mapbox-tui/issues/102) is being reviewed.
+Start with the
 [viewer recipe](VIEWER_RECIPE.md) for the agreed modal/import input sequence,
 expected state, container setup and local success/failure evidence. Adam selected
 this task and requested the full remaining implementation on 29 October 2026.
@@ -17,7 +19,8 @@ out of four; managed Pi delivered three out of four. Both passed the two
 development runs. On the reserved evaluation task, one managed run spent its
 tool allowance before checking. That stays a failure. The automatic retry wasn't
 used in these AI runs, so I can't attribute the difference to retry feedback.
-I recommend keeping plain Pi. My review and decision remain pending.
+The close-out keeps plain Pi with independent checking, manual task submission
+and opt-in viewer repairs. Final acceptance of the evidence remains separate.
 
 The earlier extra-guidance comparison also didn't justify adopting its change.
 Clearer timeout feedback helped a small recovery exercise, but that doesn't
@@ -25,16 +28,17 @@ establish better bug repairs. The full local handoff is
 `reports/harness/issue107-final-review.md`. Raw results stay outside Git.
 Earlier Pi setup and live Luna examples are in the [Pi guide](pi/README.md).
 
-## What I measure and what still needs my participation
+## What counts as useful unattended work
 
-My normal workflow is to ask an AI to solve the bug and monitor its responses.
-I don't need a baseline where I write the repair myself. The human baseline
-means me supervising an AI, using scripts and asking for corrections as needed.
-Plain Pi still means its normal coding tools inside the same sandbox.
+On 31 October 2026 Adam clarified that away-from-keyboard confidence is the main
+value. Measuring his time is not required to complete #102. A useful outcome is
+a candidate that passes the separate checks without human repair steering after
+launch, within a reasonable fixed allowance. An honest stop stays distinct from
+a solved bug. Plain Pi means its normal coding tools inside the sandbox.
 
 The main measure is how often the exact saved fix passes the independent checks
-within the agreed limits without me steering the repair after launch. My final
-review still matters and its time counts separately. I also want to record:
+within the agreed limits without me steering the repair after launch. Final
+review still matters. When available, the records also keep:
 
 - Every check-in and how long I spent monitoring, even if I didn't intervene.
 - Corrections, prompts to continue, restarts and requests to run missing checks.
@@ -63,8 +67,31 @@ That covers part of the latest run and viewing its result; earlier attention,
 continuous focus and review time remain unknown.
 The distance task and reserved coordinate task have
 completed fixed comparisons. These automated runs don't establish my supervised
-baseline or time saved. The next timed human session needs another fresh task;
-reusing these familiar examples wouldn't establish the same thing.
+baseline or time saved. A future human-time comparison would need an explicitly
+recorded session and a fresh task; it is deferred, not a completion gate.
+
+## Present the saved evaluations
+
+Keep raw evidence local under ignored `reports/harness/`. The final walkthrough
+is `reports/harness/closeout-102/walkthrough.md`; the interactive evidence report
+is `reports/harness/telemetry.html`. Report generation makes no model calls:
+
+```sh
+python3 tools/harness/report.py --telemetry
+```
+
+Use `workflow.py --report RUN_DIR` to revalidate a saved repair, or
+`workflow_compare.py --report EXPERIMENT_DIR` for a frozen comparison. The report
+keeps ineffective repairs, setup blockers and incomplete attempts visible.
+Original receipts are historical records; final acceptance is a separate record
+and never rewrites their outcomes. Archived absolute plan paths resolve inside
+the selected report directory while the original plan fingerprint is still
+required. Preserve the entire evidence bundle rather than just its HTML page.
+
+The close-out restores the #107 archive without overwriting current evidence.
+Its restoration manifest records archive and restored-file fingerprints. The
+missing original #109 run is documented separately from any fresh replacement;
+a new demonstration cannot recover that old run's provenance.
 
 ## How I want these updates written
 

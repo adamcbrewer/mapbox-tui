@@ -40,7 +40,7 @@ def verification_matches(run, child):
                     ("image", "base_commit", "task_sha256", "patch_sha256", "evaluator_sha256")) and
                 result["trees"]["seed"]["sha256"] == run.result["verification_seed_tree_sha256"] and
                 result["regression_sha256"] == run.result["verification_regression_sha256"] and
-                result["trees"]["candidate"]["files"][run.task["allowed_files"][0]] == run.result["snapshot_source_sha256"] and
+                result["trees"]["candidate"]["files"][definition(result["task"])["allowed_files"][0]] == run.result["snapshot_source_sha256"] and
                 receipt_matches(result, child.path, allow_failed=failed))
     except (OSError, ValueError, KeyError, TypeError):
         return False
