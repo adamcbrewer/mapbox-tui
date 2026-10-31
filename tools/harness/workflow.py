@@ -251,7 +251,14 @@ def execute(path, scripted_calls=None):
 def validated_result(directory, reports=None):
     result = json.loads((directory / "result.json").read_text())
     plan_path = Path(result["plan"])
-    if reports is not None and plan_path.is_relative_to("reports/harness"):
+    archived_root = next((parent for parent in plan_path.parents if parent.is_absolute() and
+                          parent.parts[-2:] == ("reports", "harness")), None)
+    if archived_root is not None:
+        relative = plan_path.relative_to(archived_root)
+        if ".." in relative.parts:
+            raise Stop("invalid_input", "The saved plan leaves its report directory")
+        plan_path = (reports or REPORTS) / relative
+    elif reports is not None and plan_path.is_relative_to("reports/harness"):
         plan_path = reports / plan_path.relative_to("reports/harness")
     plan = load_plan(plan_path, execution=False)
     if (result["run_id"] != directory.name or result["plan_sha256"] != fingerprint(plan) or result["budgets"] != plan["budgets"] or
