@@ -175,6 +175,14 @@ class NativeCheckTests(unittest.TestCase):
         self.assertEqual(caught.exception.outcome, "budget_exhausted")
         self.assertFalse(self.run.result["independent_checks_passed"])
 
+    def test_inventory_revalidates_a_saved_native_repair_without_a_live_run_object(self):
+        import evaluate
+
+        self.candidate()
+        native_check.check_candidate(self.run)
+        self.run.result["workflow"] = "pi-native-tools"
+        self.assertTrue(evaluate.verified(self.run.result, self.run.path, self.root))
+
     def test_filename_shortcut_passes_visible_test_and_fails_extra_examples(self):
         self.candidate("tailored")
         with self.assertRaises(Stop) as caught:

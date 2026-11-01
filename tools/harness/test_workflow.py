@@ -263,6 +263,17 @@ class WorkflowReceiptTests(unittest.TestCase):
         with patch("workflow.load_plan", side_effect=lambda directory, **_: json.loads((directory / "plan.json").read_text())):
             self.assertTrue(workflow.validated_result(self.directory, self.root)["independent_checks_passed"])
 
+    def test_archived_absolute_plan_resolves_without_rewriting_the_receipt(self):
+        self.result["plan"] = "/removed-checkout/reports/harness/workflows/plans/example"
+        self.save()
+        original = (self.directory / "result.json").read_bytes()
+        path = self.root / "workflows/plans/example"
+        path.mkdir(parents=True)
+        (path / "plan.json").write_text(json.dumps(self.plan))
+        with patch("workflow.load_plan", side_effect=lambda directory, **_: json.loads((directory / "plan.json").read_text())):
+            self.assertTrue(workflow.validated_result(self.directory, self.root)["independent_checks_passed"])
+        self.assertEqual((self.directory / "result.json").read_bytes(), original)
+
     def test_paired_collection_uses_the_supplied_evidence_root(self):
         import workflow_compare
         cell = {"position": 1, "pair": 1, "mode": "managed", "experiment_id": "experiment"}
