@@ -42,6 +42,7 @@ const (
 	dialogFavouriteName
 	dialogFavouriteDelete
 	dialogSavedWorkspace
+	dialogSession
 	dialogJourney
 	dialogJourneyLocation
 	dialogJourneyRouting
@@ -667,6 +668,7 @@ func (m *viewer) commands() []viewerCommand {
 		{title: "Save workspace as", action: "save-workspace-as"},
 		{title: "Open saved workspace", action: "open-workspace"},
 		{title: "Repair missing workspace files", action: "repair-workspace", disabled: len(m.workspace.unresolved) == 0},
+		{title: "Session", action: "session"},
 	}
 	_, journeyErr := m.workspace.journey(m.planner.ref)
 	commands = append(commands,
@@ -738,6 +740,8 @@ func (m *viewer) runCommand(action string) tea.Cmd {
 		return command
 	}
 	switch action {
+	case "session":
+		return m.pushDialog(dialogSession)
 	case "save-workspace":
 		return m.openSavedWorkspaceDialog("save")
 	case "save-workspace-as":
@@ -849,6 +853,11 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 		if pressed == "esc" {
 			return m.backDialog()
 		}
+		if m.ui.dialog == dialogSession {
+			if pressed == "1" || pressed == "2" || pressed == "3" {
+				return m.copySession(pressed)
+			}
+		}
 		switch m.ui.dialog {
 		case dialogMapbox:
 			return m.updateMapboxDialog(pressed)
@@ -938,7 +947,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			m.ui.selected = 0
 			m.ui.menuNavigated = false
 		}
-	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp, dialogMapboxUsage, dialogMapboxBilling:
+	case dialogHelp, dialogCredits, dialogInspect, dialogMapboxHelp, dialogMapboxUsage, dialogMapboxBilling, dialogSession:
 		m.ui.page, cmd = m.ui.page.Update(msg)
 	}
 	return cmd
@@ -968,6 +977,8 @@ func (m *viewer) keepCommandSelection() func() {
 func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	s := m.styles
 	switch m.ui.dialog {
+	case dialogSession:
+		return m.sessionContent(width, height)
 	case dialogSavedWorkspace:
 		return m.savedWorkspaceContent(width, height)
 	case dialogFavourites, dialogFavouriteName, dialogFavouriteDelete:

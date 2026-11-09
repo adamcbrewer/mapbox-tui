@@ -46,15 +46,48 @@ def wait_for(predicate):
     raise AssertionError("live control condition timed out")
 
 
+def session_dialog(target, identity=None, name=""):
+    original_size = tmux("display-message", "-p", "-t", target, "#{window_width} #{window_height}").split()
+    def screen():
+        return tmux("capture-pane", "-p", "-t", target)
+    tmux("send-keys", "-t", target, "C-k")
+    wait_for(lambda: "Type a command" in screen())
+    tmux("send-keys", "-t", target, "-l", "session")
+    tmux("send-keys", "-t", target, "Enter")
+    if identity is None:
+        wait_for(lambda: "disabled by --no-control" in screen())
+        assert "Copy:" not in screen(), screen()
+    else:
+        wait_for(lambda: identity in screen() and "Copy:" in screen())
+        if name:
+            assert f"Name: {name}" in screen(), screen()
+        for key, text in (("1", identity),
+                          ("2", f"mapbox-tui remote --session {identity} status --json"),
+                          ("3", f"mapbox-tui mcp --session {identity}")):
+            tmux("send-keys", "-t", target, key)
+            wait_for(lambda: tmux("show-buffer", check=False).rstrip("\n") == text)
+        tmux("resize-window", "-t", target, "-x", "30", "-y", "12")
+        wait_for(lambda: "1 ID 2 CLI 3 MCP" in screen())
+        tmux("send-keys", "-t", target, "-N", "5", "Down")
+        tmux("send-keys", "-t", target, "2")
+        wait_for(lambda: tmux("show-buffer", check=False).rstrip("\n") ==
+                 f"mapbox-tui remote --session {identity} status --json")
+        tmux("resize-window", "-t", target, "-x", original_size[0], "-y", original_size[1])
+    tmux("send-keys", "-t", target, "Escape")
+    wait_for(lambda: "session" in screen() and "Copy:" not in screen())
+    tmux("send-keys", "-t", target, "Escape")
+    wait_for(lambda: "Commands" not in screen())
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="mb-control-", dir="/tmp") as folder:
         env = {**os.environ, "XDG_RUNTIME_DIR": folder, "XDG_CONFIG_HOME": folder,
                "MAPBOX_ACCESS_TOKEN": "", "TERM": "xterm-256color"}
         env.pop("NO_COLOR", None)
-        def launch(name, width=120, height=40, extra=()):
+        def launch(name, width=120, height=40, extra=(), named=True):
             command = shlex.join(["env", f"XDG_RUNTIME_DIR={folder}",
                                  f"XDG_CONFIG_HOME={folder}", "MAPBOX_ACCESS_TOKEN=",
-                                 "TERM=xterm-256color", str(BINARY), "--name", name,
+                                 "TERM=xterm-256color", str(BINARY), *(["--name", name] if named else []),
                                  "--no-provider", *extra])
             tmux("new-session", "-d", "-s", name, "-x", str(width), "-y", str(height), command)
         def sessions():
@@ -64,6 +97,19 @@ def main():
             launch("second", 70, 24, ("--ascii",))
             records = wait_for(lambda: (r if len(r := sessions()) == 2 else None))
             identity = next(r["session_id"] for r in records if r["name"] == "main")
+            tmux("set-option", "-g", "set-clipboard", "on")
+            for record in records:
+                session_dialog(record["name"], record["session_id"], record["name"])
+            for target in ("unnamed-a", "unnamed-b"):
+                previous = {r["session_id"] for r in sessions()}
+                launch(target, 70, 24, ("--ascii",), named=False)
+                record = wait_for(lambda: next((r for r in sessions() if r["session_id"] not in previous), None))
+                session_dialog(target, record["session_id"])
+            launch("disabled", extra=("--no-control",), named=False)
+            session_dialog("disabled")
+            for target in ("unnamed-a", "unnamed-b", "disabled"):
+                tmux("kill-session", "-t", target)
+            wait_for(lambda: len(sessions()) == 2)
             duplicate = subprocess.run([str(BINARY), "--name", "main", "--no-provider"],
                                        env=env, capture_output=True, text=True, timeout=10)
             assert duplicate.returncode != 0 and "already running" in duplicate.stderr, duplicate
@@ -175,6 +221,10 @@ def main():
                 assert opened["session_id"] == identity, opened
                 assert opened["generation"] != current["generation"], opened
                 assert opened["result"]["checkpoint"]["id"] == saved["id"], opened
+                session_dialog("main", identity, "main")
+                cleared = remote(env, identity, "workspace", "clear", "--discard")
+                assert cleared["session_id"] == identity, cleared
+                session_dialog("main", identity, "main")
                 # Kill the process, reclaim its endpoint, and reuse its name.
                 pid = int(tmux("display-message", "-p", "-t", "main", "#{pane_pid}").strip())
                 os.kill(pid, 9)
