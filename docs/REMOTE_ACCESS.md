@@ -27,6 +27,17 @@ mapbox-tui remote --session main status --json
 Unix viewers start with local control enabled; Windows viewers don't.
 Use `--no-control` to disable discovery and control.
 
+In the viewer, press **Ctrl-K** and choose **Session** to see its full UUID and
+optional name. Press **1** to copy the UUID, **2** for a CLI status command or
+**3** for an MCP command targeting that exact viewer. Copying needs terminal
+clipboard support; the full values remain available by scrolling the dialog.
+Configure your MCP client to launch the copied MCP command. Running it in another
+terminal doesn't attach an existing client.
+
+The footer shows the session name or shortened UUID when there is room. Use the
+full UUID from Session for commands. When control is disabled or unsupported,
+Session explains why connection is unavailable.
+
 | Area | Behaviour |
 |---|---|
 | Identity | Fixed UUID; optional name unique among your running viewers |

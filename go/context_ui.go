@@ -29,6 +29,7 @@ func (m *viewer) dialogAncestors() []string {
 		dialogJourneyRoutingHelp: "Routing help",
 		dialogFavourites:         "Favourites", dialogFavouriteName: "Favourite name",
 		dialogFavouriteDelete: "Delete favourite",
+		dialogSession:         "Session",
 	}
 	var ancestors []string
 	for _, parent := range m.ui.parents {
@@ -155,6 +156,13 @@ func (m *viewer) contextSummaryRows() []string {
 	if m.width >= 110 {
 		// Reserve the facts, four name cells and the two gaps on the shared row.
 		hintsRoom -= ansi.StringWidth(facts) + 9
+	}
+	reserved := ansi.StringWidth(hints+separator+theme+separator) + min(24, ansi.StringWidth(version))
+	if m.width >= 110 {
+		reserved += max(0, min(24, ansi.StringWidth(name))-4)
+	}
+	if session := m.sessionLabel(); session != "" && hintsRoom >= reserved+ansi.StringWidth(separator+session) {
+		hints += separator + session
 	}
 	versionRoom := min(24, max(0, hintsRoom-ansi.StringWidth(hints+separator+separator)-2))
 	versionLabel := separator + ansi.Truncate(version, versionRoom, "…")
