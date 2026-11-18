@@ -10,7 +10,7 @@ highlight = "#eceff4"
 border = "#4c566a"
 dimmed = "#616e88"
 progress_empty = "#4c566a"
-activities = ["#ffffff", "#ffffff", "#ffffff", "#ffffff", "#ffffff", "#ffffff"]
+activities = ["#ffffff", "#88c0d0", "#a3be8c", "#ebcb8b", "#d08770", "#b48ead"]
 
 [map]
 none = "#d8dee9"

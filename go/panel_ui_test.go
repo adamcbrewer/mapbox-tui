@@ -82,7 +82,7 @@ func TestFilesPanelShowsCompleteShortcuts(t *testing.T) {
 	m.openDialog(dialogWorkspace)
 	for _, action := range []string{"hide", "show"} {
 		m.rebuild()
-		want := "enter view / space " + action + " / esc close"
+		want := "esc close / c / enter / space " + action
 		if !strings.Contains(ansi.Strip(m.content), want) {
 			t.Fatalf("Files panel is missing %q", want)
 		}

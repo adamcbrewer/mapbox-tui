@@ -539,7 +539,12 @@ func TestBuiltinThemeActivitiesStandOutFromRoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, theme := range themes {
+		seen := make(map[string]bool, len(theme.Activities))
 		for i, activity := range theme.Activities {
+			if seen[activity] {
+				t.Errorf("%s repeats activity colour %s", theme.ID, activity)
+			}
+			seen[activity] = true
 			name := fmt.Sprintf("%s/activity-%d", theme.ID, i+1)
 			for _, role := range []string{"road", "major_road"} {
 				t.Run(name+"/"+role, func(t *testing.T) {
@@ -632,7 +637,9 @@ func TestSelectedActivityRowKeepsSelectionContrast(t *testing.T) {
 					plain := ansi.Strip(line)
 					if strings.HasPrefix(plain, "> ") {
 						found = true
-						if line != m.styles.selected.Render(plain) {
+						label := strings.TrimSuffix(plain, m.activitySwatchGlyph())
+						swatch := m.styles.selected.Foreground(lipgloss.Color(theme.Activities[item.color-1]))
+						if line != m.styles.selected.Render(label)+swatch.Render(m.activitySwatchGlyph()) {
 							t.Fatal(
 								"selected activity replaced the selection foreground",
 								item.label,

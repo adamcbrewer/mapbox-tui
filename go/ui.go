@@ -43,6 +43,7 @@ const (
 	dialogFavouriteDelete
 	dialogSavedWorkspace
 	dialogSession
+	dialogActivityColour
 	dialogJourney
 	dialogJourneyLocation
 	dialogJourneyRouting
@@ -71,6 +72,8 @@ type uiState struct {
 	filesVisited   bool
 	notice         string
 	feedback       string
+
+	activityColourRef ItemRef
 }
 
 type dialogFrame struct {
@@ -375,6 +378,7 @@ func (m *viewer) closeDialog() {
 		m.cancelAuth()
 	}
 	m.restoreThemePreview()
+	m.ui.activityColourRef = ItemRef{}
 	m.cancelPlaceSearch()
 	m.planner.showRevision = nil
 	m.planner.pickingStop = false
@@ -398,6 +402,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 		m.ui.filesSelected = m.ui.selected
 	}
 	m.restoreThemePreview()
+	m.ui.activityColourRef = ItemRef{}
 	if m.placeSearchOpen() || kind == dialogSearch {
 		m.cancelPlaceSearch()
 	}
@@ -481,7 +486,7 @@ func (m *viewer) openDialog(kind dialogKind) tea.Cmd {
 
 func (m *viewer) pushDialog(kind dialogKind) tea.Cmd {
 	parents := m.ui.parents
-	if m.ui.dialog != dialogNone && m.ui.dialog != kind {
+	if m.ui.dialog != dialogNone && m.ui.dialog != dialogActivityColour && m.ui.dialog != kind {
 		if m.ui.dialog == dialogSavedWorkspace && m.savedWork.busy {
 			m.savedWork.request++
 			m.savedWork.busy = false
@@ -871,6 +876,8 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 			}
 		case dialogWorkspace:
 			return m.updateWorkspaceDialog(pressed)
+		case dialogActivityColour:
+			return m.updateActivityColour(pressed)
 		case dialogCommands:
 			commands := m.commands()
 			switch pressed {
@@ -1050,6 +1057,8 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		}
 		body := s.choiceList("Playback speed multiplier", labels, m.ui.selected, width, height)
 		return "Playback speed", body, "↑/↓ choose / enter apply / esc close"
+	case dialogActivityColour:
+		return m.activityColourContent(width, height)
 	case dialogThemes:
 		var labels []string
 		for i, theme := range m.themes {
@@ -1177,6 +1186,9 @@ func (m *viewer) overlay() {
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		width = min(38, m.width-8)
 	}
+	if m.ui.dialog == dialogActivityColour {
+		width = min(46, m.width-8)
+	}
 	if m.ui.dialog == dialogMapbox || m.ui.dialog == dialogFavouriteDelete {
 		width = min(52, m.width-8)
 	}
@@ -1187,6 +1199,9 @@ func (m *viewer) overlay() {
 		width = min(40, m.width-8)
 	}
 	height := max(1, min(17, m.height-10, m.height-8))
+	if m.ui.dialog == dialogActivityColour {
+		height = min(4, m.height-10)
+	}
 	if m.ui.dialog == dialogSpeed || m.ui.dialog == dialogThemes {
 		height = min(height, 7)
 	}

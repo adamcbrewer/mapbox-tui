@@ -68,11 +68,15 @@ The legend and elevation chart follow the same
 order; hidden activities take no distance on the chart and return to their place
 when shown. Activity order is included in saved workspaces.
 
+Save Workspace remembers confirmed activity colours. When you change themes,
+each activity uses the same slot in the new theme.
+
 | View | Action | Keys / behaviour |
 |---|---|---|
 | Import picker | Browse / open / cancel | Arrows; Enter; Esc |
 | Files | Choose row | Up/Down or `k`/`j`; Home/End for first/last; wheel scrolls |
 | Files | Select / show or hide item | Enter / Space |
+| Files | Change activity colour | `c`; arrows preview, Enter keeps, Esc cancels |
 | Files | Reorder activity | Alt-Up / Alt-Down; stops at the first/last row |
 | Files | Show or hide whole source file | `v`; applies the highlighted item's new visibility to its source file |
 | Files | Remove item / whole file | Delete or Backspace / Shift-D |

@@ -140,10 +140,34 @@ func (m *viewer) overlayFilesPanel() {
 	}
 	width, height := m.journeyPanelWidth(), m.camera.Height
 	inner := max(1, width-4)
-	title, body, hints := m.workspaceDialogContent(inner, max(1, height-5))
+	title, body, hints := m.workspaceDialogContent(inner, filesBodyHeight(height))
+	exit := "esc close"
+	if len(m.ui.parents) > 0 {
+		exit = "esc back"
+	}
+	footer := []string{exit}
+	if hints != "" {
+		footer[0] = exit + " / c colour / " + hints
+		if inner < len(footer[0]) {
+			footer[0] = exit + " / c / " + hints
+		}
+		if inner < len(footer[0]) {
+			footer[0] = exit + "  c enter space"
+		}
+		if height >= 7 {
+			actions := "v file / del item / D remove file"
+			if inner < len(actions) {
+				actions = "v file / del item / D"
+			}
+			footer = append(footer, actions)
+		}
+	}
+	for i, line := range footer {
+		footer[i] = m.styles.dialogMuted.Render(pad(line, inner))
+	}
 	content := "\n" + m.styles.dialogHeading.Render(pad(title, inner)) + "\n" +
-		lipgloss.NewStyle().Height(max(1, height-5)).MaxHeight(max(1, height-5)).Render(body) + "\n" +
-		m.styles.dialogMuted.Render(pad(m.dialogHints(hints), inner))
+		lipgloss.NewStyle().Height(filesBodyHeight(height)).MaxHeight(filesBodyHeight(height)).Render(body) + "\n" +
+		strings.Join(footer, "\n")
 	box := m.theme().borderStyle().Background(lipgloss.Color(m.theme().Surface)).
 		Foreground(lipgloss.Color(m.theme().Text)).
 		Border(m.boxBorder()).
@@ -152,6 +176,13 @@ func (m *viewer) overlayFilesPanel() {
 	m.content = lipgloss.NewCanvas(m.width, m.height).Compose(lipgloss.NewCompositor(
 		lipgloss.NewLayer(m.content), lipgloss.NewLayer(box).X(m.journeyPanelX()).Y(m.mapOriginY()).Z(1),
 	)).Render()
+}
+
+func filesBodyHeight(height int) int {
+	if height >= 7 {
+		return height - 6
+	}
+	return max(1, height-5)
 }
 
 func (m *viewer) updateFilesPanelMouse(msg tea.Msg) tea.Cmd {
@@ -166,7 +197,7 @@ func (m *viewer) updateFilesPanelMouse(msg tea.Msg) tea.Cmd {
 		if event.Button != tea.MouseLeft {
 			return nil
 		}
-		count, rowHeight := workspaceListLayout(max(1, m.camera.Height-5))
+		count, rowHeight := workspaceListLayout(filesBodyHeight(m.camera.Height))
 		start := max(0, m.ui.selected-count+1)
 		row := event.Y - m.mapOriginY() - 3
 		if row >= 0 && row < count*rowHeight && start+row/rowHeight < len(m.workspaceRows()) {

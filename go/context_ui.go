@@ -93,7 +93,7 @@ func (m *viewer) contextSummary() (string, string, string) {
 		}
 		fact := fmt.Sprintf("%d points", len(track.Points))
 		if p := m.activePlayback(); p != nil {
-			fact = strings.Fields(p.status())[0] + fmt.Sprintf(" %.0fx", p.multiplier())
+			fact = strings.Fields(p.status())[0] + fmt.Sprintf(" %.0fx", p.multiplier()) + " " + m.playbackProgress(p)
 		} else if j, err := m.workspace.journey(m.workspace.selection.ref); err == nil {
 			fact = j.Mode.label()
 			if j.routeCurrent() {

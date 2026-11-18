@@ -116,6 +116,11 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 				m.ui.selected = target
 			}
 		}
+	case "c":
+		cmd := m.pushDialog(dialogActivityColour)
+		m.ui.activityColourRef = row.ref
+		m.ui.selected = int(row.color) - 1
+		return cmd
 	case "enter":
 		err = m.workspace.selectItem(row.ref)
 		m.closeDialog()
@@ -149,9 +154,6 @@ func (m *viewer) updateWorkspaceDialog(key string) tea.Cmd {
 func workspaceListLayout(height int) (int, int) {
 	available := height
 	if height > 3 {
-		available -= 3
-	}
-	if height >= 7 {
 		available -= 2
 	}
 	rowHeight := min(2, max(1, available))
@@ -162,7 +164,7 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 	s := m.styles
 	rows := m.workspaceRows()
 	if len(rows) == 0 {
-		return "Loaded files", s.dialogMuted.Render("No files loaded. Use ctrl+o."), "esc close"
+		return "Loaded files", s.dialogMuted.Render("No files loaded. Use ctrl+o."), ""
 	}
 	m.ui.selected = max(0, min(len(rows)-1, m.ui.selected))
 	count, rowHeight := workspaceListLayout(height)
@@ -187,7 +189,9 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 		if rowHeight == 1 {
 			label = rows[i].compactLabel
 		}
-		lines = append(lines, style.Render(pad(prefix+label, width)))
+		line := style.Render(pad(prefix+label, width-1))
+		swatch := style.Foreground(lipgloss.Color(m.theme().mapColor(roleRoute, rows[i].color)))
+		lines = append(lines, line+swatch.Render(m.activitySwatchGlyph()))
 		if rowHeight > 1 {
 			lines = append(lines, s.dialogMuted.Render(pad("    "+abbreviatedWorkspacePath(rows[i].source, max(0, width-4), m.settings.ASCII), width)))
 		}
@@ -197,29 +201,18 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 		if path == "" {
 			path = rows[m.ui.selected].source
 		}
-		if height >= 7 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, s.dialogMuted.Render(pad(abbreviatedWorkspacePath(path, width, m.settings.ASCII), width)))
-		if height >= 7 {
-			lines = append(lines, "")
-		}
-		lines = append(
-			lines,
-			s.dialogMuted.Render(pad("alt+up/down move · v file visibility", width)),
-			s.dialogMuted.Render(pad("del remove item · D remove file", width)),
-		)
+		lines = append(lines, "", s.dialogMuted.Render(pad(abbreviatedWorkspacePath(path, width, m.settings.ASCII), width)))
 	}
 	visibility := "hide"
 	if !rows[m.ui.selected].visible {
 		visibility = "show"
 	}
-	return "Loaded files", strings.Join(lines, "\n"), "enter view / space " + visibility + " / esc close"
+	return "Loaded files", strings.Join(lines, "\n"), "enter / space " + visibility
 }
 
 func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {
 	s := m.styles
-	items := m.workspace.sceneItems()
+	items := m.previewSceneColours(m.workspace.sceneItems())
 	if len(items) == 0 {
 		return s.muted.Render(pad("No visible items · ctrl+l files", width))
 	}

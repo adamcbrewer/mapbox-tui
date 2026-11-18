@@ -11,7 +11,7 @@ border = "#975db7"
 border_gradient = ["#ff4fb7", "#ff92d0", "#b995e8", "#4de8e0", "#ff4fb7"]
 dimmed = "#7f5a94"
 progress_empty = "#654071"
-activities = ["#e6cc78", "#d6be70", "#c8b15e", "#ead58b", "#d9c77f", "#bca85b"]
+activities = ["#e6cc78", "#ff8cc6", "#70e7f2", "#bd9dff", "#9de0ac", "#ffad88"]
 
 [map]
 none = "#c8a4d4"

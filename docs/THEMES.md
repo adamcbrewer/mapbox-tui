@@ -19,9 +19,9 @@ Built-ins appear in this order: `catppuccin`, `nord`, `synthwave`, `noir`,
 `paper`.
 Catppuccin uses mauve for its first activity, with blue UI accents.
 Nord uses the [Nord palette](https://www.nordtheme.com/docs/colors-and-palettes/):
-slate backgrounds and white activity lines, with icy blue UI accents.
+slate backgrounds, a white first activity and five accent colours.
 Synthwave pairs a deep plum canvas with candy pink, pearl-pink text, cyan and
-lilac accents, muted yellow activity lines and neon gradient frames:
+lilac accents, a muted yellow first activity and neon gradient frames:
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme synthwave
@@ -35,7 +35,8 @@ profiles, and green UI accents. Its six activity colours have at least 7:1 contr
 so small Braille dots remain visible on large maps. Nord and Paper use solid borders.
 
 Activity palettes follow each theme's colours, while traffic keeps green, yellow
-and red. The six slots remain stable as themes change.
+and red. In Files, press `c` to choose one of the six activity colours.
+Saved workspaces remember the slot, and each theme supplies its own colour for it.
 
 ```sh
 ./bin/mapbox-tui fixtures/country-ride.gpx --theme nord
@@ -157,7 +158,8 @@ resetting their order or two-second completion timers. Custom palettes use the
 same roles.
 
 The workspace stores activity slots, not RGB colours. Map and profile cells retain
-their roles/slots; colours are resolved when painting. The cached elevation grid
-can therefore be recoloured without rebuilding geometry. Drawing priority and
+their roles/slots; colours are resolved when painting. Theme changes reuse the
+cached elevation grid. Reassigning an activity slot redraws the grid from the
+loaded points. Drawing priority and
 ASCII glyphs stay in `mapStyles`, independent of theme choice. CLI/MCP plain maps
 continue to use the same geometry without ANSI styling.

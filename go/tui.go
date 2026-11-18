@@ -170,18 +170,40 @@ func (m *viewer) visibleProfile() *elevationProfile {
 	if m.profileHeight <= 0 {
 		return nil
 	}
-	return m.workspace.profile(max(1, m.width-2), m.profileHeight-2)
+	width, height := max(1, m.width-2), m.profileHeight-2
+	if m.ui.dialog == dialogActivityColour {
+		items := m.previewSceneColours(m.workspace.profileItems())
+		return m.workspace.profileFor(items, width, height)
+	}
+	return m.workspace.profile(width, height)
 }
+func (m *viewer) playbackProgress(p *playback) string {
+	if m.progress == nil {
+		bar := progress.New(progress.WithoutPercentage(), progress.WithFillCharacters('█', '░'))
+		m.progress = &bar
+	}
+	m.progress.FullColor = lipgloss.Color(m.activeColor())
+	m.progress.EmptyColor = lipgloss.Color(m.theme().ProgressEmpty)
+	m.progress.SetWidth(6)
+	if m.settings.ASCII {
+		m.progress.Full, m.progress.Empty = '#', '-'
+	}
+	return m.progress.ViewAs(p.ratio())
+}
+
 func (m *viewer) activeColor() string {
 	return m.theme().mapColor(roleActiveRoute, m.activeSwatch())
 }
 func (m *viewer) activeSwatch() activityColor {
-	if m.workspace.selection != nil {
-		if entry, _, err := m.workspace.lookup(m.workspace.selection.ref); err == nil {
-			return entry.colors[m.workspace.selection.ref.ItemID]
-		}
+	if m.workspace.selection == nil {
+		return 0
 	}
-	return 0
+	ref := m.workspace.selection.ref
+	entry, _, err := m.workspace.lookup(ref)
+	if err != nil {
+		return 0
+	}
+	return m.previewActivityColour(ref, entry.colors[ref.ItemID])
 }
 func (m *viewer) selectionChanged() {
 	before := m.destination()
@@ -1194,7 +1216,7 @@ func (m *viewer) rebuild() {
 	g := renderScene(
 		c,
 		sources.Features,
-		m.workspace.sceneItems(),
+		m.previewSceneColours(m.workspace.sceneItems()),
 		cursor,
 	)
 	if m.inspected != nil {
@@ -1261,26 +1283,6 @@ func (m *viewer) rebuild() {
 		}
 		status = m.busyMarker() + " " + label + " " + status
 	}
-	contextStatus := status
-	if playback != nil {
-		if m.progress == nil {
-			bar := progress.New(progress.WithoutPercentage(), progress.WithFillCharacters('█', '░'))
-			m.progress = &bar
-		}
-		m.progress.FullColor = lipgloss.Color(m.activeColor())
-		m.progress.EmptyColor = lipgloss.Color(t.ProgressEmpty)
-		m.progress.SetWidth(max(6, min(14, m.width/6)))
-		m.progress.Full, m.progress.Empty = '█', '░'
-		if m.settings.ASCII {
-			m.progress.Full, m.progress.Empty = '#', '-'
-		}
-		if len(m.workspace.items()) > 1 {
-			ref := m.workspace.selection.ref
-			label := m.workspace.itemLabels()[ref]
-			status = ansi.Truncate(label, min(24, m.width/4), "…") + " | " + status
-		}
-		status = m.progress.ViewAs(playback.ratio()) + "  " + m.paint(status, roleActiveRoute, m.activeSwatch())
-	}
 	m.ui.help.SetWidth(m.width)
 	credits, _ := sources.attribution()
 	journeyCredits := strings.ReplaceAll(m.journeyCredits(sources.Credits...), "\n", " ")
@@ -1299,7 +1301,7 @@ func (m *viewer) rebuild() {
 	rows = append(rows, s.muted.Render(pad(credits, m.width)))
 	m.content = s.text.Background(lipgloss.Color(t.Background)).Width(m.width).Render(strings.Join(rows, "\n"))
 	if m.ui.detailsOpen && !m.journeyPanelOpen() && m.ui.dialog != dialogWorkspace {
-		m.contextDrawer(contextStatus)
+		m.contextDrawer(status)
 	}
 	m.overlayFilesPanel()
 	m.overlayJourneyPanel()

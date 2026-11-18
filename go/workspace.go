@@ -239,6 +239,21 @@ func (w *Workspace) setVisible(ref ItemRef, visible bool) error {
 	return nil
 }
 
+func (w *Workspace) setItemColor(ref ItemRef, slot activityColor) error {
+	if slot < 1 || slot > activityColorCount {
+		return fmt.Errorf("activity colour slot must be between 1 and %d", activityColorCount)
+	}
+	entry, _, err := w.lookup(ref)
+	if err != nil {
+		return err
+	}
+	if entry.colors[ref.ItemID] != slot {
+		entry.colors[ref.ItemID] = slot
+		w.edited()
+	}
+	return nil
+}
+
 func (w *Workspace) setDocumentVisible(id int, visible bool) error {
 	for _, entry := range w.documents {
 		if entry.id == id {
@@ -371,7 +386,10 @@ func (w *Workspace) selectDocumentPoint(documentID, index int) error {
 }
 
 func (w *Workspace) profile(width, height int) *elevationProfile {
-	items := w.profileItems()
+	return w.profileFor(w.profileItems(), width, height)
+}
+
+func (w *Workspace) profileFor(items []sceneItem, width, height int) *elevationProfile {
 	invalidSize := width <= 0 || height <= 0
 	if len(items) == 0 || invalidSize {
 		w.elevation = nil
