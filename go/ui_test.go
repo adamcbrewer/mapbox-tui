@@ -486,3 +486,13 @@ func TestDialogOverlayPreservesBackgroundColours(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactSpeedPickerShowsFocusedChoice(t *testing.T) {
+	m := themeViewer(t, 30, 12, false)
+	m.openDialog(dialogSpeed)
+	m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	_, body, _ := m.dialogContent(22, 2)
+	if !strings.Contains(ansi.Strip(body), "> 120x") || lipgloss.Height(body) > 2 {
+		t.Fatalf("focused speed should fit in the two available rows: %q", body)
+	}
+}

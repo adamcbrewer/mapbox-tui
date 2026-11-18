@@ -648,13 +648,17 @@ func (m *viewer) backDialog() tea.Cmd {
 
 func (m *viewer) dialogHints(hints string) string {
 	billingConfirmation := m.ui.dialog == dialogMapboxBilling && m.billingIntent != billingShowGuidance
-	if len(m.ui.parents) == 0 || m.ui.dialog == dialogFavouriteDelete || billingConfirmation {
+	if len(m.ui.parents) == 0 || m.ui.dialog == dialogFavouriteDelete || m.ui.dialog == dialogSavedWorkspace || billingConfirmation {
 		return hints
 	}
 	lines := strings.Split(hints, "\n")
 	last := len(lines) - 1
-	before, _, _ := strings.Cut(lines[last], "esc ")
-	lines[last] = "esc back / " + strings.TrimRight(before, " /·")
+	actions := strings.Split(lines[last], " / ")
+	switch actions[len(actions)-1] {
+	case "esc", "esc close", "esc cancel", "esc back":
+		actions = actions[:len(actions)-1]
+	}
+	lines[last] = strings.Join(append([]string{"esc back"}, actions...), " / ")
 	return strings.Join(lines, "\n")
 }
 
@@ -892,7 +896,7 @@ func (m *viewer) updateDialog(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 		case dialogSpeed, dialogThemes:
-			last := 4
+			last := len(playbackSpeeds) - 1
 			if m.ui.dialog == dialogThemes {
 				last = len(m.themes) - 1
 			}
@@ -1035,44 +1039,28 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 		if len(commands) == 0 {
 			rows = append(rows, s.dialogMuted.Render("No matching commands"))
 		}
-		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose   space toggle   enter run   esc close"
+		return "Commands", strings.Join(rows, "\n"), "↑/↓ choose / space toggle / enter run / esc close"
 	case dialogFiles:
-		hints := m.filePickerHints("↑/↓ choose   ←/→ folders   enter open   esc close")
+		hints := m.filePickerHints("↑/↓ choose / ←/→ folders / enter open / esc close")
 		return "Open track file", m.filePickerContent(width, height), hints
 	case dialogSpeed:
-		rows := []string{s.dialogMuted.Render(pad("Playback speed multiplier", width)), ""}
-		for i, speed := range []int{1, 5, 20, 60, 120} {
-			line := fmt.Sprintf("  %dx", speed)
-			style := s.dialogText
-			if i == m.ui.selected {
-				style = s.selected
-				line = "› " + strings.TrimSpace(line)
-			}
-			rows = append(rows, style.Render(pad(line, width)))
+		var labels []string
+		for _, speed := range playbackSpeeds {
+			labels = append(labels, fmt.Sprintf("%gx", speed))
 		}
-		return "Playback speed", strings.Join(rows, "\n"), "↑/↓ choose   enter apply   esc close"
+		body := s.choiceList("Playback speed multiplier", labels, m.ui.selected, width, height)
+		return "Playback speed", body, "↑/↓ choose / enter apply / esc close"
 	case dialogThemes:
-		var rows []string
-		count := height
-		if height > 3 {
-			rows = append(rows, s.dialogMuted.Render(pad("Terminal colours · live preview", width)), "")
-			count -= 2
-		}
-		start := max(0, m.ui.selected-max(1, count)+1)
-		for i := start; i < min(len(m.themes), start+max(1, count)); i++ {
-			theme := m.themes[i]
-			line := "  " + theme.Name
+		var labels []string
+		for i, theme := range m.themes {
+			label := theme.Name
 			if i == m.ui.themeBefore {
-				line += " (current)"
+				label += " (current)"
 			}
-			style := s.dialogText
-			if i == m.ui.selected {
-				style = s.selected
-				line = "> " + strings.TrimSpace(line)
-			}
-			rows = append(rows, style.Render(pad(line, width)))
+			labels = append(labels, label)
 		}
-		return "Colour theme", strings.Join(rows, "\n"), "↑/↓ preview   enter keep   esc close"
+		body := s.choiceList("Terminal colours · live preview", labels, m.ui.selected, width, height)
+		return "Colour theme", body, "↑/↓ preview / enter keep / esc close"
 	}
 	title, content := "Keyboard shortcuts", ""
 	switch m.ui.dialog {
@@ -1105,7 +1093,7 @@ func (m *viewer) dialogContent(width, height int) (string, string, string) {
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(height)
 	m.ui.page.SetContent(content)
-	return title, m.ui.page.View(), "↑/↓ scroll   esc close"
+	return title, m.ui.page.View(), "↑/↓ scroll / esc close"
 }
 
 func (m *viewer) sourceCreditsContent(sources sourceView) string {

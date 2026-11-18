@@ -494,7 +494,7 @@ func (m *viewer) mapboxDialogContent(width, height int) (string, string, string)
 	if m.mapboxConnected() {
 		title = "Mapbox settings"
 	}
-	return title, strings.Join(rows, "\n"), "↑/↓ actions   space toggle   enter select   esc close"
+	return title, strings.Join(rows, "\n"), "↑/↓ actions / space toggle / enter select / esc close"
 }
 
 func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
@@ -518,7 +518,7 @@ func (m *viewer) mapboxHelpContent(width, height int) (string, string, string) {
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(max(1, height))
 	m.ui.page.SetContent(content.String())
-	return "Installation", m.ui.page.View(), "↑/↓ scroll   esc close"
+	return "Installation", m.ui.page.View(), "↑/↓ scroll / esc close"
 }
 
 // Capture the session choice before launching a helper. Safe start must not

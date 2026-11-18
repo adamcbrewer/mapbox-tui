@@ -540,29 +540,29 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		if len(m.workspace.unresolved) > 0 {
 			body += "\nMissing file references will be kept."
 		}
-		return title, ansi.Hardwrap(body, width, true), "enter save • esc cancel"
+		return title, ansi.Hardwrap(body, width, true), "enter save / esc cancel"
 	case "saved":
 		path := cleanPlaceText(m.workspace.checkpoint.path)
 		body := path + "\n\nUse this path to reopen the workspace."
 		m.ui.page.SetWidth(max(1, width))
 		m.ui.page.SetHeight(max(1, height))
 		m.ui.page.SetContent(ansi.Hardwrap(body, max(1, width), true))
-		return "Workspace saved", m.ui.page.View(), "↑/↓ scroll • enter close • esc close"
+		return "Workspace saved", m.ui.page.View(), "↑/↓ scroll / enter close / esc close"
 	case "open":
 		body := input + "\n\nEnter a JSON path or choose a saved file."
-		return "Open saved workspace", body, "enter load • tab files • esc cancel"
+		return "Open saved workspace", body, "enter load / tab files / esc cancel"
 	case "browse":
 		return "Open saved workspace", m.filePickerContent(width, height),
-			m.filePickerHints("enter choose • tab path • esc cancel")
+			m.filePickerHints("enter choose / tab path / esc cancel")
 	case "conflict":
 		body := "Save As keeps your work in a separate checkpoint." +
 			"\nReload prepares the on-disk version for confirmation."
-		return "Workspace changed", ansi.Hardwrap(body, width, true), "s save as • r reload • esc cancel"
+		return "Workspace changed", ansi.Hardwrap(body, width, true), "s save as / r reload / esc cancel"
 	case "confirm-open":
 		m.ui.page.SetWidth(max(1, width))
 		m.ui.page.SetHeight(max(1, height))
 		m.ui.page.SetContent(m.savedWorkspaceSummary(width))
-		return "Open workspace?", m.ui.page.View(), "↑/↓ scroll • enter open • esc keep current"
+		return "Open workspace?", m.ui.page.View(), "↑/↓ scroll / enter open / esc keep current"
 	case "repair":
 		count := len(m.workspace.unresolved)
 		m.ui.selected = min(m.ui.selected, count-1)
@@ -570,18 +570,18 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		filename := fmt.Sprintf("%d/%d %s", m.ui.selected+1, count, cleanPlaceText(filepath.Base(entry.Path)))
 		problem := ansi.Hardwrap(cleanPlaceText(entry.problem), width, true)
 		body := ansi.Hardwrap(filename, width, true) + "\n\n" + m.styles.dialogAccent.Render(problem)
-		hints := "↑/↓ select • enter locate • del remove • esc skip for now"
+		hints := "↑/↓ select / enter locate / del remove / esc skip for now"
 		return "Missing or changed files", body, hints
 	case "locate-browse":
 		return "Locate original import", m.filePickerContent(width, height),
-			m.filePickerHints("enter choose • tab enter path • esc back")
+			m.filePickerHints("enter choose / tab enter path / esc back")
 	case "locate":
 		body := input + "\n\nChoose an identical copy to restore item state." +
 			"\nFor changed content, remove the reference and add the new file."
 		if m.savedWork.repairError != "" {
 			body += "\n\n" + m.styles.dialogAccent.Render(m.savedWork.repairError)
 		}
-		return "Locate original import", ansi.Hardwrap(body, width, true), "enter locate • tab files • ctrl+u replace path • esc skip"
+		return "Locate original import", ansi.Hardwrap(body, width, true), "enter locate / tab files / ctrl+u replace path / esc skip"
 	case "remove-reference":
 		name := "this missing import"
 		for _, entry := range m.workspace.unresolved {
@@ -591,7 +591,7 @@ func (m *viewer) savedWorkspaceContent(width, height int) (string, string, strin
 		}
 		body := "Remove the reference to " + name + "?\nThe original file stays untouched." +
 			"\nOnly an explicit Save updates the named checkpoint."
-		return "Remove file reference?", ansi.Hardwrap(body, width, true), "enter remove • esc cancel"
+		return "Remove file reference?", ansi.Hardwrap(body, width, true), "enter remove / esc cancel"
 	}
 	return "Workspace", "", "esc close"
 }

@@ -27,7 +27,7 @@ func (m *viewer) sessionLabel() string {
 func (m *viewer) sessionContent(width, height int) (string, string, string) {
 	info := m.currentSession()
 	content := "Local control is unavailable."
-	hints := "up/down esc close"
+	hints := "up/down scroll / esc close"
 	if m.args.NoControl {
 		content = "Local control is disabled by --no-control. This viewer has no session to connect to."
 	} else if !sessionControlSupported {
@@ -42,7 +42,7 @@ func (m *viewer) sessionContent(width, height int) (string, string, string) {
 			"\n\nConfigure your MCP client to launch this command." +
 			"\n\nThis live session ends when the viewer closes. It is separate from any saved workspace." +
 			"\n\nCopying needs terminal clipboard support."
-		hints = "Copy: 1 ID 2 CLI 3 MCP\nup/down esc close"
+		hints = "Copy: 1 ID 2 CLI 3 MCP\nup/down scroll / esc close"
 	}
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(height)

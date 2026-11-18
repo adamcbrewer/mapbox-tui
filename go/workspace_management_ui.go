@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -68,7 +67,7 @@ func (m *viewer) workspaceManagementContent(input string, width, height int) (st
 		body := identity + "\n\nDelete this saved workspace?" +
 			"\nThe current working copy and original import files stay available."
 		m.ui.page.SetContent(ansi.Hardwrap(body, width, true))
-		return "Delete saved workspace?", m.ui.page.View(), "enter delete • pgup/pgdown details • esc cancel"
+		return "Delete saved workspace?", m.ui.page.View(), "enter delete / pgup/pgdown details / esc cancel"
 	}
 	title, explanation := "Rename saved workspace", "Only the saved name changes. Unsaved working edits stay in memory."
 	if m.savedWork.mode == "duplicate" {
@@ -77,7 +76,7 @@ func (m *viewer) workspaceManagementContent(input string, width, height int) (st
 	}
 	m.ui.page.SetHeight(max(1, height-2))
 	m.ui.page.SetContent(ansi.Hardwrap(identity+"\n\n"+explanation, width, true))
-	return title, input + "\n\n" + m.ui.page.View(), "enter confirm • pgup/pgdown details • esc cancel"
+	return title, input + "\n\n" + m.ui.page.View(), "enter confirm / pgup/pgdown details / esc cancel"
 }
 
 func (m *viewer) startCleanWorkspace() tea.Cmd {
@@ -120,45 +119,12 @@ func (m *viewer) updateUnsavedWorkspaceDialog(msg tea.Msg) tea.Cmd {
 
 func (m *viewer) unsavedWorkspaceContent(width int) (string, string, string) {
 	labels := []string{"Cancel", "Discard changes", "Save"}
-	rowWidth := 4
-	for _, label := range labels {
-		rowWidth += ansi.StringWidth(label) + 4
-	}
-	stack := rowWidth > width
-	x, y := max(0, width-rowWidth), 0
-	buttons := []string{}
-	for i, label := range labels {
-		style := m.styles.dialogText.Background(lipgloss.Color(m.theme().Selected)).Padding(0, 1)
-		prefix := "  "
-		if i == m.savedWork.confirmSelected {
-			style = style.Background(lipgloss.Color(m.theme().Accent)).
-				Foreground(lipgloss.Color(m.theme().Surface)).Bold(true)
-			prefix = "> "
-		}
-		button := style.Render(prefix + label)
-		buttonWidth := lipgloss.Width(button)
-		m.savedWork.confirmButtons[i] = image.Rect(x, y, x+buttonWidth, y+1)
-		buttons = append(buttons, button)
-		if stack {
-			x, y = 0, y+1
-		} else {
-			x += buttonWidth + 2
-		}
-	}
-	separator, left := "  ", max(0, width-rowWidth)
-	if stack {
-		separator, left = "\n", 0
-	}
+	body := m.confirmationButtons(labels, m.savedWork.confirmButtons[:], width, 0, m.savedWork.confirmSelected, 1)
 	title := "Save before loading?"
 	if m.savedWork.switchAction == "clear" {
 		title = "Save before clearing?"
 	}
-	body := strings.Repeat(" ", left) + strings.Join(buttons, separator)
-	hints := "tab/←/→ choose • enter select • esc cancel"
-	if width < ansi.StringWidth(hints) {
-		hints = "tab choose • enter select\nesc cancel"
-	}
-	return title, body, hints
+	return title, body, confirmationHints(width)
 }
 
 var workspaceActions = []struct {
@@ -192,13 +158,9 @@ func (m *viewer) workspaceActionsContent(width, height int) (string, string, str
 	start := max(0, m.savedWork.actionSelected-count+1)
 	for i := start; i < min(len(workspaceActions), start+count); i++ {
 		action := workspaceActions[i]
-		style, prefix := m.styles.dialogText, "  "
-		if i == m.savedWork.actionSelected {
-			style, prefix = m.styles.selected, "> "
-		}
-		lines = append(lines, style.Render(pad(ansi.Truncate(prefix+action.label, width, "…"), width)))
+		lines = append(lines, m.styles.choiceRow(action.label, width, i == m.savedWork.actionSelected))
 	}
-	return "Workspace actions", strings.Join(lines, "\n"), "↑/↓ choose • enter select • esc back"
+	return "Workspace actions", strings.Join(lines, "\n"), "↑/↓ choose / enter select / esc back"
 }
 
 func (m *viewer) updateUnsavedWorkspace(key string) tea.Cmd {

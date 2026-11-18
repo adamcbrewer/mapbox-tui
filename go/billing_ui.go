@@ -190,9 +190,9 @@ func (m *viewer) billingDialogContent(width, height int) (string, string, string
 		rows = append(rows, "")
 	}
 	rows = append(rows, actions...)
-	hints := "↑/↓ read   tab choice   enter choose   esc offline"
+	hints := "↑/↓ read / tab choice / enter choose / esc offline"
 	if m.billingIntent == billingShowGuidance {
-		hints = "↑/↓ read   tab choice   enter choose   esc back"
+		hints = "↑/↓ read / tab choice / enter choose / esc back"
 	}
 	return "Mapbox billing risks", strings.Join(rows, "\n"), hints
 }
@@ -275,5 +275,5 @@ func (m *viewer) usageDialogContent(width, height int) (string, string, string) 
 	m.ui.page.SetWidth(width)
 	m.ui.page.SetHeight(max(1, height))
 	m.ui.page.SetContent(ansi.Wordwrap(content.String(), width, ""))
-	return "Mapbox usage", m.ui.page.View(), "↑/↓ scroll   enter web usage   esc back"
+	return "Mapbox usage", m.ui.page.View(), "↑/↓ scroll / enter web usage / esc back"
 }

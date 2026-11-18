@@ -140,10 +140,10 @@ func (m *viewer) overlayFilesPanel() {
 	}
 	width, height := m.journeyPanelWidth(), m.camera.Height
 	inner := max(1, width-4)
-	title, body, _ := m.workspaceDialogContent(inner, max(1, height-5))
+	title, body, hints := m.workspaceDialogContent(inner, max(1, height-5))
 	content := "\n" + m.styles.dialogHeading.Render(pad(title, inner)) + "\n" +
 		lipgloss.NewStyle().Height(max(1, height-5)).MaxHeight(max(1, height-5)).Render(body) + "\n" +
-		m.styles.dialogMuted.Render(pad(m.dialogHints("enter inspect / space hide / esc close"), inner))
+		m.styles.dialogMuted.Render(pad(m.dialogHints(hints), inner))
 	box := m.theme().borderStyle().Background(lipgloss.Color(m.theme().Surface)).
 		Foreground(lipgloss.Color(m.theme().Text)).
 		Border(m.boxBorder()).

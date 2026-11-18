@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -260,28 +259,9 @@ func (m *viewer) favouriteDeleteContent(width, height int) (string, string, stri
 		lines[limit-1] = ansi.Truncate(lines[limit-1]+"…", width, "…")
 	}
 	lines = append(lines, "")
-	buttonRow := len(lines)
-	left := max(0, width-22)
-	buttons := []string{}
-	for i, label := range []string{"Cancel", "Delete"} {
-		style := m.styles.dialogText.Background(lipgloss.Color(m.theme().Selected)).Padding(0, 1)
-		prefix := "  "
-		if i == m.ui.selected {
-			colour := m.theme().Accent
-			if i == 1 {
-				colour = m.theme().Highlight
-			}
-			style = style.Background(lipgloss.Color(colour)).Foreground(lipgloss.Color(m.theme().Surface)).Bold(true)
-			prefix = "> "
-		}
-		buttons = append(buttons, style.Render(prefix+label))
-		x := left + i*12
-		m.favourites.deleteButtons[i] = image.Rect(x, buttonRow, x+10, buttonRow+1)
-	}
-	lines = append(lines, strings.Repeat(" ", left)+strings.Join(buttons, "  "))
-	hints := "tab switch / enter select / esc cancel"
-	if width < len(hints) {
-		hints = "tab switch\nenter select / esc"
-	}
-	return "Delete favourite?", strings.Join(lines, "\n"), hints
+	buttons := m.confirmationButtons(
+		[]string{"Cancel", "Delete"}, m.favourites.deleteButtons[:], width, len(lines), m.ui.selected, 1,
+	)
+	lines = append(lines, buttons)
+	return "Delete favourite?", strings.Join(lines, "\n"), confirmationHints(width)
 }

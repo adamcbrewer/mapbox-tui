@@ -178,10 +178,10 @@ func (m *viewer) updateWorkspaceLibrary(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *viewer) workspaceLibraryContent(width, height int) (string, string, string) {
-	hints := "↑/↓ select • enter open • / search • o sort"
-	hints += "\nm actions • tab files • p path • r refresh • esc close"
+	hints := "↑/↓ select / enter open / slash search / o sort"
+	hints += "\nm actions / tab files / p path / r refresh / esc close"
 	if m.savedWork.mode == "library-search" {
-		hints = "Type to filter • enter/esc back to list"
+		hints = "Type to filter / enter/esc back to list"
 	}
 	count := len(m.savedWork.entries)
 	sort := "newest first"

@@ -189,7 +189,7 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 		}
 		lines = append(lines, style.Render(pad(prefix+label, width)))
 		if rowHeight > 1 {
-			lines = append(lines, s.dialogMuted.Render(pad("    "+rows[i].source, width)))
+			lines = append(lines, s.dialogMuted.Render(pad("    "+abbreviatedWorkspacePath(rows[i].source, max(0, width-4), m.settings.ASCII), width)))
 		}
 	}
 	if height > 3 {
@@ -210,7 +210,7 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 			s.dialogMuted.Render(pad("del remove item · D remove file", width)),
 		)
 	}
-	return "Loaded files", strings.Join(lines, "\n"), "enter select · space hide/show · v file · esc close"
+	return "Loaded files", strings.Join(lines, "\n"), "enter inspect / space hide/show / esc close"
 }
 
 func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {

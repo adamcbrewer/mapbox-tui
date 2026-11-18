@@ -25,6 +25,8 @@ without a per-command version or a global Go default.
 
 ## Local workflow
 
+Follow the [viewer UI patterns](VIEWER_UI.md) when adding or changing terminal controls.
+
 ```sh
 make dev
 make check
