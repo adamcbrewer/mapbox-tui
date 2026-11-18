@@ -210,7 +210,11 @@ func (m *viewer) workspaceDialogContent(width, height int) (string, string, stri
 			s.dialogMuted.Render(pad("del remove item · D remove file", width)),
 		)
 	}
-	return "Loaded files", strings.Join(lines, "\n"), "enter inspect / space hide/show / esc close"
+	visibility := "hide"
+	if !rows[m.ui.selected].visible {
+		visibility = "show"
+	}
+	return "Loaded files", strings.Join(lines, "\n"), "enter view / space " + visibility + " / esc close"
 }
 
 func (m *viewer) workspaceLegend(width int, profile *elevationProfile) string {

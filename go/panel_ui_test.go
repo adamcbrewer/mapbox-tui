@@ -76,3 +76,16 @@ func TestFilesPanelMouseSelectsRenderedRowAfterScrolling(t *testing.T) {
 		})
 	}
 }
+
+func TestFilesPanelShowsCompleteShortcuts(t *testing.T) {
+	m := themeViewer(t, 120, 40, false)
+	m.openDialog(dialogWorkspace)
+	for _, action := range []string{"hide", "show"} {
+		m.rebuild()
+		want := "enter view / space " + action + " / esc close"
+		if !strings.Contains(ansi.Strip(m.content), want) {
+			t.Fatalf("Files panel is missing %q", want)
+		}
+		m.updateWorkspaceDialog("space")
+	}
+}
