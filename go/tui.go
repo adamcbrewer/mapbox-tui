@@ -185,6 +185,7 @@ func (m *viewer) playbackProgress(p *playback) string {
 	m.progress.FullColor = lipgloss.Color(m.activeColor())
 	m.progress.EmptyColor = lipgloss.Color(m.theme().ProgressEmpty)
 	m.progress.SetWidth(6)
+	m.progress.Full, m.progress.Empty = '█', '░'
 	if m.settings.ASCII {
 		m.progress.Full, m.progress.Empty = '#', '-'
 	}
